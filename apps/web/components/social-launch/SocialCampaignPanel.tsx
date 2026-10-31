@@ -1,5 +1,5 @@
 'use client'
-import {useCallback,useEffect,useState} from 'react'
+import React,{useCallback,useEffect,useState} from 'react'
 import Link from 'next/link'
 import type {CampaignView,CampaignItemState} from '@/lib/social-launch/campaign/types'
 import styles from './SocialCampaignPanel.module.css'

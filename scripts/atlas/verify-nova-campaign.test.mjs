@@ -205,3 +205,21 @@ test('plan change or cancellation between image admission and commit cannot save
  assert.throws(()=>writeRpc('social_campaign_commit_item',w),/REVIEW_REQUIRED/)
  assert.equal(scalar("select count(*) from social_content_revisions where project_id='"+f.target+"';"),'0')
 })
+
+test('native retry policy permits an admitted-asset crash to resume on a new claim without paid redispatch',()=>{
+ const f=ready(),v=enqueue(f),w=writer(f,v.items[0])
+ assert.equal(scalar("select max_attempts from runs where id='"+w.runId+"';"),'3')
+ writeRpc('social_campaign_claim_item',w)
+ const asset=randomUUID();scalar("insert into assets values('"+asset+"','"+f.target+"','image','"+'a'.repeat(64)+"','image/png',512,512,'active',now());")
+ writeRpc('social_campaign_record_asset',w,{assetId:asset})
+ const resumed=writer(f,v.items[0])
+ assert.notEqual(w.claimId,resumed.claimId)
+ assert.equal(writeRpc('social_campaign_claim_item',resumed).shouldGenerate,false)
+ assert.equal(writeRpc('social_campaign_commit_item',resumed).item.state,'review_ready')
+})
+
+test('cancelling unstarted work terminalizes native pending runs instead of leaving a stranded queue',()=>{
+ const f=ready();enqueue(f);rpc('social_campaign_cancel',f.p,{projectId:f.target,campaignId:f.input.campaignId})
+ assert.equal(scalar("select count(*) from runs where project_id='"+f.target+"' and status='pending';"),'0')
+ assert.equal(scalar("select count(*) from runs where project_id='"+f.target+"' and status='cancelled';"),'3')
+})

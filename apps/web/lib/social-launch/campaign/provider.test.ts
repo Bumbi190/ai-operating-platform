@@ -38,3 +38,17 @@ it('abort during successful response body is uncertain, never a safe retry',asyn
  await expect(generateIdeogramV3(ctx,{},limits())).rejects.toMatchObject({name:'ProviderDispatchUnknownError'})
  expect(dispose).toHaveBeenCalledTimes(1);expect(fetch).toHaveBeenCalledTimes(1)
 })
+
+it('rechecks campaign plan/profile authority at the physical provider boundary',async()=>{
+ const beforeDispatch=vi.fn().mockRejectedValue(new Error('profile changed'))
+ await expect(generateIdeogramV3(ctx,{}, {...limits(),beforeDispatch})).rejects.toThrow()
+ expect(beforeDispatch).toHaveBeenCalledTimes(1);expect(fetch).not.toHaveBeenCalled()
+})
+
+it('uses the documented V3 multipart contract only for the constrained campaign path',async()=>{
+ await generateIdeogramV3(ctx,{prompt:'A dealer',rendering_speed:'TURBO',num_images:1,aspect_ratio:'1x1'},limits())
+ const init=vi.mocked(fetch).mock.calls[0][1]!
+ expect(init.body).toBeInstanceOf(FormData)
+ expect(new Headers(init.headers).has('Content-Type')).toBe(false)
+ expect((init.body as FormData).get('prompt')).toBe('A dealer')
+})

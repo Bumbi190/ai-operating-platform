@@ -143,7 +143,7 @@ begin
  for item in select value from jsonb_array_elements(p_input->'items') loop
  ord=ord+1;run=gen_random_uuid();item_id=gen_random_uuid();
  insert into public.runs(id,project_id,workflow_id,status,kind,input,context,max_attempts)
- values(run,c.project_id,null,'pending','social.campaign.image.v1',jsonb_build_object('campaignId',c.id,'itemId',item_id),jsonb_build_object('source','social_campaign','campaignId',c.id),1);
+ values(run,c.project_id,null,'pending','social.campaign.image.v1',jsonb_build_object('campaignId',c.id,'itemId',item_id),jsonb_build_object('source','social_campaign','campaignId',c.id),3);
  insert into public.social_campaign_items(id,campaign_id,ordinal,run_id,draft) values(item_id,c.id,ord,run,item);
  end loop;
  return public.social_campaign_snapshot(c.id);
@@ -179,6 +179,16 @@ begin
  perform public.social_campaign_current(c);
  end if;
  return jsonb_build_object('campaign',to_jsonb(c),'item',to_jsonb(i));
+end $fn$;
+
+create function public.social_campaign_check_item(p_writer jsonb,p_input jsonb) returns jsonb
+language plpgsql security invoker set search_path='' as $fn$
+declare snap jsonb;i public.social_campaign_items;
+begin
+ perform public.social_campaign_closed(p_input,array[]::text[]);snap=public.social_campaign_lock(p_writer);
+ select * into i from public.social_campaign_items where id=(p_writer->>'itemId')::uuid;
+ if i.state<>'generating' or i.dispatch_claim_id is distinct from (p_writer->>'claimId')::uuid then raise exception 'SOCIAL_CAMPAIGN_FENCED';end if;
+ return jsonb_build_object('allowed',true);
 end $fn$;
 
 create function public.social_campaign_claim_item(p_writer jsonb,p_input jsonb) returns jsonb
@@ -271,7 +281,8 @@ begin
  select * into c from public.social_campaigns where id=(p_input->>'campaignId')::uuid and project_id=(p_input->>'projectId')::uuid and owner_id=(p_principal->>'userId')::uuid for update;
  if c.id is null then raise exception 'SOCIAL_CAMPAIGN_NOT_FOUND' using errcode='P0002';end if;
  update public.social_campaigns set cancelled_at=coalesce(cancelled_at,clock_timestamp()) where id=c.id;
- update public.runs set cancel_requested=true where id in (select run_id from public.social_campaign_items where campaign_id=c.id and state<>'review_ready') and status in ('pending','running');
+ update public.runs set cancel_requested=true,status=case when status='pending' then 'cancelled' else status end,
+ finished_at=case when status='pending' then clock_timestamp() else finished_at end where id in (select run_id from public.social_campaign_items where campaign_id=c.id and state<>'review_ready') and status in ('pending','running');
  update public.social_campaign_items set state='cancelled',reason='cancelled' where campaign_id=c.id and state='queued';
  return public.social_campaign_snapshot(c.id);
 end $fn$;
@@ -279,11 +290,11 @@ end $fn$;
 -- Include every helper; invoker privileges do not imply client access.
 revoke all on function public.social_campaign_closed(jsonb,text[]),public.social_campaign_current(public.social_campaigns),
  public.social_campaign_snapshot(uuid),public.social_campaign_read(jsonb,jsonb),public.social_campaign_enqueue(jsonb,jsonb,numeric),
- public.social_campaign_lock(jsonb,boolean),public.social_campaign_claim_item(jsonb,jsonb),public.social_campaign_record_asset(jsonb,jsonb),
+ public.social_campaign_check_item(jsonb,jsonb),public.social_campaign_lock(jsonb,boolean),public.social_campaign_claim_item(jsonb,jsonb),public.social_campaign_record_asset(jsonb,jsonb),
  public.social_campaign_commit_item(jsonb,jsonb),public.social_campaign_mark_item(jsonb,jsonb),public.social_campaign_cancel(jsonb,jsonb) from public,anon,authenticated;
 grant execute on function public.social_campaign_closed(jsonb,text[]),public.social_campaign_current(public.social_campaigns),
  public.social_campaign_snapshot(uuid),public.social_campaign_read(jsonb,jsonb),public.social_campaign_enqueue(jsonb,jsonb,numeric),
- public.social_campaign_lock(jsonb,boolean),public.social_campaign_claim_item(jsonb,jsonb),public.social_campaign_record_asset(jsonb,jsonb),
+ public.social_campaign_check_item(jsonb,jsonb),public.social_campaign_lock(jsonb,boolean),public.social_campaign_claim_item(jsonb,jsonb),public.social_campaign_record_asset(jsonb,jsonb),
  public.social_campaign_commit_item(jsonb,jsonb),public.social_campaign_mark_item(jsonb,jsonb),public.social_campaign_cancel(jsonb,jsonb) to service_role;
 comment on table public.social_campaigns is 'Bounded image preparation only. Not a publishing schedule, approval, or budget increase.';
 comment on table public.social_campaign_items is 'Once-only image dispatch latch and canonical content receipts. Unknown outcomes never automatically regenerate.';

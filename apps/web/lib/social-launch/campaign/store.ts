@@ -8,8 +8,12 @@ import {CampaignError,type CampaignPrincipal,type CampaignView,type CampaignWrit
 import {campaignId,campaignObject,parseCampaignInput} from './validate'
 export type CampaignDb=ReturnType<typeof createAdminClient>
 export type CampaignSnapshot={campaign:CampaignView;item:CampaignItem;shouldGenerate?:boolean}
-export const isCampaignEnabled=()=>process.env.SOCIAL_CAMPAIGN_PREPARATION==='1'&&isSpendGateEnforced()
-export function requireCampaignEnabled(){if(!isCampaignEnabled())throw new CampaignError('DISABLED')}
+export function isCampaignEnabled(projectId:string):boolean{
+ const projects=process.env.SOCIAL_CAMPAIGN_PROJECT_IDS?.split(',').map(v=>v.trim().toLowerCase())??[]
+ try{for(const id of projects)campaignId(id)}catch{return false}
+ return process.env.SOCIAL_CAMPAIGN_PREPARATION==='1'&&isSpendGateEnforced()&&projects.includes(projectId.toLowerCase())
+}
+export function requireCampaignEnabled(projectId:string){if(!isCampaignEnabled(projectId))throw new CampaignError('DISABLED')}
 function scope(p:CampaignPrincipal,projectId:unknown){campaignId(p.userId);campaignId(projectId);if(!p.allowedProjectIds.includes(projectId))throw new CampaignError('NOT_FOUND')}
 async function call<T>(db:CampaignDb,name:string,args:Record<string,unknown>):Promise<T>{
  const {data,error}=await (db as unknown as {rpc:(n:string,a:Record<string,unknown>)=>Promise<{data:unknown;error:{message?:string;code?:string}|null}>}).rpc(name,args)
@@ -23,8 +27,8 @@ async function call<T>(db:CampaignDb,name:string,args:Record<string,unknown>):Pr
  return data as T
 }
 export async function enqueueCampaign(db:CampaignDb,p:CampaignPrincipal,conversationId:string,raw:unknown):Promise<CampaignView>{
- requireCampaignEnabled();campaignImageOrigins()
- const input=parseCampaignInput(raw);scope(p,input.projectId);campaignId(conversationId)
+ const input=parseCampaignInput(raw);requireCampaignEnabled(input.projectId);campaignImageOrigins()
+ scope(p,input.projectId);campaignId(conversationId)
  const estimate=await estimateImageSek(1,'ideogram',await getRates())
  const unitCeilingSek=Math.ceil(estimate*10000)/10000
  if(!Number.isFinite(unitCeilingSek)||unitCeilingSek<=0||unitCeilingSek*input.items.length>5)throw new CampaignError('COST_LIMIT')
@@ -40,6 +44,7 @@ export async function cancelCampaign(db:CampaignDb,p:CampaignPrincipal,input:{pr
 }
 function writer(w:CampaignWriter){campaignObject(w,['projectId','campaignId','itemId','runId','claimId']);for(const value of Object.values(w))campaignId(value)}
 function write(db:CampaignDb,w:CampaignWriter,name:string,input:Record<string,unknown>={}):Promise<CampaignSnapshot>{writer(w);return call(db,name,{p_writer:w,p_input:input})}
+export const checkCampaignItemAuthority=(db:CampaignDb,w:CampaignWriter)=>write(db,w,'social_campaign_check_item')
 export const claimCampaignItem=(db:CampaignDb,w:CampaignWriter)=>write(db,w,'social_campaign_claim_item')
 export const recordCampaignAsset=(db:CampaignDb,w:CampaignWriter,assetId:string)=>{campaignId(assetId);return write(db,w,'social_campaign_record_asset',{assetId})}
 export const commitCampaignItem=(db:CampaignDb,w:CampaignWriter)=>write(db,w,'social_campaign_commit_item')

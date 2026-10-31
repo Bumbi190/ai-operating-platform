@@ -115,7 +115,7 @@ function refuseUnboundedIdeogram(body: Record<string, unknown>, legacy: boolean)
  * prompt and rendering speed keep the exact semantics each call site had before.
  * Returns the hosted URL, and writes `cost_events` on success.
  */
-export interface ConstrainedImageInvocation { maxEstimatedSek:number; signal:AbortSignal; timeoutMs:number }
+export interface ConstrainedImageInvocation { maxEstimatedSek:number; signal:AbortSignal; timeoutMs:number; beforeDispatch?:()=>Promise<void> }
 export async function generateIdeogramV3(
   ctx: ImageGovernanceContext,
   body: Record<string, unknown>,
@@ -131,6 +131,8 @@ export async function generateIdeogramV3(
   const rates = await getRates()
   const estimatedSek = await estimateImageSek(1, 'ideogram', rates)
   if(limits && (!isSpendGateEnforced() || ctx.authority?.kind!=='RUN_BOUND' || ctx.execution.context!=='AUTONOMOUS'
+    || ctx.execution.scope.kind!=='PROJECT' || !('projectId' in ctx.project) || !('projectId' in ctx.execution.scope.project) || ctx.project.projectId!==ctx.execution.scope.project.projectId
+    || Object.keys(body).some(key=>!['prompt','num_images','rendering_speed','aspect_ratio'].includes(key))
     || !Number.isFinite(limits.maxEstimatedSek) || limits.maxEstimatedSek<=0 || !Number.isFinite(estimatedSek) || estimatedSek<=0
     || Math.ceil(estimatedSek*10000)/10000>limits.maxEstimatedSek || !Number.isFinite(limits.timeoutMs) || limits.timeoutMs<=0 || limits.timeoutMs>60000)) {
     throw new SpendRefusedError({reason:'unbounded_spend',provider:'ideogram',operation:ctx.operation,detail:'constrained image authority, enforced gate or allocation refused'})
@@ -143,6 +145,8 @@ export async function generateIdeogramV3(
     async () => {
       // Optional campaign boundary; pre-existing V3 callers keep their contract.
       if(limits?.signal.aborted)throw new ProviderNotDispatchedError('image deadline before dispatch')
+      if(limits?.beforeDispatch){try{await limits.beforeDispatch()}catch(e){throw new ProviderNotDispatchedError('campaign authority changed before dispatch',e)}}
+      if(limits?.signal.aborted)throw new ProviderNotDispatchedError('image deadline before dispatch')
       if(limits)await admitPhysicalRequest(()=>createAdminClient(),ctx.authority!,'ideogram')
       const watch=limits?watchExecutionAuthority(()=>createAdminClient(),ctx.authority!):null
       const signal=limits?composeAbortSignals([watch!.signal,limits.signal,AbortSignal.timeout(limits.timeoutMs)]):null
@@ -154,8 +158,8 @@ export async function generateIdeogramV3(
         res = await fetch(IDEOGRAM_V3_GENERATE, {
           method: 'POST',
           ...(signal?{signal:signal.signal,redirect:'error' as const}:{}),
-          headers: { 'Api-Key': apiKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
+          headers: { 'Api-Key': apiKey, ...(limits?{}:{'Content-Type':'application/json'}) },
+          body: limits?(()=>{const form=new FormData();for(const [key,value] of Object.entries(body))form.append(key,String(value));return form})():JSON.stringify(body),
         })
       } catch (e) {
         // ── THE AMBIGUITY BOUNDARY ──────────────────────────────────────────

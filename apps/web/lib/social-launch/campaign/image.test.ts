@@ -10,16 +10,16 @@ beforeEach(()=>{vi.clearAllMocks();vi.stubEnv('SOCIAL_CAMPAIGN_IMAGE_ORIGINS','h
 it('admits real decoded bytes privately with stable provenance and no forwarded token',async()=>{
  const bytes=PNG.sync.write(new PNG({width:512,height:512}))
  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(new Uint8Array(bytes).buffer,{headers:{'content-type':'image/png'}})))
- await expect(prepareCampaignImage(w,item,new AbortController().signal)).resolves.toBe('canonical')
+ await expect(prepareCampaignImage(w,item,new AbortController().signal,{} as never)).resolves.toBe('canonical')
  expect(fetch).toHaveBeenCalledWith('https://cdn.vendor.example/generated.png',expect.objectContaining({redirect:'error',credentials:'omit'}))
  expect(mock.admit.mock.calls[0][0]).toMatchObject({projectId:w.projectId,visibility:'internal',width:512,height:512,mimeType:'image/png',provenance:{source:'generated',provider:'ideogram'}})
 })
 it.each(['http://cdn.vendor.example/image','https://attacker.example/image','https://cdn.vendor.example@attacker.example/image','https://127.0.0.1/image'])('rejects untrusted provider URL %s before retrieval',async url=>{
- mock.generate.mockResolvedValue(url);vi.stubGlobal('fetch',vi.fn());await expect(prepareCampaignImage(w,item,new AbortController().signal)).rejects.toThrow();expect(fetch).not.toHaveBeenCalled();expect(mock.admit).not.toHaveBeenCalled()
+ mock.generate.mockResolvedValue(url);vi.stubGlobal('fetch',vi.fn());await expect(prepareCampaignImage(w,item,new AbortController().signal,{} as never)).rejects.toThrow();expect(fetch).not.toHaveBeenCalled();expect(mock.admit).not.toHaveBeenCalled()
 })
-it('missing origin configuration refuses before a paid provider call',async()=>{vi.stubEnv('SOCIAL_CAMPAIGN_IMAGE_ORIGINS','');await expect(prepareCampaignImage(w,item,new AbortController().signal)).rejects.toThrow();expect(mock.generate).not.toHaveBeenCalled()})
+it('missing origin configuration refuses before a paid provider call',async()=>{vi.stubEnv('SOCIAL_CAMPAIGN_IMAGE_ORIGINS','');await expect(prepareCampaignImage(w,item,new AbortController().signal,{} as never)).rejects.toThrow();expect(mock.generate).not.toHaveBeenCalled()})
 it('refuses oversized response before storage and does not follow redirects',async()=>{
  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('bad',{headers:{'content-type':'image/png','content-length':'999999999'}})))
- await expect(prepareCampaignImage(w,item,new AbortController().signal)).rejects.toThrow();expect(mock.admit).not.toHaveBeenCalled()
+ await expect(prepareCampaignImage(w,item,new AbortController().signal,{} as never)).rejects.toThrow();expect(mock.admit).not.toHaveBeenCalled()
 })
-it('rejects HTML pretending to be an image before canonical admission',async()=>{vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('<html>no</html>',{headers:{'content-type':'image/png'}})));await expect(prepareCampaignImage(w,item,new AbortController().signal)).rejects.toThrow();expect(mock.admit).not.toHaveBeenCalled()})
+it('rejects HTML pretending to be an image before canonical admission',async()=>{vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('<html>no</html>',{headers:{'content-type':'image/png'}})));await expect(prepareCampaignImage(w,item,new AbortController().signal,{} as never)).rejects.toThrow();expect(mock.admit).not.toHaveBeenCalled()})

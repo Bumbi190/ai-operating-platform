@@ -17,7 +17,7 @@ export async function executeCampaignImageRun(db:CampaignDb,run:Run,claimId:stri
  if(!isCampaignRun(run.kind))throw new CampaignError('INVALID_BODY')
  campaignObject(run.input,['campaignId','itemId']);for(const id of [run.id,run.project_id,claimId,run.input.campaignId,run.input.itemId])campaignId(id)
  const w:CampaignWriter={projectId:run.project_id,runId:run.id,claimId,campaignId:run.input.campaignId as string,itemId:run.input.itemId as string}
- try{requireCampaignEnabled();if(invocationDeadline-Date.now()<80000)throw new CampaignError('STOPPED')}
+ try{requireCampaignEnabled(run.project_id);if(invocationDeadline-Date.now()<80000)throw new CampaignError('STOPPED')}
  catch(error){try{await markCampaignItem(db,w,error instanceof CampaignError&&error.code==='DISABLED'?'disabled':'deadline',false)}catch{/* Durable run failure remains the fallback evidence. */}throw error}
  const snapshot=await claimCampaignItem(db,w)
  if(snapshot.item.state==='review_ready')return 'review_ready'
@@ -29,7 +29,7 @@ export async function executeCampaignImageRun(db:CampaignDb,run:Run,claimId:stri
  const timer=setTimeout(()=>controller.abort(),65000)
  try{
   if(snapshot.shouldGenerate){
-   const assetId=await bounded(signal,()=>prepareCampaignImage(w,snapshot.item,signal))
+   const assetId=await bounded(signal,()=>prepareCampaignImage(w,snapshot.item,signal,db))
    // Evidence survives cancellation/expiry; permission to save content is separate.
    await bounded(signal,()=>recordCampaignAsset(db,w,assetId))
   }

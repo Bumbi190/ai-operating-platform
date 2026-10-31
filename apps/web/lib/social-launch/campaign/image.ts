@@ -7,16 +7,17 @@ import {admitAssetBytes} from '@/lib/media/asset/admission'
 import {assertSourceUrlTrusted} from '@/lib/media/asset/validate'
 import {projectScope} from '@/lib/governance/execution-stop'
 import {campaignImageOrigins} from './config'
+import {checkCampaignItemAuthority,requireCampaignEnabled,type CampaignDb} from './store'
 import {CampaignError,type CampaignItem,type CampaignWriter} from './types'
 const MAX_BYTES=20*1024*1024
-export async function prepareCampaignImage(w:CampaignWriter,item:CampaignItem,signal:AbortSignal):Promise<string>{
+export async function prepareCampaignImage(w:CampaignWriter,item:CampaignItem,signal:AbortSignal,db:CampaignDb):Promise<string>{
  const origins=campaignImageOrigins()
  signal.throwIfAborted()
  const url=await generateIdeogramV3({
  project:{projectId:w.projectId},execution:{context:'AUTONOMOUS',scope:projectScope({projectId:w.projectId})},
  authority:{kind:'RUN_BOUND',runId:w.runId,claimId:w.claimId},operation:'Social campaign image',agent:'Nova',runId:w.runId,
  idempotencyKey:'social_campaign_'+w.itemId,
- },{prompt:item.draft.imagePrompt,aspect_ratio:'1x1',rendering_speed:'TURBO',num_images:1},{maxEstimatedSek:item.unitCeilingSek,signal,timeoutMs:55000})
+ },{prompt:item.draft.imagePrompt,aspect_ratio:'1x1',rendering_speed:'TURBO',num_images:1},{maxEstimatedSek:item.unitCeilingSek,signal,timeoutMs:55000,beforeDispatch:async()=>{requireCampaignEnabled(w.projectId);await checkCampaignItemAuthority(db,w)}})
  const parsed=assertSourceUrlTrusted(url,origins.map(v=>new URL(v).hostname))
  if(!origins.includes(parsed.origin)||parsed.port||parsed.username||parsed.password||parsed.hash)throw new CampaignError('UNCERTAIN')
  signal.throwIfAborted()

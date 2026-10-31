@@ -92,6 +92,7 @@ import { buildHandlarborsenChatFacts } from '@/lib/atlas/project-analytics/handl
 import { HANDLARBORSEN_READ_TOOLS, HANDLARBORSEN_READ_TOOL_NAMES, handleHandlarborsenReadTool } from '@/lib/atlas/project-analytics/handlarborsen-operator-tools'
 import { classifyHandlarborsenReadIntent } from '@/lib/atlas/project-analytics/handlarborsen-tool-intent'
 import { isHandlarborsenEvidenceComparisonIntent } from '@/lib/atlas/project-analytics/handlarborsen-evidence-intent'
+import { isPendingNovaCuratorRequest, NOVA_CURATOR_NOT_CONNECTED_REPLY } from '@/lib/atlas/source-curator/pending-review-intent'
 import { isExplicitlyAuthorizedInternalPrincipal } from '@/lib/architecture-knowledge/policy'
 import { resolveDestination, resolveLinks, resolveProjectSlug, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
 import { toJson, parseWorkflowSteps } from '@/lib/supabase/json'
@@ -794,44 +795,50 @@ export async function POST(request: Request) {
     const m = messages[messages.length - 1]
     return m?.role === 'user' && typeof m.content === 'string' ? m.content : ''
   })()
+  // Source Curator is NOT yet a chat tool. Explicit Nova document review must
+  // fail honestly rather than falling through to the generic CRM/tool catalog.
+  // An attached image cannot turn an explicitly unavailable knowledge-review
+  // request back into a generic model/tool turn (including CRM and inbox tools).
+  const pendingNovaCuratorReview = !studioContext && !websitePlanRef && !rawBuildContext
+    && isPendingNovaCuratorRequest(lastUserText)
   // Both external catalog searches and approved Notion reads need tools, even
   // when the message includes writing verbs such as "förbättra".
   // A combined read needs BOTH authenticated sources on a single operator-only
   // tool turn, never a generic external reference or unsourced CRM answer.
-  const hbCompositeEvidenceIntent = !image && !studioContext && !websitePlanRef && !rawBuildContext
+  const hbCompositeEvidenceIntent = !pendingNovaCuratorReview && !image && !studioContext && !websitePlanRef && !rawBuildContext
     && !isNotionKnowledgeIntent(lastUserText) && isHandlarborsenEvidenceComparisonIntent(lastUserText)
-  const externalReferenceReadIntent = !hbCompositeEvidenceIntent && !image && !studioContext && !websitePlanRef && !rawBuildContext && isExternalWorkflowReferenceReadIntent(lastUserText)
+  const externalReferenceReadIntent = !pendingNovaCuratorReview && !hbCompositeEvidenceIntent && !image && !studioContext && !websitePlanRef && !rawBuildContext && isExternalWorkflowReferenceReadIntent(lastUserText)
   // A direct request to READ project-scoped CRM counts must not be silently
   // handled as a copywriting fast-path (especially when mode='content').
-  const hbSalesOverviewReadIntent = !hbCompositeEvidenceIntent && !image && !studioContext && !websitePlanRef && !rawBuildContext && !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText) && classifyHandlarborsenReadIntent(lastUserText, messages.slice(0, -1)
+  const hbSalesOverviewReadIntent = !pendingNovaCuratorReview && !hbCompositeEvidenceIntent && !image && !studioContext && !websitePlanRef && !rawBuildContext && !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText) && classifyHandlarborsenReadIntent(lastUserText, messages.slice(0, -1)
     .filter(m => m.role === 'user' && typeof m.content === 'string')
     .slice(-2).map(m => m.content as string)) === 'handlarborsen_sales_overview'
-  const hbReplyLifecycleReadIntent = !hbCompositeEvidenceIntent && !image && !studioContext && !websitePlanRef && !rawBuildContext && !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText) && classifyHandlarborsenReadIntent(lastUserText, messages.slice(0, -1)
+  const hbReplyLifecycleReadIntent = !pendingNovaCuratorReview && !hbCompositeEvidenceIntent && !image && !studioContext && !websitePlanRef && !rawBuildContext && !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText) && classifyHandlarborsenReadIntent(lastUserText, messages.slice(0, -1)
     .filter(m => m.role === 'user' && typeof m.content === 'string')
     .slice(-2).map(m => m.content as string)) === 'handlarborsen_reply_lifecycle'
   // A narrowly scoped read-only Strato request cannot become a generic
   // writing/navigation/action turn. Owner and conversation are re-checked
   // by the reader; this classifier grants no new access by itself.
-  const stratoInboxReadIntent = !hbCompositeEvidenceIntent && !externalReferenceReadIntent
+  const stratoInboxReadIntent = !pendingNovaCuratorReview && !hbCompositeEvidenceIntent && !externalReferenceReadIntent
     && !hbSalesOverviewReadIntent && !hbReplyLifecycleReadIntent
     && !image && !studioContext && !websitePlanRef && !rawBuildContext
     && !isNotionKnowledgeIntent(lastUserText) && hbStratoInboxReadEnabled()
     && isHandlarborsenInboxReadIntent(lastUserText)
-  const fastPath = !stratoInboxReadIntent && !hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent && !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText) && !image && !isCalendarIntent(lastUserText) && !studioContext && !websitePlanRef && !rawBuildContext && !hbReplyLifecycleReadIntent && !needsStoredContext(lastUserText) && (mode === 'content' || isFastPathContent(lastUserText))
+  const fastPath = !pendingNovaCuratorReview && !stratoInboxReadIntent && !hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent && !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText) && !image && !isCalendarIntent(lastUserText) && !studioContext && !websitePlanRef && !rawBuildContext && !hbReplyLifecycleReadIntent && !needsStoredContext(lastUserText) && (mode === 'content' || isFastPathContent(lastUserText))
   // Statisk konversation (hej/tack/vem är du) — besvaras ur Atlas identitet ensam.
   // Allow-list, aldrig gissning: allt som inte bevisligen klarar sig utan live-
   // data, projekt, Memory, klocka och verktyg går full path.
   const staticConversation =
-    !image && !studioContext && !fastPath && !websitePlanRef && !rawBuildContext && classifyStaticConversation(lastUserText) === 'static_conversation'
+    !pendingNovaCuratorReview && !image && !studioContext && !fastPath && !websitePlanRef && !rawBuildContext && classifyStaticConversation(lastUserText) === 'static_conversation'
   // Resolution is a state-changing action with one exact boundary. Detect it
   // separately so turn zero can force resolve_dream_finding rather than any tool.
-  const resolutionIntent = !fastPath && !staticConversation && isDreamResolutionIntent(lastUserText)
+  const resolutionIntent = !pendingNovaCuratorReview && !fastPath && !staticConversation && isDreamResolutionIntent(lastUserText)
   // Action-intent (kör/starta/publicera/resolution …) → tvinga verktygsanrop.
-  const actionIntent = !fastPath && !staticConversation && isActionIntent(lastUserText)
+  const actionIntent = !pendingNovaCuratorReview && !fastPath && !staticConversation && isActionIntent(lastUserText)
   // Navigerings-intent (öppna/gå till/ta mig till/visa <mål>) → ett direkt
   // kommando ÄR bekräftelsen; tvinga navigate på första turen (ingen extra tur).
-  const navIntent = !stratoInboxReadIntent && !fastPath && !staticConversation && !resolutionIntent && !hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent && isNavIntent(lastUserText) && !hbReplyLifecycleReadIntent
-  const hbReadIntent = !stratoInboxReadIntent && !hbCompositeEvidenceIntent && !fastPath && !staticConversation && !resolutionIntent && !navIntent && !actionIntent && !studioContext
+  const navIntent = !pendingNovaCuratorReview && !stratoInboxReadIntent && !fastPath && !staticConversation && !resolutionIntent && !hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent && isNavIntent(lastUserText) && !hbReplyLifecycleReadIntent
+  const hbReadIntent = !pendingNovaCuratorReview && !stratoInboxReadIntent && !hbCompositeEvidenceIntent && !fastPath && !staticConversation && !resolutionIntent && !navIntent && !actionIntent && !studioContext
     ? classifyHandlarborsenReadIntent(lastUserText, messages.slice(0, -1)
         .filter(m => m.role === 'user' && typeof m.content === 'string')
         .slice(-2).map(m => m.content as string))
@@ -843,7 +850,9 @@ export async function POST(request: Request) {
   const statusIntent = (!fastPath && !staticConversation && !actionIntent && !navIntent)
     ? classifyStatusIntent(lastUserText)
     : null
-  const reqType = fastPath
+  const reqType = pendingNovaCuratorReview
+    ? 'nova_curator_unavailable'
+    : fastPath
     ? 'fast_path'
     : staticConversation
       ? 'static_conversation'
@@ -860,7 +869,7 @@ export async function POST(request: Request) {
   const allowedProjectIds = studioContext ? [studioContext.projectId] : staticConversation && !websitePlanRef && !rawBuildContext ? [] : await getAllowedProjectIds(db, user.id)
   // One explicit, READ-ONLY project-memory class. No action/delegation tools
   // can be made available in the same turn as untrusted Notion source evidence.
-  const notionReadOnlyTurn = isNotionKnowledgeIntent(lastUserText)
+  const notionReadOnlyTurn = !pendingNovaCuratorReview && isNotionKnowledgeIntent(lastUserText)
     && !fastPath && !staticConversation && !studioContext
     && !actionIntent && !navIntent && !resolutionIntent
     && notionChatReaderConfigured()
@@ -932,6 +941,10 @@ export async function POST(request: Request) {
     // STATIC_CONVERSATION_SYSTEM säger uttryckligen att live-data saknas denna
     // tur, så en felklassad fråga inte kan besvaras med påhittade siffror.
     systemPrompt = STATIC_CONVERSATION_SYSTEM + (voice ? VOICE_DIRECTIVE : '')
+  } else if (pendingNovaCuratorReview) {
+    // Unsupported specialist request: skip all live operational/context reads.
+    // The server streams a deterministic, tool-free reply below. No LLM runs.
+    systemPrompt = ''
   } else if(studioContext) {
     // Keep the transcript and verified bindings, without the global executive snapshot.
     systemPrompt=studioSystemPrompt(studioContext)+SOCIAL_LAUNCH_GUIDE+SOCIAL_CONTENT_GUIDE
@@ -1050,7 +1063,7 @@ export async function POST(request: Request) {
   // executeTool is unreachable on this path. Every other class keeps TOOLS
   // exactly as before — this is not general per-class schema pruning.
   const localTextEnabled=availableLocalTextTools({inputSource:voice||inputSource==='voice'?'voice':'text',studio:!!studioContext,fast:fastPath,staticConversation}).length>0
-  const activeTools = notionReadOnlyTurn
+  const activeTools = pendingNovaCuratorReview ? [] : notionReadOnlyTurn
     ? ATLAS_NOTION_TOOLS
     : hbCompositeEvidenceIntent ? TOOLS.filter(tool => tool.name === 'handlarborsen_compare_workflow_evidence')
     : hbReplyLifecycleReadIntent ? TOOLS.filter(tool => tool.name === 'handlarborsen_reply_lifecycle')
@@ -1065,7 +1078,7 @@ export async function POST(request: Request) {
   // Nova's source access is a distinct, READ-ONLY operator turn. It never
   // enters normal Atlas tool dispatch, action turns, or the Code Broker.
   let sourceReadTurn = false
-  if (novaSourcePilotEnabled() && isNovaSourceReadIntent(lastUserText)
+  if (!pendingNovaCuratorReview && novaSourcePilotEnabled() && isNovaSourceReadIntent(lastUserText)
     && !image && !websitePlanRef && !rawBuildContext
     && !fastPath && !staticConversation && !studioContext && !notionReadOnlyTurn
     && !hbCompositeEvidenceIntent && !hbReplyLifecycleReadIntent && !stratoInboxReadIntent
@@ -1153,6 +1166,19 @@ export async function POST(request: Request) {
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ event, ...( typeof data === 'object' ? data : { data }) })}\n\n`),
         )
+      }
+
+      // Fail closed until Source Curator's own authenticated reader is reviewed
+      // and actually connected. No LLM request, generic tool dispatch, CRM read,
+      // Notion ingestion, indexing, or invented document approval can occur.
+      if (pendingNovaCuratorReview) {
+        send('text', { text: NOVA_CURATOR_NOT_CONNECTED_REPLY })
+        void saveMessage('assistant', NOVA_CURATOR_NOT_CONNECTED_REPLY)
+        send('timing', { reqType: 'nova_curator_unavailable', contextMs,
+          firstTokenMs: 0, serverTotalMs: Date.now() - tStart })
+        send('done', {})
+        controller.close()
+        return
       }
 
       let firstTokenMs = 0    // tid (från tStart) till första token — latens-mätning

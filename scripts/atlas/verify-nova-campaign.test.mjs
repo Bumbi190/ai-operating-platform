@@ -25,7 +25,7 @@ before(()=>{
  assert.equal(run.status,0,run.stderr);started=true
  let ready=false
  for(let i=0;i<50;i++){
-  if(command(['exec',container,'pg_isready','-U','postgres']).status===0){ready=true;break}
+  if(command(['exec',container,'pg_isready','-h','127.0.0.1','-U','postgres']).status===0){ready=true;break}
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,200)
  }
  assert.ok(ready,'Disposable PostgreSQL startup')

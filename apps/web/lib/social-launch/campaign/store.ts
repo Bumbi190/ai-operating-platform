@@ -1,4 +1,5 @@
 import 'server-only'
+import {campaignImageOrigins} from './config'
 import type {createAdminClient} from '@/lib/supabase/admin'
 import {getRates} from '@/lib/cost/rates'
 import {estimateImageSek} from '@/lib/cost/budget-gate'
@@ -22,7 +23,7 @@ async function call<T>(db:CampaignDb,name:string,args:Record<string,unknown>):Pr
  return data as T
 }
 export async function enqueueCampaign(db:CampaignDb,p:CampaignPrincipal,conversationId:string,raw:unknown):Promise<CampaignView>{
- requireCampaignEnabled()
+ requireCampaignEnabled();campaignImageOrigins()
  const input=parseCampaignInput(raw);scope(p,input.projectId);campaignId(conversationId)
  const estimate=await estimateImageSek(1,'ideogram',await getRates())
  const unitCeilingSek=Math.ceil(estimate*10000)/10000

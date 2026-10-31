@@ -8,6 +8,7 @@
  * Skyddad med: Authorization: Bearer {CRON_SECRET}
  */
 import { NextResponse } from 'next/server'
+import {executeCampaignImageRun,isCampaignRun} from '@/lib/social-launch/campaign/worker'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runSteps } from '@/lib/ai/workflow-runner'
 import { executeRunSteps } from '@/lib/ai/workflow-executor'
@@ -153,6 +154,7 @@ async function recordCheckpointCancelOutcome(
 }
 
 export async function GET(request: Request) {
+  const invocationDeadline=Date.now()+maxDuration*1000
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret || request.headers.get('authorization') !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -281,7 +283,10 @@ export async function GET(request: Request) {
       let outputContent: string | undefined
       let lastOutputKey: string | undefined
 
-      if (isWebsiteBuildRun(kind)) {
+      if (isCampaignRun(kind)) {
+        const status=await executeCampaignImageRun(db,run as Run,run.claim_id!,invocationDeadline)
+        if(status!=='review_ready'){results.push({run_id:run.id,status});continue}
+      } else if (isWebsiteBuildRun(kind)) {
         await executeWebsiteBuildRun(db, run as Run, run.claim_id!)
       } else if (isMarketingRun(kind)) {
         // Kod-driven marketing-workflow: dispatch på `kind` till rätt handler.
@@ -687,6 +692,7 @@ export async function GET(request: Request) {
       const msg = e instanceof Error ? e.message : 'Okänt fel'
       // attempts är redan inkrementerad av claim_runs → willRetry om vi inte nått taket.
       const willRetry = (run.attempts ?? 0) < (run.max_attempts ?? 3)
+        && !isCampaignRun(run.kind)
         && !(isWebsiteBuildRun(run.kind) && isWebsiteBuildPermanentError(e))
       const history = [
         ...(Array.isArray(run.error_history) ? run.error_history : []),

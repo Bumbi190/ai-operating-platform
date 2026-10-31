@@ -169,7 +169,9 @@ begin
  if i.id is null or r.project_id is distinct from c.project_id or r.kind is distinct from 'social.campaign.image.v1'
  then raise exception 'SOCIAL_CAMPAIGN_FENCED';end if;
  if p_evidence then
- if i.dispatch_claim_id is distinct from (p_writer->>'claimId')::uuid then raise exception 'SOCIAL_CAMPAIGN_FENCED';end if;
+ if i.dispatch_claim_id is null then
+ if r.status is distinct from 'running' or r.claim_id is distinct from (p_writer->>'claimId')::uuid or r.lease_until is null or r.lease_until<=clock_timestamp() then raise exception 'SOCIAL_CAMPAIGN_FENCED';end if;
+ elsif i.dispatch_claim_id is distinct from (p_writer->>'claimId')::uuid then raise exception 'SOCIAL_CAMPAIGN_FENCED';end if;
  else
  if r.status is distinct from 'running' or r.claim_id is distinct from (p_writer->>'claimId')::uuid or r.lease_until is null or r.lease_until<=clock_timestamp()
  or r.reconciliation_required then raise exception 'SOCIAL_CAMPAIGN_FENCED';end if;
@@ -205,6 +207,7 @@ begin
  if jsonb_typeof(p_input->'assetId') is distinct from 'string' or p_input->>'assetId' !~* '^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$' then raise exception 'SOCIAL_CAMPAIGN_INVALID_BODY';end if;
  snap=public.social_campaign_lock(p_writer,true);asset=(p_input->>'assetId')::uuid;
  select * into i from public.social_campaign_items where id=(p_writer->>'itemId')::uuid;
+ if i.dispatch_claim_id is null then raise exception 'SOCIAL_CAMPAIGN_FENCED';end if;
  if i.asset_id is not null and i.asset_id<>asset then raise exception 'SOCIAL_CAMPAIGN_CONFLICT';end if;
  if not exists(select 1 from public.assets where id=asset and project_id=(p_writer->>'projectId')::uuid and kind='image' and status='active'
  and checksum_sha256~'^[a-f0-9]{64}$' and mime_type in ('image/png','image/jpeg','image/webp') and width>0 and height>0)
@@ -249,7 +252,7 @@ begin
  then raise exception 'SOCIAL_CAMPAIGN_INVALID_BODY';end if;
  -- Evidence path only after dispatch latch; queued refusal uses fresh live authority.
  select * into i from public.social_campaign_items where id=(p_writer->>'itemId')::uuid;
- snap=public.social_campaign_lock(p_writer,i.dispatch_claim_id is not null);
+ snap=public.social_campaign_lock(p_writer,true);
  if i.state not in ('review_ready','cancelled') then
  update public.social_campaign_items set state=case when (p_input->>'uncertain')::boolean then 'uncertain' else 'blocked' end,reason=p_input->>'reason' where id=i.id;
  end if;

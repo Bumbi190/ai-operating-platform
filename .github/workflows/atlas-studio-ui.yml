@@ -67,6 +67,14 @@ on:
       - 'apps/web/lib/website-build/studio/api.ts'
       - 'apps/web/app/api/website-build/studio/costs/**'
       - 'apps/web/playwright.atlas-studio-ui.config.ts'
+      - 'apps/web/playwright.atlas-builder-studio.config.ts'
+      - 'apps/web/e2e/atlas-builder-*.ts*'
+      - 'apps/web/e2e/atlas-build-chat-*'
+      - 'apps/web/e2e/website-build-*'
+      - 'apps/web/scripts/run-website-sql-roundtrip.mjs'
+      - 'apps/web/scripts/website-test-*'
+      - 'apps/web/lib/website-build/test-db*'
+      - 'apps/web/lib/qa/website-showroom-fixture.test.ts'
       - 'apps/web/scripts/reference-*'
       - 'apps/web/lib/qa/website-reference-auth.integration.test.ts'
       - 'apps/web/lib/website-build/assets/**'
@@ -188,3 +196,40 @@ jobs:
         run: |
           test -z "$(docker ps -aq --filter label=omnira.reference.auth.fixture)"
           test -z "$(docker network ls -q --filter label=omnira.reference.auth.fixture)"
+
+  studio-journey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      WEBSITE_SQL_ROUNDTRIP: isolated-local
+      NODE_OPTIONS: --max-old-space-size=512
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify isolated target and runner argument guards
+        run: node --test apps/web/scripts/website-test-target.test.mjs apps/web/scripts/website-test-mode.test.mjs
+      - name: Cache disposable PostgreSQL image
+        run: docker pull postgres:17-alpine
+      - name: Install isolated Chromium
+        working-directory: apps/web
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Verify isolated SQL planning and build regressions
+        run: node apps/web/scripts/run-website-sql-roundtrip.mjs
+      - name: Verify Studio controls with real SQL and fixture models
+        run: node apps/web/scripts/run-website-sql-roundtrip.mjs --studio
+      - name: Verify owned SQL cleanup
+        if: always()
+        run: test -z "$(docker ps -aq --filter label=com.omnira.website.sql.run)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: atlas-studio-journey
+          path: .superpowers/sdd/2026-10-31-web-studio-sql-roundtrip/runs
+          include-hidden-files: true
+          retention-days: 5

@@ -55,9 +55,11 @@ const server = httpServer(async (req, res) => {
       const response=await api.lifecycleApi(req.method==='POST'?'change':'get',new Request(url,{method:req.method,headers:req.headers,body:req.method==='POST'?Buffer.concat(chunks):undefined}),lifecycle[1]);res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));return
     }
     if (url.pathname.startsWith('/__fixture/')) {
+      if(url.pathname.startsWith('/__fixture/step/'))console.log('[fixture-step] admitted '+url.pathname)
       const fixture = await vite.ssrLoadModule('/e2e/website-build-fixture.ts')
       const parts = url.pathname.split('/')
       const result = parts[2] === 'setup-conversation' ? await fixture.setupConversation({missingBuilder:url.searchParams.get('builder')==='missing',historical:url.searchParams.get('historical')==='1',multiple:url.searchParams.get('multiple')==='1'}) : parts[2] === 'conversation' ? await fixture.loadConversation(parts[3],url.searchParams.get('viewSession')??undefined) : parts[2] === 'setup' ? await fixture.setup() : parts[2] === 'session' ? { session: await fixture.snapshot(parts[3]),...await fixture.conversation(await fixture.snapshot(parts[3])), userId: '20000000-0000-4000-8000-000000000001', projectSlug: 'test-project', brief: 'En hemsida för vårt svenska café' } : await fixture.step(parts[3], parts[4])
+      if(url.pathname.startsWith('/__fixture/step/'))console.log('[fixture-step] completed '+url.pathname)
       res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(result)); return
     }
     if(url.pathname==='/api/website-build-readiness'){

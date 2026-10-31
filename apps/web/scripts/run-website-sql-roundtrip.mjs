@@ -6,9 +6,10 @@ import {freemem} from 'node:os'
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs'
 import {resolve} from 'node:path'
 import {fileURLToPath} from 'node:url'
-import {resolveWebsiteTestTarget,assertWebsiteTestTarget} from './website-test-target.mjs'
+import {resolveWebsiteTestTarget,assertWebsiteTestTarget,resolveWebsiteTestMode} from './website-test-target.mjs'
 const root=fileURLToPath(new URL('../../../',import.meta.url)),web=resolve(root,'apps/web')
 assert.equal(process.env.WEBSITE_SQL_ROUNDTRIP,'isolated-local','Explicit SQL-only opt-in required')
+const mode=resolveWebsiteTestMode(process.argv.slice(2))
 assert.ok(freemem()>=2*1024**3,'Need 2GiB free; no resources started')
 const id=randomUUID(),container='omnira-website-sql-'+id
 const out=resolve(root,'.superpowers/sdd/2026-10-31-web-studio-sql-roundtrip/runs',id)
@@ -33,7 +34,7 @@ assert.match(local,/^(npipe:\/\/|unix:\/\/)/,'Remote Docker refused')
 assert.equal(docker(['ps','-a','--filter','name=^/'+container+'$','--format','{{.Names}}']),'','Existing name refused')
 const before=docker(['ps','-a','--format','{{.ID}}|{{.Names}}|{{.Status}}'])
 const image=docker(['image','inspect','postgres:17-alpine','--format','{{.Id}}'])
-const result={id,container,image,scope:'real PostgreSQL and canonical RPC/worker; synthetic auth identities and provider fixture, no GoTrue login',startedAt:new Date().toISOString(),passed:false,cleaned:false}
+const result={id,container,image,mode,scope:mode==='studio'?'actual Studio UI, HTTP, PostgreSQL and worker; auth and models are fixtures, not GoTrue login':'real PostgreSQL and canonical RPC/worker; synthetic auth identities and provider fixture, no GoTrue login',startedAt:new Date().toISOString(),passed:false,cleaned:false}
 let originalError
 try{
  docker(['run','--pull=never','-d','--name',container,'--label','com.omnira.testplan=atlas-live-build-20261014','--label','com.omnira.website.sql.run='+id,'--network','none','--memory','192m','--memory-swap','192m','--cpus','1','--pids-limit','96','--tmpfs','/var/lib/postgresql/data:rw,nosuid,size=128m','-e','POSTGRES_PASSWORD',image,'-c','listen_addresses=','-c','shared_buffers=16MB','-c','max_connections=20','-c','work_mem=1MB'],undefined,{POSTGRES_PASSWORD:randomBytes(24).toString('hex')})
@@ -56,10 +57,18 @@ try{
  assert.ok(name,'Bootstrap did not supply an owned test database')
  env.WEBSITE_BUILD_TEST_DATABASE_NAME=name
  result.database=name
- const report=resolve(out,'integration.json')
- runNode([resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/website-build/planning/visual-roundtrip.test.ts','lib/website-build/planning/starter-roundtrip.test.ts','lib/website-build/planning/mockup-store.test.ts','lib/website-build/test-db-bootstrap.test.ts','lib/website-build/worker.test.ts','--maxWorkers=1','--minWorkers=1','--reporter=json','--outputFile',report],'integration',240000)
- const tests=JSON.parse(readFileSync(report,'utf8'))
- Object.assign(result,{passed:tests.success,tests:tests.numTotalTests,passedTests:tests.numPassedTests,failedTests:tests.numFailedTests})
+ if(mode==='studio'){
+  const report=resolve(out,'studio.json')
+  env.PLAYWRIGHT_JSON_OUTPUT_FILE=report
+  runNode([resolve(root,'node_modules/@playwright/test/cli.js'),'test','--config','playwright.atlas-builder-studio.config.ts','--reporter=list,json','--output',resolve(out,'browser'),'--global-timeout=420000','--max-failures=1'],'studio',480000)
+  const reportData=JSON.parse(readFileSync(report,'utf8')),stats=reportData.stats
+  Object.assign(result,{passed:stats.expected>0&&stats.unexpected===0&&stats.skipped===0&&stats.flaky===0&&(reportData.errors??[]).length===0,tests:stats.expected+stats.unexpected+stats.skipped+stats.flaky,passedTests:stats.expected,failedTests:stats.unexpected})
+ }else{
+  const report=resolve(out,'integration.json')
+  runNode([resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/website-build/planning/visual-roundtrip.test.ts','lib/website-build/planning/starter-roundtrip.test.ts','lib/website-build/planning/mockup-store.test.ts','lib/website-build/test-db-bootstrap.test.ts','lib/website-build/worker.test.ts','--maxWorkers=1','--minWorkers=1','--reporter=json','--outputFile',report],'integration',240000)
+  const tests=JSON.parse(readFileSync(report,'utf8'))
+  Object.assign(result,{passed:tests.success,tests:tests.numTotalTests,passedTests:tests.numPassedTests,failedTests:tests.numFailedTests})
+ }
  assert.equal(result.passed,true)
  console.log(JSON.stringify({tests:result.tests,passed:result.passedTests,scope:result.scope}))
 }catch(e){originalError=e;result.error=e.message;console.error(e.message)}finally{

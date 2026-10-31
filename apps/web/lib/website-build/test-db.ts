@@ -70,6 +70,8 @@ export function initializeWorkerDb(): ReturnType<typeof createAdminClient> {
     if (testSql("select to_regclass('public." + table + "') is null;") === 't')
       testSql(readFileSync(resolve(root, 'apps/web/supabase/migrations', file), 'utf8'))
   }
+  // Current Studio creation contract, not the obsolete v1-only bootstrap.
+  testSql(canonicalFunction('20261015122500_atlas_builder_output_allowance_v2.sql','website_build_studio_ensure'))
   restoreWebsiteStopFixture(testSql,root)
   testSql(canonicalFunction('20260831_unified_stop_authority.sql', 'stop_state'))
   testSql(canonicalFunction('20260903120000_durable_cancellation_reaper.sql', 'release_stopped_run'))

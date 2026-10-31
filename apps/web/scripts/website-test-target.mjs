@@ -22,3 +22,10 @@ export function assertWebsiteTestTarget(info,target){
  assert.ok(Number.isSafeInteger(host?.Memory)&&host.Memory>0&&host.Memory<=256*1024**2,'Unbounded memory refused')
  assert.equal(host.MemorySwap,host.Memory,'Additional swap refused')
 }
+
+export function resolveWebsiteTestMode(args){
+ assert.ok(Array.isArray(args),'Runner arguments must be an array')
+ if(args.length===0)return 'sql'
+ assert.deepEqual(args,['--studio'],'Unsupported test runner arguments')
+ return 'studio'
+}

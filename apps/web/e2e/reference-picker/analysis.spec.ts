@@ -27,7 +27,7 @@ async function backend(page:Page,{lose=false,delay=false,enabled=true}={}){
   await r.fulfill({json:view()})
  })
  await page.route('**/api/chat',async r=>{plans.push(r.request().postDataJSON());await r.fulfill({status:503,json:{error:'Fixture stops model execution'}})})
- return {requests,plans,release}
+ return {requests,plans,release,analysis:completion.analysis}
 }
 for(const width of [1440,390])test('explicit quote -> analysis -> three responsive concepts at '+width,async({page},info)=>{
  const api=await backend(page);await page.setViewportSize({width,height:900});await page.goto('/picker')
@@ -55,6 +55,12 @@ for(const width of [1440,390])test('explicit quote -> analysis -> three responsi
  await page.getByRole('button',{name:'Planera med riktningen'}).click()
  await expect.poll(()=>api.plans.length).toBe(1)
  expect(api.plans[0].messages.at(-1).content).toContain('conceptSha256')
+ const sent=api.plans[0].messages.at(-1).content as string
+ const handoff=JSON.parse(sent.slice(sent.indexOf('\n')+1))
+ const chosen=api.analysis.directions.find((item:any)=>item.key==='structured')
+ expect(handoff.suggestedDesign).toEqual({style:chosen.rationale,reference:null,visual:{palette:chosen.palette,font:chosen.font}})
+ expect(handoff).not.toHaveProperty('approved')
+ expect(sent).toContain('inte ett godkännande')
  expect(api.plans[0].visiblePlan).toBeUndefined()
 })
 test('lost completion response reconciles by read without another paid action',async({page})=>{

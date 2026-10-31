@@ -46,7 +46,9 @@
         "ai_cost_snapshots",
         "memory_refs",
         "media_provider_connections",
-        "media_provider_oauth_states"
+        "media_provider_oauth_states",
+        "sales_discovery_batches",
+        "sales_discovery_candidates"
       ],
       "meaning": "Created by a migration but absent from the production catalog at capture time — never applied there, or dropped out-of-band. They are NOT a fresh-deploy hazard: each declares RLS in its own migration, so a rebuild creates them protected. Listed so their absence from the table map is a recorded fact rather than a silent gap, and so the fail-closed rule can distinguish them from a genuinely new unprotected table.",
       "requirement": "Every entry must have RLS declared in the migration corpus.",
@@ -55,9 +57,12 @@
         "ai_cost_snapshots": "SERVER_ONLY",
         "memory_refs": "SERVER_ONLY",
         "media_provider_connections": "SERVER_ONLY",
-        "media_provider_oauth_states": "SERVER_ONLY"
+        "media_provider_oauth_states": "SERVER_ONLY",
+        "sales_discovery_batches": "SERVER_ONLY",
+        "sales_discovery_candidates": "SERVER_ONLY"
       },
-      "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class. The two Higgsfield tables are proposed by 20261022075921_higgsfield_mcp_readonly.sql and have NOT been applied or inspected in production; they remain created_not_live until a reviewed production migration and live catalog reconciliation."
+      "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class. The two Higgsfield tables are proposed by 20261022075921_higgsfield_mcp_readonly.sql and have NOT been applied or inspected in production; they remain created_not_live until a reviewed production migration and live catalog reconciliation.",
+      "sales_discovery_note": "Historical capture reconciliation from PR386/f4d41f5: these two names were absent from the unchanged 185-table capture and their intended SERVER_ONLY classes are copied from the owning branch. Canonical SQL replay verifies RLS, no policies, zero public/anon/authenticated table grants and service-role access. A separate read-only ledger observation on 2026-10-31 contains sales_discovery_candidates; therefore this historical-capture absence is NOT a claim that the migration is still unapplied today. No fresh table-catalog introspection, policy change, exception or contact authority is claimed by this source-only reconciliation."
     },
     "post_migration": "20260909120000_workflow_stories_rls.sql (Phase 9Y) and 20260910090000_declarative_rls_parity.sql (Phase 9Z). Every row reflects effective production state, which those two migrations now also declare; and 20260910120000_cost_ledger_rls_isolation.sql (Phase 9AB), which moves cost_events and infra_costs from TENANT_RLS to SERVER_ONLY: their `project_id IS NULL OR …` policies on role public are dropped and anon/authenticated grants revoked.",
     "views": "Phase 9AA. Public VIEWS, classified like tables. A view runs as its owner unless it is security_invoker, so base-table RLS does not protect it; the migration security gate fails any client-reachable public view without security_invoker and any public view absent from this map. `live` records whether it exists in production.",

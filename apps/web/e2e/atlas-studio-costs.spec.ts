@@ -89,3 +89,21 @@ test('a pause detected during project navigation preserves the selected project 
  await expect(page).toHaveURL(/project=cost-project-2/);await expect(page.getByText('Läser projektet…',{exact:true})).toHaveCount(0)
  await expect(page.getByLabel('Meddelande till Atlas',{exact:true})).toBeDisabled()
 })
+
+for(const width of [1280,1440,1920])test('desktop header keeps controls in one row with long project options at '+width,async({page},info)=>{
+ await page.setViewportSize({width,height:900})
+ await page.route('**/api/website-build/studio/costs?*',route=>route.fulfill({status:503,json:{error:'fixture unavailable'}}))
+ await page.goto('/build?costs=1')
+ const picker=page.getByLabel('Projekt i byggstudion'),meter=page.getByRole('region',{name:'Projektets kostnad'})
+ await expect(meter).toContainText('Kostnaden kunde inte uppdateras')
+ // Native select intrinsic width depends on every option, not only the selected label.
+ await picker.evaluate(el=>{const option=document.createElement('option');option.value='unselected-long-name';option.textContent='W'.repeat(120);el.appendChild(option)})
+ await page.addStyleTag({content:'body{font-family:Arial,sans-serif}'})
+ const header=page.getByRole('region',{name:'Bygg med Atlas',exact:true}).locator(':scope > header')
+ const h=await header.boundingBox(),p=await picker.boundingBox(),button=await page.getByRole('button',{name:'Uppdatera',exact:true}).boundingBox()
+ expect(button!.y).toBeLessThan(p!.y+p!.height)
+ expect(h!.height).toBeLessThanOrEqual(160)
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+ await expect(meter.getByRole('button',{name:'Stoppa projektet',exact:true})).toBeInViewport()
+ await page.screenshot({path:info.outputPath('bounded-header-'+width+'.png')})
+})

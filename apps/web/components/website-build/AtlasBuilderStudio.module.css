@@ -114,3 +114,12 @@
  .chatHeading{display:none}
  .canvas.previewCanvas{padding:.3rem}
 }
+
+/* Native selects size from their longest option; keep desktop controls bounded. */
+@media(min-width:1001px){
+ .header{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) minmax(0,230px);padding:.5rem 1.25rem}
+ .headerTitle{min-width:0}
+ .header>label{min-width:0;max-width:100%}
+ .header>label select{flex:1;width:100%;min-width:0;max-width:100%}
+ .headerActions{width:100%;justify-self:end}
+}

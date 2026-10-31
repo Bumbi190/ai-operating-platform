@@ -11,6 +11,7 @@ import { projectScope } from '@/lib/governance/execution-stop'
 import { composeAgentDesignSkills } from '@/lib/skills/compose-agent-skills'
 import { compileWebsiteArtifact, WebsiteArtifactError } from './artifact'
 import { rejectedDraftLog } from './rejected-draft'
+import {resolveWebsiteModelRasters} from './model-rasters'
 import { recoverWebsiteArtifact } from './recovery'
 import { commitBuildRevision, loadBuildSnapshot, parkBuildSession, recordBuildInterpretation, saveBuildCandidate, setBuildStage, WebsiteBuildError } from './store'
 import { interpretBuildFeedback, parseWebsiteModelJson, WebsiteBuildPermanentError } from './feedback-interpretation'
@@ -101,7 +102,7 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
       else {
       const result = await paid(knowledge.systemPrompt + '\n\n' + WEBSITE_OUTPUT_CONTRACT, websiteUserMessage(snapshot, interpretation), config?.max_tokens ?? 12000, 'website.artifact.generate')
       if (!result) return
-      try { artifact = compileWebsiteArtifact(parseWebsiteModelJson(result.content));assertApprovedWebsiteScope(artifact,snapshot.designReference) }
+      try { artifact = compileWebsiteArtifact(resolveWebsiteModelRasters(parseWebsiteModelJson(result.content),snapshot));assertApprovedWebsiteScope(artifact,snapshot.designReference) }
       catch (error) {
         if (error instanceof WebsiteArtifactError || error instanceof WebsiteBuildPermanentError) {
           // This response already failed permanently. Finalization checks claim

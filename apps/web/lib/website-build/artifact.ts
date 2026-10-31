@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { parseFragment, serialize, type DefaultTreeAdapterMap } from 'parse5'
 import JSZip from 'jszip'
+import {bundledRaster} from './assets/bundled-rasters'
 import { escapeHtml, scriptJson, websiteCsp, WEBSITE_RUNTIME, renderPreviewDocument } from './preview-runtime'
 import { WEBSITE_BUILD_LIMITS, type WebsiteArtifact, type WebsiteBehavior, type WebsiteDraft } from './types'
 
@@ -62,6 +63,7 @@ function validateMarkup(html: string, pageKeys: Set<string>, homeAlias = false, 
           }
         }
         if (attr.name === 'src') {
+          if(node.tagName==='img'&&attr.value.startsWith('atlas-asset:')){const raster=bundledRaster(attr.value);if(!raster)fail('INVALID_IMAGE');attr.value=raster.src}
           if (node.tagName !== 'img' || !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(attr.value)) fail('INVALID_IMAGE')
         }
       }

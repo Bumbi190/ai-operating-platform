@@ -57,7 +57,7 @@ try{
  env.WEBSITE_BUILD_TEST_DATABASE_NAME=name
  result.database=name
  const report=resolve(out,'integration.json')
- runNode([resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/website-build/planning/visual-roundtrip.test.ts','lib/website-build/planning/mockup-store.test.ts','lib/website-build/test-db-bootstrap.test.ts','lib/website-build/worker.test.ts','--maxWorkers=1','--minWorkers=1','--reporter=json','--outputFile',report],'integration',240000)
+ runNode([resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/website-build/planning/visual-roundtrip.test.ts','lib/website-build/planning/starter-roundtrip.test.ts','lib/website-build/planning/mockup-store.test.ts','lib/website-build/test-db-bootstrap.test.ts','lib/website-build/worker.test.ts','--maxWorkers=1','--minWorkers=1','--reporter=json','--outputFile',report],'integration',240000)
  const tests=JSON.parse(readFileSync(report,'utf8'))
  Object.assign(result,{passed:tests.success,tests:tests.numTotalTests,passedTests:tests.numPassedTests,failedTests:tests.numFailedTests})
  assert.equal(result.passed,true)

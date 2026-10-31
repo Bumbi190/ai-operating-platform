@@ -3,7 +3,7 @@ export type IntegrationProvider = 'terminal' | 'vercel' | 'supabase' | 'strato' 
 export type PlanContent = {
  title:string; purpose:string; audience:string
  pages:{key:string;title:string;purpose:string}[]
- design:{style:string;reference:string|null;visual?:WebsiteVisualStyle}
+ design:{style:string;reference:string|null;visual?:WebsiteVisualStyle;starter?:'premium-dealer-demo-v1'}
  features:{name:string;mode:'preview_demo'|'live_required';provider:IntegrationProvider|null}[]
  architecture:string; steps:string[]
  domain:{registrar:'strato';requestedName:string|null}

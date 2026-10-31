@@ -1,0 +1,32 @@
+import {test,expect} from '@playwright/test'
+for(const width of [390,768,1440])test('planned showroom retains pictures and filtering at '+width,async({page},info)=>{
+ await page.setViewportSize({width,height:950});await page.goto('/preview')
+ const f=page.frameLocator('iframe'),frame=page.frames().find(f=>f.parentFrame())!
+ await expect(f.getByRole('heading',{level:1})).toContainText('bilaffären')
+ await expect(f.locator('.car:visible')).toHaveCount(8)
+ for(const image of await f.locator('img').all())await image.scrollIntoViewIfNeeded()
+ const imageStatus=await frame.evaluate(()=>[...document.images].map(i=>({ok:i.complete&&i.naturalWidth>0,src:i.src})))
+ expect(imageStatus).toHaveLength(9);expect(imageStatus.every(i=>i.ok)).toBe(true);expect(new Set(imageStatus.map(i=>i.src)).size).toBe(5)
+ await f.getByLabel('Filtrera på drivlina').selectOption('el');await expect(f.locator('.car:visible')).toHaveCount(3)
+ await f.getByLabel('Filtrera på drivlina').selectOption('vatgas');await expect(f.locator('#empty')).toBeVisible()
+ await f.getByLabel('Filtrera på drivlina').selectOption('*')
+ expect(await frame.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+ expect(await frame.evaluate(()=>{try{void parent.document.body;return false}catch{return true}})).toBe(true)
+ await page.goto('/');await page.screenshot({path:info.outputPath('starter-'+width+'.png'),fullPage:true,animations:'disabled'})
+})
+test('model roundtrip changes only accent and preserves images, catalog and previous version',async({page,request})=>{
+ const metrics=await (await request.get('/metrics')).json()
+ expect(metrics.assets).toBe(5);expect(metrics.hasRawBase64InModelInput).toBe(false);expect(metrics.mockupBytes).toBeLessThan(48000)
+ expect(metrics.modelInputBytes).toBeLessThan(48000)
+ // Production model cap is 200000 bytes; also require substantial reduction versus full raster HTML.
+ expect(metrics.editInputBytes).toBeLessThan(200000);expect(metrics.editInputBytes).toBeLessThan(metrics.renderedHtmlBytes/2)
+ await page.goto('/')
+ const before=await page.locator('body').innerText(),images=await page.locator('img').evaluateAll(nodes=>nodes.map(i=>(i as HTMLImageElement).src))
+ await page.goto('/edited')
+ expect(await page.locator('body').innerText()).toBe(before)
+ expect(await page.locator('img').evaluateAll(nodes=>nodes.map(i=>(i as HTMLImageElement).src))).toEqual(images)
+ expect(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--accent').trim())).toBe('#71d7ba')
+ await page.locator('#fuel').focus();await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter')
+ await expect(page.locator('#fuel')).toBeFocused();await expect(page.locator('.car:visible')).toHaveCount(3)
+ await page.goto('/');expect(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--accent').trim())).toBe('#efb563')
+})

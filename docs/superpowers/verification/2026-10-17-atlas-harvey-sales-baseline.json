@@ -1,0 +1,20 @@
+{
+  "base": "146c5db4db2acb2b4c7d4bf959e1603562b6ebaa",
+  "final_summary": {
+    "numTotalTests": 14848,
+    "numPassedTests": 13116,
+    "numFailedTests": 401,
+    "numPendingTests": 1327
+  },
+  "baseline_failed_file_recheck_summary": {
+    "numTotalTests": 3290,
+    "numPassedTests": 2659,
+    "numFailedTests": 401,
+    "numPendingTests": 230
+  },
+  "new_failed_tests": [],
+  "baseline_failed_tests_absent_in_final": [],
+  "new_failed_files": [],
+  "final_failed_file_count": 102,
+  "baseline_failed_file_count": 102
+}

@@ -1,0 +1,96 @@
+{
+  "state": "active_reply_queue_owner_draft_awaiting_review",
+  "client": {
+    "sourceSha": "453daaae73a3f329f7e313a17592bf49f20bee9f",
+    "path": "C:\\Users\\Andre\\AppData\\Local\\OmniraSales\\pilots\\handlarborsen-reply-453daaae73a3",
+    "fileCount": 55,
+    "manifestSha256": "e67863cd73283aded4ef894cc7759fcf59ebed5f2ada9a0a11d372f79a7d0f0d",
+    "pythonExit": 0
+  },
+  "migration": {
+    "path": "apps/web/supabase/migrations/20261018040242_sales_reply_preparation.sql",
+    "sha256": "7516d8566ae7776086452ff8fdd51058ce34a10ab70973bcdbf4ee14f655a3cc",
+    "applied": true,
+    "version": "20261018040242",
+    "rlsTables": 3,
+    "serviceOnlyInvokerRoutines": 23,
+    "clientGrants": 0,
+    "newSecurityWarnings": 0,
+    "newAdvisorInfo": "3 intentional service-only RLS tables without client policies"
+  },
+  "activeB2Changed": true,
+  "replyEnabled": true,
+  "sendingEnabled": false,
+  "realTrial": "durable_owner_general_reply_awaiting_review",
+  "missing": [],
+  "provider": "existing first-party Claude CLI2.1.296",
+  "inputBoundaries": {
+    "selectedMessageBytes": 8192,
+    "totalPromptBytes": 32768,
+    "oneContact": "commercial mode only",
+    "oneOffer": "commercial mode only",
+    "attemptCeiling": 10,
+    "cost": "subscription usage not independently metered",
+    "general": "one explicitly selected message; no contact or offer; server sender and saved From"
+  },
+  "server": {
+    "sourceSha": "453daaae73a3f329f7e313a17592bf49f20bee9f",
+    "deploymentId": "dpl_7oz6EBiFPwqkE5mZSYo1cK8E7VV1",
+    "origin": "https://ai-operating-platform-9rs0j257n-bumbi190s-projects.vercel.app",
+    "state": "READY",
+    "migrationGuard": "124/124 enforced;161 known ledger names;no override"
+  },
+  "liveTrial": {
+    "mode": "general",
+    "conversationId": "7d960974-b5ba-48f7-8e87-bd93443b9fd5",
+    "conversationCreation": "operator-created real project-bound test conversation; existing global chats left untouched",
+    "requestPath": "operator invoked canonical owner RPC; live natural-language Atlas tool invocation awaits browser login",
+    "messageId": "846ed8ed-f3e5-4356-8608-8dafc9046f40",
+    "messageVersion": 3,
+    "contentSha256": "c2542e00f4dd110b03fdd41efdb13406e2897ebd3d553b2845f822515cd2678a",
+    "jobId": "9ff8cf88-41e6-4951-8bf1-4c1af09d6901",
+    "idempotencyKey": "b1131538-9775-4f03-bede-9cb86d49f789",
+    "status": "awaiting_review",
+    "attempts": 1,
+    "revisionCount": 2,
+    "currentRevisionId": "91736c50-3db6-4d68-86f8-1660672fed0f",
+    "currentRevisionSha256": "2cbea93b7c7bb3e1c04190d954ed857cc9a2a72ad74c7841cfd78c8384dc6b4a",
+    "questionCount": 0,
+    "approvalStatus": "pending",
+    "sourceCurrent": true,
+    "postRestartSameRevisionAndAttemptCount": true,
+    "contactsCreated": 0,
+    "offersCreated": 0,
+    "emailsSent": 0,
+    "stratoDraftsCreated": 0,
+    "provider": "existing first-party Claude CLI2.1.296",
+    "cost": "subscription usage not independently metered",
+    "questionResolution": "two model questions resolved from prior owner receipt confirmation and verified sender metadata; immutable editorial revision, no extra model call, no approval"
+  },
+  "realProviderCalls": 3,
+  "persistentB3QueueProviderCalls": 1,
+  "qualification": {
+    "python": 126,
+    "stagedPython": 126,
+    "browser": 12,
+    "salesAndSchemaUnit": 452,
+    "unitSkipped": 31,
+    "typecheckExit": 0,
+    "realSqlAndRaces": "PASS",
+    "fiveCrossProcessIntegrations": "four PASS in complete run; reply fixture commercial-only assertion corrected, nine reply modes PASS in final dedicated run",
+    "broad": {
+      "numTotalTests": 15052,
+      "numPassedTests": 13315,
+      "numFailedTests": 402,
+      "numPendingTests": 1331
+    },
+    "newFailuresAgainstFreshApprovedBase403": 0,
+    "transientA6TimeoutRecheck": "53/53 PASS",
+    "historicalFailureReport": "2026-10-18-sales-reply-general-regressions.json"
+  },
+  "pending": [
+    "browser login at new immutable origin",
+    "private real UI review and real natural-language Atlas request verification",
+    "separate C sending implementation"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "current": {
+    "numTotalTests": 15119,
+    "numPassedTests": 13381,
+    "numFailedTests": 402,
+    "numPendingTests": 1332
+  },
+  "referenceFailureIdentitiesFile": "2026-10-18-sales-atlas-chat-regressions.json",
+  "additionalHistoricalFailures": [],
+  "resolvedSinceReference": [
+    [
+      "atlas-pages-isolation.test.ts",
+      "9Q · Atlas Home — the legacy path now scopes every service-role read gatherAtlasContext receives the caller allow-list, so its sources are scoped"
+    ]
+  ],
+  "novelAgainstFreshBaseline": []
+}

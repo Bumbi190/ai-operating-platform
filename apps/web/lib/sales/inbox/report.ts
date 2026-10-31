@@ -4,6 +4,7 @@ import {scoped} from '../store'
 import type {SalesPrincipal,SalesWorkspace} from '../types'
 import {UUID} from '../validate'
 import {salesEnabled} from '../feature'
+import {offerLabel} from '../offers'
 import {handleSalesTool} from '../atlas-tools'
 import {readMailboxReference} from '../mailbox/store'
 import type {InboxMessage,InboxPage} from './types'
@@ -58,6 +59,9 @@ export async function buildInboxReport(db:SalesDb,p:SalesPrincipal,conversationI
   }
   const workspace:SalesWorkspace&{contactSummary:{suppressedCount:number}}=await read('get_sales_workspace',{projectId})
   if(workspace.projectId!==projectId||!Array.isArray(workspace.offers)||!Array.isArray(workspace.workers))throw Error('REPORT_WORKSPACE_UNAVAILABLE')
+  const workspaceMatch=/^\/projects\/([a-z0-9_-]+)\/sales$/.exec(workspace.workspaceUrl)
+  if(!workspaceMatch)throw Error('REPORT_WORKSPACE_UNAVAILABLE')
+  const projectSlug=workspaceMatch[1],workspaceUrl=workspaceMatch[0]
   const mailboxes=new Set<string>()
   for(const worker of workspace.workers.filter(w=>!w.revoked)){
    const ref=await readMailboxReference(db,p,projectId,worker.id)
@@ -68,8 +72,8 @@ export async function buildInboxReport(db:SalesDb,p:SalesPrincipal,conversationI
   const inbox:InboxPage&{pageSummary:{linkedContactCount:number;linkedMessageCount:number;linkedContactIds:string[];messageCount:number;hasMore:boolean}}=await read('get_sales_inbox',{projectId,mailboxId})
   const summary=inbox.pageSummary
   const lines=[
-   'I den hämtade inkorgssidan finns **'+summary.linkedMessageCount+' kopplade mejl från '+summary.linkedContactCount+' kontaktposter**.',
-   'Detta är bekräftade kontaktkopplingar, inte bekräftat deltagande i piloten. Sidan innehåller '+summary.messageCount+' mejl totalt; privata eller andra okopplade mejl räknas inte som svarande pilotkontakter.',
+   'I den hämtade inkorgssidan för den aktuella konversationens projekt **'+plain(projectSlug)+'** finns **'+summary.linkedMessageCount+' kopplade mejl från '+summary.linkedContactCount+' kontaktposter**. [Öppna projektets säljvy]('+workspaceUrl+'). Projektet hämtas från samtalets verifierade koppling.',
+   'Detta är bekräftade kontaktkopplingar, inte ett bekräftat godkännande av ett erbjudande. Sidan innehåller '+summary.messageCount+' mejl totalt; privata eller andra okopplade mejl räknas inte som svarande projektkontakter.',
    'Antalet gäller bara den hämtade sidan i sparad inkorg, inte ett totalantal för hela postlådan. '+(summary.hasMore?'Fler sidor finns.':'Inga fler sidor rapporterades i den här läsningen.'),
    'Källa: sparad inkorg. Avstämt '+time(now.toISOString())+'.',
    inbox.config?'Läsomfattning: '+plain(inbox.config.folder)+' från '+time(inbox.config.since)+'. Senast synkroniserad '+time(inbox.config.lastSyncedAt)+'.':'Läsomfattningen kunde inte verifieras.'
@@ -95,10 +99,10 @@ export async function buildInboxReport(db:SalesDb,p:SalesPrincipal,conversationI
    }
   }
   if(kind==='overview'){
-   lines.push('**Sparade pilotvillkor**')
+   lines.push('**Sparade erbjudandevillkor**')
    const offers=workspace.offers.filter(o=>o.confirmed&&o.projectId===projectId)
    if(!offers.length)lines.push('Inga bekräftade erbjudandeversioner finns i det lästa underlaget.')
-   for(const offer of offers)lines.push(offer.freeMonths+' månaders pilot. Sparad version '+time(offer.createdAt)+':\n'+quote(offer.offerText,2000))
+   for(const offer of offers)lines.push(offerLabel(offer)+'. Sparad version '+time(offer.createdAt)+':\n'+quote(offer.offerText,2000))
    lines.push('Villkoren är sparade erbjudanden. De innebär inte att ett företag har tackat ja, att betalning startar eller att ett nytt utskick är beslutat.')
   }
   lines.push(workspace.contactSummary.suppressedCount+' kontaktposter har kontaktspärr. Den här översikten skapar inga uppdrag, utkast eller utskick och ändrar inga kontaktspärrar.')

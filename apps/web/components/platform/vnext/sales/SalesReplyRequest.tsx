@@ -2,12 +2,13 @@
 import {useEffect,useRef,useState} from 'react'
 import type {InboxMessage} from '@/lib/sales/inbox/types'
 import type {SalesContact,SalesOfferRevision} from '@/lib/sales/types'
+import {offersMatch,offerLabel} from '@/lib/sales/offers'
 import styles from './SalesWorkspace.module.css'
 export function SalesReplyRequest({projectId,message,contacts,offers,mailboxEmail}:{projectId:string;message:InboxMessage;contacts:SalesContact[];offers:SalesOfferRevision[];mailboxEmail:string}){
  const [mode,setMode]=useState<'commercial'|'general'>('commercial'),[offerId,setOfferId]=useState(''),[consent,setConsent]=useState(false),[status,setStatus]=useState('');const requestKey=useRef<string|null>(null)
  const contact=contacts.find(c=>c.id===message.contactId),offer=offers.find(o=>o.id===offerId)
  const eligible=message.contactState==='linked'&&contact?.confirmed&&!contact.excluded&&!contact.suppressed&&['contacted','not_contacted'].includes(contact.history)&&contact.email.toLowerCase()===message.header?.from.toLowerCase()
- const choices=offers.filter(o=>o.confirmed&&o.senderEmail.toLowerCase()===mailboxEmail.toLowerCase()&&o.freeMonths===contact?.pilotMonths)
+ const choices=offers.filter(o=>o.confirmed&&o.senderEmail.toLowerCase()===mailboxEmail.toLowerCase()&&!!contact&&offersMatch(contact,o))
  useEffect(()=>{setConsent(false);setStatus('');requestKey.current=null},[projectId,message.id,message.version,contact?.version,offerId,mode])
  if(!message.textSelected||message.textState!=='complete'||message.text===null)return <p>Välj och läs hela mejltexten innan ett svarsförslag kan förberedas.</p>
  const ready=mode==='general'||(eligible&&!!offer&&choices.some(o=>o.id===offer.id))
@@ -24,7 +25,7 @@ export function SalesReplyRequest({projectId,message,contacts,offers,mailboxEmai
    <h4>Lämna valt underlag till Claude</h4>
    {mode==='general'?<><p>Vanligt mejlsvar till {message.header?.from}, från {mailboxEmail}.</p><p>Endast detta valda mejl används. Inga erbjudanden, pilotvillkor eller prisutfästelser får läggas till. Avsändarnamn och signatur hämtas från projektets bekräftade inställning.</p></>:<>
     <p>{contact!.companyName} · {contact!.branchName||'Huvudkontor'} · {contact!.email}</p><p>Endast detta valda mejl, kontaktuppgifterna och erbjudandet används.</p>
-    <label>Erbjudande för svaret<select value={offerId} onChange={e=>setOfferId(e.target.value)}><option value="">Välj bekräftad erbjudandeversion</option>{choices.map(o=><option key={o.id} value={o.id}>{o.freeMonths} månader · {o.offerText}</option>)}</select></label>{!choices.length&&<p>Spara ett bekräftat erbjudande med rätt pilotnivå och postfackets avsändare först.</p>}
+    <label>Erbjudande för svaret<select value={offerId} onChange={e=>setOfferId(e.target.value)}><option value="">Välj bekräftad erbjudandeversion</option>{choices.map(o=><option key={o.id} value={o.id}>{offerLabel(o)} · {o.offerText}</option>)}</select></label>{!choices.length&&<p>Spara ett bekräftat erbjudande med rätt erbjudandetyp, villkor och postfackets avsändare först.</p>}
     {offer&&choices.some(o=>o.id===offer.id)&&<p>{offer.offerText}<br/>Från {offer.senderEmail} till {contact!.email}</p>}
    </>}
    <p>Ett svarsförslag visas för din granskning. Inga mejl skickas.</p><p>Arbetet använder ditt anslutna Claude-abonnemang. Exakt kostnad kan inte fastställas här; högst tio modellförsök tillåts per uppdrag.</p>

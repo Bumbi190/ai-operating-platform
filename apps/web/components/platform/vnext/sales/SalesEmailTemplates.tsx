@@ -1,6 +1,7 @@
 'use client'
 import {useRef,useState,type FormEvent} from 'react'
 import type {EmailCopyRevision} from '@/lib/sales/email-copy'
+import {offerLabel} from '@/lib/sales/offers'
 import styles from './SalesWorkspace.module.css'
 
 export function SalesEmailTemplates({projectId,revisions,onSaved}:{projectId:string;revisions:EmailCopyRevision[]|undefined;onSaved:()=>Promise<void>}){
@@ -33,7 +34,7 @@ export function SalesEmailTemplates({projectId,revisions,onSaved}:{projectId:str
    <button type="button" disabled={busy} onClick={()=>{setBusy(true);void onSaved().then(()=>setMessage('Underlaget är uppdaterat. Din eventuella redigering är kvar.')).catch(()=>setMessage('Underlaget kunde inte uppdateras. Din redigering är kvar.')).finally(()=>setBusy(false))}}>Uppdatera mallunderlaget</button>
    {current.map(r=><article key={r.templateKey} className={styles.panel}>
     <div className={styles.sectionHead}><h3>{r.kind==='initial'?'Första inbjudan':'Möjlig framtida påminnelse'}</h3><span>Utkast · version {r.version}</span></div>
-    <dl className={styles.metadata}><dt>Från</dt><dd>{r.senderName} &lt;{r.senderEmail}&gt;</dd><dt>Till</dt><dd>Ingen mottagare vald</dd><dt>Tidpunkt</dt><dd>Ingen tidpunkt vald</dd><dt>Pilotnivå</dt><dd>{r.pilotMonths} månader kostnadsfritt</dd></dl>
+    <dl className={styles.metadata}><dt>Från</dt><dd>{r.senderName} &lt;{r.senderEmail}&gt;</dd><dt>Till</dt><dd>Ingen mottagare vald</dd><dt>Tidpunkt</dt><dd>Ingen tidpunkt vald</dd><dt>Erbjudande</dt><dd>{offerLabel({offerKind:r.offerKind,freeMonths:r.pilotMonths})}</dd></dl>
     <h4>{r.subject}</h4><div className={styles.body}>{r.body}</div><p className={styles.notice}>{r.usage}</p>
     <details><summary>Visa erbjudande och tidigare versioner</summary><p>{r.offerText}</p><small>Erbjudandeversion {r.offerRevisionId}</small>
      {rows.filter(x=>x.templateKey===r.templateKey).sort((a,b)=>b.version-a.version).map(v=><details key={v.id}><summary>Version {v.version} · {new Date(v.createdAt).toLocaleString('sv-SE')}</summary><h4>{v.subject}</h4><div className={styles.body}>{v.body}</div><small>Textutkast · inget sändningsbeslut</small></details>)}

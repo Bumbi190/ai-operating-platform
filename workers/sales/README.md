@@ -1,120 +1,98 @@
-# Atlas sales worker — Pilot A
+# Atlas sales worker — bounded B2B workflows
 
-This worker prepares Swedish drafts for an explicitly selected Omnira project. Atlas and PostgreSQL own jobs, immutable offers, contact history and editorial reviews. Harvey contributes a pinned, reviewed tone excerpt, not its autonomous dashboard or mail sender. No SMTP, IMAP, follow-up scheduler or customer-send capability is included.
+This worker prepares Swedish drafts for an explicitly selected Omnira project. Atlas and PostgreSQL own jobs, immutable offers, contact history and editorial reviews. Harvey contributes a pinned, reviewed tone excerpt. The draft adapters have no mail-sending tools. Managed hosting, Strato connection, selected inbox import, reply preparation and version-bound sending are implemented as separately gated capabilities.
 
-## Current activation state
+**Editorial approval approves text only.** It does not authorize a send, start a sequence or enable a mailbox. Any sending requires the separate sender gate and explicit authorization for the exact current message version, addresses and source context.
 
-The feature defaults off. Building this branch does not install an automatic background service, connect Strato, enroll a worker or run Claude. `doctor` verifies the installed CLI version/flags and a bounded, non-inference first-party authentication status. It does not prove current model quota or subscription entitlement. A synthetic inference must pass before using real businesses. Parts B (Strato and durable inbox) and C (version-bound sending) require separate implementation plans.
+## Release state and evidence — 2026-10-31
 
-## Requirements and setup
+- The feature defaults off. Building or testing the repository does not install a background service, configure a provider, connect a mailbox, enroll a worker or activate production.
+- The installed Claude Code 2.1.296 passed the bounded `doctor` check. Three actual synthetic outputs then passed through `SafeClaudeTextRuntime` and the Harvey adapters: `pilot_initial`, `service_initial` and `service_commercial_reply`. The local evidence bundle contains `synthetic-model-proof.json` and its log. Missing signature/evidence details produced review questions. These calls prove local model access and validated output for synthetic inputs; they do not prove real customer, mailbox or production readiness.
+- Public Overpass probes returned HTTP 406 and then timed out. No successful live discovery retrieval was established. The revised provider timeout is a bound, not evidence of availability. Production discovery remains blocked until an approved source is configured and verified.
+- This continuation has performed no production SQL application, provider provisioning, installed-host activation or customer sends. Read-only inventory found an older installed host task disabled, while its saved mailbox/reply/send options were already true. It was not started; `doctor` reporting `sendingEnabled=false` describes that check rather than changing the installed configuration.
+- Final regression, SQL, browser and build results belong in the release handoff. Do not infer a complete GREEN release from the three synthetic model cases.
 
-- Windows, Python 3.12+, this repository and a licensed/signed-in native Claude Code installation. The verified version is pinned in `claude_runtime.py` (2.1.296); updates require requalification. No additional Python packages are required.
-- Apply `apps/web/supabase/migrations/20261017100633_atlas_sales_pilot.sql` through the project's normal migration process. Deploying or applying a production migration is a separate operator action.
-- Set `ATLAS_SALES_ENABLED=true` and `ATLAS_SALES_PROJECT_ID=<verified-project-uuid>` only for the chosen pilot project after verification. No first-project fallback exists. Keep the flag false until then.
-- From the repository root, run `python -m workers.sales.cli doctor`. A refusal is a blocked prerequisite, not permission to bypass isolation.
-- Open the chosen project's **Säljförberedelse** page and create an explicit worker connection. It expires after 24 hours. Use the displayed `connect` command and enter the token into the terminal's hidden prompt. Never put the token in a command argument, chat, environment file or Git.
-- The token is stored in Windows Credential Manager. The non-secret connection file contains origin, project ID and worker ID under the user's local application data. There is no plaintext credential fallback.
-- Run `python -m workers.sales.cli run --project <verified-project-uuid> --once` for one queued job. An optional `--model` explicitly selects a Claude model. Without `--once`, the operator-started process polls every 15 seconds; no auto-start installation is performed.
-- Stop with Ctrl+C or revoke the connection from the project page. A stopped/expired claim is reconciled by the server; it is never silently retried.
+## Project configuration and prerequisites
 
-The Omnira origin must use HTTPS. Work is outbound-only. The worker never receives a Supabase service-role credential. The server accepts only fixed worker operations and validates project, owner, token expiry/revocation, claim ID and generation on every operation.
+After reviewing each project's readiness, configure `ATLAS_SALES_ENABLED=true` and an explicit comma-separated allowlist:
 
-## Using the pilot
+```text
+ATLAS_SALES_PROJECT_IDS=<verified-project-a-uuid>,<verified-project-b-uuid>
+```
 
-1. Verify each contact's company, branch, recipient address, homepage, prior contact and 2/6/12-month pilot tier. Explicitly preserve exclusions and contact blocks. Previously contacted businesses cannot receive a new initial-contact job. Shared mailbox addresses do not merge branch records.
-2. Save a confirmed immutable offer with exact sender, duration, wording and product facts. All selected contacts must have the same duration as the offer. No remembered Founding 5 data is automatically imported or asserted.
-3. Select 1–5 confirmed contacts and copy the prepared natural-language instruction into the actual project's Atlas conversation. Atlas reads the current saved workspace and queues the explicit IDs. Closing the conversation does not discard the job.
-4. Start the local specialist. It fetches only the manually confirmed HTTPS homepage, records bounded literal source text and reserves each model attempt before dispatch. No redirects, private destinations or model-selected URLs are fetched. Source failures become review questions.
-5. Review the exact saved sender, recipient, offer, subject, body, source and questions. Semantic correctness still needs human review. Editing creates a new immutable revision and invalidates pending older editorial reviews. Editorial approval sends nothing.
+The allowlist accepts 1–20 unique UUIDs. Whitespace and letter case are normalized. An empty, malformed or duplicate list fails closed. `ATLAS_SALES_PROJECT_IDS` takes precedence; the legacy singleton `ATLAS_SALES_PROJECT_ID` is used only when the plural setting is absent. There is no wildcard or first-project fallback. The allowlist does not replace owner, project, conversation or worker-token authorization.
 
-Initially exclude Bilenia and Cartrade Europe AB as required by the approved design. Verify the current contact tracker before importing GP Motor, Autolane, Moberg Bil, Tjänstebils Experten or Newman Bil Hässleholm; their prior communications must be recorded before any new request. This implementation has not imported those contacts or read their mailbox history.
+Each project needs its own verified sender, confirmed product facts and saved immutable offer. Supply the actual WebBuilder project UUID and its verified business information through the ordinary owner workflow. This change seeds no WebBuilder sender, price or offer and copies no Handlarbörsen customer records into another project. Unknown facts and pricing remain missing prerequisites or review questions.
+
+Use the reviewed canonical migration chain and normal deployment process. This candidate adds `20261031100000_sales_b2b_offers.sql`, followed by `20261031110000_sales_discovery_candidates.sql`, under `apps/web/supabase/migrations`. Previously applied SQL must remain unchanged. The production ledger guard still requires every enforced migration; source files and local fixture results do not count as production application.
+
+## Offer and contact contract
+
+| Offer type | Contact fields | Offer fields |
+| --- | --- | --- |
+| Legacy pilot | Omitted `offerKind`; `pilotMonths` is 2, 6 or 12 | Omitted `offerKind`; matching `freeMonths` |
+| Explicit pilot | `offerKind: "pilot"`; `pilotMonths` is 2, 6 or 12 | `offerKind: "pilot"`; matching `freeMonths` |
+| General service | `offerKind: "general_service"`; `pilotMonths: null` | `offerKind: "general_service"`; `freeMonths: null` |
+
+Legacy and explicit pilot records can match at the same exact level. API and persisted service records require explicit null month fields; no pilot duration is invented. Contact and offer kinds must match. Drafts and commercial replies use only that project's confirmed facts and exact saved terms. The existing `replyMode=general` path remains an ordinary conversational reply with empty contact/offer context.
+
+## Existing project data
+
+Existing saved contacts and their current history/timing review can feed the draft workflow without a new discovery provider. Handlarbörsen also has a separately documented 81-company SCB/Tavily research archive in its lead-finder; that archive remains owner scoped, explicitly non-production and feature gated. It contains company/source metadata rather than verified recipient email. This change neither re-queries it nor silently imports it into another project or into the OSM candidate contract.
+
+## Manual public-business discovery
+
+The owner chooses a business category, one of the supported cities, a radius of 1–25 km and at most 25 source rows. Each action requests one finite batch. There is no automatic periodic discovery, background prospecting, address scraping from candidate websites or outreach sequence. Candidate URLs are recorded as sources; the discovery adapter does not fetch them.
+
+Production requires `ATLAS_SALES_DISCOVERY_OVERPASS_URL` pointing to an approved HTTPS Overpass-compatible source. Production and Vercel deployments refuse an absent/invalid setting and refuse the shared public `overpass-api.de` / `openstreetmap.de` instance family. Non-production may use the default public endpoint for an explicit manual proof. The identifying User-Agent is fixed; do not rotate identities or endpoints to work around a refusal. No provider account, paid fallback or hosting has been provisioned here.
+
+Discovery has a 27-second provider bound, a 45-second route maximum and a 256-KiB response cap. Database admission is shared across projects: a 30-second cooldown after a terminal result, a 90-second admission hold for unresolved pending work, and at most 25 admitted attempts in a rolling 24 hours. Failed and unresolved attempts count. Exact idempotent replay does not fetch again; GET is read-only. The pending hold is not a promise that the abandoned operation will finish or automatically retry. These request limits do not establish a monetary budget for a future paid source.
+
+Public email is unconfirmed evidence. The owner must verify the business, recipient and offer type before promotion. Existing contact/account/history exclusions and negatively reviewed candidates are rechecked under the project eligibility lock. Promotion saves a contact with `history: "unknown"`; separate history and timing review is required before draft preparation. Coverage is explicitly partial: a nonmatch does not prove that a business has never been contacted. Handlarbörsen's reviewed prevention-only history remains scoped to Handlarbörsen.
+
+## Local setup and drafting
+
+- Windows, Python 3.12+, this repository and a licensed, signed-in native Claude Code installation are required. `claude_runtime.py` pins version 2.1.296; changes require requalification. No additional Python packages are required.
+- From the repository root, run `python -m workers.sales.cli doctor`. It checks the installed CLI version/flags and bounded first-party authentication status without inference. A refusal is a blocked prerequisite. It does not prove current quota or subscription entitlement; qualify inference separately with synthetic inputs.
+- Open the selected project's **Säljförberedelse** page and create an explicit worker connection. Its credential expires after 24 hours. Use the displayed `connect` command and enter the token in the terminal's hidden prompt. Never place tokens in command arguments, chat, environment files or Git.
+- Tokens live in Windows Credential Manager. The non-secret connection file contains origin, project ID and worker ID under local application data. There is no plaintext credential fallback. The HTTPS, outbound-only worker never receives a Supabase service-role credential.
+- Run `python -m workers.sales.cli run --project <verified-project-uuid> --once` for one queued job. `--model` explicitly selects a Claude model. Without `--once`, the operator-started draft process polls every 15 seconds; this is not a discovery schedule or automatic startup installation.
+- Stop with Ctrl+C or revoke the connection from the project page. The server validates project, owner, token expiry/revocation, claim ID and generation on fixed worker operations. Stale or uncertain work requires reconciliation.
+
+1. Review company, branch, recipient, homepage, exclusions and prior contact; confirm the correct pilot level or service kind. Previously contacted or blocked businesses cannot receive a new initial-contact job. Shared mailbox addresses do not merge branch records.
+2. Save a confirmed immutable offer with the exact sender, wording and product facts. Match the selected contacts' offer kind and, for pilots, the exact month level. No remembered campaign data becomes authorization automatically.
+3. Select 1–5 eligible contacts and copy the prepared instruction into that project's actual Atlas conversation. Atlas reads the saved workspace and queues explicit IDs. Closing the conversation does not discard the job.
+4. Start the qualified specialist. It fetches only a manually confirmed HTTPS homepage, records bounded literal evidence and reserves each model attempt before dispatch. Redirects, private destinations and model-selected URLs are refused. Source failures become review questions.
+5. Review the exact saved addresses, offer, subject, body, source and questions. Editing creates an immutable revision and invalidates older pending text reviews. Resolve missing facts before approval. Editorial approval sends nothing.
 
 ## Runtime limits and failure handling
 
-Claude runs once per contact from a temporary empty directory with tools, MCP servers, hooks, slash commands, Chrome, session persistence and normal settings sources disabled. A stream advertising tools or non-text output is refused. Custom API-provider environments and detected managed policies are blocked. There is no paid API fallback. Runtime stderr and raw CLI output are not persisted as job diagnostics.
+Claude runs once per contact from a temporary empty directory with tools, MCP servers, hooks, slash commands, Chrome, session persistence and normal settings sources disabled. Streams advertising tools or unsupported output are refused. Custom API-provider environments and detected managed policies are blocked. There is no paid API fallback. Raw CLI output and stderr are not persisted as job diagnostics.
 
-Each job has at most ten reserved attempts; the first implementation makes one call per selected contact and never automatically regenerates on timeout. Heartbeats renew a 90-second lease. Uncertain execution, lost claims and failures require reconciliation. The server rechecks stop state before dispatch permits and result commits. Cancellation cannot undo a model request already accepted by its provider. Revoke any connection whose token may have been exposed.
+Each job has at most ten reserved attempts; initial drafting makes one call per selected contact and never automatically regenerates after a timeout. Heartbeats renew a 90-second lease. Stop state is rechecked before dispatch permits and result commits. Cancellation cannot undo a request already accepted by a provider. Uncertain execution, lost claims and failed dispatches stay subject to reconciliation; provider-internal retries and billing are not independently metered by this adapter.
 
-Initial-contact jobs are serialized per project and blocked when the mailbox already has an uncancelled initial job, contacted history or a contact block on another branch. Separate branch records and draft alternatives within the same explicitly selected batch are retained; they grant no sending rights. Updating a contact fences stale claims and model permits. Operator reads reconcile expired leases even if the sole worker was revoked and the project is paused. A configured homepage requires evidence or an explicit question; completion cannot discard recorded evidence/questions. The attempt ceiling counts worker CLI dispatches; provider-internal retries and billing are not independently metered by this adapter and must be qualified before activation.
+Initial jobs are serialized per project and blocked by an uncancelled initial job, contacted history or another branch's contact block for that mailbox. Updating a contact fences stale claims and permits. Operator reads reconcile expired leases even when the worker is revoked and the project paused. A configured homepage requires evidence or an explicit question, and completion cannot discard recorded evidence/questions. Draft/source text stays untrusted; JSON validity does not establish truthful business claims.
 
-The worker's source text and drafts are untrusted data. A syntactically valid draft is not proof of truthful business claims. Missing prerequisites, unverifiable facts and offer mismatches must remain questions or blocked states.
+## Managed host, inbox and separate sending gate
+
+Managed hosting requires explicit owner authorization. The host stores a separate management identity, renews its 24-hour worker credential before fewer than 12 hours remain, and journals references only. Lost renewal receipts replay the same operation, never the model job. `host --project UUID` checks the pinned installation and holds a process lock. Windows startup scripts preview by default; `-Apply` targets only the exact owned `\Omnira\Omnira-Sales-{workerId}` task for the current interactive user. Inspect existing configuration and pending work before any authorized host start.
+
+Strato connection uses an owner-only browser form and a 15-minute RSA-OAEP-SHA256 / AES-256-GCM envelope bound to project, host, setup and key ID. RSA keys and mailbox passwords are separate Windows Credential Manager entries. Authentication uses verified TLS on ports 465/993 and bounded timeouts. SMTP AUTH PLAIN uses a 334 challenge followed by one UTF-8/base64 response. Rejected credentials are not retried automatically; staged credentials become active only after the current matching server receipt. Diagnostics contain fixed phase/reason codes, numeric reply and timestamp, never credentials or raw server replies.
+
+Mailbox login alone grants no inbox access. The owner separately enables a versioned scope: one authenticated mailbox, INBOX, exact since timestamp and selected contacts whose text may be fetched. The host's stoppable inbox thread runs no more often than every 60 seconds, independently of Claude readiness. Authentication failure persists a scope block; explicit owner resume changes the config version. Transport backoff is 60/120/300 seconds.
+
+EXAMINE, UIDVALIDITY/UID and BODY.PEEK preserve mailbox flags. Each batch covers at most 500 UIDs/20 records, with 50-KiB transport, bounded headers, 64-KiB encoded text and 8-KiB saved text. There is no attachment, image or external-URL fetch. Occurrences, selected text and cursor commit in one transaction. Restart recovery reads the pending receipt before another login; journals contain references, ranges, hashes and fixed codes rather than message text or passwords. UID-epoch deduplication preserves separate branch choices and old references.
+
+Reply preparation uses the explicitly selected incoming message and current bound context. Private Nova reminders contain editorial metadata only. Text review, inbox selection and worker connection remain separate from exact-version send authorization. A qualified sender may act only through the separate send gate; this release work has issued no customer-send authorization and started no installed sender-capable host. Preview-origin changes must preserve and validate existing manager, active-mailbox and RSA-key references.
 
 ## Reproducible verification
 
-From `apps/web`:
-
-```text
-npx vitest run lib/qa/sales-contract.test.ts lib/qa/sales-store.test.ts lib/qa/sales-api.test.ts lib/qa/sales-worker-protocol.test.ts lib/qa/sales-atlas-tools.test.ts lib/qa/sales-view-model.test.ts --maxWorkers=2 --minWorkers=1
-npm run typecheck
-npx playwright test --config=playwright.sales-pilot.config.ts
-```
-
 From the repository root: `python -m unittest discover -s workers/sales/tests -v`.
 
-The database runner (`node scripts/test-sales-db.mjs` from `apps/web`) accepts only a local Docker daemon and the exact disposable `postgres:16` container `omnira-sales-pilot-20261017`. Create it with `docker run --name omnira-sales-pilot-20261017 --label com.omnira.testplan=atlas-sales-pilot-20261017 -e POSTGRES_PASSWORD=sales_local_fixture --detach --rm postgres:16`; do not publish ports or mount production data. It creates and drops a generated fixture database, applies the real sales migration and existing canonical approval/run constraints, tests concurrent claims, then runs the real operator API → Atlas tool → PostgreSQL → fake worker-protocol → revision/cancellation integration. Stop only this container when finished.
+From `apps/web`, run the relevant sales, discovery, migration/security and review suites with one worker, then `npm run typecheck`. Browser fixtures use the production components with synthetic API receipts; they do not prove production login, deployment or mailbox access. Final commands, exit codes and counts must be recorded in the release handoff.
 
-Playwright separately mounts the production React component with synthetic API receipts to verify persistence on reload, branch identity, editorial review and desktop/mobile layout. This is not a production login/deployment test. Neither fixture connects an actual mailbox or model provider.
+`node scripts/test-sales-db.mjs` accepts only a local Docker daemon and the exact owned `postgres:16` fixture containers listed in that script, with matching `com.omnira.testplan` labels. The default is `omnira-sales-pilot-20261017`; the supported reply/sending fixtures require explicit `SALES_FIXTURE_CONTAINER` selection. Use no published ports or production mounts. The runner creates and drops a generated `sales_<timestamp>` database, applies the real canonical sales chain and approval/run constraints, and exercises SQL, concurrency and API/Python integration. Synthetic IMAP/SMTP fixtures and test-only timestamp resets are confined to the owned disposable database; they do not establish live mailbox or discovery availability. Stop only the owned fixture when verification is complete.
 
-## Upstream
+## Upstream pin
 
-`upstream-manifest.json` pins `ethanplusai/harvey@e114e95471b1bf155454fca108f0730b66a47a01`, records vendored file hashes and the deliberately small prompt subset. Preserve `vendor/LICENSE`. Unverified outreach legal claims, invented benchmarks, AI-identity concealment instructions and automatic sequences from upstream are excluded.
-
-Managed lifecycle: the owner authorizes the existing worker once through the project.
-The local host adopts a separately stored management identity and renews its 24-hour
-worker credential before it has 12 hours left. Journal files contain references only.
-A lost renewal response replays the same operation. It never retries a model job.
-`host --project UUID` verifies the pinned installation and holds a process lock.
-Windows startup scripts preview by default; `-Apply` affects only the exact owned
-`\Omnira\Omnira-Sales-{workerId}` task for the current interactive user.
-A dispatch interrupted by process termination stays blocked for reconciliation.
-
-Strato B1 uses an owner-only browser form and a 15-minute RSA-OAEP-SHA256 /
-AES-256-GCM envelope bound to project, host, setup and key ID. The private RSA
-key and mailbox password are separate Windows Credential Manager entries.
-The host performs PLAIN authentication only over verified Strato TLS465/993,
-with bounded timeouts; it never selects an IMAP folder or sends an SMTP message.
-A staged credential becomes active only after the matching current server receipt.
-Lost receipts replay without another login; uncertain auth requires reconciliation.
-Inbox history/UID checkpoints and sending authorizations remain separate work.
-
-Strato SMTP authentication uses one two-step AUTH PLAIN exchange (334 challenge,
-then one UTF-8/base64 response) so the initial command stays within the SMTP
-line limit. Rejected credentials are never retried automatically. The local
-connections/<project>/mailbox-diagnostic.json journal records only setup ID,
-fixed phase/reason code, numeric SMTP reply and timestamp; it never records raw
-server replies or credentials. A failed password is discarded and must be
-submitted again through the encrypted owner form after the issue is corrected.
-
-## Strato B2 inbox
-
-The owner explicitly saves and enables a versioned scope: one authenticated mailbox,
-INBOX, exact since timestamp, and confirmed contact IDs whose text may be fetched.
-B1 login alone grants no inbox access. Atlas has only `get_sales_inbox` and
-`get_sales_inbox_message` after conversation/project validation. It cannot enable
-import, select new text, link a branch, send mail or start a reply job. B3 reply
-preparation and C sending remain separate, unimplemented increments.
-
-The host uses its existing manager identity at the fixed `/api/sales/inbox/host`
-endpoint. A separate stoppable thread runs no more often than every60seconds,
-independent of Claude readiness and draft-worker heartbeats. Only the active local
-mailbox credential with matching generation can authenticate. An actual AUTH error
-persists a local scope block and server needs_input state; explicit owner resume
-changes the config version. Transport failures use60/120/300second backoff.
-
-EXAMINE, UIDVALIDITY/UID and BODY.PEEK preserve flags. Each batch covers at most500
-UIDs/20records, with50KiB transport, bounded headers,64KiB encoded text part and
-8KiB saved text. No UNSEEN filter, attachment, image or external URL fetch exists.
-Persisted occurrences, text and cursor share one SQL transaction. On restart the
-host queries the pending batch receipt before another IMAP login. Journal files
-contain only references, ranges, hashes and fixed status codes, never message text
-or passwords. Complete content may share one canonical record across UID epochs;
-branch choices and stable old references remain separate.
-
-The SQL runner now also exercises fresh Python processes against a real imaplib
-loopback server and the real Next handlers/PostgreSQL RPCs. This includes crashes
-before commit, lost replies after commit, selected old-UID fills, epoch dedup,
-vanished messages, MIME bounds and pause during fetch. These are synthetic fixtures
-and do not prove a real Strato mailbox import. Real activation requires the
-reviewed concrete scope and pinned server/client installation; never change the
-preview origin without explicitly preserving and validating the existing manager,
-active mailbox and RSA key references.
+`upstream-manifest.json` still pins `ethanplusai/harvey@e114e95471b1bf155454fca108f0730b66a47a01` and its reviewed vendor hashes. Preserve `vendor/LICENSE`. The imported subset excludes unverified outreach legal claims, invented benchmarks, AI-identity concealment instructions and automatic sequences. Project-neutral prompts use verified project facts; this is the same Harvey pin, not an upstream replacement.

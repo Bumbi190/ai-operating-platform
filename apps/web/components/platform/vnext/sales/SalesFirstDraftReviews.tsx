@@ -111,7 +111,7 @@ export function SalesFirstDraftReviews({ model, openReviewKey, onOpenReviewKeyCh
         const title = contact
           ? [contact.companyName, contact.branchName || 'Huvudkontor'].join(' · ')
           : 'Kontakt som behöver kontrolleras'
-        const label = !draft.current ? 'Föråldrad version – kan inte granskas' : draft.status === 'approved' ? 'Text godkänd – ej skickad'
+        const label = !draft.current ? 'Föråldrad version – kan inte granskas' : draft.status === 'approved' ? 'Text godkänd'
           : draft.status === 'rejected' ? 'Avvisat'
           : draft.questions.length > 0 ? 'Behöver kompletteras'
           : actionable ? 'Väntar på granskning' : 'Granskningsstatus oklar'

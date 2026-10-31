@@ -910,7 +910,7 @@ export async function POST(request: Request) {
   // Exact saved inbox reports are rendered by the server, not re-counted or
   // timezone-labelled by the model. Every turn re-reads through the existing
   // owner/project/conversation RPC boundary; client prose is only an intent hint.
-  const inboxReportKind = !studioContext && !websitePlanRef && !rawBuildContext
+  const inboxReportKind = !pendingNovaCuratorReview && !studioContext && !websitePlanRef && !rawBuildContext
     ? classifyInboxReportRequest(lastUserText, messages.slice(0,-1).filter(m=>m.role==='user'&&typeof m.content==='string').map(m=>m.content as string))
     : null
   if(inboxReportKind){

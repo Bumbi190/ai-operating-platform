@@ -185,5 +185,5 @@ test('first-email text approval is a review decision only, never an SMTP operati
  await initial.getByRole('button',{name:'Godkänn mejltext'}).click()
  await expect(initial.getByText('Mejltexten godkändes. Inget mejl har skickats.')).toBeVisible()
  expect(writes).toEqual(['PATCH /api/approvals/'+first.approvalId])
- await expect(initial.getByText('Text godkänd – ej skickad')).toBeVisible()
+ await expect(initial.getByText('Text godkänd')).toBeVisible()
 })

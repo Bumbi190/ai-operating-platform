@@ -181,7 +181,7 @@ export function SalesReplies({ projectId, approvalId, openReviewKey, onOpenRevie
         const title = job.replyMode === 'general'
           ? 'Vanligt mejlsvar' : (job.source.companyName || 'Mejlsvar')
         const displayStatus = !draft ? salesStatusLabel(job.status)
-          : draft.status === 'approved' ? 'Text godkänd – ej skickad'
+          : draft.status === 'approved' ? 'Text godkänd'
           : draft.status === 'rejected' ? 'Avvisat'
           : !job.sourceCurrent ? 'Källan har ändrats'
           : job.newerIncoming ? 'Nyare mejl finns'

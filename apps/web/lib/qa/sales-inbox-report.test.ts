@@ -60,6 +60,25 @@ describe('saved inbox report boundary',()=>{
   expect(filters).toContainEqual(['user_id',p.userId])
  })
  it('respects the existing sales feature gate',async()=>{enabled=false;expect((await run())?.text).toContain('kunde inte verifieras');expect(rpcCalls).toEqual([])})
+ it('labels the bound service project explicitly and never renders pilot terms for service offers',async()=>{
+  const serviceId='10000000-0000-4000-8000-000000000002'
+  conversation={id:conversationId,project_id:serviceId}
+  workspace.projectId=serviceId;workspace.workspaceUrl='/projects/webbuilder/sales'
+  workspace.contacts=workspace.contacts.map((c:any)=>({...c,projectId:serviceId,offerKind:'general_service',pilotMonths:null}))
+  workspace.offers=[{id:id(81),projectId:serviceId,senderEmail:'owner@example.se',offerKind:'general_service',freeMonths:null,confirmed:true,offerText:'Separat projektförslag efter bekräftat underlag.',productFacts:['Synthetic confirmed service fact.'],createdAt:'2026-10-18T19:29:00Z'}]
+  const r=await buildInboxReport(db(),{...p,allowedProjectIds:[serviceId]},conversationId,'overview',new Date('2026-10-18T19:45:13.959Z'),()=>true)
+  expect(r.text.split('\n\n')[0]).toContain('aktuella konversationens projekt **webbuilder**')
+  expect(r.text.split('\n\n')[0]).toContain('4 kopplade mejl från 2 kontaktposter')
+  expect(r.text.split('\n\n')[0]).toContain('[Öppna projektets säljvy](/projects/webbuilder/sales)')
+  expect(r.text).toContain('Tjänsteerbjudande')
+  expect(r.text).toContain('Sparade erbjudandevillkor')
+  expect(r.text).not.toMatch(/pilot|gratismånader|månader gratis/iu)
+ })
+ it('refuses an invalid workspace path instead of inventing a project label',async()=>{
+  workspace.workspaceUrl='/projects/other/sales?unverified=1'
+  const r=await run();expect(r.text).toContain('kunde inte verifieras')
+  expect(r.text).not.toContain('aktuella konversationens projekt')
+ })
  it('reports contact holds without claiming an owner-test send is unsent',async()=>{const r=await run();expect(r?.text).toContain('2 kontaktposter har kontaktspärr');expect(r?.text).toContain('inga uppdrag, utkast eller utskick');expect(r?.text).not.toContain('Inget mejl har skickats')})
 })
 

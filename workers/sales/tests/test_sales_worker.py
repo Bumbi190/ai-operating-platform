@@ -11,7 +11,7 @@ from workers.sales.credential_store import connection_key
 
 CID='30000000-0000-4000-8000-000000000001'
 OFFER='40000000-0000-4000-8000-000000000001'
-CONTACT={'id':CID,'version':1,'email':'info@example.se','companyName':'Testbil','branchName':'Hässleholm','websiteUrl':None,'history':'not_contacted'}
+CONTACT={'id':CID,'version':1,'email':'info@example.se','companyName':'Testbil','branchName':'Hässleholm','websiteUrl':None,'history':'not_contacted','pilotMonths':12}
 OF={'id':OFFER,'senderEmail':'info@handlarborsen.se','offerText':'12 månader gratis','freeMonths':12,'productFacts':['Stängd svensk marknadsplats för bilhandlare']}
 class Runtime:
     def __init__(self): self.calls=[]

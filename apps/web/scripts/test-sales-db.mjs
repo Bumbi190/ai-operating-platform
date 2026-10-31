@@ -1,5 +1,6 @@
 import {emailCopyRaces} from './test-sales-email-copy-races.mjs'
 import {timingRaces} from './test-sales-timing-races.mjs'
+import {discoveryRaces} from './test-sales-discovery-races.mjs'
 import {sendSourceRaces} from './test-sales-send-source-races.mjs'
 import {sendDispatchRaces} from './test-sales-send-races.mjs'
 import {replyReviewRaces} from './test-sales-reply-races.mjs'
@@ -68,6 +69,13 @@ try{
  sql(readFileSync(resolve(migrations,copyFiles[0]),'utf8'));
  console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_email_copy.sql'),'utf8')));
 
+ sql(readFileSync(resolve(migrations,'20261031100000_sales_b2b_offers.sql'),'utf8'));
+ console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_b2b_offers.sql'),'utf8')));
+
+ sql(readFileSync(resolve(migrations,'20261031110000_sales_discovery_candidates.sql'),'utf8'));
+ console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_discovery.sql'),'utf8')));
+ console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_discovery_admission.sql'),'utf8')));
+
  // Re-run existing negative cases under final schema, each explicitly reviewed before preparation.
  let regression=readFileSync(resolve(root,'apps/web/supabase/tests/sales_pilot_regressions.sql'),'utf8');
  regression=regression.slice(regression.indexOf('create temp table sales_review_failures'))
@@ -78,6 +86,7 @@ try{
  console.log(sql(regression));
  await emailCopyRaces({container,db,sql:s=>docker(['exec','-i',container,'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-U','postgres','-d',db],s)});
  await timingRaces({container,db,sql:s=>docker(['exec','-i',container,'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-U','postgres','-d',db],s)});
+ await discoveryRaces({container,db,sql:s=>docker(['exec','-i',container,'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-U','postgres','-d',db],s)});
 
 
 
@@ -113,7 +122,7 @@ try{
  await sendSourceRaces({container,db,sql,run:concurrent});
  await replyReviewRaces({container,db,run:concurrent,principal,input,claimed});
  console.log('START: isolated Vitest SQL/API/Python integration suite');
- const integration=spawnSync(process.execPath,[resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/qa/sales-integration.test.ts','lib/qa/sales-timing-integration.test.ts','lib/qa/sales-host-integration.test.ts','lib/qa/sales-mailbox-integration.test.ts','lib/qa/sales-inbox-integration.test.ts','lib/qa/sales-reply-integration.test.ts',...(container==='omnira-sales-sending-20261018'?['lib/qa/sales-send-integration.test.ts']:[]),'--maxWorkers=1','--minWorkers=1'],{cwd:resolve(root,'apps/web'),env:{...process.env,SALES_FIXTURE_DATABASE:db,SALES_FIXTURE_CONTAINER:container},encoding:'utf8',maxBuffer:2e6,timeout:90000})
+ const integration=spawnSync(process.execPath,[resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/qa/sales-integration.test.ts','lib/qa/sales-timing-integration.test.ts','lib/qa/sales-host-integration.test.ts','lib/qa/sales-mailbox-integration.test.ts','lib/qa/sales-inbox-integration.test.ts','lib/qa/sales-reply-integration.test.ts',...(container==='omnira-sales-sending-20261018'?['lib/qa/sales-send-integration.test.ts']:[]),'--maxWorkers=1','--minWorkers=1'],{cwd:resolve(root,'apps/web'),env:{...process.env,SALES_FIXTURE_DATABASE:db,SALES_FIXTURE_CONTAINER:container},encoding:'utf8',maxBuffer:2e6,timeout:240000})
  console.log(integration.stdout);if(integration.status!==0)throw Error('Sales slice integration failed: '+String(integration.error?.message??integration.stderr??'unknown').slice(0,5000))
  }
 }finally{docker(['exec',container,'dropdb','-U','postgres',db])}

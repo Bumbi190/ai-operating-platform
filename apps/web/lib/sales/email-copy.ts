@@ -2,10 +2,10 @@ import {SalesError} from './types'
 import {salesId} from './validate'
 export type EmailCopyRevision={
  id:string;projectId:string;templateKey:string;version:number;previousId:string|null;createdAt:string;createdBy:string;
- kind:'initial'|'reminder';offerRevisionId:string;pilotMonths:2|6|12;offerText:string;productFacts:string[];
+ kind:'initial'|'reminder';offerRevisionId:string;offerText:string;productFacts:string[];
  senderName:string;senderEmail:string;subject:string;body:string;usage:string;
  status:'draft';recipient:null;scheduledAt:null;ownerTextReviewed:false
-}
+}&({offerKind?:'pilot';pilotMonths:2|6|12}|{offerKind:'general_service';pilotMonths:null})
 export type EmailCopyEdit={projectId:string;templateKey:string;expectedPreviousId:string|null;idempotencyKey:string;subject:string;body:string}
 export function parseEmailCopyEdit(value:unknown):EmailCopyEdit{
  const keys=['projectId','templateKey','expectedPreviousId','idempotencyKey','subject','body']

@@ -27,7 +27,7 @@ export async function sendSourceRaces({container,db,sql,run}){
   const extraId=randomUUID(),sender=JSON.parse(claim.snapshot.sealedJson).toEmail
   let statement
   if(kind==='newMail')statement="insert into sales_inbox_messages(id,project_id,mailbox_id,owner_id,header,text_state,text_selected) select "+plain(extraId)+"::uuid,project_id,mailbox_id,owner_id,header,'not_selected',false from sales_inbox_messages where id="+plain(mid)+"::uuid;"
-  if(kind==='newSuppression')statement="insert into sales_contacts(id,project_id,version,data) values("+plain(extraId)+"::uuid,"+plain(pid)+"::uuid,1,"+q({email:sender,suppressed:true,excluded:false})+");"
+  if(kind==='newSuppression')statement="insert into sales_contacts(id,project_id,version,data) values("+plain(extraId)+"::uuid,"+plain(pid)+"::uuid,1,"+q({id:extraId,projectId:pid,version:1,companyName:'Synthetic suppressed sender',branchName:'',email:sender,websiteUrl:null,history:'unknown',historySource:'Synthetic suppression inserted before the dispatch permit.',offerKind:'general_service',pilotMonths:null,confirmed:true,suppressed:true,excluded:false})+");"
   if(kind==='cancel')statement="select sales_send_cancel("+q(principal)+","+q({projectId:pid,sendJobId:ref.sendJobId,expectedRevisionHash:JSON.parse(claim.snapshot.sealedJson).revisionHash})+");"
   if(kind==='edit')statement="select sales_reply_edit_draft("+q(principal)+","+q({projectId:pid,revisionId:JSON.parse(claim.snapshot.sealedJson).revisionId,expectedHash:JSON.parse(claim.snapshot.sealedJson).revisionHash,subject:'New unsent revision',body:'Synthetic newer text.',questions:[]})+");"
   try{

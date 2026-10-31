@@ -2,10 +2,14 @@ import {spawn} from 'node:child_process'
 import {readFileSync} from 'node:fs'
 export async function emailCopyRaces({container,db,sql}){
  const source=readFileSync(new URL('../supabase/tests/sales_email_copy.sql',import.meta.url),'utf8')
- sql(source.split('set local role service_role;')[0]+'commit;')
+ // Race setup needs only the positive memory seed. The intentionally malformed
+ // offer rows below it remain covered by sales_email_copy.sql before B2B migration.
+ const setupEnd=source.indexOf('\ninsert into public.sales_offer_revisions(')
+ if(setupEnd<0||!source.slice(0,setupEnd).includes('pilot-six-months-initial-v1'))throw Error('COPY_RACE_POSITIVE_SEED_MISSING')
+ sql(source.slice(0,setupEnd)+'\ncommit;')
  const principal=JSON.parse(source.match(/p jsonb:='([^']+)'/)[1]),seed=JSON.parse(source.match(/v jsonb:='([^']+)'/)[1])
  const q=v=>"'"+JSON.stringify(v).replaceAll("'","''")+"'::jsonb"
- const offer={projectId:seed.projectId,id:'40000000-0000-4000-8000-000000000901',senderEmail:'info@example.se',offerText:'Sex månader kostnadsfritt.',freeMonths:6,productFacts:['Verifierat fixtureunderlag.'],confirmed:true}
+ const offer={projectId:seed.projectId,id:'40000000-0000-4000-8000-000000000901',senderEmail:'info@example.se',offerText:'Sex månader kostnadsfritt.',offerKind:'pilot',freeMonths:6,productFacts:['Verifierat fixtureunderlag.'],confirmed:true}
  sql('set role service_role;select sales_save_offer('+q(principal)+','+q(offer)+');')
  const initial=JSON.parse(sql('set role service_role;select sales_email_copy_save('+q(principal)+','+q(seed)+');').trim())
  const before=JSON.parse(sql("select jsonb_build_object('contacts',(select md5(jsonb_agg(to_jsonb(c) order by id)::text) from sales_contacts c),'jobs',(select count(*) from sales_jobs),'sends',(select count(*) from sales_send_jobs));"))

@@ -27,7 +27,7 @@ const draft = (id: string, jobId: string, changes = {}) => ({
 beforeEach(() => {
   vi.resetAllMocks()
   f.access.mockResolvedValue(principal)
-  f.enabled.mockReturnValue(true)
+  f.enabled.mockImplementation((projectId: string) => projectId === HB)
   f.admin.mockReturnValue({ name: 'mock-admin' })
   f.read.mockResolvedValue({ jobs: [], drafts: [], sendingEnabled: false })
 })

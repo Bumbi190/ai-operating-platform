@@ -58,10 +58,11 @@ const iso = (daysAgo: number) => new Date(Date.now() - daysAgo * 864e5).toISOStr
 const sek = (n: number) =>
   new Intl.NumberFormat('sv-SE', { style: 'currency', currency: 'SEK', maximumFractionDigits: 0 }).format(n)
 
-// Month-to-date is the window every headline metric uses, so seed inside it.
-const inMonth = () => {
-  const n = new Date()
-  return new Date(n.getFullYear(), n.getMonth(), 1, 12, 0, 0).toISOString()
+// Seed inside BOTH month-to-date and the page's rolling 30-day query.
+// On day 31, month-start noon can fall outside that query and empty the fixture.
+const inMonth = (n = new Date()) => {
+  const monthStart = new Date(n.getFullYear(), n.getMonth(), 1).getTime()
+  return new Date(Math.max(monthStart, n.getTime() - 864e5)).toISOString()
 }
 
 // ── Seed: owned 1 000 kr vs foreign 99 000 kr (the leak must be unmissable) ──

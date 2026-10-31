@@ -1,6 +1,6 @@
 # Nova cross-chat social delegation — verification and release review
 
-Status: IMPLEMENTED AND TESTED LOCALLY; PRODUCTION NOT CHANGED.
+Status: DATABASE APPLIED AND VERIFIED after explicit owner approval; application release in progress.
 Work ID: NOVA-CROSSCHAT-SOCIAL
 Branch: fix/nova-crosschat-social-20261031
 Base: d0efe26c8fd719f7a1373ef5c7de6dfe9e331c90
@@ -72,3 +72,8 @@ The real three-post marketing campaign has not been created as part of this code
 Draft PR: https://github.com/Bumbi190/ai-operating-platform/pull/609 . Initial implementation commit fab9c33; follow-up preserves the existing source-read routing contract and Studio prompt size. No independent production approval is asserted. Supabase branch list after PR creation contained only main; no new database branch was present.
 
 Follow-up regression run: 153/153 tests PASS across Studio prompt economy, inbox/evidence/sales read routing, dynamic target lookup and external references (overlaps core suites). The Studio route retains its existing short guide composition; the global task guide is not injected into Studio. Four unrelated revenue fixture failures reproduced on unmodified base (35 pass / 4 fail). CI on the initial commit was red from source-layout assertions and prompt-size regression; both were repaired before the follow-up commit. Vercel remains blocked pending the unapplied migration. No claim of a green full release.
+
+## Owner-approved database activation — 31 October 2026
+The owner explicitly approved the prepared database change in the same conversation. Fresh read-only preflight confirmed the original body/ACL and zero matching migration entries. Applied exact reviewed function/ACL SQL through Supabase apply_migration with transaction-local lock_timeout=2s and statement_timeout=15s. Ledger: 20261031145817_social_owner_crosschat_context, exactly one entry. Post-apply live checks confirmed SECURITY INVOKER, empty search_path, anon/authenticated EXECUTE=false and service_role EXECUTE=true. Actual owned global, same-project and other-project source chats all passed. Read-only adversarial probes denied empty allow-list, forged owner and nonexistent source. No customer data or content was written.
+
+The remaining four old revenue isolation failures were traced to a month-end TEST FIXTURE defect: month-start noon falls outside a rolling 30-day source query on day 31 after noon. The fixture now seeds within BOTH the current month and last day. No application revenue logic, scope predicates or assertions were changed. Reproduced four failures before editing; all 39 tests now pass, alongside 147 related route/ownership/migration tests (186/186 total). Initial Preview redeployed after migration to dpl_HT6LgonG75bFY9kGoKa7wQ9dedAy for app commit b1c0bb5; build state is checked separately before any release claim.

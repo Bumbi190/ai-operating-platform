@@ -1,0 +1,11 @@
+import {describe,it,expect} from 'vitest'
+import {createReplyWorkerApi} from './worker-api'
+const id=(n:number)=>`10000000-0000-4000-8000-${String(n).padStart(12,'0')}`
+const ref={projectId:id(1),jobId:id(2),workerId:id(3),claimId:id(4),generation:1}
+const req=(v:unknown,token=true)=>new Request('https://example.invalid/api/sales/replies/worker',{method:'POST',headers:token?{authorization:'Bearer '+'T'.repeat(43)}:{},body:JSON.stringify(v)})
+describe('fixed reply worker boundary',()=>{
+ it('refuses missing authentication and arbitrary operation before SQL',async()=>{let calls=0;const api=createReplyWorkerApi({db:()=>({rpc:async()=>{calls++;throw Error('not called')}}) as never,enabled:()=>true});expect((await api(req({operation:'claim'},false))).status).toBe(401);expect((await api(req({operation:'send'}))).status).toBe(400);expect(calls).toBe(0)})
+ it('requires enabled identity project before reply RPC',async()=>{const calls:string[]=[];const api=createReplyWorkerApi({db:()=>({rpc:async(n:string)=>{calls.push(n);return {data:{projectId:id(1),workerId:id(3)},error:null}}}) as never,enabled:()=>false});expect((await api(req({operation:'claim'}))).status).toBe(404);expect(calls).toEqual(['sales_worker_identity'])})
+ it('preserves exact ref and attempt, never admits model addresses',async()=>{const calls:any[]=[];const api=createReplyWorkerApi({db:()=>({rpc:async(n:string,a:unknown)=>{calls.push([n,a]);return {data:n==='sales_worker_identity'?{projectId:id(1),workerId:id(3)}:{id:id(2),status:'awaiting_review'},error:null}}}) as never,enabled:()=>true});const draft={subject:'Svar',body:'Tack',evidenceIds:[id(5)],questions:[]};expect((await api(req({operation:'complete',...ref,attemptId:id(6),draft:{...draft,toEmail:'other@example.se'}}))).status).toBe(400);expect((await api(req({operation:'complete',...ref,attemptId:id(6),draft}))).status).toBe(200);expect(calls.at(-1)[0]).toBe('sales_reply_complete');expect(calls.at(-1)[1].p_input).toEqual({...ref,attemptId:id(6),draft})})
+ it('fences another project even with a valid token',async()=>{const api=createReplyWorkerApi({db:()=>({rpc:async()=>({data:{projectId:id(1),workerId:id(3)},error:null})}) as never,enabled:()=>true});expect((await api(req({operation:'heartbeat',...ref,projectId:id(9)}))).status).toBe(409)})
+})

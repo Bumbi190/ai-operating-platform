@@ -1,0 +1,93 @@
+begin;
+insert into auth.users values('d63a09fb-448e-41b8-9fb2-9a608f5f1800');
+insert into projects values('8f673c09-1c8f-4d78-876e-4c14bf1c89b3','d63a09fb-448e-41b8-9fb2-9a608f5f1800','send-test',false);
+insert into conversations values('50000000-0000-4000-8000-000000000091','d63a09fb-448e-41b8-9fb2-9a608f5f1800','8f673c09-1c8f-4d78-876e-4c14bf1c89b3');
+create function pg_temp.reply_assert(ok boolean,msg text) returns void language plpgsql as $$ begin if ok is distinct from true then raise exception 'TEST FAILED: %',msg;end if;end $$;
+create function pg_temp.reply_refused(statement text,wanted text) returns void language plpgsql as $$ declare caught text;begin begin execute statement;exception when others then get stacked diagnostics caught=returned_sqlstate;end;perform pg_temp.reply_assert(caught=wanted,'expected '||wanted||', got '||coalesce(caught,'SUCCESS'));end $$;
+-- A synthetic selected reply, two separate branches with one address. Never production data.
+insert into sales_worker_registrations(id,project_id,owner_id,token_hash,managed_authorized_at,manager_token_hash) values('60000000-0000-4000-8000-000000000091','8f673c09-1c8f-4d78-876e-4c14bf1c89b3','d63a09fb-448e-41b8-9fb2-9a608f5f1800',repeat('8',64),now(),repeat('9',64));
+insert into sales_mailbox_connections(id,project_id,worker_id,owner_id,public_jwk,kid,key_generation,generation,email,status) values('80000000-0000-4000-8000-000000000091','8f673c09-1c8f-4d78-876e-4c14bf1c89b3','60000000-0000-4000-8000-000000000091','d63a09fb-448e-41b8-9fb2-9a608f5f1800','{}',repeat('a',64),1,6,'info@handlarborsen.se','authenticated');
+insert into sales_inbox_configs(mailbox_id,project_id,worker_id,owner_id,version,mailbox_generation,folder,since_at,state,uid_validity) values('80000000-0000-4000-8000-000000000091','8f673c09-1c8f-4d78-876e-4c14bf1c89b3','60000000-0000-4000-8000-000000000091','d63a09fb-448e-41b8-9fb2-9a608f5f1800',2,6,'INBOX','2026-10-07T22:00Z','enabled',10);
+insert into sales_contacts(id,project_id,version,data) values('30000000-0000-4000-8000-000000000091','8f673c09-1c8f-4d78-876e-4c14bf1c89b3',1,'{"id":"30000000-0000-4000-8000-000000000091","version":1,"companyName":"Test Dealer","branchName":"Hässleholm","email":"andrehultgren190@gmail.com","confirmed":true,"excluded":false,"suppressed":false,"history":"contacted","historySource":"synthetic sent record","pilotMonths":12}'),('30000000-0000-4000-8000-000000000092','8f673c09-1c8f-4d78-876e-4c14bf1c89b3',1,'{"id":"30000000-0000-4000-8000-000000000092","version":1,"companyName":"Test Dealer","branchName":"Lund","email":"andrehultgren190@gmail.com","confirmed":true,"excluded":false,"suppressed":false,"history":"contacted","historySource":"synthetic sent record","pilotMonths":12}');
+insert into sales_offer_revisions(id,project_id,data) values('40000000-0000-4000-8000-000000000091','8f673c09-1c8f-4d78-876e-4c14bf1c89b3','{"id":"40000000-0000-4000-8000-000000000091","senderEmail":"info@handlarborsen.se","freeMonths":12,"confirmed":true,"offerText":"12 månader gratis","productFacts":["Stängd B2B-plattform"]}');
+insert into sales_inbox_messages(id,project_id,mailbox_id,owner_id,header,header_sha256,content_sha256,body_text,text_state,text_selected,contact_id,contact_version,internal_date) values('90000000-0000-4000-8000-000000000091','8f673c09-1c8f-4d78-876e-4c14bf1c89b3','80000000-0000-4000-8000-000000000091','d63a09fb-448e-41b8-9fb2-9a608f5f1800','{"from":"andrehultgren190@gmail.com","to":"info@handlarborsen.se","subject":"Fråga om pilot","messageId":"<test@example.se>","inReplyTo":null,"references":[]}',repeat('a',64),repeat('b',64),'Vad kostar det efter pilotperioden?','complete',true,'30000000-0000-4000-8000-000000000092',1,now());
+insert into sales_inbox_occurrences values('8f673c09-1c8f-4d78-876e-4c14bf1c89b3','80000000-0000-4000-8000-000000000091','INBOX',10,1,'90000000-0000-4000-8000-000000000091',false);
+
+insert into sales_send_policies(project_id,owner_id,mailbox_id,worker_id,recipient,sender_email,sender_name,version,expires_at)
+values('8f673c09-1c8f-4d78-876e-4c14bf1c89b3','d63a09fb-448e-41b8-9fb2-9a608f5f1800','80000000-0000-4000-8000-000000000091','60000000-0000-4000-8000-000000000091','andrehultgren190@gmail.com','info@handlarborsen.se','Andre',1,now()+interval '1 hour');
+set local role service_role;
+do $$
+declare p jsonb:='{"userId":"d63a09fb-448e-41b8-9fb2-9a608f5f1800","allowedProjectIds":["8f673c09-1c8f-4d78-876e-4c14bf1c89b3"]}';
+v jsonb:='{"projectId":"8f673c09-1c8f-4d78-876e-4c14bf1c89b3","conversationId":"50000000-0000-4000-8000-000000000091","messageId":"90000000-0000-4000-8000-000000000091","messageVersion":1,"replyMode":"general","idempotencyKey":"a0000000-0000-4000-8000-000000000091"}';
+j jsonb;c jsonb;a jsonb;d jsonb;x jsonb;q jsonb;request jsonb;ref jsonb;permit jsonb;sealed jsonb;alias_key uuid:=gen_random_uuid();
+begin
+ j:=sales_reply_prepare(p,v);c:=sales_reply_claim(repeat('8',64),'{}');
+ perform pg_temp.reply_assert(c->'snapshot'->'offer'='{}'::jsonb,'general_test_has_no_offer');
+ a:=sales_reply_reserve_attempt(repeat('8',64),c->'ref'||jsonb_build_object('attemptId',gen_random_uuid()));
+ d:=jsonb_build_object('subject','Svar på test','body','Tack för ditt svar. / Andre','evidenceIds',jsonb_build_array(v->>'messageId'),'questions','[]'::jsonb);
+ perform sales_reply_complete(repeat('8',64),c->'ref'||jsonb_build_object('attemptId',a->>'attemptId','draft',d));
+ select value into x from jsonb_array_elements(sales_reply_read_drafts(p,jsonb_build_object('projectId',v->>'projectId'))->'drafts') where value->>'jobId'=j->>'id';
+ request:=jsonb_build_object('projectId',v->>'projectId','revisionId',x->>'id','expectedRevisionHash',x->>'sha256','expectedMailboxGeneration',6,'idempotencyKey',gen_random_uuid());
+ perform pg_temp.reply_refused(format('select sales_send_confirm(%L::jsonb,%L::jsonb)',p,request),'55000');
+ perform sales_reply_review_draft(p,jsonb_build_object('projectId',v->>'projectId','revisionId',x->>'id','expectedHash',x->>'sha256','decision','approved'));
+ perform pg_temp.reply_assert(sales_reply_read_job(p,jsonb_build_object('projectId',v->>'projectId','jobId',j->>'id'))->>'editorialStatus'='approved','editorial_status_distinct_from_preparation');
+ perform pg_temp.reply_assert(sales_send_preview(p,jsonb_build_object('projectId',v->>'projectId','revisionId',x->>'id'))->>'canConfirm'='true','preview_can_confirm_exact_approved_version');
+ perform pg_temp.reply_refused(format('select sales_send_confirm(%L::jsonb,%L::jsonb)',p,request||'{"toEmail":"other@example.se"}'),'22023');
+ perform pg_temp.reply_refused(format('select sales_send_confirm(%L::jsonb,%L::jsonb)',jsonb_set(p,'{userId}','"20000000-0000-4000-8000-000000000002"'),request),'P0002');
+ q:=sales_send_confirm(p,request);perform pg_temp.reply_assert(q->>'status'='queued','approved_current_revision_can_queue');
+ perform pg_temp.reply_assert(sales_send_confirm(p,request)=q,'same_key_same_receipt');
+ perform pg_temp.reply_assert(sales_send_confirm(p,request||jsonb_build_object('idempotencyKey',alias_key))->>'id'=q->>'id','different_key_one_revision_one_job');
+ perform pg_temp.reply_refused(format('select sales_send_confirm(%L::jsonb,%L::jsonb)',p,request||'{"expectedMailboxGeneration":7}'),'23505');
+ c:=sales_send_claim(repeat('8',64),'{}');ref:=c->'ref';sealed:=(c->'snapshot'->>'sealedJson')::jsonb;
+ perform pg_temp.reply_assert(sealed->>'body'=d->>'body' and sealed->>'toEmail'='andrehultgren190@gmail.com' and sealed->>'senderName'='Andre','sealed_exact_envelope');
+ perform pg_temp.reply_assert(encode(extensions.digest(convert_to(c->'snapshot'->>'sealedJson','UTF8'),'sha256'),'hex')=c->'snapshot'->>'snapshotSha256','exact_utf8_snapshot_hash');
+ update projects set execution_paused=true where id=(v->>'projectId')::uuid;
+ perform pg_temp.reply_refused(format('select sales_send_begin_dispatch(%L,%L::jsonb)',repeat('8',64),ref),'55000');
+ update projects set execution_paused=false where id=(v->>'projectId')::uuid;
+ update sales_contacts set data=jsonb_set(data,'{suppressed}','true') where id='30000000-0000-4000-8000-000000000092';
+ perform pg_temp.reply_refused(format('select sales_send_begin_dispatch(%L,%L::jsonb)',repeat('8',64),ref),'40001');
+ update sales_contacts set data=jsonb_set(data,'{suppressed}','false') where id='30000000-0000-4000-8000-000000000092';
+ update sales_mailbox_connections set generation=7 where id='80000000-0000-4000-8000-000000000091';
+ perform pg_temp.reply_refused(format('select sales_send_begin_dispatch(%L,%L::jsonb)',repeat('8',64),ref),'40001');
+ update sales_mailbox_connections set generation=6 where id='80000000-0000-4000-8000-000000000091';
+ update sales_send_policies set version=2 where project_id=(v->>'projectId')::uuid;
+ perform pg_temp.reply_refused(format('select sales_send_begin_dispatch(%L,%L::jsonb)',repeat('8',64),ref),'40001');
+ update sales_send_policies set version=1 where project_id=(v->>'projectId')::uuid;
+ update sales_send_policies set sender_name='Atlas' where project_id=(v->>'projectId')::uuid;
+ perform pg_temp.reply_refused(format('select sales_send_begin_dispatch(%L,%L::jsonb)',repeat('8',64),ref),'40001');
+ update sales_send_policies set sender_name='Andre' where project_id=(v->>'projectId')::uuid;
+ update sales_worker_registrations set revoked_at=now() where id='60000000-0000-4000-8000-000000000091';
+ perform pg_temp.reply_refused(format('select sales_send_begin_dispatch(%L,%L::jsonb)',repeat('8',64),ref),'P0002');
+ update sales_worker_registrations set revoked_at=null where id='60000000-0000-4000-8000-000000000091';
+ insert into sales_inbox_messages(project_id,mailbox_id,owner_id,header,text_state,text_selected) select project_id,mailbox_id,owner_id,header||'{"messageId":"<new@example.se>"}','not_selected',false from sales_inbox_messages where id=(v->>'messageId')::uuid;
+ perform pg_temp.reply_refused(format('select sales_send_begin_dispatch(%L,%L::jsonb)',repeat('8',64),ref),'55000');
+ update sales_inbox_messages set created_at=clock_timestamp()-interval '1 day' where header->>'messageId'='<new@example.se>';
+ permit:=sales_send_begin_dispatch(repeat('8',64),ref);
+ perform pg_temp.reply_assert(permit->>'dispatchBefore' is not null,'one_dispatch_permit');
+ perform pg_temp.reply_refused(format('select sales_send_begin_dispatch(%L,%L::jsonb)',repeat('8',64),ref),'40001');
+ perform pg_temp.reply_refused(format('select sales_send_cancel(%L::jsonb,%L::jsonb)',p,jsonb_build_object('projectId',v->>'projectId','sendJobId',q->>'id','expectedRevisionHash',x->>'sha256')),'55000');
+ a:=sales_send_complete(repeat('8',64),ref||jsonb_build_object('receipt',jsonb_build_object('status','smtp_accepted','mimeSha256',repeat('c',64))));
+ perform pg_temp.reply_assert(a->>'serverAccepted'='true' and a->>'deliveryConfirmed'='false','smtp_acceptance_is_not_delivery');
+ perform pg_temp.reply_assert(sales_send_complete(repeat('8',64),ref||jsonb_build_object('receipt',jsonb_build_object('status','smtp_accepted','mimeSha256',repeat('c',64))))=a,'accepted_receipt_replay');
+ perform pg_temp.reply_assert(sales_send_claim(repeat('8',64),'{}')->'ref'='null'::jsonb,'accepted_never_reclaimed');
+ perform pg_temp.reply_assert(sales_send_confirm(p,request)->>'id'=q->>'id','accepted_never_reenqueued');
+ x:=sales_reply_edit_draft(p,jsonb_build_object('projectId',v->>'projectId','revisionId',x->>'id','expectedHash',x->>'sha256','subject','Nytt test','body','Ett nytt syntetiskt test.','questions','[]'::jsonb));
+ perform sales_reply_review_draft(p,jsonb_build_object('projectId',v->>'projectId','revisionId',x->>'id','expectedHash',x->>'sha256','decision','approved'));
+ perform pg_temp.reply_refused(format('select sales_send_confirm(%L::jsonb,%L::jsonb)',p,request||jsonb_build_object('revisionId',x->>'id','expectedRevisionHash',x->>'sha256','idempotencyKey',alias_key)),'23505');
+ request:=request||jsonb_build_object('revisionId',x->>'id','expectedRevisionHash',x->>'sha256','idempotencyKey',gen_random_uuid());
+ q:=sales_send_confirm(p,request);
+ perform pg_temp.reply_assert(sales_send_cancel(p,jsonb_build_object('projectId',v->>'projectId','sendJobId',q->>'id','expectedRevisionHash',x->>'sha256'))->>'status'='cancelled','owner_can_cancel_before_dispatch');
+ perform pg_temp.reply_assert(sales_send_confirm(p,request||jsonb_build_object('idempotencyKey',gen_random_uuid()))->>'status'='cancelled','cancelled_job_cannot_resurrect');
+ perform pg_temp.reply_assert(sales_send_claim(repeat('8',64),'{}')->'ref'='null'::jsonb,'cancelled_not_claimed');
+end $$;
+reset role;
+do $$ declare t text;f record;begin
+ foreach t in array array['sales_send_jobs','sales_send_policies','sales_send_events'] loop
+ perform pg_temp.reply_assert((select relrowsecurity from pg_class where oid=('public.'||t)::regclass),'send RLS');
+ perform pg_temp.reply_assert(not has_table_privilege('anon','public.'||t,'SELECT,INSERT,UPDATE,DELETE') and not has_table_privilege('authenticated','public.'||t,'SELECT,INSERT,UPDATE,DELETE'),'send no client access');end loop;
+ perform pg_temp.reply_assert(not has_sequence_privilege('anon','public.sales_send_events_id_seq','USAGE,SELECT,UPDATE') and not has_sequence_privilege('authenticated','public.sales_send_events_id_seq','USAGE,SELECT,UPDATE'),'no inherited client sequence privileges');
+ for f in select oid,prosecdef from pg_proc where pronamespace='public'::regnamespace and proname like 'sales_send_%' loop
+ perform pg_temp.reply_assert(not f.prosecdef and not has_function_privilege('anon',f.oid,'EXECUTE') and not has_function_privilege('authenticated',f.oid,'EXECUTE'),'service-only send invoker');end loop;
+end $$;
+rollback;
+select 'PASS: approved send exact-envelope/idempotency/source/stops/acceptance/ACL contracts';

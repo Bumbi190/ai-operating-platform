@@ -1,0 +1,15 @@
+{
+  "state": "no_new_failures",
+  "counts": {
+    "numTotalTests": 15129,
+    "numPassedTests": 13391,
+    "numFailedTests": 402,
+    "numPendingTests": 1332,
+    "numRuntimeErrorTestSuites": null
+  },
+  "exactHistoricalFailureReference": "2026-10-18-atlas-memory-summary-regressions.json",
+  "addedFailureIdentities": [],
+  "removedFailureIdentities": [],
+  "novelAgainstFreshBaseline": [],
+  "note": "All402 identities are unchanged from the exact referenced prior manifest chain; not a full-green claim."
+}

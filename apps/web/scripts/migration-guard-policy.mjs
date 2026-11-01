@@ -86,9 +86,16 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Owner-only, RLS-guarded HB research archive applied 2026-10-29
 // (ledger version 20261029065156, canonical file committed in PR #584).
 // An additive enforced migration: 163/149 -> 164/150. No bypass or grandfathering.
-// Owner cross-chat context APPLIED 20261031145817. Source-only reconciliation of
-// two parallel Harvey migrations already APPLIED 20261031120736 / 20261031120804.
-// Their exact SQL body hashes were matched to the production ledger before inclusion.
+// Harvey B2B offers and bounded discovery: 164/150 -> 166/152.
+// Both owner-approved migrations are applied (ledger 20261031120736 / 20261031120804).
+// Source-only sync from PR #609, b1c0bb5: social_owner_crosschat_context was
+// already applied by its workstream as ledger 20261031145817. Exact canonical SQL
+// and applied function body verified; no SQL is applied by this source sync.
+// 166/152 -> 167/153. Frozen grandfathered/legacy sets and enforcement stay intact.
+// Nov 1 source-only sync from 2a8fd87: human_story_exact_claim and
+// social_campaign_preparation are already applied (ledger 20261031204433 /
+// 20261101062748). Exact canonical SQL matches the applied statements; no SQL
+// is applied here. 167/153 -> 169/155; frozen histories and enforcement unchanged.
 export const EXPECTED_CANONICAL_SQL_COUNT = 169
 export const EXPECTED_ENFORCED_COUNT = 155
 
@@ -326,6 +333,7 @@ export function evaluateAppliedMigrationLedger(appliedNames, repositoryState) {
 
 // Integrated maind3f9fcc: news-review source already applied; calendar remains pending. Canonical148/enforced134; frozen14/30 unchanged.
 
+// Historical rollout note retained from main; this merge applies no SQL.
 // Nov1 owner-approved Nova campaign rollout: human_story_exact_claim is source-only
 // reconciliation of live ledger20261031204433 (SHA256 a7ffd88a4b1881b3173e4dfe98af5d6d6ea1d7bb47b0c09411954cbd698a32e6).
 // social_campaign_preparation is the only new apply. Frozen14/30 lists unchanged.

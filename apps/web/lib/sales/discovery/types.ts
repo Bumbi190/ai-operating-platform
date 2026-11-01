@@ -1,0 +1,15 @@
+export const DISCOVERY_CITIES={stockholm:{label:'Stockholm',lat:59.3293,lon:18.0686},goteborg:{label:'Göteborg',lat:57.7089,lon:11.9746},malmo:{label:'Malmö',lat:55.605,lon:13.0038},uppsala:{label:'Uppsala',lat:59.8586,lon:17.6389},orebro:{label:'Örebro',lat:59.2753,lon:15.2134},jonkoping:{label:'Jönköping',lat:57.7826,lon:14.1618}} as const
+export const DISCOVERY_CATEGORIES={car_dealer:{label:'Bilhandlare',key:'shop',value:'car'},car_repair:{label:'Bilverkstäder',key:'shop',value:'car_repair'},restaurant:{label:'Restauranger',key:'amenity',value:'restaurant'},cafe:{label:'Kaféer',key:'amenity',value:'cafe'},hairdresser:{label:'Frisörer',key:'shop',value:'hairdresser'},dentist:{label:'Tandläkarmottagningar',key:'amenity',value:'dentist'}} as const
+export type DiscoveryCity=keyof typeof DISCOVERY_CITIES
+export type DiscoveryCategory=keyof typeof DISCOVERY_CATEGORIES
+export type DiscoveryQuery={city:DiscoveryCity;category:DiscoveryCategory;radiusKm:number;limit:number}
+export type PublicBusiness={sourceId:string;sourceUrl:string;name:string;websiteUrl:string|null;email:string|null}
+export type DiscoveryStatus='needs_review'|'rejected'|'excluded'|'suppressed'|'duplicate'|'promoted'
+export type DiscoveryCandidate=PublicBusiness&{id:string;projectId:string;version:number;status:DiscoveryStatus;exclusions:string[];firstSeenAt:string;lastSeenAt:string;reviewNote:string|null;promotedContactId:string|null;historyCoverage:'partial';outreachReady:false}
+export type DiscoveryBatch={id:string;query:DiscoveryQuery;state:'pending'|'completed'|'failed';errorCode:string|null;createdAt:string;completedAt:string|null;candidateCount:number}
+export type StoredDiscoveryReport={projectId:string;batch:DiscoveryBatch|null;batches:DiscoveryBatch[];candidates:DiscoveryCandidate[];historyCoverage:'partial';customerSendingEnabled:false}
+export type DiscoveryReport=StoredDiscoveryReport&{sourceConfigured:boolean}
+export type DiscoverInput={projectId:string;idempotencyKey:string;query:DiscoveryQuery}
+export type DiscoveryReview={projectId:string;candidateId:string;expectedVersion:number;decision:'rejected'|'excluded'|'suppressed';note:string}
+export type DiscoveryPromotion={projectId:string;candidateId:string;expectedVersion:number;companyName:string;branchName:string;email:string;websiteUrl:string|null;reviewNote:string;businessConfirmed:true;emailConfirmed:true;offerKind:'pilot'|'general_service';pilotMonths:2|6|12|null}
+export type DiscoveryPromotionResult={state:'promoted';contactId:string;history:'unknown'}|{state:'blocked';reasons:string[]}

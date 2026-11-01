@@ -1,0 +1,174 @@
+{
+  "state": "register_verified_atlas_tool_read_verified_model_count_inconsistent",
+  "capturedAt": "2026-10-18T18:22:27.060463+00:00",
+  "sourceCommit": "d3a0d1f728bf1089b07e0b8b913315183bd52e08",
+  "scope": {
+    "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+    "operation": "existing sales_save_contact",
+    "ownerVerified": true,
+    "singleTransaction": true,
+    "expectedInitialContacts": 0,
+    "expectedVersion": 0,
+    "schemaChange": false,
+    "appCodeChange": false,
+    "newSendPermission": false,
+    "productionPromotion": false
+  },
+  "contactRows": [
+    {
+      "id": "7f92bfaf-d48f-4fb3-bdf6-9961e9506259",
+      "companyName": "GP Motor",
+      "emailSha256": "8d2525d9574ddf1e77d96cb3ace8d298a41c1710544618814dafd7e50309fb94",
+      "historySourceSha256": "d2b391e40c18cefa9843c7fa8601464a9010c7a6b72bff4c092a861a6dcdb13b",
+      "historySourceChars": 686,
+      "pilotMonths": 12,
+      "history": "contacted",
+      "suppressed": true,
+      "confirmed": true,
+      "websiteUnverifiedAndNull": true,
+      "branchNotInferred": true
+    },
+    {
+      "id": "6c6960cf-8bb3-46b7-99bc-e7ce1e756d55",
+      "companyName": "Autolane",
+      "emailSha256": "b755bda61f99dbc3b77609acd027409e5d76099df44c3f28d8ddb854c8780e98",
+      "historySourceSha256": "448dbefa10f57d37f8dd851dfb1930fcd3b61ca4f4e9ca4185da9c6bac75822a",
+      "historySourceChars": 704,
+      "pilotMonths": 12,
+      "history": "contacted",
+      "suppressed": true,
+      "confirmed": true,
+      "websiteUnverifiedAndNull": true,
+      "branchNotInferred": true
+    },
+    {
+      "id": "b401f228-1db1-4ab3-b8ef-1023ad22dcb2",
+      "companyName": "Moberg Bil",
+      "emailSha256": "e568aee7257c7ed39572c88969562676fabe33c651eafac016393ef499a48869",
+      "historySourceSha256": "0e2eaa52b99219fe0c70284a4234e1789fd8e65ae116b779b1a0a3147ada3abf",
+      "historySourceChars": 1067,
+      "pilotMonths": 12,
+      "history": "contacted",
+      "suppressed": true,
+      "confirmed": true,
+      "websiteUnverifiedAndNull": true,
+      "branchNotInferred": true
+    },
+    {
+      "id": "78ad0318-7f1b-4379-aa9c-e8557de7da05",
+      "companyName": "Tjänstebils Experten",
+      "emailSha256": "6280a154330e549aa8060c48e3ceae340d637eee528d1e55252ee9d2d22a95e5",
+      "historySourceSha256": "6519c0159777305419e3505f6673a8aeeff63efd173ac09216a99fcaa7d3b7fd",
+      "historySourceChars": 738,
+      "pilotMonths": 12,
+      "history": "contacted",
+      "suppressed": true,
+      "confirmed": true,
+      "websiteUnverifiedAndNull": true,
+      "branchNotInferred": true
+    },
+    {
+      "id": "d8212e35-3bfa-4cf4-b9ed-30509bdb3617",
+      "companyName": "Newman Bil Hässleholm",
+      "emailSha256": "53f20501a4c5f8aee189fc3f6bf1ae778e15ea991632449072fcd83479681b4b",
+      "historySourceSha256": "2f59419186631f9519a093ff178a552dc7757e859417da37bcd1f431fa28f064",
+      "historySourceChars": 1061,
+      "pilotMonths": 12,
+      "history": "contacted",
+      "suppressed": true,
+      "confirmed": true,
+      "websiteUnverifiedAndNull": true,
+      "branchNotInferred": true
+    },
+    {
+      "id": "e256eab1-994e-4980-a6e9-f7e1905e2e4e",
+      "companyName": "Ericssons Bilhandel",
+      "emailSha256": "7bbb0ce68c2cd9d20d76d1c8940265544eef41c7eb10f6884894d63f94817674",
+      "historySourceSha256": "a510b9d71dc8a62527a4cf6b29aadbddb43d313a54db2582479f602f1052e9f9",
+      "historySourceChars": 847,
+      "pilotMonths": 12,
+      "history": "contacted",
+      "suppressed": true,
+      "confirmed": true,
+      "websiteUnverifiedAndNull": true,
+      "branchNotInferred": true
+    },
+    {
+      "id": "a6b37a25-84b5-4666-90cf-84ad2620ea77",
+      "companyName": "Kareby Bil",
+      "emailSha256": "a35719518b607f62fc577ea6b6a607aece74f1fad26dd6f5247fbd1f235567f1",
+      "historySourceSha256": "1247880b8a9363f693a7074e32661e5b5ce5a5e1425ef521330e139566d9ac36",
+      "historySourceChars": 849,
+      "pilotMonths": 12,
+      "history": "contacted",
+      "suppressed": true,
+      "confirmed": true,
+      "websiteUnverifiedAndNull": true,
+      "branchNotInferred": true
+    }
+  ],
+  "facts": {
+    "foundingFiveUnchanged": true,
+    "twoAdditionalHistoricalOffersNotAcceptedPilots": true,
+    "participationRegistrationLoginListingBidUnverified": true,
+    "companyAndContactNamesNotInferredFromResendDomains": true,
+    "noFutureFollowupDateInvented": true
+  },
+  "readback": {
+    "visibleContactsViaOwnerRpc": 7,
+    "exactPayloadMatches": 7,
+    "verifiedWaitingContacts": 7,
+    "offerRevisions": 0,
+    "eligibleFirstOutreach": 0,
+    "salesJobs": 0,
+    "replyJobs": 1,
+    "sendJobs": 1,
+    "dispatchingEvents": 1,
+    "smtpAcceptedEvents": 1
+  },
+  "browserVerification": {
+    "url": "https://ai-operating-platform-web-git-codex-a-fa6a7c-bumbi190s-projects.vercel.app/projects/handlarborsen/sales",
+    "showsSevenSaved": true,
+    "allSevenSelectionCheckboxesDisabled": true,
+    "mobergHistoryFieldMatchesSavedSource": true,
+    "editCancelledWithoutSaving": true
+  },
+  "atlasVerification": {
+    "oldChat": "7d960974-b5ba-48f7-8e87-bd93443b9fd5",
+    "initialFreshChat": "a55c8959-da03-46e6-8c6a-9d9b03ba2a8d",
+    "observedInitialFailure": {
+      "tool": "get_sales_workspace",
+      "inputProjectId": "handlarborsen",
+      "code": "INVALID_BODY",
+      "wrongFallback": "get_records leads returned zero, incorrectly presented as zero sales contacts"
+    },
+    "dataRemediation": {
+      "registryReferenceKey": "handlarborsen.sales.registry",
+      "exactProjectUuidSaved": true,
+      "failedReadNotZeroInstructionSaved": true,
+      "foundingHistoryConsolidatedIntoExistingFoundingKey": true,
+      "memoryCount": 12,
+      "maxMemoryChars": 191,
+      "appPermissionsUnchanged": true
+    },
+    "currentChat": "132c47c1-07db-4516-9aaf-92a44a2f593c",
+    "currentChatUrl": "https://ai-operating-platform-web-git-codex-a-fa6a7c-bumbi190s-projects.vercel.app/chat/132c47c1-07db-4516-9aaf-92a44a2f593c",
+    "promptSuppliedUuidCountOrCompanyNames": false,
+    "toolReadSucceeded": true,
+    "toolInputExactUuid": true,
+    "persistedToolContactsLength": 7,
+    "modelChronologyAndWaitCorrect": true,
+    "modelInitialCount": 8,
+    "modelFollowup": "Contradictory answer: starts with8, lists7companies and concludes7. Not a clean end-to-end pass.",
+    "nextBoundedImprovement": "Provide an authoritative contactCount derived from contacts.length in the existing sales response, and direct summaries to that field; verify with regression and real chat.",
+    "testConversationBinding": "Two UI-created empty conversations were linked only to this same owner's project with exact-owner/project-owner/null-binding/no-messages guards. No existing populated chat was rebound."
+  },
+  "limitations": [
+    "This is a seven-contact seed, not import of50 Resend rows or139 original filial rows.",
+    "Dates, contact people, replies and source references are stored in historySource text, not separate typed tracker columns.",
+    "Global newly created chats have no project binding; existing sales validation still requires a project-bound conversation.",
+    "Saved project reference remedies this pilot's slug/UUID omission, not a universal project resolver.",
+    "Atlas model count remains inconsistent; authoritative UI/database count is7. Do not declare all natural-language output qualified.",
+    "No new offers, jobs, emails or automated November followup were created."
+  ]
+}

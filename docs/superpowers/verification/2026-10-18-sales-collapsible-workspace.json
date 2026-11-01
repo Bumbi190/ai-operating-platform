@@ -1,0 +1,31 @@
+{
+  "verifiedAt": "2026-10-18T19:58:56.572300+00:00",
+  "sourceCommit": "da1baeb1cc2000cff8d00eb18509b5a9e1bc7a3c",
+  "scope": "SalesWorkspace presentation only",
+  "change": "Seven independent native details sections, initially collapsed; children remain mounted and no sending or data-mutation behavior changed.",
+  "verification": {
+    "typecheckExit": 0,
+    "gitDiffCheckExit": 0,
+    "deploymentId": "dpl_txavn3NUrpTvCSDesukfP2D1GfZK",
+    "deploymentState": "READY",
+    "migrationGuard": "133/133 enforced applied;170 known names; no override",
+    "browser": {
+      "initialSections": 7,
+      "initialOpenSections": 0,
+      "contactsExpandedRows": 57,
+      "keyboardEnterCloses": true,
+      "replyPreviewAccessible": true,
+      "replyEditorSurvivesCloseReopen": true,
+      "editorCancelledWithoutSave": true,
+      "mobileWidth": 390,
+      "mobileSummaryOverflow": false,
+      "mobileOfferSelectorVisible": true,
+      "viewportReset": true
+    }
+  },
+  "noNewEmails": true,
+  "customerSendingRemainsDisabled": true,
+  "backendOrWorkerChanges": false,
+  "unrelatedAccuracyLimitations": "Existing free-text respondent count and source-time limitations remain; this UI change does not resolve them.",
+  "fullSuite": "Not rerun for this reversible presentation-only change. Prior full-suite failures remain documented separately."
+}

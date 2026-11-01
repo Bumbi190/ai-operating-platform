@@ -1,0 +1,126 @@
+{
+  "verifiedAt": "2026-10-19T05:21:10.144300+00:00",
+  "sourceCommit": "a975904eaebed1cd89aaa7e2db1ac32f43230347",
+  "scope": "Deterministic saved inbox overview and linked-contact count followups in existing project-bound Atlas chats. Other chat and mutation paths remain unchanged.",
+  "rootCause": [
+    "The original model output ignored the correct pageSummary2 and generated3.",
+    "Client history contains only user/assistant prose; prior tool results were not replayed for the correction, which generated5.",
+    "Raw UTC timestamps were re-labelled as Europe/Stockholm without conversion."
+  ],
+  "implementation": {
+    "facts": "Existing owner/conversation/project-authorized read RPCs refreshed every report turn; no facts inferred from client assistant prose.",
+    "rendering": "Counts computed by existing saved-page summary; source instants rendered by existing Intl-backed Stockholm timezone utility.",
+    "messages": "Only latest linked message per contact on returned page, already selected complete text; same version/mailbox/link checks. Excerpts are literal and escaped, not a new inferred decision. No fallback to older selected text for a newer unread message.",
+    "boundary": "Conservative read-only intent allowlist, refusing positive write/draft/send/cancel commands. General writing remains on existing model path.",
+    "mailbox": "Exactly one existing non-revoked worker mailbox reference; ambiguity/unavailable reads do not produce invented zero counts.",
+    "noNewAuthority": true,
+    "noSchemaChanges": true,
+    "noWorkerChanges": true
+  },
+  "tests": {
+    "initialUnitRed": {
+      "total": 21,
+      "failed": 16,
+      "passedExistingNegativeCases": 5
+    },
+    "routeRed": {
+      "total": 4,
+      "failed": 3,
+      "passedExistingWritingPath": 1
+    },
+    "expandedClassifierRed": {
+      "total": 25,
+      "failed": 3,
+      "passed": 22
+    },
+    "finalFocused": {
+      "total": 64,
+      "passed": 64,
+      "failed": 0
+    },
+    "typecheckExit": 0,
+    "fullObserved": {
+      "numTotalTests": 15172,
+      "numPassedTests": 13432,
+      "numFailedTests": 404,
+      "numPendingTests": 1332
+    },
+    "historicalUnchangedFailures": 402,
+    "timingReruns": [
+      {
+        "identity": [
+          "lib/qa/project-command-center.test.ts",
+          "project command center · renders from canonical project data names the project the route resolved, with its slug and stored stop state"
+        ],
+        "status": "passed"
+      },
+      {
+        "identity": [
+          "lib/qa/vnext-settings.test.ts",
+          "settings · Project → Platform → Verified External Account → Credential the rendered surface states the project on every form, and each form sends its own project id"
+        ],
+        "status": "passed"
+      }
+    ],
+    "regressions": "2026-10-19-sales-inbox-report-regressions.json",
+    "fullGreen": false
+  },
+  "preview": {
+    "id": "dpl_8u9Tso1u3HXQV175x1kmkibXsPJT",
+    "url": "https://ai-operating-platform-gznf40qbk-bumbi190s-projects.vercel.app",
+    "state": "READY",
+    "sha": "a975904eaebed1cd89aaa7e2db1ac32f43230347",
+    "target": null,
+    "ordinaryMigrationGuard": "133/133 enforced applied;170known ledger names;no override"
+  },
+  "realChat": {
+    "conversationId": "edd8065b-6188-408f-a5ce-313a447014da",
+    "freshEmptyOwnerProjectBound": true,
+    "sameOriginalPlanningPrompt": true,
+    "promptIncludesNumericAnswer": false,
+    "overviewResult": {
+      "linkedMessages": 4,
+      "linkedContactRows": 2,
+      "totalSavedPageMessages": 7,
+      "companies": [
+        "Moberg Bil",
+        "Newman Bil Hässleholm"
+      ],
+      "readSelectedLatestBodies": 2,
+      "offerMonths": [
+        12,
+        6
+      ],
+      "latestMessageLocalTimes": [
+        "2026-10-15 15:53 Europe/Stockholm (UTC+02:00)",
+        "2026-10-09 14:05 Europe/Stockholm (UTC+02:00)"
+      ]
+    },
+    "exactPriorCorrectionPrompt": true,
+    "correctionResultSameCount": true,
+    "readTimeCorrectLocal": "2026-10-19 07:18 Europe/Stockholm (UTC+02:00)",
+    "persistedAssistantReports": 2,
+    "persistedReadToolResults": 6,
+    "persistedUserMessages": 2,
+    "noModelRewriteOnReportPath": true
+  },
+  "beforeAndAfterCounters": {
+    "contacts": 57,
+    "suppressed": 57,
+    "initialJobs": 0,
+    "replyJobs": 1,
+    "sendJobs": 1,
+    "sendEvents": 4
+  },
+  "customerSendingStillPaused": true,
+  "newEmails": 0,
+  "merged": false,
+  "productionPromoted": false,
+  "limits": [
+    "Only the recognised project-bound inbox report/count path gets deterministic rendering. Free-form analysis elsewhere remains model-generated and is not universally verified.",
+    "A contact link is not pilot acceptance, recipient-address validation or permission to send.",
+    "Counts remain limited to the fetched saved page and configured inbox scope; no whole-mailbox or Sent-folder total.",
+    "Latest literal excerpts can contain signatures or quoted earlier email; they are explicitly source excerpts, not a fresh interpretation.",
+    "Future dates/recipients, contact holds and customer sending require separate owner decisions."
+  ]
+}

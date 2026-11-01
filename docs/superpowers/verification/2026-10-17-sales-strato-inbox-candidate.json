@@ -1,0 +1,17 @@
+{
+  "state": "active_verified",
+  "sourceSha": "7acf719ae34f8d45230539c9735a458bcbf5847d",
+  "manifestSha256": "849135da5819f9cb4e1b69d93aedebe56d9d61b763b45817353faebac9a77287",
+  "fileCount": 49,
+  "installationRoot": "C:\\Users\\Andre\\AppData\\Local\\OmniraSales\\pilots\\handlarborsen-inbox-7acf719ae34f",
+  "activeTaskChanged": true,
+  "credentialsReadOrChanged": false,
+  "serverOrigin": "https://ai-operating-platform-lc074jvu6-bumbi190s-projects.vercel.app",
+  "migrationSha256": "1013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1",
+  "serverSourceSha": "b2a5ef227f60648d92531621f12e6aaf23f64db1",
+  "deploymentId": "dpl_J12MNKMNf8Eu4pXGQZpYY2BBdb5K",
+  "credentialRefsPreserved": true,
+  "hostGeneration": 3,
+  "mailboxGeneration": 6,
+  "ownerViewConfirmedAt": "2026-10-18T06:01:13+02:00"
+}

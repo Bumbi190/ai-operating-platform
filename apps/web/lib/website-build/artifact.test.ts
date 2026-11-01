@@ -21,6 +21,19 @@ describe('static website artifacts', () => {
     expect(() => compileWebsiteArtifact(withGroup('bad group'))).toThrow(WebsiteArtifactError)
     expect(compileWebsiteArtifact(withGroup('products')).pages[0].html).toContain('"groupId":"products"')
   })
+  it('compiles an accessible bounded 360-degree frame spin without model JavaScript', () => {
+    const pixel='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+    const frames=Array.from({length:4},(_,i)=>'<img id="frame-'+i+'" src="'+pixel+'" alt="Vy '+(i+1)+'"'+(i?' hidden':'')+'>').join('')
+    const input:any=draft('<section>'+frames+'<input id="spin" type="range" min="0" max="3" step="1" value="0" aria-label="Rotera bilen"></section>')
+    input.pages[0].behaviors=[{kind:'spin',triggerId:'spin',targetIds:['frame-0','frame-1','frame-2','frame-3']}]
+    const artifact=compileWebsiteArtifact(input)
+    expect(artifact.pages[0].html).toContain('"kind":"spin"')
+    expect(artifact.files.find(f=>f.path==='website.js')!.content).toContain("aria-valuetext")
+    const bad:any=structuredClone(input);bad.pages[0].bodyHtml=bad.pages[0].bodyHtml.replace('max="3"','max="2"')
+    expect(()=>compileWebsiteArtifact(bad)).toThrow(WebsiteArtifactError)
+    const visible:any=structuredClone(input);visible.pages[0].bodyHtml=visible.pages[0].bodyHtml.replace('id="frame-1" src="'+pixel+'" alt="Vy 2" hidden','id="frame-1" src="'+pixel+'" alt="Vy 2"')
+    expect(()=>compileWebsiteArtifact(visible)).toThrow(WebsiteArtifactError)
+  })
   it('compiles_real_two_page_site', () => {
     const artifact = compileWebsiteArtifact(draft())
     expect(artifact.format).toBe('static-website.v1')

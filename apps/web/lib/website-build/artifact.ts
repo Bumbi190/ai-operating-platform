@@ -117,15 +117,34 @@ function validateCatalogFilter(item:Record<string,unknown>,elements:Map<string,E
   }
   return {kind:'filter',triggerId:item.triggerId as string,targetIds,attribute,emptyId:item.emptyId,countId:item.countId}
 }
+function validateSpin(item:Record<string,unknown>,elements:Map<string,Element>): Extract<WebsiteBehavior,{kind:'spin'}> {
+  const keys=['kind','triggerId','targetIds']
+  if(Object.keys(item).length!==keys.length||keys.some(k=>!Object.hasOwn(item,k)))fail('INVALID_SPIN')
+  const attr=(el:Element,name:string)=>el.attrs.find(a=>a.name===name)?.value
+  const trigger=elements.get(item.triggerId as string)!
+  const targetIds=item.targetIds as string[]
+  if(trigger.tagName!=='input'||attr(trigger,'type')!=='range'||attr(trigger,'min')!=='0'||attr(trigger,'step')!=='1'||attr(trigger,'value')!=='0')fail('INVALID_SPIN_CONTROL')
+  const max=Number(attr(trigger,'max'))
+  if(!Number.isInteger(max)||max!==targetIds.length-1||targetIds.length<4||targetIds.length>36)fail('INVALID_SPIN_CONTROL')
+  for(let i=0;i<targetIds.length;i++){
+    const target=elements.get(targetIds[i])!
+    if(target.tagName!=='img')fail('INVALID_SPIN_FRAME')
+    const hidden=attr(target,'hidden')!==undefined
+    if((i===0&&hidden)||(i>0&&!hidden))fail('INVALID_SPIN_FRAME_STATE')
+  }
+  return {kind:'spin',triggerId:item.triggerId as string,targetIds}
+}
+
 function validateBehaviors(value: unknown, ids: Set<string>,elements:Map<string,Element>): WebsiteBehavior[] {
   if (!Array.isArray(value) || value.length > WEBSITE_BUILD_LIMITS.behaviorsPerPage) fail('INVALID_BEHAVIORS')
   const triggers = new Set<string>()
   const behaviors:WebsiteBehavior[]=value.map(raw => {
     const item = record(raw)
-    if (!['toggle', 'tabs', 'accordion','filter'].includes(String(item.kind)) || typeof item.triggerId !== 'string' || !ids.has(item.triggerId) || triggers.has(item.triggerId)) fail('INVALID_BEHAVIOR')
+    if (!['toggle', 'tabs', 'accordion','filter','spin'].includes(String(item.kind)) || typeof item.triggerId !== 'string' || !ids.has(item.triggerId) || triggers.has(item.triggerId)) fail('INVALID_BEHAVIOR')
     triggers.add(item.triggerId)
     if (!Array.isArray(item.targetIds) || !item.targetIds.length || item.targetIds.length > 64 || item.targetIds.some(id => typeof id !== 'string' || !ids.has(id)) || new Set(item.targetIds).size !== item.targetIds.length) fail('INVALID_BEHAVIOR_TARGET')
     if(item.kind==='filter')return validateCatalogFilter(item,elements)
+    if(item.kind==='spin')return validateSpin(item,elements)
     if (item.kind === 'tabs' && (typeof item.groupId !== 'string' || !SAFE_ID.test(item.groupId))) fail('INVALID_TAB_GROUP')
     return { kind: item.kind as 'toggle'|'tabs'|'accordion', triggerId: item.triggerId, targetIds: item.targetIds as string[], ...(item.kind === 'tabs' ? { groupId: item.groupId as string } : {}) }
   })
@@ -133,6 +152,12 @@ function validateBehaviors(value: unknown, ids: Set<string>,elements:Map<string,
     const owned=new Set([...filter.targetIds,filter.emptyId,filter.countId])
     for(const other of behaviors){if(other===filter)continue
       if(other.targetIds.some(id=>owned.has(id))||owned.has(other.triggerId)||(other.kind==='filter'&&[other.emptyId,other.countId].some(id=>owned.has(id))))fail('OVERLAPPING_FILTER_TARGET')
+    }
+  }
+  for(const spin of behaviors.filter(b=>b.kind==='spin')){
+    const owned=new Set(spin.targetIds)
+    for(const other of behaviors){if(other===spin)continue
+      if(other.targetIds.some(id=>owned.has(id))||owned.has(other.triggerId))fail('OVERLAPPING_SPIN_TARGET')
     }
   }
   return behaviors

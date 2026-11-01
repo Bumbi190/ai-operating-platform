@@ -27,6 +27,18 @@ export const WEBSITE_RUNTIME = String.raw`(() => {
       update();
       continue;
     }
+    if (behavior.kind === 'spin') {
+      const update = () => {
+        const raw = Number(trigger.value);
+        const index = Number.isFinite(raw) ? Math.max(0, Math.min(targets.length - 1, Math.round(raw))) : 0;
+        for (let i = 0; i < targets.length; i++) targets[i].hidden = i !== index;
+        trigger.setAttribute('aria-valuetext', 'Vy ' + (index + 1) + ' av ' + targets.length);
+      };
+      trigger.addEventListener('input', update);
+      trigger.addEventListener('change', update);
+      update();
+      continue;
+    }
     trigger.addEventListener('click', () => {
       const expanded = trigger.getAttribute('aria-expanded') !== 'true';
       for (const target of targets) target.hidden = !expanded;

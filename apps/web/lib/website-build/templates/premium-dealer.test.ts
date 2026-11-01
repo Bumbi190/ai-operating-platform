@@ -20,6 +20,19 @@ describe('approved premium dealership template',()=>{
   expect(draft.pages[0].behaviors.filter(b=>b.kind==='filter')).toHaveLength(1)
   expect(draft.pages[0].behaviors.filter(b=>b.kind==='toggle')).toHaveLength(8)
  })
+ it('adds a bounded accessible 360 concept spin only when vetted frames are supplied',()=>{
+  const data=input();data.cars[0].spin=Array.from({length:4},(_,i)=>({...photos[0],alt:'Konceptvy '+(i+1)}))
+  const draft=createPremiumDealerDraft(data),html=draft.pages[0].bodyHtml
+  expect(html).toContain('360° konceptvy')
+  expect(html).toContain('Dra för att rotera bilen')
+  expect(html).toContain('inte en digital tvilling')
+  expect(draft.pages[0].behaviors.filter(b=>b.kind==='spin')).toEqual([{kind:'spin',triggerId:'concept-01-spin-control',targetIds:['concept-01-spin-0','concept-01-spin-1','concept-01-spin-2','concept-01-spin-3']}])
+  expect(()=>compileWebsiteArtifact(draft)).not.toThrow()
+  const short=input();short.cars[0].spin=[photos[0],photos[0],photos[0]]
+  expect(()=>createPremiumDealerDraft(short)).toThrow('INVALID_DEALER_SPIN')
+  const mixed=input();mixed.cars[0].spin=[photos[0],photos[0],photos[0],photos[1]]
+  expect(()=>createPremiumDealerDraft(mixed)).toThrow('INVALID_DEALER_SPIN_SIZE')
+ })
  it('compiles within the unchanged artifact limit and keeps forms explicitly disconnected',()=>{
   const artifact=compileWebsiteArtifact(createPremiumDealerDraft(input()))
   expect(Buffer.byteLength(JSON.stringify(artifact))).toBeLessThan(1048576)
@@ -52,6 +65,18 @@ describe('approved premium dealership template',()=>{
   if(kind==='image-size')data.hero.width=0
   if(kind==='too-many')data.cars=Array.from({length:65},(_,i)=>({...data.cars[0],id:'car-'+i}))
   expect(()=>createPremiumDealerDraft(data)).toThrow()
+ })
+ it('spin provenance hashes match all twelve original concept renders',()=>{
+  const base=new URL('../../../e2e/website-catalog/assets/premium/spin/',import.meta.url)
+  const provenance=JSON.parse(readFileSync(new URL('provenance.json',base),'utf8'))
+  expect(provenance.truthClass).toBe('fictional_concept')
+  expect(provenance.notRealVehicle).toBe(true)
+  expect(provenance.frames).toHaveLength(12)
+  for(const frame of provenance.frames){
+   const bytes=readFileSync(new URL(frame.file,base))
+   expect(createHash('sha256').update(bytes).digest('hex')).toBe(frame.sha256)
+   expect(bytes.length).toBe(frame.bytes)
+  }
  })
  it('provenance hashes match the five curated local assets',()=>{
   const base=new URL('../../../e2e/website-catalog/assets/premium/',import.meta.url)

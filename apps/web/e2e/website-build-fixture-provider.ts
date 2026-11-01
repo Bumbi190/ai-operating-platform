@@ -11,7 +11,7 @@ export async function runStep(input: { runId: string; cost: { operation: string 
   if(snapshot.brief.includes('premium-dealer-demo-v1')&&snapshot.designReference){
     // Exercise the actual worker's compact request and output resolver, not a bypass commit.
     const request=JSON.parse(input.userMessage??'{}')
-    if(input.userMessage?.includes('base64,')||request.assets?.length!==5)throw Error('Invalid showroom fixture media input')
+    if(input.userMessage?.includes('base64,')||request.assets?.length!==17)throw Error('Invalid showroom fixture media input')
     let output:unknown
     if(input.cost.operation.includes('interpret'))output={items:snapshot.feedback.map(item=>({feedbackId:item.id,summary:'Ändrar endast accentfärgen och bevarar bilderna.',disposition:'apply',changeKey:'theme.accent',supersedesFeedbackIds:[]}))}
     else{

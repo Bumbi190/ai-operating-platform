@@ -72,7 +72,7 @@ import {WEEKLY_MARKETING_TOOLS,WEEKLY_MARKETING_TOOL_NAMES,WEEKLY_MARKETING_GUID
 import {SOCIAL_PUBLICATION_TOOLS,SOCIAL_PUBLICATION_TOOL_NAMES,handleSocialPublicationTool} from '@/lib/social-launch/publication/atlas-tools'
 import {SOCIAL_PROFILE_TOOLS,SOCIAL_PROFILE_TOOL_NAMES,SOCIAL_PROFILE_GUIDE,handleSocialProfileTool} from '@/lib/social-launch/profile/atlas-tools'
 import {SOCIAL_CAMPAIGN_TOOLS,SOCIAL_CAMPAIGN_TOOL_NAMES,SOCIAL_CAMPAIGN_GUIDE,SOCIAL_CAMPAIGN_STUDIO_GUIDE,handleCampaignTool} from '@/lib/social-launch/campaign/atlas-tools'
-import {isSocialPreparationTurn,isSocialReceiptTool,socialPreparationReceipt,renderSocialPreparation,type SocialPreparationReceipt} from '@/lib/social-launch/preparation-receipts'
+import {isSocialContentReadIntent,isSocialPreparationTurn,isSocialReceiptTool,socialPreparationReceipt,renderSocialPreparation,type SocialPreparationReceipt} from '@/lib/social-launch/preparation-receipts'
 import {SOCIAL_CONTENT_TOOLS,SOCIAL_CONTENT_TOOL_NAMES,SOCIAL_CONTENT_GUIDE,handleSocialContentTool} from '@/lib/social-launch/content/atlas-tools'
 import {HB_STRATO_INBOX_TOOLS,HB_STRATO_INBOX_TOOL_NAMES,HB_STRATO_INBOX_GUIDE,hbStratoInboxReadEnabled,handleHbStratoInboxTool} from '@/lib/handlarborsen/distribution/atlas-strato-inbox'
 import {isHandlarborsenInboxReadIntent} from '@/lib/handlarborsen/distribution/strato-inbox-intent'
@@ -820,7 +820,7 @@ export async function POST(request: Request) {
     && !image && !studioContext && !websitePlanRef && !rawBuildContext
     && !isNotionKnowledgeIntent(lastUserText) && hbStratoInboxReadEnabled()
     && isHandlarborsenInboxReadIntent(lastUserText)
-  const socialPreparationIntent = isSocialPreparationIntent(lastUserText)
+  const socialPreparationIntent = isSocialPreparationIntent(lastUserText) || isSocialPreparationTurn(messages) || isSocialContentReadIntent(lastUserText)
   const fastPath = !pendingNovaCuratorReview && !stratoInboxReadIntent && !hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent && !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText) && !image && !isCalendarIntent(lastUserText) && !studioContext && !websitePlanRef && !rawBuildContext && !hbReplyLifecycleReadIntent && !socialPreparationIntent && (mode === 'content' || isFastPathContent(lastUserText))
   // Statisk konversation (hej/tack/vem är du) — besvaras ur Atlas identitet ensam.
   // Allow-list, aldrig gissning: allt som inte bevisligen klarar sig utan live-
@@ -1193,6 +1193,7 @@ export async function POST(request: Request) {
       // Tystar delegerings-ärlighetsspärren — bara en verklig, lyckad delegering räknas.
 
       async function runConversation(msgs: Anthropic.MessageParam[]) {
+        const pendingModelProse: string[] = []
         let modelFinished = false
         let incompleteResponse = false
         // Agentic loop — Claude can use tools multiple times
@@ -1251,7 +1252,9 @@ export async function POST(request: Request) {
           }
           // A complete tool stop is mandatory before executing ANY tool block.
           // Never replay a truncated generation automatically.
-          if (response.stop_reason !== 'end_turn' && response.stop_reason !== 'tool_use') {
+          const hasToolBlocks = response.content.some((b: Anthropic.ContentBlock) => b.type === 'tool_use')
+          const textOnlyTruncation = response.stop_reason === 'max_tokens' && !hasToolBlocks && !socialResponseControlled
+          if (response.stop_reason !== 'end_turn' && response.stop_reason !== 'tool_use' && !textOnlyTruncation) {
             incompleteResponse = true
             if (!socialResponseControlled) {
               const warning = 'Svaret avbröts innan det blev komplett; inga ofullständiga verktygsanrop kördes.'
@@ -1266,7 +1269,12 @@ export async function POST(request: Request) {
             modelFinished = true
             if (socialResponseControlled) break
             const textBlocks = response.content.filter((b: Anthropic.ContentBlock) => b.type === 'text')
-            let fullText = textBlocks.map((b: Anthropic.ContentBlock) => (b as Anthropic.TextBlock).text).join('')
+            let fullText = [...pendingModelProse, textBlocks.map((b: Anthropic.ContentBlock) => (b as Anthropic.TextBlock).text).join('')].filter(Boolean).join('\n\n')
+            if (textOnlyTruncation) {
+              const warning = '\n\nSvaret nådde längdgränsen och är ofullständigt.'
+              fullText += warning
+              if (!bufferSocialProse) send('text', { text: warning })
+            }
 
             if (bufferSocialProse && fullText) send('text', { text: fullText })
 
@@ -1321,8 +1329,10 @@ export async function POST(request: Request) {
             .join('')
             .trim()
           if (inlineText && !socialResponseControlled) {
-            if (bufferSocialProse) send('text', { text: inlineText })
-            void saveMessage('assistant', inlineText)
+            // Keep prose across rounds: a later social call may require dropping
+            // every earlier claim, including prose accompanying a context read.
+            if (bufferSocialProse) pendingModelProse.push(inlineText)
+            else void saveMessage('assistant', inlineText)
           }
 
           for (const toolUse of toolUseBlocks) {

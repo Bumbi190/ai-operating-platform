@@ -34,9 +34,9 @@ vi.mock('@anthropic-ai/sdk',()=>({default:class{messages={stream:(args:any)=>{
   return {stop_reason:step.stop??(step.name?'tool_use':'end_turn'),content:[...(step.text?[{type:'text',text:step.text}]:[]),...(step.name?[{type:'tool_use',id:'tu_'+calls.length,name:step.name,input:step.input}]:[])]}
  }}
 }}}}))
-async function run(text='Planera tre LinkedIn-inlägg för granskning.',voice=false,history:any[]=[]){
+async function run(text='Planera tre LinkedIn-inlägg för granskning.',voice=false,history:any[]=[],extra:Record<string,unknown>={}){
  const {POST}=await import('@/app/api/chat/route')
- const res=await POST(new Request('http://localhost/api/chat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({conversation_id:CONVERSATION,voice,messages:[...history,{role:'user',content:text}]})}) as any)
+ const res=await POST(new Request('http://localhost/api/chat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...extra,conversation_id:CONVERSATION,voice,messages:[...history,{role:'user',content:text}]})}) as any)
  const raw=await new Response(res.body).text()
  await new Promise(resolve=>setTimeout(resolve,0))
  const events=raw.split('\n').filter(l=>l.startsWith('data: ')).map(l=>JSON.parse(l.slice(6)))
@@ -102,7 +102,7 @@ describe('trusted social response before SSE, speech and reload',()=>{
   steps=[{name:'get_social_content',input:{projectId:PROJECT}}]
   const r=await run()
   expect(r.text).not.toContain('forged');expect(r.text).not.toContain(REV)
-  expect(r.text).toMatch(/inte.*bekräft|ingen.*bekräft/i)
+  expect(r.text).toContain('2 befintliga utkast');expect(r.text).not.toContain('Sparningen av innehållsutkastet har bekräftats')
  })
  it('queued campaign receipt cannot claim completed drafts',async()=>{
   rpcData.social_campaign_replay=campaignView()
@@ -155,5 +155,87 @@ describe('preparation routing and exact multi-post results',()=>{
   steps=[{text:'Klockan är åtta.'}]
   await run('Vad är klockan i Tokyo?',true,[{role:'user',content:'Planera tre LinkedIn-inlägg för granskning.'}])
   expect(calls[0].max_tokens).toBe(150)
+ })
+})
+
+describe('fresh review regression matrix',()=>{
+ it('holds early prose until a later social call determines the whole response',async()=>{
+  rpcData.social_content_save=contentView()
+  steps=[{name:'get_current_time',input:{timezone:'Europe/Stockholm'},text:'forged-earlier-round: allt är sparat'},{name:'propose_social_content',input:proposal()}]
+  const r=await run('Fortsätt med uppgiften.')
+  expect(r.text).toContain(REV);expect(r.text).not.toContain('forged');expect(r.persisted).toBe(r.text)
+ })
+ it('answers a new imperative topic instead of inheriting social preparation',async()=>{
+  steps=[{text:'Här är mötets sammanfattning.'}]
+  const r=await run('Gör en sammanfattning av mötet.',true,[{role:'user',content:'Planera tre LinkedIn-inlägg för granskning.'}])
+  expect(calls[0].max_tokens).toBe(150)
+  expect(r.text).toBe('Här är mötets sammanfattning.')
+ })
+ it('does not revive an earlier preparation across a different user topic',async()=>{
+  steps=[{text:'Jag fortsätter förklaringen.'}]
+  await run('Okej, fortsätt.',true,[{role:'user',content:'Planera tre LinkedIn-inlägg för granskning.'},{role:'user',content:'Förklara hur en motor fungerar.'}])
+  expect(calls[0].max_tokens).toBe(150)
+ })
+ it('keeps a successful profile action on its existing response path',async()=>{
+  const profile={description:'Marknadsplats för bilhandlare',audience:'Bilhandlare',tone:'Saklig',websiteUrl:null,callToAction:'',factualBoundaries:'',preferredMediaIds:[]}
+  rpcData.social_profile_save={project:{id:PROJECT,name:'Handlarbörsen',slug:'handlarborsen'},revision:{id:REV,sequence:1,profile},assets:[],hasMoreAssets:false,workspaceUrl:'/projects/handlarborsen/social#profile'}
+  steps=[{name:'propose_social_profile',input:{projectId:PROJECT,expectedRevisionId:null,idempotencyKey:'profile-test',profile}},{text:'Profilen är sparad. Öppna /projects/handlarborsen/social#profile'}]
+  const r=await run('Spara målgruppen bilhandlare i vår LinkedIn-profil',true)
+  expect(rpcs.some(x=>x.name==='social_profile_save')).toBe(true)
+  expect(calls[0].max_tokens).toBe(150);expect(r.text).toContain('Profilen är sparad.')
+  expect(r.persisted).toBe(r.text)
+ })
+ it('preserves an ordinary workflow answer',async()=>{
+  steps=[{text:'Arbetsflödesplanen finns i arbetsytan.'}]
+  const r=await run('Skapa ett workflow för granskning',true)
+  expect(calls[0].max_tokens).toBe(150);expect(r.text).toContain('Arbetsflödesplanen')
+ })
+ it('recognizes new images and genuine continuations before content fast path',async()=>{
+  for(const [text,history] of [['Ta fram tre LinkedIn-inlägg med varsin ny bild',[]],['Okej, fortsätt.',[{role:'user',content:'Planera tre LinkedIn-inlägg för granskning.'}]]] as const){
+   vi.resetModules();calls=[];writes=[];steps=[{text:'Jag har sparat allt: forged'}]
+   const r=await run(text,true,[...history],{mode:'content'})
+   expect(calls[0].max_tokens).toBe(4096);expect(calls[0].tools.length).toBeGreaterThan(0)
+   expect(r.text).not.toContain('forged')
+  }
+ })
+ it('reports observed content on a read without confirming a new save',async()=>{
+  rpcData.social_content_read=contentView()
+  steps=[{name:'get_social_content',input:{projectId:PROJECT}}]
+  const r=await run('Vilka inlägg har vi i våra utkast?')
+  expect(r.text).toContain('2');expect(r.text).toContain('utkast')
+  expect(r.text).not.toContain('Sparat innehållsutkast')
+  expect(r.text).toContain('/projects/handlarborsen/social#content')
+ })
+ it('does not use a preparatory read to cover up a failed save',async()=>{
+  rpcData.social_content_read=contentView();rpcErrors.social_content_save={message:'SOCIAL_CONTENT_REVISION_CONFLICT',code:'23505'}
+  steps=[{name:'get_social_content',input:{projectId:PROJECT}},{name:'propose_social_content',input:proposal()}]
+  const r=await run()
+  expect(r.text).toContain('REVISION_CONFLICT');expect(r.text).not.toContain('2 befintliga')
+ })
+ it('speech includes unresolved image work alongside a confirmed text save',async()=>{
+  rpcData.social_content_save=contentView();rpcData.social_campaign_read=campaignView('uncertain')
+  steps=[{name:'propose_social_content',input:proposal()},{name:'get_social_campaign',input:{projectId:PROJECT,campaignId:CAMPAIGN}}]
+  const r=await run(undefined,true)
+  expect(r.text).toContain('spar');expect(r.text).toContain('osäker')
+  expect(r.persisted).toBe(r.text)
+ })
+ it('speech retains both a tool failure and a later interruption',async()=>{
+  rpcErrors.social_content_save={message:'SOCIAL_CONTENT_REVISION_CONFLICT',code:'23505'}
+  steps=[{name:'propose_social_content',input:proposal()},{fail:true}]
+  const r=await run(undefined,true)
+  expect(r.text).toMatch(/ändringar.*inte.*bekräft/);expect(r.text).toContain('avbröts')
+ })
+ for(const question of ['Vad är klockan i Tokyo?','Hej Atlas']){
+  it('retains text-only truncated speech and matching persistence for '+question,async()=>{
+   steps=[{text:'Ett kort svar som avbröts',stop:'max_tokens'}]
+   const r=await run(question,true)
+   expect(r.text).toContain('Ett kort svar');expect(r.persisted).toBe(r.text);expect(calls).toHaveLength(1)
+  })
+ }
+ it('labels a replay return as current matching revision rather than originating revision',async()=>{
+  rpcData.social_content_save=contentView()
+  steps=[{name:'propose_social_content',input:proposal()}]
+  const r=await run()
+  expect(r.text).toMatch(/aktuell matchande version/i)
  })
 })

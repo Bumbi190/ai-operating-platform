@@ -1,6 +1,6 @@
 import {describe,expect,it,vi} from 'vitest'
 import {parseDiscoveryQuery,parseDiscoveryPromotion,publicWebsite} from '../sales/discovery/validate'
-import {buildOverpassQuery,discoverPublicBusinesses,parseOverpassResponse,MAX_PROVIDER_BYTES,OVERPASS_ENDPOINT,OVERPASS_USER_AGENT,discoveryEndpoint,discoverySourceConfigured} from '../sales/discovery/provider'
+import {buildOverpassQuery,discoverPublicBusinesses,parseOverpassResponse,MAX_PROVIDER_BYTES,OVERPASS_ENDPOINT,OVERPASS_USER_AGENT,discoveryEndpoint,discoverySourceConfigured,discoveryApiKey,discoveryProviderHeaders} from '../sales/discovery/provider'
 import {discoveryBaselineReasons} from '../sales/discovery/exclusions'
 import {HANDLARBORSEN_PROJECT_ID} from '../atlas/handlarborsen-test-data/contracts'
 import {documentedPilotHistoryEntries} from '../handlarborsen/lead-finder/documented-pilot-history'
@@ -13,6 +13,32 @@ describe('bounded public business discovery',()=>{
   expect(discoveryEndpoint({NODE_ENV:'production',ATLAS_SALES_DISCOVERY_OVERPASS_URL:'https://maps.example.com/api/interpreter'})).toBe('https://maps.example.com/api/interpreter')
   expect(discoverySourceConfigured({NODE_ENV:'production',ATLAS_SALES_DISCOVERY_OVERPASS_URL:'https://maps.example.com/api/interpreter'})).toBe(true)
   for(const env of [{NODE_ENV:'production'},{VERCEL:'1'},{NODE_ENV:'production',ATLAS_SALES_DISCOVERY_OVERPASS_URL:OVERPASS_ENDPOINT},{NODE_ENV:'production',ATLAS_SALES_DISCOVERY_OVERPASS_URL:'http://maps.example.com/api/interpreter'},{NODE_ENV:'production',ATLAS_SALES_DISCOVERY_OVERPASS_URL:'https://127.0.0.1/private'},{ATLAS_SALES_DISCOVERY_OVERPASS_URL:''}]){expect(()=>discoveryEndpoint(env)).toThrow('DISCOVERY_SOURCE_NOT_CONFIGURED');expect(discoverySourceConfigured(env)).toBe(false)}
+ })
+ it('supports overpass.ch with a separate API key and never requires the secret in the URL',()=>{
+  const env={NODE_ENV:'production',ATLAS_SALES_DISCOVERY_OVERPASS_URL:'https://api.overpass.ch/v1/interpreter',ATLAS_SALES_DISCOVERY_OVERPASS_KEY:'synthetic-secret-key'}
+  const endpoint=discoveryEndpoint(env)
+  expect(endpoint).toBe('https://api.overpass.ch/v1/interpreter')
+  expect(discoveryApiKey(env)).toBe('synthetic-secret-key')
+  expect(discoveryProviderHeaders(endpoint,env)).toMatchObject({'x-api-key':'synthetic-secret-key','user-agent':OVERPASS_USER_AGENT})
+  expect(endpoint).not.toContain('synthetic-secret-key')
+  expect(discoverySourceConfigured(env)).toBe(true)
+  expect(discoverySourceConfigured({...env,ATLAS_SALES_DISCOVERY_OVERPASS_KEY:''})).toBe(false)
+  expect(discoverySourceConfigured({...env,ATLAS_SALES_DISCOVERY_OVERPASS_URL:'https://api.overpass.ch/v1/synthetic-secret-key/interpreter'})).toBe(false)
+ })
+ it.each([' short ','bad\nkey'])('rejects malformed provider key %j',key=>{
+  expect(()=>discoveryApiKey({ATLAS_SALES_DISCOVERY_OVERPASS_KEY:key})).toThrow('DISCOVERY_SOURCE_NOT_CONFIGURED')
+ })
+ it('sends an overpass.ch key only in the provider header',async()=>{
+  vi.stubEnv('NODE_ENV','production');vi.stubEnv('ATLAS_SALES_DISCOVERY_OVERPASS_URL','https://api.overpass.ch/v1/interpreter');vi.stubEnv('ATLAS_SALES_DISCOVERY_OVERPASS_KEY','synthetic-secret-key')
+  const fetcher=vi.fn<typeof fetch>(async()=>Response.json({elements:[element()]}))
+  try{
+   expect((await discoverPublicBusinesses(query,fetcher)).candidates).toHaveLength(1)
+   const [url,init]=fetcher.mock.calls[0]
+   expect(url).toBe('https://api.overpass.ch/v1/interpreter')
+   expect(init?.headers).toMatchObject({'x-api-key':'synthetic-secret-key','user-agent':OVERPASS_USER_AGENT})
+   expect(String(init?.body)).not.toContain('synthetic-secret-key')
+   expect(String(url)).not.toContain('synthetic-secret-key')
+  }finally{vi.unstubAllEnvs()}
  })
  it('refuses missing deployment source before external fetch',async()=>{
   vi.stubEnv('VERCEL','1');vi.stubEnv('ATLAS_SALES_DISCOVERY_OVERPASS_URL','')

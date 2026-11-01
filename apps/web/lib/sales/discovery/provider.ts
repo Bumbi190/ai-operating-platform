@@ -21,8 +21,24 @@ export function discoveryEndpoint(env:Readonly<Record<string,string|undefined>>=
  return endpoint
 }
 // Configuration only: never probes the provider or claims that a live request will succeed.
+export function discoveryApiKey(env:Readonly<Record<string,string|undefined>>=process.env):string|null{
+ const raw=env.ATLAS_SALES_DISCOVERY_OVERPASS_KEY
+ if(raw===undefined||raw==='')return null
+ if(raw.length<8||raw.length>512||raw.trim()!==raw||/[\u0000-\u001f\u007f-\u009f]/.test(raw))throw new SalesError('DISCOVERY_SOURCE_NOT_CONFIGURED',503)
+ return raw
+}
+export function discoveryProviderHeaders(endpoint:string,env:Readonly<Record<string,string|undefined>>=process.env):Record<string,string>{
+ const headers:Record<string,string>={'content-type':'application/x-www-form-urlencoded','accept':'application/json','user-agent':OVERPASS_USER_AGENT}
+ const url=new URL(endpoint),key=discoveryApiKey(env)
+ if(url.hostname==='api.overpass.ch'){
+  if(url.pathname!=='/v1/interpreter'||url.search||!key)throw new SalesError('DISCOVERY_SOURCE_NOT_CONFIGURED',503)
+  headers['x-api-key']=key
+ }
+ return headers
+}
+// Configuration only: never probes the provider or claims that a live request will succeed.
 export function discoverySourceConfigured(env:Readonly<Record<string,string|undefined>>=process.env):boolean{
- try{discoveryEndpoint(env);return true}catch(e){if(e instanceof SalesError&&e.code==='DISCOVERY_SOURCE_NOT_CONFIGURED')return false;throw e}
+ try{const endpoint=discoveryEndpoint(env);discoveryProviderHeaders(endpoint,env);return true}catch(e){if(e instanceof SalesError&&e.code==='DISCOVERY_SOURCE_NOT_CONFIGURED')return false;throw e}
 }
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v)
 
@@ -62,11 +78,11 @@ async function boundedJson(response:Response):Promise<unknown>{
  try{return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes))}catch{throw new SalesError('DISCOVERY_PROVIDER_UNAVAILABLE',503)}
 }
 export async function discoverPublicBusinesses(value:DiscoveryQuery,fetcher:typeof fetch=fetch):Promise<{candidates:PublicBusiness[];retrievedAt:string}>{
- const query=parseDiscoveryQuery(value),endpoint=discoveryEndpoint(),controller=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined
+ const query=parseDiscoveryQuery(value),endpoint=discoveryEndpoint(),headers=discoveryProviderHeaders(endpoint),controller=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined
  const timeout=new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(new SalesError('DISCOVERY_PROVIDER_TIMEOUT',504))},PROVIDER_TIMEOUT_MS)})
  try{
   return await Promise.race([(async()=>{
-   const response=await fetcher(endpoint,{method:'POST',redirect:'error',credentials:'omit',cache:'no-store',signal:controller.signal,headers:{'content-type':'application/x-www-form-urlencoded','accept':'application/json','user-agent':OVERPASS_USER_AGENT},body:new URLSearchParams({data:buildOverpassQuery(query)}).toString()})
+   const response=await fetcher(endpoint,{method:'POST',redirect:'error',credentials:'omit',cache:'no-store',signal:controller.signal,headers,body:new URLSearchParams({data:buildOverpassQuery(query)}).toString()})
    if(response.status===429){await response.body?.cancel();throw new SalesError('DISCOVERY_RATE_LIMITED',429)}
    if(!response.ok){await response.body?.cancel();throw new SalesError('DISCOVERY_PROVIDER_UNAVAILABLE',503)}
    return {candidates:parseOverpassResponse(await boundedJson(response),query),retrievedAt:new Date().toISOString()}

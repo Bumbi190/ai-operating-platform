@@ -37,6 +37,13 @@ def main(argv=None):
         print('Connection saved. No job or model call has started.');return 0
     config=json.loads(config_path.read_text(encoding='utf-8'))
     if config.get('projectId')!=project:raise ValueError('PROJECT_MISMATCH')
+    # A partial managed export must fail closed, never fall back to the legacy token.
+    if any(key in config for key in ('installationRoot','manifestSha256','activeRef','generation','expiresAt','transport')):
+        if not args.once:
+            print(json.dumps({'worked':False,'sendingEnabled':False,'reason':'MANAGED_RUN_REQUIRES_ONCE'}));return 1
+        from .host import run_managed_once
+        result=run_managed_once(project,args.model)
+        print(json.dumps(result));return 0 if result.get('worked') is True else 1
     runtime=SafeClaudeTextRuntime(args.model)
     if not runtime.readiness.get('ready'):print(json.dumps(runtime.readiness));return 1
     client=SalesProtocolClient(config['origin'],CredentialStore().read(connection_key(config['origin'],project)))

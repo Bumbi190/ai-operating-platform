@@ -20,7 +20,8 @@ class HostTests(unittest.TestCase):
   with self.assertRaises(HostBlocked):verify_installation(self.root,hashlib.sha256(raw).hexdigest())
  def run_cycle(self,desired='running',ready=True,uncertain=False):
   stop=threading.Event();connection=Mock();connection.ensure_worker_token.return_value='x'*43;connection.poll_status.return_value={'desiredState':desired,'executionPaused':False}
-  run=Mock(side_effect=lambda *_,**__:stop.set());journal=Journal(self.root/'dispatch.json')
+  def completed(*_,**__):stop.set();return True
+  run=Mock(side_effect=completed);journal=Journal(self.root/'dispatch.json')
   if uncertain:journal.save({'inFlight':True})
   def wait(_):stop.set()
   host_loop(connection,lambda _:Mock(),lambda:Mock(),lambda:{'ready':ready},journal,stop,run_once_fn=run,wait_fn=wait)
@@ -36,13 +37,30 @@ class HostTests(unittest.TestCase):
   def run(*args,**kwargs):
    calls.append(1)
    if len(calls)==1:raise OSError('CLAIM_TRANSPORT_FAILED')
-   stop.set()
+   stop.set();return True
   cycles=[]
   def wait(_):
    cycles.append(1)
    if len(cycles)>2:stop.set()
   host_loop(connection,lambda _:Mock(),lambda:Mock(),lambda:{'ready':True},journal,stop,run_once_fn=run,wait_fn=wait)
   self.assertEqual(len(calls),2);self.assertFalse(journal.load()['inFlight'])
+ def test_failed_dispatch_keeps_guard_and_blocks_the_next_cycle(self):
+  for raises in (False,True):
+   with self.subTest(raises=raises):
+    stop=threading.Event();connection=Mock();connection.ensure_worker_token.return_value='x'*43;connection.poll_status.return_value={'desiredState':'running','executionPaused':False}
+    journal=Journal(self.root/('failed-'+str(raises)+'.json'));calls=[];cycles=[]
+    ref={'projectId':'p','workerId':'w','jobId':'j','claimId':'c','generation':1}
+    def run(*args,before_dispatch):
+     calls.append(1);before_dispatch(ref,'attempt')
+     if raises:raise OSError('LOST_COMPLETION')
+     return False
+    def wait(_):
+     cycles.append(1)
+     if len(cycles)==2:stop.set()
+    host_loop(connection,lambda _:Mock(),lambda:Mock(),lambda:{'ready':True},journal,stop,run_once_fn=run,wait_fn=wait)
+    self.assertEqual(len(calls),1);self.assertEqual(len(cycles),2)
+    self.assertTrue(journal.load()['inFlight']);self.assertEqual(journal.load()['attemptId'],'attempt')
+    connection.report_status.assert_called_with('blocked')
  def test_model_dispatch_guard_contains_identifiers_before_external_call(self):
   from workers.sales.worker import run_once
   journal=Journal(self.root/'interrupted.json');stop=threading.Event();connection=Mock();connection.ensure_worker_token.return_value='x'*43;connection.poll_status.return_value={'desiredState':'running','executionPaused':False}

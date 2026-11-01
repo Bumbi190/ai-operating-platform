@@ -33,6 +33,14 @@ def verify_installation(root,manifest_hash):
   if not item.is_file() or hashlib.sha256(item.read_bytes()).hexdigest()!=digest:raise HostBlocked('SOURCE_MISMATCH')
  return manifest
 
+def run_initial_once(client,adapter,dispatch_journal,run_once_fn):
+ def mark_dispatch(ref,attempt_id):
+  dispatch_journal.save({'inFlight':True,'phase':'model',**{k:ref[k] for k in ['projectId','workerId','jobId','claimId','generation']},'attemptId':attempt_id})
+ worked=run_once_fn(client,adapter,before_dispatch=mark_dispatch)
+ # False can mean a lost completion receipt after model dispatch. Keep its marker.
+ if worked is True:dispatch_journal.save({'inFlight':False})
+ return worked
+
 def host_loop(connection,client_factory,adapter_factory,doctor_fn,dispatch_journal,stop,run_once_fn=run_once,wait_fn=None,verify_fn=lambda:None,mailbox_cycle=None,reply_cycle=None,reply_uncertain=lambda:False):
  wait_fn=wait_fn or stop.wait
  while not stop.is_set():
@@ -44,10 +52,7 @@ def host_loop(connection,client_factory,adapter_factory,doctor_fn,dispatch_journ
    if mailbox_cycle is not None:mailbox_cycle(connection)
    if reply_cycle is not None:reply_cycle(connection,ready and status.get('desiredState')=='running' and status.get('executionPaused') is False)
    if ready and not reply_uncertain() and status.get('desiredState')=='running' and status.get('executionPaused') is False:
-    def mark_dispatch(ref,attempt_id):
-     dispatch_journal.save({'inFlight':True,'phase':'model',**{k:ref[k] for k in ['projectId','workerId','jobId','claimId','generation']},'attemptId':attempt_id})
-    run_once_fn(client_factory(token),adapter_factory(),before_dispatch=mark_dispatch)
-    dispatch_journal.save({'inFlight':False})
+    run_initial_once(client_factory(token),adapter_factory(),dispatch_journal,run_once_fn)
   except Exception:
    # Fixed metadata only; no exception/payload/credential in logs.
    pass
@@ -76,7 +81,8 @@ def send_background(cycle,stop):
   stop.set();thread.join(180)
   if thread.is_alive():raise HostBlocked('SEND_SHUTDOWN_TIMEOUT')
 
-def main(project):
+def load_managed_connection(project):
+ """Load the pinned installation and journal transport without starting any work."""
  base=safe_path(Path(os.environ['LOCALAPPDATA'])/'OmniraSales'/'connections');config=json.loads(safe_path(base/(project+'.json')).read_text(encoding='utf-8'))
  if config.get('projectId')!=project:raise HostBlocked('PROJECT_MISMATCH')
  root=Path(config['installationRoot']);verify_launch_root(root);verify=lambda:verify_installation(root,config['manifestSha256'])
@@ -88,6 +94,35 @@ def main(project):
  else:
   factory=lambda origin,token,purpose:SalesProtocolClient(origin,token,purpose)
  store=CredentialStore();connection=ManagedConnection(config,store,Journal(state/'connection.json'),factory)
+ return config,state,verify,factory,store,connection
+
+def run_managed_once(project,model=''):
+ """Process at most one available initial job; never start mailbox/reply/send loops."""
+ config,state,verify,factory,store,connection=load_managed_connection(project)
+ result={'worked':False,'sendingEnabled':False}
+ with SingleInstance(state/'host.lock'):
+  verify()
+  dispatch_journal=Journal(state/'dispatch.json')
+  if (dispatch_journal.load() or {}).get('inFlight'):
+   return {**result,'reason':'DISPATCH_RECONCILIATION_REQUIRED'}
+  if (Journal(state/'reply-dispatch.json').load() or {}).get('pending'):
+   return {**result,'reason':'REPLY_RECONCILIATION_REQUIRED'}
+  token=connection.ensure_worker_token();status=connection.poll_status()
+  if status.get('desiredState')!='running' or status.get('executionPaused') is not False:
+   return {**result,'reason':'HOST_EXECUTION_DISABLED'}
+  runtime=SafeClaudeTextRuntime(model)
+  if runtime.readiness.get('ready') is not True:
+   connection.report_status('blocked')
+   return {**runtime.readiness,**result}
+  adapter=HarveyDraftAdapter(runtime)
+  connection.report_status('ready')
+  worked=run_initial_once(factory(config['origin'],token,'worker'),adapter,dispatch_journal,run_once)
+  if worked is not True and (dispatch_journal.load() or {}).get('inFlight'):
+   return {**result,'reason':'DISPATCH_RECONCILIATION_REQUIRED'}
+  return {**result,'worked':worked is True}
+
+def main(project):
+ config,state,verify,factory,store,connection=load_managed_connection(project)
  mailbox_cycle=None;inbox_cycle=None
  if config.get('mailboxEnabled') is True:
   from .mailbox.crypto import MailboxCrypto

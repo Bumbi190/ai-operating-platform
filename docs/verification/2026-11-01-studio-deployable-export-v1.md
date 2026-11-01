@@ -14,6 +14,7 @@ The existing project ZIP preserved source, plans and immutable previews, but it 
 - The preview CSP remains `img-src data:`; only the deploy copy is rewritten to `img-src 'self'` because its images are local files.
 - `website.js` is carried into `dist/`.
 - `project.json` declares a `deployable` block with directory, entry, assets path, exact revision and artifact SHA.
+- The export root contains a minimal `vercel.json` pinned to `outputDirectory: "dist"`, matching Vercel's file-based project configuration. It contains no account, token, domain or deployment authority.
 - All emitted files continue to be listed with SHA-256 and byte count in the project manifest.
 
 ## Automated verification

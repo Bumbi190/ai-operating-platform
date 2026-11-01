@@ -41,6 +41,10 @@ it("collects source, images, pinned plan and immutable preview under one safe pr
   expect(zip.folder(base + "dist/assets/images")).toBeTruthy();
   expect(zip.file(base + "dist/website.js")).toBeTruthy();
   expect(zip.file(base + "plans/v1.json")).toBeTruthy();
+  expect(JSON.parse(await zip.file(base+"vercel.json")!.async("string"))).toEqual({
+    $schema:"https://openapi.vercel.sh/vercel.json",
+    outputDirectory:"dist",
+  });
   expect(await zip.file(base + "previews/v1/index.html")!.async("string")).toBe(
     artifact.files[0].content,
   );

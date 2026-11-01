@@ -130,6 +130,18 @@ export async function assembleProjectExport(
       JSON.stringify(data.planRevision, null, 2),
       "application/json",
     );
+  add(
+    "vercel.json",
+    JSON.stringify(
+      {
+        $schema: "https://openapi.vercel.sh/vercel.json",
+        outputDirectory: "dist",
+      },
+      null,
+      2,
+    ),
+    "application/json",
+  );
   root.file(
     "project.json",
     JSON.stringify(

@@ -666,7 +666,7 @@ describe('atlas chat · reads', () => {
     const { mod, calls } = await mount()
     const proj = await mod.loadChatConversation('k-proj')
     expect(calls.map((c) => c.table)).toEqual(['conversations', 'conversation_messages'])
-    expect(calls[1].ops).toEqual(['select:role, content, tool_data, created_at', 'eq:conversation_id=k-proj', 'order:created_at:asc'])
+    expect(calls[1].ops).toEqual(['select:id, role, content, tool_data, created_at', 'eq:conversation_id=k-proj', 'order:created_at:asc'])
     expect(proj).toMatchObject({ id: 'k-proj', title: 'Projektfråga', projectName: 'The Prompt', state: 'ok', saved: [], chatBase: '/chat' })
     const mine = (await mod.loadChatConversation('k-mine')) as ChatConversationModel
     expect(mine.saved.map((m) => m.content)).toEqual(['Hej'])

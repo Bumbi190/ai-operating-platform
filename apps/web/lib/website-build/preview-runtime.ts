@@ -7,6 +7,38 @@ export const WEBSITE_RUNTIME = String.raw`(() => {
   for (const behavior of config.behaviors) {
     const trigger = document.getElementById(behavior.triggerId);
     const targets = behavior.targetIds.map(id => document.getElementById(id));
+    if (behavior.kind === 'filter') {
+      const empty = document.getElementById(behavior.emptyId);
+      const count = document.getElementById(behavior.countId);
+      count.setAttribute('role', 'status');
+      count.setAttribute('aria-live', 'polite');
+      count.setAttribute('aria-atomic', 'true');
+      const update = () => {
+        let visible = 0;
+        for (const target of targets) {
+          const matches = trigger.value === '*' || target.getAttribute(behavior.attribute) === trigger.value;
+          target.hidden = !matches;
+          if (matches) visible++;
+        }
+        empty.hidden = visible !== 0;
+        count.textContent = visible + ' av ' + targets.length + ' visas';
+      };
+      trigger.addEventListener('change', update);
+      update();
+      continue;
+    }
+    if (behavior.kind === 'spin') {
+      const update = () => {
+        const raw = Number(trigger.value);
+        const index = Number.isFinite(raw) ? Math.max(0, Math.min(targets.length - 1, Math.round(raw))) : 0;
+        for (let i = 0; i < targets.length; i++) targets[i].hidden = i !== index;
+        trigger.setAttribute('aria-valuetext', 'Vy ' + (index + 1) + ' av ' + targets.length);
+      };
+      trigger.addEventListener('input', update);
+      trigger.addEventListener('change', update);
+      update();
+      continue;
+    }
     trigger.addEventListener('click', () => {
       const expanded = trigger.getAttribute('aria-expanded') !== 'true';
       for (const target of targets) target.hidden = !expanded;
@@ -54,8 +86,10 @@ export function escapeHtml(value: string): string {
 export function scriptJson(value: unknown): string {
   return JSON.stringify(value).replace(/</g, '\\u003c').replace(/&/g, '\\u0026').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')
 }
-export function websiteCsp(scriptSource: string): string {
-  return `default-src 'none'; script-src ${scriptSource}; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`
+export function websiteCsp(scriptSource: string,capabilities:{model3d?:boolean}={}): string {
+  const model3d=capabilities.model3d===true
+  const self=model3d?" 'self'":''
+  return `default-src 'none'; script-src ${scriptSource}${self}; style-src 'unsafe-inline'; img-src data:${self}; connect-src ${model3d?"'self'":"'none'"}; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`
 }
 
 /** Client-safe renderer; callers receive artifacts only through the authorized API. */
@@ -65,11 +99,12 @@ export function renderPreviewDocument(artifact: WebsiteArtifact, pageKey: string
   const match = page.html.match(/<script type="application\/json" id="__atlas_config">([\s\S]*?)<\/script>/)
   if (!match) throw new Error('PREVIEW_CONFIG_MISSING')
   const config = JSON.parse(match[1])
+  const model3d=Array.isArray(config?.behaviors)&&config.behaviors.some((behavior:any)=>behavior?.kind==='model3d')
   const bytes = new Uint8Array(24)
   globalThis.crypto.getRandomValues(bytes)
   const nonce = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
   return page.html
-    .replace(/<meta http-equiv="Content-Security-Policy" content="[^"]*">/, `<meta http-equiv="Content-Security-Policy" content="${escapeHtml(websiteCsp(`'nonce-${nonce}'`))}">`)
+    .replace(/<meta http-equiv="Content-Security-Policy" content="[^"]*">/, `<meta http-equiv="Content-Security-Policy" content="${escapeHtml(websiteCsp(`'nonce-${nonce}'`,{model3d}))}">`)
     .replace(match[0], `<script type="application/json" id="__atlas_config">${scriptJson({ ...config, preview: { token: channelToken, artifactHash: artifact.sha256,pageKey } })}</script>`)
     .replace(/<script src="website\.js" integrity="[^"]*" crossorigin="anonymous"><\/script>/, `<script nonce="${nonce}">${WEBSITE_RUNTIME}</script>`)
     .replace(/<script id="__atlas_runtime">[\s\S]*?<\/script>/, `<script nonce="${nonce}">${WEBSITE_RUNTIME}</script>`)

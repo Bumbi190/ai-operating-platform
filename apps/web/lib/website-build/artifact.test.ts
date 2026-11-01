@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import {createHash} from 'node:crypto'
 import JSZip from 'jszip'
 import { parse } from 'parse5'
 import { compileWebsiteArtifact, exportWebsiteZip, makePreviewDocument, WebsiteArtifactError } from './artifact'
@@ -20,6 +21,76 @@ describe('static website artifacts', () => {
     expect(() => compileWebsiteArtifact(withGroup())).toThrow(WebsiteArtifactError)
     expect(() => compileWebsiteArtifact(withGroup('bad group'))).toThrow(WebsiteArtifactError)
     expect(compileWebsiteArtifact(withGroup('products')).pages[0].html).toContain('"groupId":"products"')
+  })
+  it('compiles an accessible bounded 360-degree frame spin without model JavaScript', () => {
+    const pixel='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+    const frames=Array.from({length:4},(_,i)=>'<img id="frame-'+i+'" src="'+pixel+'" alt="Vy '+(i+1)+'"'+(i?' hidden':'')+'>').join('')
+    const input:any=draft('<section>'+frames+'<input id="spin" type="range" min="0" max="3" step="1" value="0" aria-label="Rotera bilen"></section>')
+    input.pages[0].behaviors=[{kind:'spin',triggerId:'spin',targetIds:['frame-0','frame-1','frame-2','frame-3']}]
+    const artifact=compileWebsiteArtifact(input)
+    expect(artifact.pages[0].html).toContain('"kind":"spin"')
+    expect(artifact.files.find(f=>f.path==='website.js')!.content).toContain("aria-valuetext")
+    const bad:any=structuredClone(input);bad.pages[0].bodyHtml=bad.pages[0].bodyHtml.replace('max="3"','max="2"')
+    expect(()=>compileWebsiteArtifact(bad)).toThrow(WebsiteArtifactError)
+    const visible:any=structuredClone(input);visible.pages[0].bodyHtml=visible.pages[0].bodyHtml.replace('id="frame-1" src="'+pixel+'" alt="Vy 2" hidden','id="frame-1" src="'+pixel+'" alt="Vy 2"')
+    expect(()=>compileWebsiteArtifact(visible)).toThrow(WebsiteArtifactError)
+  })
+
+  it('compiles only approved governed model3d assets and preserves a separate fallback target',()=>{
+    const assetId='vehicle3d:demo-motors-concept-v1'
+    const input:any=draft('<div id="viewer" data-vehicle-3d="'+assetId+'" aria-label="3D-vy"></div><section id="fallback">360 fallback</section>')
+    input.pages[0].behaviors=[{kind:'model3d',triggerId:'viewer',targetIds:['fallback'],assetId}]
+    const artifact=compileWebsiteArtifact(input)
+    expect(artifact.pages[0].html).toContain('"kind":"model3d"')
+    expect(artifact.pages[0].html).toContain('"assetId":"'+assetId+'"')
+
+    const unknown:any=structuredClone(input)
+    unknown.pages[0].behaviors[0].assetId='vehicle3d:unknown-asset'
+    expect(()=>compileWebsiteArtifact(unknown)).toThrow(WebsiteArtifactError)
+
+    const mismatch:any=structuredClone(input)
+    mismatch.pages[0].bodyHtml=mismatch.pages[0].bodyHtml.replace(assetId,'vehicle3d:other-asset')
+    expect(()=>compileWebsiteArtifact(mismatch)).toThrow(WebsiteArtifactError)
+  })
+  it('refuses model3d fallback ownership that overlaps a spin target',()=>{
+    const assetId='vehicle3d:demo-motors-concept-v1'
+    const pixel='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+    const frames=Array.from({length:4},(_,i)=>'<img id="frame-'+i+'" src="'+pixel+'" alt="Vy '+(i+1)+'"'+(i?' hidden':'')+'>').join('')
+    const input:any=draft('<div id="viewer" data-vehicle-3d="'+assetId+'"></div>'+frames+'<input id="spin" type="range" min="0" max="3" step="1" value="0">')
+    input.pages[0].behaviors=[
+      {kind:'spin',triggerId:'spin',targetIds:['frame-0','frame-1','frame-2','frame-3']},
+      {kind:'model3d',triggerId:'viewer',targetIds:['frame-0'],assetId}
+    ]
+    expect(()=>compileWebsiteArtifact(input)).toThrow(WebsiteArtifactError)
+  })
+
+  it('keeps governed model3d binaries outside HTML and copies them into static export',async()=>{
+    const assetId='vehicle3d:demo-motors-concept-v1'
+    const input:any=draft('<div id="viewer" data-vehicle-3d="'+assetId+'"></div><section id="fallback">Fallback</section>')
+    input.pages[0].behaviors=[{kind:'model3d',triggerId:'viewer',targetIds:['fallback'],assetId}]
+    const artifact:any=compileWebsiteArtifact(input)
+    expect(artifact.assets).toHaveLength(3)
+    expect(JSON.stringify(artifact)).not.toContain('data:model')
+    expect(JSON.stringify(artifact)).not.toContain('data:application/octet-stream')
+    const archive=await JSZip.loadAsync(await exportWebsiteZip(artifact))
+    const glb=artifact.assets.find((a:any)=>a.kind==='vehicle3d-glb')
+    const poster=artifact.assets.find((a:any)=>a.kind==='vehicle3d-poster')
+    const runtime=artifact.assets.find((a:any)=>a.kind==='model3d-runtime')
+    expect(glb.path).toBe('assets/3d/a8e79963c6b370c32611aca2514caa8213368666ee34a305ef6be45dd38aa0cb.glb')
+    expect(poster.path).toBe('assets/3d/2b90c29009b92c32c403cf1eabdf79e07efb6e6c59b122308939d53b42c1a091.webp')
+    expect(runtime.path).toBe('assets/runtime/9501c3559f0bb8ac281e5c3e04a37f929f548ce278d92aff1701bb61d2a1692a.js')
+    expect(artifact.pages[0].html).toContain(glb.path)
+    expect(artifact.pages[0].html).toContain(poster.path)
+    expect(artifact.pages[0].html).toContain('<script type="module" src="'+runtime.path+'"')
+    expect(artifact.pages[0].html).toContain("connect-src &#39;self&#39;")
+    expect(artifact.pages[0].html).not.toMatch(/https?:\/\//)
+    const glbBytes=await archive.file(glb.path)!.async('uint8array')
+    const posterBytes=await archive.file(poster.path)!.async('uint8array')
+    const runtimeBytes=await archive.file(runtime.path)!.async('uint8array')
+    expect(createHash('sha256').update(glbBytes).digest('hex')).toBe(glb.sha256)
+    expect(createHash('sha256').update(posterBytes).digest('hex')).toBe(poster.sha256)
+    expect(createHash('sha256').update(runtimeBytes).digest('hex')).toBe(runtime.sha256)
+    expect(archive.file('index.html')).not.toBeNull()
   })
   it('compiles_real_two_page_site', () => {
     const artifact = compileWebsiteArtifact(draft())

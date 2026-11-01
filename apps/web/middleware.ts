@@ -38,6 +38,13 @@ export async function middleware(request: NextRequest) {
       (path === '/atlas-voice-provider-probe.html' || path === '/atlas-voice-connection-probe.html')) {
     return new NextResponse(null, { status: 404 })
   }
+  // The Studio's opaque-origin iframe can fetch only immutable, built-in,
+  // hash-addressed fictional 3D demo assets. The exact route allowlist
+  // independently verifies bytes and refuses unknown paths; no user media.
+  if ((request.method === 'GET' || request.method === 'HEAD') &&
+      /^\/assets\/(?:3d\/[a-f0-9]{64}\.(?:glb|webp)|runtime\/[a-f0-9]{64}\.js)$/.test(path)) {
+    return NextResponse.next({ request })
+  }
   // Public, credential-free executable asset: microphone startup must not wait
   // for session refresh or membership reads.
   if ((path === '/atlas-voice-recorder.js' || /^\/atlas-vad\/(?:silero_vad_v5\.onnx|ort\.wasm\.min\.mjs|ort-wasm-simd-threaded\.(?:wasm|mjs))$/.test(path)) && (request.method === 'GET' || request.method === 'HEAD')) {

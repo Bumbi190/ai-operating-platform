@@ -1,0 +1,29 @@
+{
+  "scope": "Exact source files only; no SQL apply or feature merge",
+  "migrations": [
+    {
+      "file": "20261031100000_sales_b2b_offers.sql",
+      "sourceCommit": "f4d41f520d724cbb2f4340ae1048cc416c0ac033",
+      "verifiedPrHead": "61ddec2a7f0d4351a60c8a22ce693aa7c9daa763",
+      "pr": 386,
+      "sha256": "800f26eae81dd488c6940685b57a85ab5bb5dce5f216d804276f94b596c3b0a3",
+      "bytes": 20292
+    },
+    {
+      "file": "20261031110000_sales_discovery_candidates.sql",
+      "sourceCommit": "f4d41f520d724cbb2f4340ae1048cc416c0ac033",
+      "verifiedPrHead": "61ddec2a7f0d4351a60c8a22ce693aa7c9daa763",
+      "pr": 386,
+      "sha256": "d4554400122bb3e29cf02b5aa49a2a4230409f8e0dd09ce5e1aededc3b485174",
+      "bytes": 26269
+    },
+    {
+      "file": "20261031150000_social_owner_crosschat_context.sql",
+      "sourceCommit": "fab9c33670e78eca23e63614ecbd3cd7e9db55a9",
+      "verifiedPrHead": "876c93a085219a7e639cb9bb5ef3d5d3162b0311",
+      "pr": 609,
+      "sha256": "9fdaac74439e120c6f8d6b741cbdab46c8d0510a6864464b57de2f566dae519e",
+      "bytes": 1322
+    }
+  ]
+}

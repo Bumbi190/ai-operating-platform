@@ -1,5 +1,7 @@
 import {decodeCalendarEffect,type CalendarChangedEffect} from '@/lib/calendar/stream-effect';
 import { buildChatRequestBody } from "@/lib/atlas/view-client";
+import {decodeReferenceSaveResponse,parseReferenceSaveSelection,REFERENCE_SAVED_NOTICE} from "@/lib/website-build/assets/reference-save-contract";
+import type {ReferenceMessageReceipt} from "@/lib/website-build/assets/persist-reference-turn";
 import {
   applyStreamEvent,
   hydrateTranscript,
@@ -62,7 +64,7 @@ type Activate = {
   plan?: PlanView | null;
   session?: BuildSessionView | null;
 };
-export type TurnResult = { ok: boolean; notice?: string };
+export type TurnResult = { ok: boolean; notice?: string; referenceReceipt?:ReferenceMessageReceipt };
 export type AtlasTurnSettlement = { conversationId: string; generation: number; current: boolean; ok: boolean };
 type Turn = {
   conversationId: string;
@@ -75,6 +77,8 @@ type Turn = {
 };
 export class AtlasConversationController {
   private conversations = new Map<string, ConversationSnapshot>();
+  private confirmedReferenceMessages = new Map<string,Set<string>>();
+  private referenceSaveOwners = new Map<string,symbol>();
   private active = empty();
   private generation = 0;
   private listeners = new Set<() => void>();
@@ -193,6 +197,7 @@ export class AtlasConversationController {
       if (!preserveCompact) this.compactPending = null;
     }
     let s = this.conversations.get(input.id);
+    let replaceMessageIds=!s;
     if (!s)
       s = {
         ...empty(),
@@ -218,6 +223,7 @@ export class AtlasConversationController {
       // recovery or newer authoritative history must rehydrate the transcript.
       const rehydrate = !s.pending && input.state === "ok" &&
         (s.state === "error" || !savedIsPrefix || incomingHistory.length > s.history.length);
+      replaceMessageIds=rehydrate;
       const sessionChanged = !s.pending && !!input.session &&
         input.session.sessionId !== s.session?.sessionId;
       s = {
@@ -235,6 +241,11 @@ export class AtlasConversationController {
         ...(sessionChanged ? { viewedRevisionId: null, panelOpen: true } : {}),
       };
     }
+    if(!s.pending&&input.state==='ok'){
+      const ids=replaceMessageIds?new Set<string>():this.confirmedReferenceMessages.get(input.id)??new Set<string>();
+      for(const row of input.saved)if(row.role==='user'&&typeof row.id==='string'&&typeof row.content==='string'&&row.content.trim())ids.add(row.id);
+      this.confirmedReferenceMessages.set(input.id,ids);
+    }
     this.conversations.set(input.id, s);
     this.active = s;
     this.listeners.forEach((f) => f());
@@ -251,6 +262,8 @@ export class AtlasConversationController {
     this.compactPending = null;
     this.generation++;
     this.conversations.clear();
+    this.confirmedReferenceMessages.clear();
+    this.referenceSaveOwners.clear();
     this.active = empty();
     this.listeners.forEach((f) => f());
   }
@@ -288,6 +301,55 @@ export class AtlasConversationController {
     if(id===s.viewedRevisionId)return
     if (s.id && (!id || s.session?.revisions.some((r) => r.id === id)))
       this.update(s.id, { viewedRevisionId: id });
+  }
+  /** Explicit persistence operation. It never starts the normal model stream. */
+  async saveReferenceTurn(turn:{conversationId:string;text:string;ticketIds:string[];idempotencyKey:string}):Promise<TurnResult>{
+    const start=this.conversations.get(turn.conversationId),id=turn.conversationId;
+    const selection=parseReferenceSaveSelection({ticketIds:turn.ticketIds,idempotencyKey:turn.idempotencyKey});
+    const text=turn.text.trim();
+    if(!start||start.pending||start.state!=="ok"||!start.studio||!start.projectId||
+       this.active.id!==id||!selection||!text||text.length>10000)return {ok:false};
+    const projectId=start.projectId,token=Symbol(),generation=this.generation;
+    let result:TurnResult={ok:false};
+    const knownAtStart=new Set(this.confirmedReferenceMessages.get(id));
+    this.referenceSaveOwners.set(id,token);
+    const ownsSave=()=>this.referenceSaveOwners.get(id)===token;
+    const history:HistoryMessage[]=[...start.history,{role:"user",content:text}];
+    const entries:TranscriptEntry[]=[...start.entries,{kind:"user",text}];
+    this.update(id,{history,entries,pending:true});
+    const fail=(notice:string):TurnResult=>{
+      if(ownsSave())this.update(id,{history:start.history,entries:[...start.entries,{kind:"notice",tone:"error",text:notice}]});
+      return {ok:false,notice};
+    };
+    try{
+      const response=await this.request("/api/chat",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify(buildChatRequestBody({messages:history,conversation_id:id,
+          studioContext:{projectId,conversationId:id},referenceSave:selection})),
+      });
+      const value=await response.json().catch(()=>null);
+      // Navigation keeps the owned conversation cache; signout clears ownership.
+      if(!ownsSave())return {ok:false};
+      if(!response.ok)return fail(failedResponseNotice(response.status,value));
+      const receipt=response.status===202?decodeReferenceSaveResponse(value,{
+        projectId,conversationId:id,imageCount:selection.ticketIds.length,
+      }):null;
+      if(!receipt)return fail("Sparandet kunde inte verifieras. Försök igen med samma meddelande.");
+      const seen=knownAtStart.has(receipt.messageId);
+      const ids=this.confirmedReferenceMessages.get(id)??new Set<string>();
+      ids.add(receipt.messageId);this.confirmedReferenceMessages.set(id,ids);
+      const confirmedEntries=seen?start.entries:entries;
+      const alreadyNoticed=seen&&confirmedEntries.some(entry=>entry.kind==='notice'&&entry.tone==='info'&&entry.text===REFERENCE_SAVED_NOTICE);
+      this.update(id,{history:seen?start.history:history,
+        entries:alreadyNoticed?confirmedEntries:[...confirmedEntries,{kind:"notice",tone:"info",text:REFERENCE_SAVED_NOTICE}]});
+      return result={ok:true,referenceReceipt:receipt};
+    }catch{
+      return fail(CONNECTION_FAILED_NOTICE);
+    }finally{if(ownsSave()){
+      this.referenceSaveOwners.delete(id);this.update(id,{pending:false});
+      const event={conversationId:id,generation,current:this.active.id===id&&this.generation===generation,ok:result.ok};
+      this.settledListeners.forEach(listener=>listener(event));
+    }}
   }
   async sendTurn(turn: Turn): Promise<TurnResult> {
     const start = this.conversations.get(turn.conversationId);

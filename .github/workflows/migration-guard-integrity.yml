@@ -50,6 +50,9 @@ jobs:
           npx --no vitest run lib/qa/migration-guard-v2.test.ts \
             lib/qa/handlarborsen-watch-runs-migration.test.ts \
             lib/qa/sales-inbox-ledger-reconciliation.test.ts \
+            lib/qa/web-studio-migration-reconciliation.test.ts \
+            lib/qa/web-studio-exact-claim-reconciliation.test.ts \
+            lib/qa/web-studio-campaign-reconciliation.test.ts \
             --reporter=default --reporter=json \
             --outputFile="$RUNNER_TEMP/migration-guard-integrity.json"
 
@@ -77,6 +80,27 @@ jobs:
           const salesAssertions = sales?.assertionResults ?? []
           if (salesAssertions.length < 3 || salesAssertions.some(assertion => assertion.status !== 'passed')) {
             console.error('::error::all three exact sales inbox source/ledger/registry checks must pass')
+            process.exit(1)
+          }
+
+          const studio = files.find(file => String(file.name).endsWith('/web-studio-migration-reconciliation.test.ts'))
+          const studioAssertions = studio?.assertionResults ?? []
+          if (studioAssertions.length < 5 || studioAssertions.some(assertion => assertion.status !== 'passed')) {
+            console.error('::error::all five exact Web Studio source/ledger reconciliation checks must pass')
+            process.exit(1)
+          }
+
+          const exactClaim = files.find(file => String(file.name).endsWith('/web-studio-exact-claim-reconciliation.test.ts'))
+          const exactAssertions = exactClaim?.assertionResults ?? []
+          if (exactAssertions.length < 5 || exactAssertions.some(assertion => assertion.status !== 'passed')) {
+            console.error('::error::all five exact-claim source/ledger checks must pass')
+            process.exit(1)
+          }
+
+          const campaign = files.find(file => String(file.name).endsWith('/web-studio-campaign-reconciliation.test.ts'))
+          const campaignAssertions = campaign?.assertionResults ?? []
+          if (campaignAssertions.length < 4 || campaignAssertions.some(assertion => assertion.status !== 'passed')) {
+            console.error('::error::all four Studio campaign-history checks must pass')
             process.exit(1)
           }
 

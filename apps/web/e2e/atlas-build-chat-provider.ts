@@ -13,6 +13,9 @@ export default class FixtureAnthropic {
    const current=ref?JSON.parse(ref):null
    const studio=system.match(/ACTIVE WEBSITE STUDIO PROJECT: (\{[^\n]*?\});/)?.[1]
    const projectId=studio?JSON.parse(studio).projectId:TEST_PROJECT
+   // Explicit authored provider fixture only; actual plan tool and approvals remain unchanged.
+   if(text.includes('premium-dealer-demo-v1'))return {stop_reason:'tool_use',content:[{type:'tool_use',id:'fixture-'+crypto.randomUUID(),name:'draft_website_build_plan',input:{projectId,...(current?{planId:current.planId}:{}),expectedRevisionId:current?.revisionId??null,idempotencyKey:crypto.randomUUID(),content:{title:'Handlarbörsen',purpose:'Fiktiv ensidesdemo för en bilhandlare',audience:'Bilhandlare',pages:[{key:'index',title:'Hem',purpose:'Showroom och åtta exempelbilar'}],design:{style:'Mörkt showroom med varm amberaccent',reference:null,starter:'premium-dealer-demo-v1'},features:[{name:'Filter och testförfrågan',mode:'preview_demo',provider:null}],architecture:'Statisk fiktiv demo, inga riktiga kunder eller utskick',steps:['Granska','Bygg'],domain:{registrar:'strato',requestedName:null}}}}]}
+
    return {stop_reason:'tool_use',content:[{type:'tool_use',id:'fixture-'+crypto.randomUUID(),name:'draft_website_build_plan',input:{projectId,...(current?{planId:current.planId}:{}),expectedRevisionId:current?.revisionId??null,idempotencyKey:crypto.randomUUID(),content:{title:'Caféets hemsida',purpose:text,audience:'Gäster',pages:[{key:'index',title:'Hem',purpose:'Visa caféet'},{key:'contact',title:'Kontakt',purpose:'Hitta oss'}],design:{style:'Omniras färger',reference:null},features:[],architecture:'Statisk hemsida med två sidor',steps:['Bygg','Kontrollera'],domain:{registrar:'strato',requestedName:'cafe-exempel.se'}}}}]}
   }}
  }}

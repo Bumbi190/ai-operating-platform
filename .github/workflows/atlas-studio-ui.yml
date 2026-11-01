@@ -67,6 +67,42 @@ on:
       - 'apps/web/lib/website-build/studio/api.ts'
       - 'apps/web/app/api/website-build/studio/costs/**'
       - 'apps/web/playwright.atlas-studio-ui.config.ts'
+      - 'apps/web/playwright.atlas-builder-studio.config.ts'
+      - 'apps/web/e2e/atlas-builder-*.ts*'
+      - 'apps/web/e2e/atlas-build-chat-*'
+      - 'apps/web/e2e/website-build-*'
+      - 'apps/web/scripts/run-website-sql-roundtrip.mjs'
+      - 'apps/web/scripts/website-test-*'
+      - 'apps/web/lib/website-build/test-db*'
+      - 'apps/web/lib/qa/website-showroom-fixture.test.ts'
+      - 'apps/web/scripts/reference-*'
+      - 'apps/web/lib/qa/website-reference-auth.integration.test.ts'
+      - 'apps/web/lib/website-build/assets/**'
+      - 'apps/web/lib/website-build/reference-analysis/**'
+      - 'apps/web/e2e/reference-picker/**'
+      - 'apps/web/playwright.reference-picker.config.ts'
+      - 'apps/web/e2e/website-catalog/**'
+      - 'apps/web/e2e/website-starter/**'
+      - 'apps/web/playwright.website-starter.config.ts'
+      - 'apps/web/e2e/website-model3d/**'
+      - 'apps/web/playwright.website-model3d.config.ts'
+      - 'apps/web/lib/website-build/model3d-*'
+      - 'apps/web/lib/website-build/public-preview-*'
+      - 'apps/web/lib/website-build/runtime/**'
+      - 'apps/web/app/assets/**'
+      - 'apps/web/lib/website-build/model-rasters*'
+      - 'apps/web/playwright.website-catalog.config.ts'
+      - 'apps/web/lib/website-build/catalog-filter.test.ts'
+      - 'apps/web/lib/website-build/templates/**'
+      - 'apps/web/app/api/website-build/references/**'
+      - 'apps/web/vitest.reference-auth.config.ts'
+      - 'apps/web/playwright.reference-auth.config.ts'
+      - 'apps/web/e2e/reference-auth/**'
+      - 'apps/web/middleware.ts'
+      - 'apps/web/app/(auth)/login/**'
+      - 'apps/web/lib/auth/**'
+      - 'apps/web/lib/supabase/**'
+      - 'docs/sql/atlas-builder-reference-*-proposed.sql'
       - '.github/workflows/atlas-studio-ui.yml'
 permissions:
   contents: read
@@ -85,9 +121,19 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck --workspace=apps/web
-      - run: npx vitest run lib/website-build/studio/costs.test.ts lib/website-build/artifact.test.ts lib/website-build/rejected-draft.test.ts lib/website-build/feedback-interpretation.test.ts lib/qa/runner-text-output.test.ts lib/qa/atlas-home-markdown.test.tsx lib/qa/atlas-static-conversation-route.test.ts lib/qa/atlas-openai-chat.test.ts lib/qa/openai-stream-metering.test.ts lib/qa/m0-spend-ceiling.test.ts lib/qa/m0-durable-spend.test.ts lib/qa/execution-authority-signal.test.ts
+      - run: npx vitest run lib/website-build/studio/costs.test.ts lib/website-build/artifact.test.ts lib/website-build/catalog-filter.test.ts lib/website-build/templates lib/website-build/planning/starter-flow.test.ts lib/website-build/model-rasters.test.ts lib/website-build/rejected-draft.test.ts lib/website-build/feedback-interpretation.test.ts lib/qa/runner-text-output.test.ts lib/qa/atlas-home-markdown.test.tsx lib/qa/atlas-static-conversation-route.test.ts lib/qa/atlas-openai-chat.test.ts lib/qa/openai-stream-metering.test.ts lib/qa/m0-spend-ceiling.test.ts lib/qa/m0-durable-spend.test.ts lib/qa/execution-authority-signal.test.ts
         working-directory: apps/web
       - run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+      - run: npx vitest run lib/website-build/assets lib/website-build/reference-analysis lib/atlas/conversation/controller.test.ts
+        working-directory: apps/web
+      - run: npx playwright test --config=playwright.reference-picker.config.ts
+        working-directory: apps/web
+      - run: npx playwright test --config=playwright.website-catalog.config.ts
+        working-directory: apps/web
+      - run: npx playwright test --config=playwright.website-starter.config.ts
+        working-directory: apps/web
+      - run: npx playwright test --config=playwright.website-model3d.config.ts
         working-directory: apps/web
       - run: npx playwright test --config=playwright.atlas-studio-ui.config.ts
         working-directory: apps/web
@@ -115,4 +161,83 @@ jobs:
             .superpowers/sdd/2026-10-16-atlas-social-start/browser
             .superpowers/sdd/2026-10-16-atlas-social-publication/browser
             .superpowers/sdd/2026-10-16-atlas-social-content/browser
+          retention-days: 5
+
+  reference-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ATLAS_REFERENCE_TEST_MODE: isolated-local
+      NODE_OPTIONS: --max-old-space-size=512
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Pull pinned disposable test services
+        run: |
+          docker pull postgres:17-alpine
+          docker pull supabase/gotrue:v2.197.0
+          docker pull postgrest/postgrest:v16.5
+          docker pull supabase/storage-api:v1.79.36
+      - name: Verify opt-in and endpoint guards
+        working-directory: apps/web
+        run: node --test scripts/reference-local-stack.test.mjs
+      - name: Run real local Auth Storage and reference handlers
+        working-directory: apps/web
+        run: npx --no-install vitest run --config vitest.reference-auth.config.ts
+      - name: Verify browser HTTP guard
+        working-directory: apps/web
+        run: node --test e2e/reference-auth/fetch-guard.test.cjs e2e/reference-auth/transports.test.cjs e2e/reference-auth/lifecycle.test.mjs e2e/reference-auth/cors.test.mjs
+      - name: Install isolated Chromium
+        working-directory: apps/web
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Run real browser login cookies middleware and references
+        working-directory: apps/web
+        run: node scripts/reference-browser-test.mjs
+      - name: Verify no fixture resources remain
+        if: always()
+        run: |
+          test -z "$(docker ps -aq --filter label=omnira.reference.auth.fixture)"
+          test -z "$(docker network ls -q --filter label=omnira.reference.auth.fixture)"
+
+  studio-journey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      WEBSITE_SQL_ROUNDTRIP: isolated-local
+      NODE_OPTIONS: --max-old-space-size=512
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify isolated target and runner argument guards
+        run: node --test apps/web/scripts/website-test-target.test.mjs apps/web/scripts/website-test-mode.test.mjs
+      - name: Cache disposable PostgreSQL image
+        run: docker pull postgres:17-alpine
+      - name: Install isolated Chromium
+        working-directory: apps/web
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Verify isolated SQL planning and build regressions
+        run: node apps/web/scripts/run-website-sql-roundtrip.mjs
+      - name: Verify Studio controls with real SQL and fixture models
+        run: node apps/web/scripts/run-website-sql-roundtrip.mjs --studio
+      - name: Verify owned SQL cleanup
+        if: always()
+        run: test -z "$(docker ps -aq --filter label=com.omnira.website.sql.run)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: atlas-studio-journey
+          path: .superpowers/sdd/2026-10-31-web-studio-sql-roundtrip/runs
+          include-hidden-files: true
           retention-days: 5

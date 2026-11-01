@@ -11,6 +11,7 @@ import { projectScope } from '@/lib/governance/execution-stop'
 import { composeAgentDesignSkills } from '@/lib/skills/compose-agent-skills'
 import { compileWebsiteArtifact, WebsiteArtifactError } from './artifact'
 import { rejectedDraftLog } from './rejected-draft'
+import {resolveWebsiteModelRasters} from './model-rasters'
 import { recoverWebsiteArtifact } from './recovery'
 import { commitBuildRevision, loadBuildSnapshot, parkBuildSession, recordBuildInterpretation, saveBuildCandidate, setBuildStage, WebsiteBuildError } from './store'
 import { interpretBuildFeedback, parseWebsiteModelJson, WebsiteBuildPermanentError } from './feedback-interpretation'
@@ -18,8 +19,13 @@ import {assertApprovedWebsiteScope} from './planning/design-reference'
 import { FEEDBACK_CONTRACT, WEBSITE_OUTPUT_CONTRACT, websiteUserMessage } from './prompt'
 import type { WriterRef } from './types'
 export { isWebsiteBuildPermanentError } from './feedback-interpretation'
+export type WebsiteBuildPaidStep={
+  projectId:string;sessionId:string;runId:string;claimId:string;generation:number
+  operation:string;model:string;maxTokens:number;temperature:number;systemPrompt:string;userMessage:string
+}
+export type WebsiteBuildWorkerHooks={beforePaidStep?:(step:WebsiteBuildPaidStep)=>void|Promise<void>}
 export function isWebsiteBuildRun(kind: unknown): boolean { return kind === 'website.static.build.v1' }
-export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminClient>, run: Run, claimId: string): Promise<void> {
+export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminClient>, run: Run, claimId: string, hooks:WebsiteBuildWorkerHooks={}): Promise<void> {
   if (!isWebsiteBuildRun(run.kind)) throw new WebsiteBuildPermanentError('INVALID_BUILD_RUN')
   const input = run.input as Record<string, unknown> | null
   if (!input || input.projectId !== run.project_id || typeof input.sessionId !== 'string' || !Number.isSafeInteger(input.generation)) throw new WebsiteBuildPermanentError('INVALID_BUILD_BINDING')
@@ -74,7 +80,15 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
       await gate('website:before:' + operation)
       snapshot = await loadBuildSnapshot(db, writer)
       if (snapshot.controlRequested === 'pause') { await parkBuildSession(db, writer); return null }
-      const result = await runStep({ execution: { context: 'AUTONOMOUS', scope: projectScope({ projectId: writer.projectId }) }, authority: { kind: 'RUN_BOUND', runId: run.id, claimId }, runId: run.id, cost: { projectId: writer.projectId, agent: agent.name, operation }, model: executionModel, systemPrompt, userMessage, maxTokens, temperature: config?.temperature ?? 0.7 })
+      const temperature=config?.temperature ?? 0.7
+      if(hooks.beforePaidStep){
+        await hooks.beforePaidStep({projectId:writer.projectId,sessionId:writer.sessionId,runId:run.id,claimId,generation:writer.generation,operation,model:executionModel,maxTokens,temperature,systemPrompt,userMessage})
+        // The attended hook may take time. Re-establish stop/claim authority immediately before the governed provider path.
+        await gate('website:after-owner-allowance:' + operation)
+        snapshot=await loadBuildSnapshot(db,writer)
+        if(snapshot.controlRequested==='pause'){await parkBuildSession(db,writer);return null}
+      }
+      const result = await runStep({ execution: { context: 'AUTONOMOUS', scope: projectScope({ projectId: writer.projectId }) }, authority: { kind: 'RUN_BOUND', runId: run.id, claimId }, runId: run.id, cost: { projectId: writer.projectId, agent: agent.name, operation }, model: executionModel, systemPrompt, userMessage, maxTokens, temperature })
       // Always re-establish; also satisfies a sticky authorityRefreshRequired latch.
       await gate('website:after:' + operation)
       if(['max_tokens','model_context_window_exceeded','length'].includes(result.stopReason??''))throw new WebsiteBuildPermanentError('MODEL_OUTPUT_TRUNCATED','Byggsvaret nådde sin längdgräns innan paketet var färdigt. Ingen automatisk betald omkörning görs.')
@@ -101,7 +115,7 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
       else {
       const result = await paid(knowledge.systemPrompt + '\n\n' + WEBSITE_OUTPUT_CONTRACT, websiteUserMessage(snapshot, interpretation), config?.max_tokens ?? 12000, 'website.artifact.generate')
       if (!result) return
-      try { artifact = compileWebsiteArtifact(parseWebsiteModelJson(result.content));assertApprovedWebsiteScope(artifact,snapshot.designReference) }
+      try { artifact = compileWebsiteArtifact(resolveWebsiteModelRasters(parseWebsiteModelJson(result.content),snapshot));assertApprovedWebsiteScope(artifact,snapshot.designReference) }
       catch (error) {
         if (error instanceof WebsiteArtifactError || error instanceof WebsiteBuildPermanentError) {
           // This response already failed permanently. Finalization checks claim

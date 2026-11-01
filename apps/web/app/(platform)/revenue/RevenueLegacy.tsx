@@ -131,8 +131,8 @@ export async function RevenueLegacy() {
   const scopedIds = scopeProjectFilter(allowedProjectIds)
 
   const now = new Date()
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString()
   const sevenDaysAgo  = new Date(now.getTime() -  7 * 24 * 60 * 60 * 1000).toISOString()
+  // Fetch the full calendar month; a rolling 30-day read loses day one in 31-day months.
   const monthStart    = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
 
   // ── 1. Projects ─────────────────────────────────────────────────────────
@@ -147,12 +147,12 @@ export async function RevenueLegacy() {
   const projects: ProjectRow[] = (projectsRaw ?? []) as ProjectRow[]
   const projectById = new Map(projects.map(p => [p.id, p]))
 
-  // ── 2. Revenue events (last 30 days) ─────────────────────────────────
+  // ── 2. Revenue events (calendar month to date) ─────────────────────────────────
   const { data: revenueRaw } = await (db as any)
     .from('revenue_events')
     .select('id, project_id, amount_sek, source, description, occurred_at')
     .in('project_id', scopedIds)
-    .gte('occurred_at', thirtyDaysAgo)
+    .gte('occurred_at', monthStart)
 
   const revenueEvents: RevenueEvent[] = (revenueRaw ?? []) as RevenueEvent[]
 
@@ -165,7 +165,7 @@ export async function RevenueLegacy() {
 
   const leads: Lead[] = (leadsRaw ?? []) as Lead[]
 
-  // ── 4. Run logs for AI cost (last 30 days) ────────────────────────────
+  // ── 4. Run logs for AI cost (calendar month to date) ────────────────────────────
   // `run_logs` has no project_id of its own — its only ownership link is the
   // parent run. `runs!inner` turns the embed into a JOIN so `runs.project_id`
   // can be filtered IN THE QUERY; a plain embed would still return every
@@ -184,7 +184,7 @@ export async function RevenueLegacy() {
       )
     `)
     .in('runs.project_id', scopedIds)
-    .gte('created_at', thirtyDaysAgo)
+    .gte('created_at', monthStart)
     .eq('role', 'assistant')
     .not('tokens_in', 'is', null)
 

@@ -24,6 +24,9 @@ jobs:
         run: |
           npx --no vitest run \
             lib/social-launch/campaign \
+            lib/social-launch/preparation-receipts.test.ts \
+            lib/qa/nova-social-receipts-route.test.ts \
+            lib/qa/atlas-status-honesty-route.test.ts \
             lib/social-launch/content/campaign-capability.test.ts \
             lib/social-launch/publication/linkedin-adapter.test.ts \
             lib/qa/atlas-project-task-context.test.ts \
@@ -34,13 +37,13 @@ jobs:
             lib/qa/execution-authority-signal.test.ts \
             lib/qa/atlas-static-conversation-route.test.ts \
             lib/qa/handlarborsen-strato-inbox-intent.test.ts \
-            --reporter=json --outputFile=../../nova-campaign-vitest.json
+            --maxWorkers=2 --minWorkers=1 --reporter=json --outputFile=../../nova-campaign-vitest.json
       - name: Require every suite, no skipped or failed tests
         run: |
           node --input-type=module <<'NODE'
           import {readFileSync} from 'node:fs'
           const report=JSON.parse(readFileSync('nova-campaign-vitest.json','utf8'))
-          if(report.testResults.length<21||report.numTotalTests<362||report.numPendingTests!==0||report.numFailedTests!==0||report.numPassedTests!==report.numTotalTests)throw Error('Incomplete campaign boundary proof')
+          if(report.testResults.length<24||report.numTotalTests<464||report.numPendingTests!==0||report.numFailedTests!==0||report.numPassedTests!==report.numTotalTests)throw Error('Incomplete campaign boundary proof')
           for(const suite of report.testResults)if(suite.status!=='passed'||suite.assertionResults.some(test=>test.status!=='passed'))throw Error('Missing or skipped suite: '+suite.name)
           console.log(report.numPassedTests+' campaign/regression tests passed with no skips')
           NODE

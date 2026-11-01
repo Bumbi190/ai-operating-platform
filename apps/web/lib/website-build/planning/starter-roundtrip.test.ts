@@ -46,8 +46,8 @@ describe('real SQL starter tool to build and edit; provider output is a fixture'
   const first=await readBuildSession(db,TEST_PRINCIPAL,s),artifact=await readBuildArtifact(db,TEST_PRINCIPAL,s,first.activePreviewRevisionId!)
   expect(first.status).toBe('ready');expect(artifact.pages[0].html).not.toContain('atlas-asset:')
   const images=artifact.pages[0].html.match(/src="data:image\/webp;base64,[^"]+"/g)!
-  expect(images).toHaveLength(21)
-  // Includes the GLB-matched concept poster in addition to the prior approved image sources.
+  // Includes repeated approved showroom artwork (hero/footer), 12 spin angles and a distinct GLB-matched poster.
+  expect(images).toHaveLength(22)
   expect(new Set(images).size).toBe(18)
   const feedback=await appendBuildFeedback(db,TEST_PRINCIPAL,s,{idempotencyKey:randomUUID(),text:'Byt bara accentfärgen till #71d7ba. Behåll bilderna.',inputSource:'text',viewedRevisionId:first.activePreviewRevisionId})
   const edited={...source,css:source.css!.replaceAll('#efb563','#71d7ba')}

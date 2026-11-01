@@ -16,7 +16,7 @@
     "source": {
       "type": "blender_concept",
       "sha256": "31dbc9e2653e27df224999f3487289bad86e37bb33e190ba566a8c8ae5c174ba",
-      "ref": "showroom.blend"
+      "ref": "apps/web/e2e/website-catalog/assets/premium/3d/source/demo-motors-concept.blend"
     }
   }
 ]

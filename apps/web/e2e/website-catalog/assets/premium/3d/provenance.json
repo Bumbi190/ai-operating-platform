@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "truthClass": "fictional_concept",
+  "vehicleIdentity": "Demo Motors fictional concept",
+  "blenderVersion": "5.2.2 LTS",
+  "source": {
+    "file": "source/demo-motors-concept.blend",
+    "bytes": 117464,
+    "sha256": "31dbc9e2653e27df224999f3487289bad86e37bb33e190ba566a8c8ae5c174ba"
+  },
+  "outputs": [
+    {
+      "file": "demo-motors-concept.glb",
+      "format": "glTF 2.0 binary",
+      "bytes": 64132,
+      "sha256": "a8e79963c6b370c32611aca2514caa8213368666ee34a305ef6be45dd38aa0cb",
+      "verifiedImportMeshes": 24
+    },
+    {
+      "file": "demo-motors-poster.webp",
+      "format": "WebP",
+      "width": 1280,
+      "height": 720,
+      "bytes": 80194,
+      "sha256": "2b90c29009b92c32c403cf1eabdf79e07efb6e6c59b122308939d53b42c1a091"
+    }
+  ],
+  "exportedObjects": [
+    "Body",
+    "Cabin",
+    "FrontLED",
+    "FrontLEDWrapL",
+    "FrontLEDWrapR",
+    "FrontSplitter",
+    "Hub",
+    "Hub.001",
+    "Hub.002",
+    "Hub.003",
+    "RearDiffuser",
+    "RearLED",
+    "Rim",
+    "Rim.001",
+    "Rim.002",
+    "Rim.003",
+    "RoofPanel",
+    "SideSkirtL",
+    "SideSkirtR",
+    "Spoiler",
+    "Tire",
+    "Tire.001",
+    "Tire.002",
+    "Tire.003"
+  ],
+  "excludedShowroomObjects": [
+    "Floor",
+    "Pedestal",
+    "PedestalRing",
+    "Camera",
+    "KeyLight",
+    "RimLight",
+    "TopFill"
+  ],
+  "notes": [
+    "Poster and GLB were produced from the same exact .blend source.",
+    "This asset is a fictional concept and is not a digital twin or representation of a real stock vehicle."
+  ]
+}

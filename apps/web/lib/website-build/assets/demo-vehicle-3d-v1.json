@@ -1,0 +1,22 @@
+[
+  {
+    "id": "vehicle3d:demo-motors-concept-v1",
+    "truthClass": "fictional_concept",
+    "approved": true,
+    "glb": {
+      "sha256": "a8e79963c6b370c32611aca2514caa8213368666ee34a305ef6be45dd38aa0cb",
+      "path": "assets/3d/a8e79963c6b370c32611aca2514caa8213368666ee34a305ef6be45dd38aa0cb.glb",
+      "bytes": 64132
+    },
+    "poster": {
+      "sha256": "2b90c29009b92c32c403cf1eabdf79e07efb6e6c59b122308939d53b42c1a091",
+      "path": "assets/3d/2b90c29009b92c32c403cf1eabdf79e07efb6e6c59b122308939d53b42c1a091.webp",
+      "bytes": 80194
+    },
+    "source": {
+      "type": "blender_concept",
+      "sha256": "31dbc9e2653e27df224999f3487289bad86e37bb33e190ba566a8c8ae5c174ba",
+      "ref": "showroom.blend"
+    }
+  }
+]

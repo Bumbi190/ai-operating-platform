@@ -83,3 +83,12 @@ Before a real vehicle can be published:
 ## Budget boundary
 The existing Demo Motors Blender source should be reused first, so V1 can be developed without consuming the approved $10 AI/media allowance.
 Any paid scanning/model-generation/vendor asset purchase is a new cost decision and must be approved separately.
+
+## Optional Higgsfield production lane
+Higgsfield is an optional production tool, never the website runtime or truth authority.
+- Available 3D models include SAM 3 image-to-GLB, Meshy single/multi-image-to-GLB and Hunyuan3D multi-view GLB generation.
+- Prefer the existing exact Blender/GLB source when one exists; reconstructing an already-known model from images is a downgrade risk.
+- Use multi-image reconstruction when no trustworthy 3D source exists and multiple views of the same subject are available.
+- Higgsfield-generated geometry is `ai_inferred` until independently verified; it cannot become `real_vehicle_verified` merely because it looks plausible.
+- 3D Jutsu may be used for scene composition, inspection, lighting, camera work and GLB iteration while Omnira/Three.js remains the delivery runtime.
+- Any paid 3D generation is preflight-priced and requires the existing cost approval boundary before submission.

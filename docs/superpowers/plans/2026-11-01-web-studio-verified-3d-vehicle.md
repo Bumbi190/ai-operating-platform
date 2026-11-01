@@ -143,3 +143,11 @@
 - Verify truth labels.
 - Document exact commit and limits.
 - Do not push/deploy until separately approved.
+
+### Optional production adapter: Higgsfield 3D
+This does not block Demo Motors V1 because the same-source Blender GLB already exists.
+- Add Higgsfield as a selectable reconstruction/enhancement provider for future assets.
+- Prefer `multi_image_to_3d`/equivalent multi-view models over single-image lifting when geometry fidelity matters.
+- Persist provider/model/job provenance into the governed source/evidence record before approval.
+- Never let provider output bypass `real_vehicle_verified` evidence and reviewer gates.
+- Keep Omnira Three.js as runtime and existing 360 sequence as fallback.

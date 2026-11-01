@@ -1,0 +1,101 @@
+{
+  "id": "the-prompt.factcheck",
+  "version": 1,
+  "status": "design_only_not_registered",
+  "supersedes": "mandatory_human_review_and_separate_nova_agent_assumption_2026_10_28",
+  "executive_identity": {
+    "canonical_name": "Atlas",
+    "voice_alias": "Nova",
+    "actor_key": "atlas.core",
+    "actor_key_is_only_a_shadow_label": true,
+    "requires_new_nova_project_agent": false,
+    "delegated_roles_are_not_atlas": true,
+    "familje_stunden_nova": "separate_fictional_story_character"
+  },
+  "project": "the-prompt",
+  "enabled": false,
+  "description": "Atlas (voice alias Nova) independently verifies ordinary news, rechecks/abandons unsupported claims, escalates only true editorial exceptions; no publishing or spending authority in this draft.",
+  "independent_from": [
+    "script_writer",
+    "engagement_quality_scoring",
+    "visual_video_renderer",
+    "social_publisher"
+  ],
+  "stages": [
+    {
+      "id": "source_snapshot",
+      "input": "original_article_and_related_primary_sources",
+      "output": "immutable_source_snapshots",
+      "onFailure": "requires_review"
+    },
+    {
+      "id": "material_units",
+      "input": "hook_script_captions_social_text_cta_thumbnail",
+      "output": "content_sha256_and_sentence_units",
+      "onFailure": "requires_review"
+    },
+    {
+      "id": "evidence_research",
+      "input": "claim_units_and_sources",
+      "output": "primary_independent_corroborating_and_contradicting_evidence",
+      "onFailure": "requires_review"
+    },
+    {
+      "id": "independent_claim_review",
+      "input": "claim_evidence_pairs",
+      "output": "per_claim_verdict_with_exact_quotes",
+      "onFailure": "requires_review"
+    },
+    {
+      "id": "framing_bias_review",
+      "input": "headline_hook_script_and_counterevidence",
+      "output": "certainty_attribution_omissions_conflicts_assessment",
+      "onFailure": "requires_review"
+    },
+    {
+      "id": "deterministic_admission",
+      "input": "revision_bound_review_and_source_snapshots",
+      "output": "ready_for_editor_or_requires_review_or_rejected",
+      "onFailure": "requires_review"
+    },
+    {
+      "id": "atlas_editorial_candidate",
+      "input": "independent_factcheck_receipt_for_exact_script_revision",
+      "output": "atlas_core_shadow_candidate_for_low_risk_supported_stories",
+      "onFailure": "research_again_then_skip_or_escalate_exception"
+    },
+    {
+      "id": "human_exception_only",
+      "input": "credibly_sourced_high_impact_or_genuinely_ambiguous_story",
+      "output": "human_exception_decision_separate_from_atlas",
+      "onFailure": "skip_story"
+    }
+  ],
+  "required_gates": [
+    "No missing, stale, model-invented or unsupported evidence.",
+    "No approval if an exact quote does not occur in the trusted source snapshot.",
+    "At least two independent publisher groups for all material claims; otherwise Atlas retries sources then skips, not routine human review.",
+    "Sensitive or unknown high-impact news requires an explicit human exception decision; false/unsupported claims cannot be overridden.",
+    "All public-facing wording is version-bound; rewrite invalidates existing review.",
+    "A source's existence is not proof that it supports the claim. Independent semantic review is mandatory.",
+    "One editorial grade is not independent factual evidence.",
+    "No publish, paid generation, SQL mutation or account credential access in design-only mode."
+  ],
+  "release_dependencies": [
+    "PR #585 quality fail-closed reviewed and deployed",
+    "source collector with safe provenance",
+    "controlled fact-check model routing and spend budget",
+    "review receipt database migration and auth RLS",
+    "Atlas-origin execution attestation and run-claim fencing; a role name or atlas.core label alone is not authentication",
+    "no extra Nova agent: use the existing Atlas executive identity with delegated project workflow roles",
+    "publisher fail-closed admission and channel-by-channel tests",
+    "operator UI and human escalation"
+  ],
+  "authority": {
+    "can_publish": false,
+    "can_generate_paid_media": false,
+    "can_change_schedule": false,
+    "can_approve_facts": false,
+    "can_propose_decision": true
+  }
+}

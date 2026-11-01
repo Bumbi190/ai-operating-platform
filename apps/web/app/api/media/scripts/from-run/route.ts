@@ -9,6 +9,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import type { ScriptWriterOutput } from '@/lib/media/types'
+import { stampedScriptOutput } from '@/lib/media/script-writer-provenance'
 import { toJson } from '@/lib/supabase/json'
 import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
 
@@ -76,7 +77,9 @@ export async function POST(request: Request) {
       cta: parsed.cta,
       tone: parsed.tone,
       estimated_duration: parsed.estimated_duration,
-      raw_output: toJson(parsed),
+      // Workflow context JSON does not prove which model authored it.
+      // Strip even deliberately forged writer_model/provider fields.
+      raw_output: toJson(stampedScriptOutput(parsed, null, 1)),
       status: 'pending_review',
       voice_status: 'none',
       video_status: 'none',

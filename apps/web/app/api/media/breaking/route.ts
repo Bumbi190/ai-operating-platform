@@ -29,10 +29,11 @@ import { Anthropic } from '@anthropic-ai/sdk'
 import { runNewsHunter } from '@/lib/media/news-hunter'
 import { callHermesRead, isHermesConfigured } from '@/lib/media/hermes'
 import { NEWS_SYSTEM, buildScriptSystem } from '@/lib/media/script-prompt'
-import { scoreScript } from '@/lib/media/quality'
+import { scoreScript, shouldRegenerate } from '@/lib/media/quality'
 import { classifyTopic } from '@/lib/atlas/content-tags'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 import { toJson } from '@/lib/supabase/json'
+import { stampedScriptOutput } from '@/lib/media/script-writer-provenance'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
@@ -172,15 +173,17 @@ export async function POST(request: Request) {
       messages: [{ role: 'user', content: `Write a short-form video script for this AI news story:\n\nTitle: ${news.title}\nSummary: ${news.summary}\nKey insight: ${news.key_insight}\nAudience: ${news.target_audience}\nAngle: ${news.content_angle}` }],
     })
     const script = parseJson<ScriptWriterOutput>(scriptRes.content[0].type === 'text' ? scriptRes.content[0].text : '')
-    const qualityScore = await scoreScript(execution, script.hook, script.script, `${news.title}\n${news.summary}\n${news.key_insight}`).catch(() => null)
+    const qualityScore = await scoreScript(execution, script.hook, script.script, `${news.title}\n${news.summary}\n${news.key_insight}`)
+    if (shouldRegenerate(qualityScore)) throw new Error('quality_review_required')
     steps.hook = script.hook
 
     const { data: scriptRow } = await db.from('media_scripts').insert({
       project_id: project.id, news_item_id: newsItem?.id ?? null,
       hook: script.hook, script: script.script, captions: script.captions,
       hashtags: script.hashtags, cta: script.cta, tone: script.tone,
-      estimated_duration: script.estimated_duration, raw_output: toJson(script),
-      quality_score: qualityScore ? toJson(qualityScore) : null, status: 'approved',
+      estimated_duration: script.estimated_duration,
+      raw_output: toJson(stampedScriptOutput(script, scriptRes, 1)),
+      quality_score: toJson(qualityScore), status: 'approved',
       voice_status: 'none', video_status: 'none', version: 1,
       topic: classifyTopic(script.hook, script.script), format: 'reel',
       breaking: true, generated_at: new Date().toISOString(),

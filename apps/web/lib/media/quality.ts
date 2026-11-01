@@ -15,6 +15,7 @@
 import { Anthropic } from '@anthropic-ai/sdk'
 import { CONTENT_GROWTH_QA_GUIDANCE } from '@/lib/content-growth/guidance'
 import { getMediaTextClient } from '@/lib/media/text-client'
+import { parseQualityScoreResponse } from '@/lib/media/quality-validation'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
@@ -102,7 +103,7 @@ export async function scoreScript(
 
   const res = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 400,
+    max_tokens: 650,
     system: QUALITY_SYSTEM,
     messages: [{
       role: 'user',
@@ -118,21 +119,11 @@ ${sourceContext.slice(0, 600)}`,
   })
 
   const raw = res.content[0].type === 'text' ? res.content[0].text : ''
-  const clean = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
-
-  try {
-    return JSON.parse(clean) as QualityScore
-  } catch {
-    // Fallback if JSON parse fails — don't block the pipeline
-    return {
-      hook_strength: 8, retention_score: 8, visual_relevance: 8, shareability: 8,
-      discussion_potential: 8, hallucination_risk: 8, overall: 8.0, passed: true,
-      verdict: 'Quality check parse error — proceeding with caution.', weak_spots: [],
-    }
-  }
+  // A malformed/truncated quality response is a HOLD, never an 8/10 approval.
+  return parseQualityScoreResponse(raw)
 }
 
 /** Returns true if the script should be regenerated. Bar: overall ≥ 8, hook ≥ 8, faktasäkert. */
 export function shouldRegenerate(score: QualityScore): boolean {
-  return score.overall < 8.0 || score.hook_strength < 8 || score.hallucination_risk < 7
+  return !score.passed || score.overall < 8.0 || score.hook_strength < 8 || score.hallucination_risk < 7
 }

@@ -6,7 +6,7 @@ const config={vehicle3dAssets:{
  [behavior.assetId]:{
   glb:'assets/3d/a8e79963c6b370c32611aca2514caa8213368666ee34a305ef6be45dd38aa0cb.glb',
   poster:'assets/3d/2b90c29009b92c32c403cf1eabdf79e07efb6e6c59b122308939d53b42c1a091.webp',
-  truthClass:'fictional_concept'
+  truthClass:'fictional_concept' as const
  }
 }}
 

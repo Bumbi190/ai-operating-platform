@@ -31,17 +31,19 @@ const catalog=cars.map((car,i)=>({
 const artifact=compileWebsiteArtifact(createPremiumDealerDraft({
  brand:'Handlarbörsen',subtitle:'DEMO MOTORS',hero,cars:catalog
 }))
+const assets=artifact.assets
+if(!assets||assets.length!==3)throw Error('MISSING_MODEL3D_EXPORT_ASSETS')
 async function start(){
 const zip=await JSZip.loadAsync(await exportWebsiteZip(artifact))
 const paths=new Map<string,{bytes:Buffer;contentType:string}>()
 for(const [name,entry] of Object.entries(zip.files)){
- if(entry.dir||!['index.html',...artifact.assets.map(a=>a.path)].includes(name))continue
+ if(entry.dir||!['index.html',...assets.map(a=>a.path)].includes(name))continue
  const bytes=Buffer.from(await entry.async('uint8array'))
  const contentType=name.endsWith('.html')?'text/html; charset=utf-8':name.endsWith('.js')?'text/javascript; charset=utf-8':name.endsWith('.glb')?'model/gltf-binary':name.endsWith('.webp')?'image/webp':'application/octet-stream'
  paths.set('/'+name,{bytes,contentType})
 }
 const page=paths.get('/index.html')
-if(!page||paths.size!==artifact.assets.length+1)throw Error('INCOMPLETE_STATIC_EXPORT')
+if(!page||paths.size!==assets.length+1)throw Error('INCOMPLETE_STATIC_EXPORT')
 const server=createServer((req,res)=>{
  const url=new URL(req.url??'/','http://127.0.0.1:'+port)
  const path=url.pathname==='/'?'/index.html':url.pathname
@@ -59,7 +61,7 @@ const server=createServer((req,res)=>{
  res.writeHead(200,{'content-type':asset.contentType,'access-control-allow-origin':'*'})
  res.end(asset.bytes)
 })
-server.listen(port,'127.0.0.1',()=>console.log('Local model3d ZIP export ready; assets='+artifact.assets.length+' sha='+artifact.sha256))
+server.listen(port,'127.0.0.1',()=>console.log('Local model3d ZIP export ready; assets='+assets.length+' sha='+artifact.sha256))
 for(const signal of ['SIGTERM','SIGINT'] as const)process.on(signal,()=>server.close(()=>process.exit(0)))
 }
 void start().catch(error=>{console.error(error);process.exitCode=1})

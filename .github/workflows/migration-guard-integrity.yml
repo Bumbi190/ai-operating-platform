@@ -51,6 +51,7 @@ jobs:
             lib/qa/handlarborsen-watch-runs-migration.test.ts \
             lib/qa/sales-inbox-ledger-reconciliation.test.ts \
             lib/qa/web-studio-migration-reconciliation.test.ts \
+            lib/qa/web-studio-exact-claim-reconciliation.test.ts \
             --reporter=default --reporter=json \
             --outputFile="$RUNNER_TEMP/migration-guard-integrity.json"
 
@@ -85,6 +86,13 @@ jobs:
           const studioAssertions = studio?.assertionResults ?? []
           if (studioAssertions.length < 5 || studioAssertions.some(assertion => assertion.status !== 'passed')) {
             console.error('::error::all five exact Web Studio source/ledger reconciliation checks must pass')
+            process.exit(1)
+          }
+
+          const exactClaim = files.find(file => String(file.name).endsWith('/web-studio-exact-claim-reconciliation.test.ts'))
+          const exactAssertions = exactClaim?.assertionResults ?? []
+          if (exactAssertions.length < 5 || exactAssertions.some(assertion => assertion.status !== 'passed')) {
+            console.error('::error::all five exact-claim source/ledger checks must pass')
             process.exit(1)
           }
 

@@ -10,6 +10,7 @@ const NOW = 1_790_000_000_000
 const health = (workerId: string, extra: Partial<WorkerEvidence> = {}): WorkerEvidence => ({
   workerId, health: 'ready', observedAtMs: NOW,
   authenticated: true, entitlement: 'available', inferenceSmokePassed: true,
+  ...(workerId === 'local-qwen3-4b' ? { localResourcePreflightPassed: true } : {}),
   ...extra,
 })
 const defaultEvidence = [
@@ -89,6 +90,25 @@ describe('Atlas Model Router v1: advisory, fail closed', () => {
     const res = routeModel(request({task: 'code_patch', minimumQuality: 3, allowExternalProcessing: false}))
     expect(res.status).toBe('blocked')
   })
+  it('blocks local routing when host RAM/VRAM preflight is missing or fails, even after inference smoke', () => {
+    for (const preflight of [undefined, false]) {
+      const res = routeModel(request({
+        allowExternalProcessing: false,
+        evidence: [health('local-qwen3-4b', { localResourcePreflightPassed: preflight })],
+      }))
+      expect(res.status).toBe('blocked')
+      expect(res.considered[0].rejected).toContain('local_resources_unavailable')
+      expect(res.considered[0].rejected).not.toContain('local_inference_not_proven')
+      expect(res.dispatchAuthorized).toBe(false)
+    }
+  })
+  it('refuses invalid resource evidence instead of treating non-boolean values as safe', () => {
+    const res = routeModel({ ...request(), evidence: [
+      { ...health('local-qwen3-4b'), localResourcePreflightPassed: 'true' },
+    ] })
+    expect(res.status).toBe('blocked')
+    expect(res.considered[0].rejected).toContain('invalid_request')
+  })
   it('refuses local model until model actually answered successfully', () => {
     const res = routeModel(request({ allowExternalProcessing: false,
       evidence: [health('local-qwen3-4b', { inferenceSmokePassed: false })] }))
@@ -121,7 +141,8 @@ describe('Atlas Model Router v1: advisory, fail closed', () => {
       evidence: [health('openai-metered-mini', { estimatedSpendSek: 1 })],
       meteredPolicy: {humanApproved: false,hardSpendGateEnforced: true,remainingBudgetSek: 10,approvedCeilingSek: 10}}))
     expect(res.status).toBe('blocked')
-    expect(res.considered[3].rejected).toContain('spend_authority_missing')
+    expect(res.considered.find(x => x.workerId === 'openai-metered-mini')?.rejected)
+      .toContain('spend_authority_missing')
   })
   it('requires a positive cost estimate and refuses NaN, Infinity and overrun', () => {
     for (const cost of [undefined, 0, -1, Number.NaN, Infinity, 4]) {

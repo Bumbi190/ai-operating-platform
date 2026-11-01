@@ -220,7 +220,7 @@ describe('SDF-1C1 repository, secret and no-execution boundary', () => {
     // SDF-1C3A: exactly TWO modules may import child_process — the identity signer's native helper
     // client and the isolation substrate's single infrastructure runner (closed git/docker vocabulary).
     expect(source.match(/from ['"]node:child_process['"]/g) ?? []).toHaveLength(2)
-    const importers = roots.flatMap(sourceFiles).filter(file => /from ['"]node:child_process['"]/.test(readFileSync(file, 'utf8'))).map(file => file.slice(ROOT.length + 1)).sort()
+    const importers = roots.flatMap(sourceFiles).filter(file => /from ['"]node:child_process['"]/.test(readFileSync(file, 'utf8'))).map(file => file.slice(ROOT.length + 1).replaceAll('\\', '/')).sort()
     expect(importers).toEqual(['apps/code-broker/src/identity/keychain.ts', 'apps/code-broker/src/isolation/process-runner.ts'])
     expect(readFileSync(resolve(ROOT, 'apps/code-broker/src/identity/keychain.ts'), 'utf8')).toContain("execFileAsync(this.helperPath, args")
     expect(existsSync(resolve(ROOT, 'apps/web/app/api/atlas/code-work/claim'))).toBe(false)

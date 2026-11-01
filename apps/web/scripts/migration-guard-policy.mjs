@@ -86,11 +86,13 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Owner-only, RLS-guarded HB research archive applied 2026-10-29
 // (ledger version 20261029065156, canonical file committed in PR #584).
 // An additive enforced migration: 163/149 -> 164/150. No bypass or grandfathering.
-// Exact PR386/609 source history reconciliation: three names reported by the live ledger.
-// File provenance is pinned in docs/verification/2026-10-31-web-studio-migration-provenance.json.
-// Canonical164/enforced150 ->167/153; frozen grandfather/legacy sets remain14/30. No SQL apply.
-export const EXPECTED_CANONICAL_SQL_COUNT = 167
-export const EXPECTED_ENFORCED_COUNT = 153
+// Owner cross-chat context APPLIED 20261031145817. Source-only reconciliation of
+// two parallel Harvey migrations already APPLIED 20261031120736 / 20261031120804.
+// Their exact SQL body hashes were matched to the production ledger before inclusion.
+// Source-only exact-claim reconciliation, registered version20261031204433.
+//168canonical/154enforced; frozen14/30sets and algorithms unchanged. No SQL apply.
+export const EXPECTED_CANONICAL_SQL_COUNT = 168
+export const EXPECTED_ENFORCED_COUNT = 154
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

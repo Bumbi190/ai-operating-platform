@@ -773,10 +773,11 @@ describe('Phase 3B1B2 M3 — DB_INTERNAL is judged on the FINAL replayed grant s
 describe('Reconciled discovery history retains its intended server-only boundary', () => {
   const names = ['sales_discovery_batches', 'sales_discovery_candidates'] as const
 
-  it.each(names)('classifies historical-capture-absent %s without inventing a live catalog row', table => {
-    expect(REGISTRY.tables[table]).toBeUndefined()
-    expect(REGISTRY._meta.created_not_live?.tables?.filter(name => name === table)).toHaveLength(1)
-    expect(REGISTRY._meta.created_not_live?.classes?.[table]).toBe('SERVER_ONLY')
+  it.each(names)('retains the later observed server-only %s classification without duplicate pending entries', table => {
+    // Main records the later catalog observation, independently rechecked read-only on2026-11-01.
+    expect(REGISTRY.tables[table]).toEqual({class:'SERVER_ONLY',rls:true,policies:0,anon_grants:false,authenticated_grants:false,service_role:true})
+    expect(REGISTRY._meta.created_not_live?.tables ?? []).not.toContain(table)
+    expect(REGISTRY._meta.created_not_live?.classes?.[table]).toBeUndefined()
     expect(tableClass(REGISTRY, table)).toBe('SERVER_ONLY')
   })
 

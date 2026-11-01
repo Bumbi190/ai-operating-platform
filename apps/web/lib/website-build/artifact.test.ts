@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import {createHash} from 'node:crypto'
 import JSZip from 'jszip'
 import { parse } from 'parse5'
 import { compileWebsiteArtifact, exportWebsiteZip, makePreviewDocument, WebsiteArtifactError } from './artifact'
@@ -61,6 +62,29 @@ describe('static website artifacts', () => {
       {kind:'model3d',triggerId:'viewer',targetIds:['frame-0'],assetId}
     ]
     expect(()=>compileWebsiteArtifact(input)).toThrow(WebsiteArtifactError)
+  })
+
+  it('keeps governed model3d binaries outside HTML and copies them into static export',async()=>{
+    const assetId='vehicle3d:demo-motors-concept-v1'
+    const input:any=draft('<div id="viewer" data-vehicle-3d="'+assetId+'"></div><section id="fallback">Fallback</section>')
+    input.pages[0].behaviors=[{kind:'model3d',triggerId:'viewer',targetIds:['fallback'],assetId}]
+    const artifact:any=compileWebsiteArtifact(input)
+    expect(artifact.assets).toHaveLength(2)
+    expect(JSON.stringify(artifact)).not.toContain('data:model')
+    expect(JSON.stringify(artifact)).not.toContain('data:application/octet-stream')
+    const archive=await JSZip.loadAsync(await exportWebsiteZip(artifact))
+    const glb=artifact.assets.find((a:any)=>a.kind==='vehicle3d-glb')
+    const poster=artifact.assets.find((a:any)=>a.kind==='vehicle3d-poster')
+    expect(glb.path).toBe('assets/3d/a8e79963c6b370c32611aca2514caa8213368666ee34a305ef6be45dd38aa0cb.glb')
+    expect(poster.path).toBe('assets/3d/2b90c29009b92c32c403cf1eabdf79e07efb6e6c59b122308939d53b42c1a091.webp')
+    expect(artifact.pages[0].html).toContain(glb.path)
+    expect(artifact.pages[0].html).toContain(poster.path)
+    expect(artifact.pages[0].html).not.toMatch(/https?:\/\//)
+    const glbBytes=await archive.file(glb.path)!.async('uint8array')
+    const posterBytes=await archive.file(poster.path)!.async('uint8array')
+    expect(createHash('sha256').update(glbBytes).digest('hex')).toBe(glb.sha256)
+    expect(createHash('sha256').update(posterBytes).digest('hex')).toBe(poster.sha256)
+    expect(archive.file('index.html')).not.toBeNull()
   })
   it('compiles_real_two_page_site', () => {
     const artifact = compileWebsiteArtifact(draft())

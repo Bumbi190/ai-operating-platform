@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { parseFragment, serialize, type DefaultTreeAdapterMap } from 'parse5'
 import JSZip from 'jszip'
 import {bundledRaster} from './assets/bundled-rasters'
-import {vehicle3DAsset} from './assets/vehicle-3d'
+import {readBundledVehicle3DAssetBytes,vehicle3DAsset} from './assets/vehicle-3d'
 import { escapeHtml, scriptJson, websiteCsp, WEBSITE_RUNTIME, renderPreviewDocument } from './preview-runtime'
 import { WEBSITE_BUILD_LIMITS, type WebsiteArtifact, type WebsiteBehavior, type WebsiteDraft } from './types'
 
@@ -191,11 +191,39 @@ function canonical(value: unknown): string {
   return JSON.stringify(value)
 }
 function artifactHash(artifact: Omit<WebsiteArtifact, 'sha256'>): string { return createHash('sha256').update(canonical(artifact), 'utf8').digest('hex') }
+function validateArtifactAssets(artifact:WebsiteArtifact):void{
+  const assets=artifact.assets??[]
+  if(!Array.isArray(assets)||assets.length>32)fail('INVALID_ARTIFACT_ASSET')
+  const seen=new Set<string>()
+  for(const raw of assets){
+    const item=record(raw)
+    const keys=['id','kind','path','sha256','bytes']
+    if(Object.keys(item).length!==keys.length||keys.some(k=>!Object.hasOwn(item,k)))fail('INVALID_ARTIFACT_ASSET')
+    const manifest=typeof item.id==='string'?vehicle3DAsset(item.id):undefined
+    if(!manifest)fail('INVALID_ARTIFACT_ASSET')
+    const expected=item.kind==='vehicle3d-glb'?manifest.glb:item.kind==='vehicle3d-poster'?manifest.poster:null
+    if(!expected||item.path!==expected.path||item.sha256!==expected.sha256||item.bytes!==expected.bytes||seen.has(expected.path))fail('INVALID_ARTIFACT_ASSET')
+    seen.add(expected.path)
+  }
+  const required=new Set<string>()
+  for(const page of artifact.pages){
+    const match=page.html.match(/<script type="application\/json" id="__atlas_config">([\s\S]*?)<\/script>/)
+    if(!match)continue
+    let config:any
+    try{config=JSON.parse(match[1])}catch{fail('INVALID_ARTIFACT_ASSET')}
+    for(const behavior of Array.isArray(config?.behaviors)?config.behaviors:[])if(behavior?.kind==='model3d'&&typeof behavior.assetId==='string')required.add(behavior.assetId)
+  }
+  for(const id of required){
+    const manifest=vehicle3DAsset(id)
+    if(!manifest||!assets.some(a=>a.id===id&&a.kind==='vehicle3d-glb')||!assets.some(a=>a.id===id&&a.kind==='vehicle3d-poster'))fail('MISSING_ARTIFACT_ASSET')
+  }
+}
 export function assertWebsiteArtifact(artifact: WebsiteArtifact): void {
   const { sha256, ...payload } = artifact
   if (Buffer.byteLength(canonical(artifact), 'utf8') > WEBSITE_BUILD_LIMITS.artifactBytes) fail('ARTIFACT_TOO_LARGE')
   if (artifact.format !== 'static-website.v1' || sha256 !== artifactHash(payload)) fail('ARTIFACT_HASH_MISMATCH')
   if (!artifact.files.length || artifact.files.some(f => !(SAFE_KEY.test(f.path.replace(/\.html$/, '')) && f.path.endsWith('.html')) && f.path !== 'website.js')) fail('INVALID_ARTIFACT_FILE')
+  validateArtifactAssets(artifact)
 }
 export function compileWebsiteArtifact(input: unknown): WebsiteArtifact {
   if (Buffer.byteLength(JSON.stringify(input) ?? '', 'utf8') > WEBSITE_BUILD_LIMITS.artifactBytes) fail('ARTIFACT_TOO_LARGE')
@@ -211,18 +239,33 @@ export function compileWebsiteArtifact(input: unknown): WebsiteArtifact {
   if (keys.some(k => !SAFE_KEY.test(k)) || new Set(keys).size !== keys.length || !keys.includes('index')) fail('INVALID_PAGE_KEY')
   const pageKeys = new Set(keys)
   let forms = false
+  const model3dAssetIds=new Set<string>()
   const scriptHash = createHash('sha256').update(WEBSITE_RUNTIME).digest('base64')
   const pages = rawPages.map((page,index) => {
     const pageTitle = text(page.title, 200)
     const markup = validateMarkup(text(page.bodyHtml), pageKeys, homeAlias, keys[index])
     forms ||= markup.forms
     const behaviors = validateBehaviors(page.behaviors, markup.ids,markup.elements)
+    for(const behavior of behaviors)if(behavior.kind==='model3d')model3dAssetIds.add(behavior.assetId)
     const css = ((sharedCss ? sharedCss + '\n' : '') + (page.css === undefined && draft.css !== undefined ? '' : text(page.css))).replace(/</g, '\\3c ')
-    const config = scriptJson({ behaviors, pages: keys })
+    const vehicle3dAssets=Object.fromEntries(behaviors.filter(b=>b.kind==='model3d').map(behavior=>{
+      const manifest=vehicle3DAsset(behavior.assetId)
+      if(!manifest)fail('INVALID_MODEL3D_ASSET')
+      return [behavior.assetId,{glb:manifest.glb.path,poster:manifest.poster.path,truthClass:manifest.truthClass}]
+    }))
+    const config = scriptJson({ behaviors, pages: keys, vehicle3dAssets })
     const html = `<!doctype html><html lang="sv"><head><meta http-equiv="Content-Security-Policy" content="${escapeHtml(websiteCsp(`'sha256-${scriptHash}'`))}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(pageTitle || title)}</title><style>*,*::before,*::after{box-sizing:border-box}body{margin:0}[hidden]{display:none!important}img{max-width:100%;height:auto}${css}</style></head><body>${markup.html}<script type="application/json" id="__atlas_config">${config}</script><script id="__atlas_runtime">${WEBSITE_RUNTIME}</script></body></html>`
     return { key: keys[index], title: pageTitle, html }
   })
-  const payload = { format: 'static-website.v1' as const, pages, files: [...pages.map(p => ({ path: `${p.key}.html`, content: p.html })), { path: 'website.js', content: WEBSITE_RUNTIME }], integrationNeeds: forms ? ['form_delivery'] : [] }
+  const assets=[...model3dAssetIds].flatMap(id=>{
+    const manifest=vehicle3DAsset(id)
+    if(!manifest)fail('INVALID_MODEL3D_ASSET')
+    return [
+      {id,kind:'vehicle3d-glb' as const,path:manifest.glb.path,sha256:manifest.glb.sha256,bytes:manifest.glb.bytes},
+      {id,kind:'vehicle3d-poster' as const,path:manifest.poster.path,sha256:manifest.poster.sha256,bytes:manifest.poster.bytes}
+    ]
+  })
+  const payload = { format: 'static-website.v1' as const, pages, files: [...pages.map(p => ({ path: `${p.key}.html`, content: p.html })), { path: 'website.js', content: WEBSITE_RUNTIME }], assets, integrationNeeds: forms ? ['form_delivery'] : [] }
   const artifact = { ...payload, sha256: artifactHash(payload) }
   assertWebsiteArtifact(artifact)
   return artifact
@@ -236,5 +279,11 @@ export async function exportWebsiteZip(artifact: WebsiteArtifact): Promise<Uint8
   assertWebsiteArtifact(artifact)
   const zip = new JSZip()
   for (const file of artifact.files) zip.file(file.path, file.content, { date: new Date('2000-01-01T00:00:00Z') })
+  for(const asset of artifact.assets??[]){
+    const kind=asset.kind==='vehicle3d-glb'?'glb':'poster'
+    const bytes=readBundledVehicle3DAssetBytes(asset.id,kind)
+    if(bytes.byteLength!==asset.bytes||createHash('sha256').update(bytes).digest('hex')!==asset.sha256)fail('BUNDLED_VEHICLE_3D_HASH_MISMATCH')
+    zip.file(asset.path,bytes,{date:new Date('2000-01-01T00:00:00Z')})
+  }
   return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' })
 }

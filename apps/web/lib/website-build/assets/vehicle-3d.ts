@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs'
 import bundledSources from './demo-vehicle-3d-v1.json'
 
 export type Vehicle3DTruthClass='fictional_concept'|'real_vehicle_verified'
@@ -81,4 +82,16 @@ const bundled=(bundledSources as unknown[]).map(source=>{
 export const BUNDLED_VEHICLE_3D_ASSETS=Object.freeze(bundled)
 export function vehicle3DAsset(id:string):Vehicle3DAssetManifest|undefined{
  return ID.test(id)?BUNDLED_VEHICLE_3D_ASSETS.find(item=>item.id===id):undefined
+}
+
+const BUNDLED_BINARY_SOURCES:Record<string,{glb:URL;poster:URL}>={
+ 'vehicle3d:demo-motors-concept-v1':{
+  glb:new URL('../../../e2e/website-catalog/assets/premium/3d/demo-motors-concept.glb',import.meta.url),
+  poster:new URL('../../../e2e/website-catalog/assets/premium/3d/demo-motors-poster.webp',import.meta.url)
+ }
+}
+export function readBundledVehicle3DAssetBytes(id:string,kind:'glb'|'poster'):Uint8Array{
+ const entry=BUNDLED_BINARY_SOURCES[id]
+ if(!entry||!vehicle3DAsset(id))throw Error('UNKNOWN_BUNDLED_VEHICLE_3D_ASSET')
+ return readFileSync(entry[kind])
 }

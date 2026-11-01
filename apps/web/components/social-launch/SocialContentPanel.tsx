@@ -22,6 +22,8 @@ function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{project
  const [loaded,setLoaded]=useState<Record<string,boolean>>({})
  const responseSequence=useRef(0),writeInFlight=useRef(false),observedPlan=useRef(planStateKey)
  const live=useRef(true),controllers=useRef(new Set<AbortController>()),pending=useRef<{signature:string;body:Record<string,unknown>}|null>(null)
+ const openedRequested=useRef(false)
+ useEffect(()=>{if(!model||openedRequested.current)return;openedRequested.current=true;const post=new URLSearchParams(window.location.search).get('post');if(post&&model.posts.some(p=>p.id===post))setSelectedId(post)},[model])
  const selected=model?.posts.find(p=>p.id===selectedId)??null
  const load=useCallback(async()=>{
   if(writeInFlight.current)return

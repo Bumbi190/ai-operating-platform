@@ -29,6 +29,8 @@ import 'server-only'
 import { logImageCost } from '@/lib/cost/track'
 import { estimateImageSek } from '@/lib/cost/budget-gate'
 import { getRates } from '@/lib/cost/rates'
+import {getCurrentImageRates} from '@/lib/cost/current-image-rates'
+import { isSpendGateEnforced } from '@/lib/cost/spend-gate-flag'
 import {
   ProviderNotDispatchedError,
   SpendRefusedError,
@@ -114,30 +116,56 @@ function refuseUnboundedIdeogram(body: Record<string, unknown>, legacy: boolean)
  * prompt and rendering speed keep the exact semantics each call site had before.
  * Returns the hosted URL, and writes `cost_events` on success.
  */
+export interface ConstrainedImageInvocation { maxEstimatedSek:number; signal:AbortSignal; timeoutMs:number; beforeDispatch?:()=>Promise<void> }
 export async function generateIdeogramV3(
   ctx: ImageGovernanceContext,
   body: Record<string, unknown>,
+  limits?: ConstrainedImageInvocation,
 ): Promise<string> {
   const apiKey = process.env.IDEOGRAM_API_KEY
   // Refuse before reserving: a missing credential is not a spend decision.
-  if (!apiKey) throw new Error('IDEOGRAM_API_KEY not set')
+  if (!apiKey) {if(limits)throw new ProviderNotDispatchedError('Image provider not configured');throw new Error('IDEOGRAM_API_KEY not set')}
 
   // M0: refuse what the canonical row does not price; one rate snapshot then
   // prices the fixed-unit ceiling AND the metering.
   refuseUnboundedIdeogram(body, false)
-  const rates = await getRates()
+  const rates = limits?await getCurrentImageRates(undefined,limits.signal).catch(e=>{throw new ProviderNotDispatchedError('Current image price unavailable before dispatch',e)}):await getRates()
   const estimatedSek = await estimateImageSek(1, 'ideogram', rates)
+  if(limits && (!isSpendGateEnforced() || ctx.authority?.kind!=='RUN_BOUND' || ctx.execution.context!=='AUTONOMOUS'
+    || ctx.execution.scope.kind!=='PROJECT' || !('projectId' in ctx.project) || !('projectId' in ctx.execution.scope.project) || ctx.project.projectId!==ctx.execution.scope.project.projectId
+    || Object.keys(body).some(key=>!['prompt','num_images','rendering_speed','aspect_ratio'].includes(key))
+    || !Number.isFinite(limits.maxEstimatedSek) || limits.maxEstimatedSek<=0 || !Number.isFinite(estimatedSek) || estimatedSek<=0
+    || Math.ceil(estimatedSek*10000)/10000>limits.maxEstimatedSek || !Number.isFinite(limits.timeoutMs) || limits.timeoutMs<=0 || limits.timeoutMs>60000)) {
+    throw new SpendRefusedError({reason:'unbounded_spend',provider:'ideogram',operation:ctx.operation,detail:'constrained image authority, enforced gate or allocation refused'})
+  }
+
 
   return withGovernedSpend(
     { project: ctx.project, execution: ctx.execution, provider: 'ideogram', operation: ctx.operation, estimatedSek,
       idempotencyKey: ctx.idempotencyKey, ceilingBasis: 'fixed_units', rates },
     async () => {
+      // Optional campaign boundary; pre-existing V3 callers keep their contract.
+      if(limits?.signal.aborted)throw new ProviderNotDispatchedError('image deadline before dispatch')
+      if(limits){
+        const current=await getCurrentImageRates(undefined,limits.signal).catch(e=>{throw new ProviderNotDispatchedError('Image price unavailable at physical boundary',e)})
+        const price=await estimateImageSek(1,'ideogram',current)
+        if(Math.ceil(price*10000)/10000>Math.min(limits.maxEstimatedSek,Math.ceil(estimatedSek*10000)/10000))throw new ProviderNotDispatchedError('Image price changed above reserved allocation before dispatch')
+      }
+      if(limits?.beforeDispatch){try{await limits.beforeDispatch()}catch(e){throw new ProviderNotDispatchedError('campaign authority changed before dispatch',e)}}
+      if(limits?.signal.aborted)throw new ProviderNotDispatchedError('image deadline before dispatch')
+      if(limits)await admitPhysicalRequest(()=>createAdminClient(),ctx.authority!,'ideogram')
+      const watch=limits?watchExecutionAuthority(()=>createAdminClient(),ctx.authority!):null
+      const signal=limits?composeAbortSignals([watch!.signal,limits.signal,AbortSignal.timeout(limits.timeoutMs)]):null
+      if(watch)ctx.onFlight?.({get authorityUnavailable(){return watch.authorityUnavailable},get abortReason(){return watch.abortReason}})
+      try {
+
       let res: Response
       try {
         res = await fetch(IDEOGRAM_V3_GENERATE, {
           method: 'POST',
-          headers: { 'Api-Key': apiKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
+          ...(signal?{signal:signal.signal,redirect:'error' as const}:{}),
+          headers: { 'Api-Key': apiKey, ...(limits?{}:{'Content-Type':'application/json'}) },
+          body: limits?(()=>{const form=new FormData();for(const [key,value] of Object.entries(body))form.append(key,String(value));return form})():JSON.stringify(body),
         })
       } catch (e) {
         // ── THE AMBIGUITY BOUNDARY ──────────────────────────────────────────
@@ -152,6 +180,7 @@ export async function generateIdeogramV3(
         // case — the same rule `lib/ai/anthropic.ts` states as "a timeout, a 5xx
         // or an aborted socket is NOT here on purpose". There is deliberately no
         // branch that guesses toward the convenient answer.
+        if(watch?.abortReason)throw new GovernanceDispatchUnknownError('ideogram',watch.abortReason,e)
         const verdict = classifyTransportFailure(e)
         if (verdict.sent === false) {
           throw new ProviderNotDispatchedError(
@@ -206,6 +235,13 @@ export async function generateIdeogramV3(
       })
 
       return url
+      } catch(e) {
+        if(watch?.abortReason)throw new GovernanceDispatchUnknownError('ideogram',watch.abortReason,e)
+        // A body/evidence error after dispatch is never proof of non-creation.
+        if(limits && !(e instanceof ProviderNotDispatchedError) && !(e instanceof ProviderDispatchUnknownError) && !(e instanceof GovernanceDispatchUnknownError))
+          throw new ProviderDispatchUnknownError({provider:'ideogram',observation:'response_lost',detail:'image response evidence unavailable',cause:e})
+        throw e
+      } finally {signal?.dispose();watch?.dispose()}
     },
   )
 }

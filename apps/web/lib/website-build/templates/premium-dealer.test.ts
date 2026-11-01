@@ -104,3 +104,14 @@ describe('approved premium dealership template',()=>{
   expect(draft.css).not.toContain('.footer-cta{')
   expect(draft.css).toContain('linear-gradient')
  })
+
+ it('uses the approved showroom image as a heavily tinted footer backdrop without changing its truth class',()=>{
+  const data=input(),draft=createPremiumDealerDraft(data),html=draft.pages[0].bodyHtml
+  expect(html).toContain('class="footer-visual"')
+  expect(html).toContain(data.hero.src)
+  expect(html.split(data.hero.src).length-1).toBeGreaterThanOrEqual(2)
+  expect(draft.css).toContain('.footer-visual')
+  expect(draft.css).toContain('.premium-footer:after')
+  expect(draft.css).toContain('opacity:')
+  expect(draft.css).toContain('linear-gradient')
+ })

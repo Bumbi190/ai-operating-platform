@@ -34,6 +34,34 @@ describe('static website artifacts', () => {
     const visible:any=structuredClone(input);visible.pages[0].bodyHtml=visible.pages[0].bodyHtml.replace('id="frame-1" src="'+pixel+'" alt="Vy 2" hidden','id="frame-1" src="'+pixel+'" alt="Vy 2"')
     expect(()=>compileWebsiteArtifact(visible)).toThrow(WebsiteArtifactError)
   })
+
+  it('compiles only approved governed model3d assets and preserves a separate fallback target',()=>{
+    const assetId='vehicle3d:demo-motors-concept-v1'
+    const input:any=draft('<div id="viewer" data-vehicle-3d="'+assetId+'" aria-label="3D-vy"></div><section id="fallback">360 fallback</section>')
+    input.pages[0].behaviors=[{kind:'model3d',triggerId:'viewer',targetIds:['fallback'],assetId}]
+    const artifact=compileWebsiteArtifact(input)
+    expect(artifact.pages[0].html).toContain('"kind":"model3d"')
+    expect(artifact.pages[0].html).toContain('"assetId":"'+assetId+'"')
+
+    const unknown:any=structuredClone(input)
+    unknown.pages[0].behaviors[0].assetId='vehicle3d:unknown-asset'
+    expect(()=>compileWebsiteArtifact(unknown)).toThrow(WebsiteArtifactError)
+
+    const mismatch:any=structuredClone(input)
+    mismatch.pages[0].bodyHtml=mismatch.pages[0].bodyHtml.replace(assetId,'vehicle3d:other-asset')
+    expect(()=>compileWebsiteArtifact(mismatch)).toThrow(WebsiteArtifactError)
+  })
+  it('refuses model3d fallback ownership that overlaps a spin target',()=>{
+    const assetId='vehicle3d:demo-motors-concept-v1'
+    const pixel='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+    const frames=Array.from({length:4},(_,i)=>'<img id="frame-'+i+'" src="'+pixel+'" alt="Vy '+(i+1)+'"'+(i?' hidden':'')+'>').join('')
+    const input:any=draft('<div id="viewer" data-vehicle-3d="'+assetId+'"></div>'+frames+'<input id="spin" type="range" min="0" max="3" step="1" value="0">')
+    input.pages[0].behaviors=[
+      {kind:'spin',triggerId:'spin',targetIds:['frame-0','frame-1','frame-2','frame-3']},
+      {kind:'model3d',triggerId:'viewer',targetIds:['frame-0'],assetId}
+    ]
+    expect(()=>compileWebsiteArtifact(input)).toThrow(WebsiteArtifactError)
+  })
   it('compiles_real_two_page_site', () => {
     const artifact = compileWebsiteArtifact(draft())
     expect(artifact.format).toBe('static-website.v1')

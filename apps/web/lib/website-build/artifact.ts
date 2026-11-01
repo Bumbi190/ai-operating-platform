@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { parseFragment, serialize, type DefaultTreeAdapterMap } from 'parse5'
 import JSZip from 'jszip'
 import {bundledRaster} from './assets/bundled-rasters'
+import {vehicle3DAsset} from './assets/vehicle-3d'
 import { escapeHtml, scriptJson, websiteCsp, WEBSITE_RUNTIME, renderPreviewDocument } from './preview-runtime'
 import { WEBSITE_BUILD_LIMITS, type WebsiteArtifact, type WebsiteBehavior, type WebsiteDraft } from './types'
 
@@ -134,17 +135,33 @@ function validateSpin(item:Record<string,unknown>,elements:Map<string,Element>):
   }
   return {kind:'spin',triggerId:item.triggerId as string,targetIds}
 }
+function validateModel3d(item:Record<string,unknown>,elements:Map<string,Element>): Extract<WebsiteBehavior,{kind:'model3d'}> {
+  const keys=['kind','triggerId','targetIds','assetId']
+  if(Object.keys(item).length!==keys.length||keys.some(k=>!Object.hasOwn(item,k)))fail('INVALID_MODEL3D')
+  const attr=(el:Element,name:string)=>el.attrs.find(a=>a.name===name)?.value
+  const trigger=elements.get(item.triggerId as string)!
+  const assetId=item.assetId
+  if(typeof assetId!=='string'||!vehicle3DAsset(assetId))fail('INVALID_MODEL3D_ASSET')
+  if(trigger.tagName!=='div'||attr(trigger,'data-vehicle-3d')!==assetId)fail('INVALID_MODEL3D_VIEWER')
+  const targetIds=item.targetIds as string[]
+  for(const id of targetIds){
+    const target=elements.get(id)!
+    if(!['div','section','figure'].includes(target.tagName))fail('INVALID_MODEL3D_FALLBACK')
+  }
+  return {kind:'model3d',triggerId:item.triggerId as string,targetIds,assetId}
+}
 
 function validateBehaviors(value: unknown, ids: Set<string>,elements:Map<string,Element>): WebsiteBehavior[] {
   if (!Array.isArray(value) || value.length > WEBSITE_BUILD_LIMITS.behaviorsPerPage) fail('INVALID_BEHAVIORS')
   const triggers = new Set<string>()
   const behaviors:WebsiteBehavior[]=value.map(raw => {
     const item = record(raw)
-    if (!['toggle', 'tabs', 'accordion','filter','spin'].includes(String(item.kind)) || typeof item.triggerId !== 'string' || !ids.has(item.triggerId) || triggers.has(item.triggerId)) fail('INVALID_BEHAVIOR')
+    if (!['toggle', 'tabs', 'accordion','filter','spin','model3d'].includes(String(item.kind)) || typeof item.triggerId !== 'string' || !ids.has(item.triggerId) || triggers.has(item.triggerId)) fail('INVALID_BEHAVIOR')
     triggers.add(item.triggerId)
     if (!Array.isArray(item.targetIds) || !item.targetIds.length || item.targetIds.length > 64 || item.targetIds.some(id => typeof id !== 'string' || !ids.has(id)) || new Set(item.targetIds).size !== item.targetIds.length) fail('INVALID_BEHAVIOR_TARGET')
     if(item.kind==='filter')return validateCatalogFilter(item,elements)
     if(item.kind==='spin')return validateSpin(item,elements)
+    if(item.kind==='model3d')return validateModel3d(item,elements)
     if (item.kind === 'tabs' && (typeof item.groupId !== 'string' || !SAFE_ID.test(item.groupId))) fail('INVALID_TAB_GROUP')
     return { kind: item.kind as 'toggle'|'tabs'|'accordion', triggerId: item.triggerId, targetIds: item.targetIds as string[], ...(item.kind === 'tabs' ? { groupId: item.groupId as string } : {}) }
   })
@@ -158,6 +175,12 @@ function validateBehaviors(value: unknown, ids: Set<string>,elements:Map<string,
     const owned=new Set(spin.targetIds)
     for(const other of behaviors){if(other===spin)continue
       if(other.targetIds.some(id=>owned.has(id))||owned.has(other.triggerId))fail('OVERLAPPING_SPIN_TARGET')
+    }
+  }
+  for(const model of behaviors.filter(b=>b.kind==='model3d')){
+    const owned=new Set([model.triggerId,...model.targetIds])
+    for(const other of behaviors){if(other===model)continue
+      if(other.targetIds.some(id=>owned.has(id))||owned.has(other.triggerId))fail('OVERLAPPING_MODEL3D_TARGET')
     }
   }
   return behaviors

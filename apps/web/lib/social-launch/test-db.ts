@@ -8,5 +8,6 @@ export function initializeSocialLaunchDb(){
   const dir=resolve(process.cwd(),'supabase/migrations'),file=readdirSync(dir).find(f=>f.endsWith('_social_launch_plans_v1.sql'))!
   testSql('begin;'+readFileSync(resolve(dir,file),'utf8')+'commit;')
  }
+ testSql(readFileSync(resolve(process.cwd(),'supabase/migrations/20261031150000_social_owner_crosschat_context.sql'),'utf8'))
  return db
 }

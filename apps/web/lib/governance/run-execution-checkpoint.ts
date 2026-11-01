@@ -55,6 +55,7 @@ import {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type AnyDb = SupabaseClient<any, any, any>
+function withRunSignal<T>(request:T,signal?:AbortSignal):T{return signal?(request as T&{abortSignal:(s:AbortSignal)=>T}).abortSignal(signal):request}
 
 /** Why an already-claimed run may not continue. Never collapsed into one code. */
 export type RunCheckpointRefusal = 'FENCED' | 'CANCELLED' | 'STOPPED'
@@ -263,9 +264,10 @@ export async function recordDispatchUnknown(
   runId: string,
   claimId: string | null | undefined,
   reconciliationReason: string,
+  options:{signal?:AbortSignal}={},
 ): Promise<DispatchUnknownResult> {
   if (!claimId) return 'FENCED'
-  const { data, error } = await db.from('runs')
+  const { data, error } = await withRunSignal(db.from('runs')
     .update({
       status: 'unknown',
       reconciliation_required: true,
@@ -274,7 +276,7 @@ export async function recordDispatchUnknown(
       claimed_at: null, lease_until: null,
     })
     .eq('id', runId).eq('status', 'running').eq('claim_id', claimId)
-    .select('id')
+    .select('id'),options.signal)
   if (error) return 'ERROR'
   return Array.isArray(data) && data.length > 0 ? 'UNKNOWN_WRITTEN' : 'FENCED'
 }
@@ -386,15 +388,16 @@ export interface OwnedTerminalResult {
 export async function finalizeOwnedRunUnlessCancelled(
   db: AnyDb, runId: string, claimId: string | null | undefined,
   successPayload: Record<string, unknown>,
+  options:{signal?:AbortSignal}={},
 ): Promise<OwnedTerminalResult> {
   if (!claimId) return { outcome: 'FENCED', detail: 'invocation holds no claim' }
 
   // ── 1 · the success CAS ──────────────────────────────────────────────────
-  const { data, error } = await db.from('runs')
+  const { data, error } = await withRunSignal(db.from('runs')
     .update(successPayload)
     .eq('id', runId).eq('status', 'running').eq('claim_id', claimId)
     .eq('cancel_requested', false)
-    .select('id')
+    .select('id'),options.signal)
 
   if (error) {
     // A database fault is NOT fencing and NOT cancellation. Collapsing it into
@@ -409,9 +412,9 @@ export async function finalizeOwnedRunUnlessCancelled(
   // ── 2 · zero rows: establish WHY ─────────────────────────────────────────
   // Deliberately not labelled fenced on sight. The row may still be ours and
   // running, with a cancellation that arrived inside the window.
-  const { data: row, error: readErr } = await db.from('runs')
+  const { data: row, error: readErr } = await withRunSignal(db.from('runs')
     .select('id, status, claim_id, cancel_requested')
-    .eq('id', runId).maybeSingle()
+    .eq('id', runId).maybeSingle(),options.signal)
   if (readErr) {
     return { outcome: 'ERROR', detail: `state unresolvable after CAS miss: ${readErr.message}` }
   }
@@ -430,14 +433,14 @@ export async function finalizeOwnedRunUnlessCancelled(
   }
 
   // ── 3 · cancellation won the row ─────────────────────────────────────────
-  const { data: cancelled, error: cancelErr } = await db.from('runs')
+  const { data: cancelled, error: cancelErr } = await withRunSignal(db.from('runs')
     .update({
       status: 'cancelled', finished_at: new Date().toISOString(),
       claimed_at: null, lease_until: null,
     })
     .eq('id', runId).eq('status', 'running').eq('claim_id', claimId)
     .eq('cancel_requested', true)
-    .select('id')
+    .select('id'),options.signal)
   if (cancelErr) {
     return { outcome: 'ERROR', detail: `cancellation write failed: ${cancelErr.message}` }
   }

@@ -332,3 +332,8 @@ export function evaluateAppliedMigrationLedger(appliedNames, repositoryState) {
 // The Prompt news review remains one additional enforced, unapplied migration; frozen 14/30 unchanged.
 
 // Integrated maind3f9fcc: news-review source already applied; calendar remains pending. Canonical148/enforced134; frozen14/30 unchanged.
+
+// Historical rollout note retained from main; this merge applies no SQL.
+// Nov1 owner-approved Nova campaign rollout: human_story_exact_claim is source-only
+// reconciliation of live ledger20261031204433 (SHA256 a7ffd88a4b1881b3173e4dfe98af5d6d6ea1d7bb47b0c09411954cbd698a32e6).
+// social_campaign_preparation is the only new apply. Frozen14/30 lists unchanged.

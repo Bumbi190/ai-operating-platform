@@ -97,14 +97,14 @@ vi.mock('@anthropic-ai/sdk', () => {
 
 const DISCLAIMER = /faktiskt inte kört något/
 
-async function post(userText: string, modelText = 'ok') {
+async function post(userText: string, modelText = 'ok', mode?: 'content') {
   vi.resetModules()
   touchedTables = []; writeAttempts = []; streamCalls = []; cannedText = modelText
   const { POST } = await import('@/app/api/chat/route')
   const res = await POST(new Request('http://localhost/api/chat', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ messages: [{ role: 'user', content: userText }] }),
+    body: JSON.stringify({ messages: [{ role: 'user', content: userText }], ...(mode ? {mode} : {}) }),
   }) as any)
   const raw = res.body ? await new Response(res.body).text() : ''
   let out = '', reqType: string | null = null
@@ -362,4 +362,22 @@ describe('unchanged behaviour elsewhere', () => {
     await post('Hur går det för GainPilot?')
     expect(writeAttempts).toEqual([])
   })
+})
+
+describe('Nova cross-chat social operational requests',()=>{
+ it('retains resolution and social tools when content mode requests saved review preparation',async()=>{
+  const r=await post('Planera tre LinkedIn-inlägg nästa vecka och spara för granskning.','ok','content')
+  expect(r.reqType).not.toBe('fast_path')
+  expect(r.tools.map(t=>t.name)).toEqual(expect.arrayContaining(['resolve_project_context','get_social_profile','get_social_launch_plan','propose_social_content']))
+  expect(r.system).toContain('from any owned conversation')
+  expect(writeAttempts).toEqual([])
+ })
+ it('does not append a false navigation correction to a conditional project-chat suggestion',async()=>{
+  const r=await post('Planera LinkedIn-inlägg för granskning.','När du öppnar Handlarbörsen kan jag fortsätta.')
+  expect(r.out).not.toContain('faktiskt inte öppnat')
+ })
+ it('still corrects embedded completed navigation without a navigate receipt',async()=>{
+  const r=await post('Planera LinkedIn-inlägg för granskning.','Jag kan bekräfta att jag har öppnat Handlarbörsen.')
+  expect(r.out).toContain('faktiskt inte öppnat')
+ })
 })

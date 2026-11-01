@@ -34,7 +34,7 @@ The root agent performed a read-only metadata query in production project `iboep
 
 The security registry gains four `SERVER_ONLY` rows, taking its classified row count **185 to 189**. The two already-applied Sales tables leave `created_not_live.tables` and `.classes`; their obsolete planning note is replaced by the dated scoped observation. Two dated notes record the actual privilege breadth and FORCE RLS distinction without changing the existing row contract. `service_role: true` denotes reachability, not unrestricted privileges.
 
-All original 185 table rows, all views and the global capture date **2026-09-25** remain unchanged. This is not a new whole-catalog capture. The final reconciled registry SHA-256 is `fe35cea8c77bc5f938c284a7026a4c9ed60fabf487eb8b5e2050e49425e15419`.
+All original 185 table rows, all views and the global capture date **2026-09-25** remain unchanged. This is not a new whole-catalog capture. At source-sync commit `66cc17ab6a14e18c0655c9f87360ce007f4c138a`, the reconciled registry SHA-256 is `fe35cea8c77bc5f938c284a7026a4c9ed60fabf487eb8b5e2050e49425e15419`.
 
 Independent review of the complete `migration-security-gate.test.ts` diff confirms that only the two parameterized Sales classification cases are updated from pending to observed-live. They now require the full SERVER_ONLY/RLS/zero-policy/no-client-grant shape and absence from both pending lists. The `tableClass` check remains. Existing negative grant and final replay tests are unchanged.
 
@@ -60,3 +60,7 @@ The first desktop run passed **264 of 266 tests**. Its only two failures were th
 Evidence on Hultgren: `C:\Users\Andre\Projects\Omnira\Temp\harvey-resume-20261101\verified-checks-result.json`, `schema-tests-verified.json`, `schema-verified.log`, `typecheck-verified.log`, `ledger-source-review.json`, `ledger-sync-applied.json`, `registry-observation.json` and `registry-reconciliation.json`. The earlier failed-run artifacts are preserved separately.
 
 The unchanged policy integrity assertion and the 49 guard test cases pass within this run. The actual deployment guard against the production ledger is a separate post-push check; its exact commit and outcome belong in the current PR handoff. These local results alone do not establish a successful Preview, a production application release or a fresh full database replay. The separate worker correction and its 169 Windows tests are documented in [managed one-shot verification](2026-11-01-harvey-managed-once.md).
+
+## Subsequent ordinary main merge
+
+The continuation then merged main `cb909318ea820a92aa30324caa09d9ab42041d75`. The semantic registry union preserves both parents' observation notes and the Social tables' provenance flags; its SHA-256 is `3978603f7c8fdb6fbf2a4bdd11ccb7e14a7749a63b37dba4684bf284e6dc13bf`, with the same 189 unique tables and privileges. The merge also brings main's actual validation artifact and retains its three additional guard cases alongside all existing Harvey tests. Guard source code and frozen histories remain identical to both merge parents. [The separate merge verification](2026-11-01-harvey-main-merge.md) records the 471 passing targeted tests and full TypeScript on the combined application tree. The source hashes and initial 266-test result above remain the evidence for the earlier source-sync step.

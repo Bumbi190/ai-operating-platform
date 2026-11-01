@@ -654,3 +654,33 @@ it.each([
   const source = readFileSync(resolve(CANONICAL_DIR, file), 'utf8').replace(/\r\n/g, '\n')
   expect(createHash('sha256').update(source).digest('hex')).toBe(hash)
 })
+
+// Preserve main's rollout checks and its actual applied-ledger evidence.
+it('cross-chat scope is enforced exactly once and never grandfathered before release',()=>{
+ expect(repositoryState.enforcedNames).toContain(SOCIAL_OWNER_CROSSCHAT_MIGRATION)
+ expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain(SOCIAL_OWNER_CROSSCHAT_MIGRATION)
+ expect(()=>evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger.filter(n=>n!==SOCIAL_OWNER_CROSSCHAT_MIGRATION),repositoryState)).toThrow(/social_owner_crosschat_context/)
+ expect(()=>evaluateAppliedMigrationLedger([...hypotheticalPostApplyLedger,SOCIAL_OWNER_CROSSCHAT_MIGRATION],repositoryState)).toThrow(/duplicate/)
+})
+
+
+it('requires the campaign rollout and reconciled native claim migration without exceptions',()=>{
+ for(const name of SOURCE_SYNC_MIGRATIONS){
+  expect(repositoryState.enforcedNames).toContain(name)
+  expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain(name)
+  expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).not.toContain(name)
+  expect(()=>evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger.filter(n=>n!==name),repositoryState)).toThrow(new RegExp(name))
+  expect(()=>evaluateAppliedMigrationLedger([...hypotheticalPostApplyLedger,name],repositoryState)).toThrow(/duplicate/)
+ }
+ for(const [file,hash] of [['20261031204433_human_story_exact_claim.sql','a7ffd88a4b1881b3173e4dfe98af5d6d6ea1d7bb47b0c09411954cbd698a32e6'],['20261101062259_social_campaign_preparation.sql','1c2606bbb98cb3192b4a240b017fc6452a005e93d81183ae8373e11c97367aa1']]){
+  expect(createHash('sha256').update(readFileSync(resolve(CANONICAL_DIR,file),'utf8').replace(/\r\n/g,'\n')).digest('hex')).toBe(hash)
+ }
+})
+
+it('matches the actual Nov1 post-apply ledger while refusing the genuine pre-apply set',async()=>{
+ const {default:evidence}=await import('../../../../docs/validation/nova-campaign-schema-20261101.json')
+ expect(evidence.ledger_names).toHaveLength(192)
+ expect(evidence.migration.version).toBe('20261101062748')
+ expect(()=>evaluateAppliedMigrationLedger(evidence.ledger_names,repositoryState)).not.toThrow()
+ expect(()=>evaluateAppliedMigrationLedger(evidence.ledger_names.filter(n=>n!=='social_campaign_preparation'),repositoryState)).toThrow(/social_campaign_preparation/)
+})

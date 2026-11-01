@@ -100,7 +100,9 @@
     "user_calendar_v1_note": "Pending reviewed apply. Owner-scoped session-client tables; real local SQL RLS/grants verified. No production-catalog claim before deployment.",
     "human_story_note": "2026-10-26 hosted catalog verified: RLS, zero policies, no anon/authenticated table access, service_role SELECT only; immutable SQL RPC writes, authenticated owner approval only.",
     "sales_discovery_live_reconciliation_note": "Scoped read-only production metadata observation 2026-11-01 in iboepohjwrhtgshrqaol for sales_discovery_batches and sales_discovery_candidates after the already-applied sales_discovery_candidates migration (ledger 20261031120804). Both tables: RLS enabled, FORCE RLS off, zero policies, no effective anon/authenticated table privileges, service_role SELECT/INSERT/UPDATE only. The service_role boolean records reachability, not unrestricted privileges. These two SERVER_ONLY rows replace their earlier created_not_live entries and planning note. No table data was read and no SQL writes or runtime activation were performed by this source reconciliation. The earlier full-catalog capture date and all 185 existing table rows remain unchanged.",
-    "social_campaign_live_reconciliation_note": "Scoped read-only production metadata observation 2026-11-01 in iboepohjwrhtgshrqaol for social_campaigns and social_campaign_items after the already-applied social_campaign_preparation migration (ledger 20261101062748; canonical file 20261101062259). Both tables: RLS and FORCE RLS enabled, zero policies, no effective anon/authenticated table privileges, service_role SELECT/INSERT/UPDATE only. Classification SERVER_ONLY; the service_role boolean records reachability only. No table data was read and no SQL writes, image generation or publication were performed by this source reconciliation. Together with the two scoped Sales additions, the registry now contains 189 classified table rows; this is not a new full-catalog capture. Earlier table/view classifications and capture dates remain unchanged."
+    "social_campaign_live_reconciliation_note": "Scoped read-only production metadata observation 2026-11-01 in iboepohjwrhtgshrqaol for social_campaigns and social_campaign_items after the already-applied social_campaign_preparation migration (ledger 20261101062748; canonical file 20261101062259). Both tables: RLS and FORCE RLS enabled, zero policies, no effective anon/authenticated table privileges, service_role SELECT/INSERT/UPDATE only. Classification SERVER_ONLY; the service_role boolean records reachability only. No table data was read and no SQL writes, image generation or publication were performed by this source reconciliation. Together with the two scoped Sales additions, the registry now contains 189 classified table rows; this is not a new full-catalog capture. Earlier table/view classifications and capture dates remain unchanged.",
+    "nova_crosschat_parallel_sales_reconciliation_note": "Scoped read-only production observation 2026-10-31 of two already-applied Harvey discovery tables: RLS enabled, zero policies, anon/authenticated hold no table privileges and service_role SELECT is reachable. Source-only reconciliation from PR386 commit 54665da95aaba7e34c6e02877f938ebf81b39998; exact SQL hashes pinned in nova-release-ledger-reconciliation.test.ts. No SQL reapplication, sales code, flag, sender or customer-contact authority included. Other capture scopes unchanged.",
+    "nova_campaign_preparation_note": "Scoped live production catalog observation2026-11-01 after owner-approved migration20261101062748_social_campaign_preparation (canonical20261101062259; SHA2561c2606bbb98cb3192b4a240b017fc6452a005e93d81183ae8373e11c97367aa1). Both tables RLS and FORCE RLS enabled, zero policies, anon/authenticated hold no table privileges, service-role technically reachable. All14 campaign function bodies match canonical SQL and empty search_path; client EXECUTE revoked, service EXECUTE allowed. Ledger192. This note refreshes only these two classifications, not previous capture scopes; no publication or account authority."
   },
   "tables": {
     "handlarborsen_competitor_review_decisions": {
@@ -1934,7 +1936,9 @@
       "policies": 0,
       "anon_grants": false,
       "authenticated_grants": false,
-      "service_role": true
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "social_campaigns": {
       "class": "SERVER_ONLY",
@@ -1942,7 +1946,9 @@
       "policies": 0,
       "anon_grants": false,
       "authenticated_grants": false,
-      "service_role": true
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     }
   },
   "views": {

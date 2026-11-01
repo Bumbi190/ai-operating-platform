@@ -58,12 +58,11 @@ const iso = (daysAgo: number) => new Date(Date.now() - daysAgo * 864e5).toISOStr
 const sek = (n: number) =>
   new Intl.NumberFormat('sv-SE', { style: 'currency', currency: 'SEK', maximumFractionDigits: 0 }).format(n)
 
-// Isolation fixtures must be inside both the legacy rolling 30-day read and
-// the current month. First-day noon falls out of that read late on the 31st.
-// Current-day midnight is in both windows and never creates a future row.
-const inMonth = () => {
-  const n = new Date()
-  return new Date(n.getFullYear(), n.getMonth(), n.getDate(), 0, 0, 0).toISOString()
+// Seed inside BOTH month-to-date and the page's rolling 30-day query.
+// On day 31, month-start noon can fall outside that query and empty the fixture.
+const inMonth = (n = new Date()) => {
+  const monthStart = new Date(n.getFullYear(), n.getMonth(), 1).getTime()
+  return new Date(Math.max(monthStart, n.getTime() - 864e5)).toISOString()
 }
 
 // ── Seed: owned 1 000 kr vs foreign 99 000 kr (the leak must be unmissable) ──

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-10-31T14:32:14.741Z",
+  "repository": "Bumbi190/ai-operating-platform",
+  "project": "Omnira",
+  "task": "Nova crosschat conversation authorization",
+  "workId": "NOVA-CROSSCHAT-SOCIAL",
+  "proposedBranch": "fix/nova-crosschat-social-20261031",
+  "mainSha": "d0efe26c8fd719f7a1373ef5c7de6dfe9e331c90",
+  "openPrCount": 123,
+  "worktreeCount": 228,
+  "decision": "new_branch_approved",
+  "code": "no_matching_work",
+  "candidates": [],
+  "branchMatches": [],
+  "worktreeMatches": [],
+  "reason": "Initial receipt false-matched historical social-launch branches with no open PR or worktree; inspected separately. No matching active conversation-authorization work. PR578 is voice documents, PR605 is parked GitHub catalog; neither owns this SQL scope correction.",
+  "limitations": "Metadata/local-name similarity is a hint; review actual file scope and agent ownership before new work.",
+  "sideEffects": "None. No branch, worktree, PR, commit, deployment or API mutation is performed."
+}

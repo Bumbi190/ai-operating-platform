@@ -9,5 +9,5 @@ export const MODEL3D_RUNTIME_ASSET=Object.freeze({
 })
 
 export function readModel3DRuntimeBytes():Uint8Array{
- return readFileSync(new URL('./runtime/model3d-v1.js',import.meta.url))
+ return readFileSync(new URL('./runtime/model3d-v1.bin',import.meta.url))
 }

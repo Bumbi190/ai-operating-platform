@@ -92,8 +92,12 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // already applied by its workstream as ledger 20261031145817. Exact canonical SQL
 // and applied function body verified; no SQL is applied by this source sync.
 // 166/152 -> 167/153. Frozen grandfathered/legacy sets and enforcement stay intact.
-export const EXPECTED_CANONICAL_SQL_COUNT = 167
-export const EXPECTED_ENFORCED_COUNT = 153
+// Nov 1 source-only sync from 2a8fd87: human_story_exact_claim and
+// social_campaign_preparation are already applied (ledger 20261031204433 /
+// 20261101062748). Exact canonical SQL matches the applied statements; no SQL
+// is applied here. 167/153 -> 169/155; frozen histories and enforcement unchanged.
+export const EXPECTED_CANONICAL_SQL_COUNT = 169
+export const EXPECTED_ENFORCED_COUNT = 155
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

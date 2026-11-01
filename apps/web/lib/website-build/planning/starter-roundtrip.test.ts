@@ -41,15 +41,17 @@ describe('real SQL starter tool to build and edit; provider output is a fixture'
  it('worker restores exact approved image bytes, preserves them after feedback and rejects a foreign image handle',async()=>{
   const p=await proposal(),s=await start(p)
   const pinned=JSON.parse(testSql(`select design_reference from website_build_sessions where id=${q(s.sessionId)};`)),source=JSON.parse(pinned.canonicalDraft) as WebsiteDraft
-  provider.mockImplementationOnce(async(args:any)=>{const request=JSON.parse(args.userMessage);expect(args.userMessage).not.toContain('base64,');expect(request.assets).toHaveLength(17);expect(Buffer.byteLength(args.userMessage)).toBeLessThan(48000);return response(source)})
+  provider.mockImplementationOnce(async(args:any)=>{const request=JSON.parse(args.userMessage);expect(args.userMessage).not.toContain('base64,');expect(request.assets).toHaveLength(18);expect(Buffer.byteLength(args.userMessage)).toBeLessThan(48000);return response(source)})
   const firstRun=claim(s);await executeWebsiteBuildRun(db,firstRun,firstRun.claim_id!)
   const first=await readBuildSession(db,TEST_PRINCIPAL,s),artifact=await readBuildArtifact(db,TEST_PRINCIPAL,s,first.activePreviewRevisionId!)
   expect(first.status).toBe('ready');expect(artifact.pages[0].html).not.toContain('atlas-asset:')
   const images=artifact.pages[0].html.match(/src="data:image\/webp;base64,[^"]+"/g)!
-  expect(images).toHaveLength(21);expect(new Set(images).size).toBe(17)
+  expect(images).toHaveLength(21)
+  // Includes the GLB-matched concept poster in addition to the prior approved image sources.
+  expect(new Set(images).size).toBe(18)
   const feedback=await appendBuildFeedback(db,TEST_PRINCIPAL,s,{idempotencyKey:randomUUID(),text:'Byt bara accentfärgen till #71d7ba. Behåll bilderna.',inputSource:'text',viewedRevisionId:first.activePreviewRevisionId})
   const edited={...source,css:source.css!.replaceAll('#efb563','#71d7ba')}
-  provider.mockResolvedValueOnce(response({items:[{feedbackId:feedback.id,summary:'Ändrar färg och behåller bilder.',disposition:'apply',changeKey:'theme.accent',supersedesFeedbackIds:[]}]})).mockImplementationOnce(async(args:any)=>{expect(args.userMessage).not.toContain('base64,');expect(JSON.parse(args.userMessage).assets).toHaveLength(17);return response(edited)})
+  provider.mockResolvedValueOnce(response({items:[{feedbackId:feedback.id,summary:'Ändrar färg och behåller bilder.',disposition:'apply',changeKey:'theme.accent',supersedesFeedbackIds:[]}]})).mockImplementationOnce(async(args:any)=>{expect(args.userMessage).not.toContain('base64,');expect(JSON.parse(args.userMessage).assets).toHaveLength(18);return response(edited)})
   const next=claim(s);await executeWebsiteBuildRun(db,next,next.claim_id!)
   const second=await readBuildSession(db,TEST_PRINCIPAL,s),changed=await readBuildArtifact(db,TEST_PRINCIPAL,s,second.activePreviewRevisionId!)
   expect(second.revisions).toHaveLength(2);expect(second.feedback.find(f=>f.id===feedback.id)?.status).toBe('applied')

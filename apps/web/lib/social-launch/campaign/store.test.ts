@@ -3,7 +3,7 @@ const cost=vi.hoisted(()=>({getRates:vi.fn(),estimate:vi.fn(),enforced:vi.fn()})
 vi.mock('@/lib/cost/current-image-rates',()=>({getCurrentImageRates:cost.getRates}))
 vi.mock('@/lib/cost/budget-gate',()=>({estimateImageSek:cost.estimate}))
 vi.mock('@/lib/cost/spend-gate-flag',()=>({isSpendGateEnforced:cost.enforced}))
-import {enqueueCampaign,readCampaign} from './store'
+import {enqueueCampaign,readCampaign,campaignPreparationCapability} from './store'
 const id='11111111-1111-4111-8111-111111111111',other='22222222-2222-4222-8222-222222222222'
 const p={userId:id,allowedProjectIds:[id]}
 const input={projectId:id,campaignId:other,planRevisionId:id,profileRevisionId:id,idempotencyKey:'intent',items:[{title:'Title',text:'Actual copy',imagePrompt:'A dealer',localMinute:'2027-03-02T08:30'}]}
@@ -27,4 +27,14 @@ it('an accepted request returns its original receipt before repricing even when 
  const rpc=vi.fn().mockImplementation(async name=>({data:name==='social_campaign_replay'?{id:other,maxCostSek:1.2}:null,error:null}))
  expect(await enqueueCampaign({rpc} as never,p,id,input)).toMatchObject({id:other,maxCostSek:1.2})
  expect(rpc.mock.calls.map(c=>c[0])).toEqual(['social_campaign_replay'])
+})
+
+it('reports only project-scoped configuration and requires enforced gate, exact origins and a configured credential',()=>{
+ vi.stubEnv('IDEOGRAM_API_KEY','test-only')
+ expect(campaignPreparationCapability(id)).toMatchObject({configured:true,requiresPublicationAccount:false,publicationAuthority:false,maxItems:3,maxImageCostSek:5})
+ expect(campaignPreparationCapability(other).configured).toBe(false)
+ cost.enforced.mockReturnValue(false);expect(campaignPreparationCapability(id).configured).toBe(false)
+ cost.enforced.mockReturnValue(true);vi.stubEnv('SOCIAL_CAMPAIGN_IMAGE_ORIGINS','https://cdn.vendor.example/path');expect(campaignPreparationCapability(id).configured).toBe(false)
+ vi.stubEnv('SOCIAL_CAMPAIGN_IMAGE_ORIGINS','https://cdn.vendor.example');vi.stubEnv('IDEOGRAM_API_KEY','');expect(campaignPreparationCapability(id).configured).toBe(false)
+ vi.stubEnv('IDEOGRAM_API_KEY','test-only');vi.stubEnv('SOCIAL_CAMPAIGN_PREPARATION','0');expect(campaignPreparationCapability(id).configured).toBe(false)
 })

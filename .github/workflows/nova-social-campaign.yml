@@ -24,6 +24,7 @@ jobs:
         run: |
           npx --no vitest run \
             lib/social-launch/campaign \
+            lib/social-launch/content/campaign-capability.test.ts \
             lib/social-launch/publication/linkedin-adapter.test.ts \
             lib/qa/atlas-project-task-context.test.ts \
             lib/qa/m0-spend-ceiling.test.ts \
@@ -39,7 +40,7 @@ jobs:
           node --input-type=module <<'NODE'
           import {readFileSync} from 'node:fs'
           const report=JSON.parse(readFileSync('nova-campaign-vitest.json','utf8'))
-          if(report.testResults.length<20||report.numTotalTests<358||report.numPendingTests!==0||report.numFailedTests!==0||report.numPassedTests!==report.numTotalTests)throw Error('Incomplete campaign boundary proof')
+          if(report.testResults.length<21||report.numTotalTests<362||report.numPendingTests!==0||report.numFailedTests!==0||report.numPassedTests!==report.numTotalTests)throw Error('Incomplete campaign boundary proof')
           for(const suite of report.testResults)if(suite.status!=='passed'||suite.assertionResults.some(test=>test.status!=='passed'))throw Error('Missing or skipped suite: '+suite.name)
           console.log(report.numPassedTests+' campaign/regression tests passed with no skips')
           NODE

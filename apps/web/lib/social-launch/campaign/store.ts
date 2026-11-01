@@ -14,6 +14,12 @@ export function isCampaignEnabled(projectId:string):boolean{
  return process.env.SOCIAL_CAMPAIGN_PREPARATION==='1'&&isSpendGateEnforced()&&projects.includes(projectId.toLowerCase())
 }
 export function requireCampaignEnabled(projectId:string){if(!isCampaignEnabled(projectId))throw new CampaignError('DISABLED')}
+// Safe configuration metadata only; actual enqueue/dispatch still performs every authority/cost check.
+export function campaignPreparationCapability(projectId:string){
+ let configured=false
+ try{requireCampaignEnabled(projectId);campaignImageOrigins();configured=Boolean(process.env.IDEOGRAM_API_KEY?.trim())}catch{/* Default OFF, including malformed config. */}
+ return {configured,maxItems:3,maxImageCostSek:5,requiresPublicationAccount:false,publicationAuthority:false,admissionCheckedOnEnqueue:true}
+}
 function scope(p:CampaignPrincipal,projectId:unknown){campaignId(p.userId);campaignId(projectId);if(!p.allowedProjectIds.includes(projectId))throw new CampaignError('NOT_FOUND')}
 async function call<T>(db:CampaignDb,name:string,args:Record<string,unknown>,signal?:AbortSignal):Promise<T>{
  const request=(db as unknown as {rpc:(n:string,a:Record<string,unknown>)=>PromiseLike<{data:unknown;error:{message?:string;code?:string}|null}>&{abortSignal:(s:AbortSignal)=>PromiseLike<{data:unknown;error:{message?:string;code?:string}|null}>}}).rpc(name,args)

@@ -376,8 +376,9 @@ describe('Nova cross-chat social operational requests',()=>{
   const r=await post('Planera LinkedIn-inlägg för granskning.','När du öppnar Handlarbörsen kan jag fortsätta.')
   expect(r.out).not.toContain('faktiskt inte öppnat')
  })
- it('still corrects embedded completed navigation without a navigate receipt',async()=>{
+ it('replaces an unsupported social-turn navigation claim before it is emitted',async()=>{
   const r=await post('Planera LinkedIn-inlägg för granskning.','Jag kan bekräfta att jag har öppnat Handlarbörsen.')
-  expect(r.out).toContain('faktiskt inte öppnat')
+  expect(r.out).not.toContain('jag har öppnat Handlarbörsen')
+  expect(r.out).toContain('Ingen ny sparning eller köläggning har bekräftats.')
  })
 })

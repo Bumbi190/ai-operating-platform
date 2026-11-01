@@ -60,6 +60,14 @@ export function createPremiumDealerDraft(input:PremiumDealerInput):WebsiteDraft{
  <p class="count" id="count" role="status">${count} av ${count} visas</p><p class="empty" id="empty" hidden>Inga exempelbilar matchar. Välj Alla drivlinor för att återställa listan.</p><div class="catalog">${cards}</div></section>
  <section class="about" id="om"><div><p class="kicker">Digitalt showroom. Mänsklig känsla.</p><h2>Mer än en lista.<br>En första upplevelse.</h2></div><div><p>Här provar vi hur en tydlig bilöversikt och ett filmiskt uttryck kan samspela. Bilderna är AI-genererade konceptillustrationer. Uppgifter, priser och namn är exempel.</p><p>Filtrering, detaljer och testformulär fungerar lokalt. Fotorealistiska bilder är inte detsamma som en 3D-modell: interaktiv 3D och verklig kundpublicering återstår. Handlarbörsens B2B-marknadsplats ändras inte.</p></div></section>
  <section class="contact" id="kontakt"><div><h2>Hittat ditt nästa perspektiv?</h2><p>Välj en konceptbil och prova intresseflödet. Inget skickas eller sparas.</p></div><a class="button outline" href="#lager">Utforska bilarna<span class="arrow" aria-hidden="true">→</span></a></section></div></main>
- <div class="shell"><footer><span>${e(input.brand)} ${e(input.subtitle)} · Fiktiv demonstration</span><span>Omnira Web Studio · Ingen verklig försäljning</span></footer></div>`
+ <footer class="premium-footer"><div class="shell">
+  <div class="footer-grid">
+   <div class="footer-brand"><a class="footer-logo" href="#">${e(input.brand)}<small>${e(input.subtitle)}</small></a><p>Digitalt showroom med tydlig struktur, premiumkänsla och fokus på nästa steg.</p></div>
+   <nav class="footer-links" aria-label="Utforska"><h3>Utforska</h3><a href="#lager">Bilar</a><a href="#om">Om demon</a><a href="#kontakt">Kontakt</a></nav>
+   <div class="footer-links"><h3>Demo & transparens</h3><span>Fiktiv demonstration</span><span>AI-genererade konceptbilder</span><span>Ingen verklig försäljning</span></div>
+   <div class="footer-cta"><p class="kicker">Omnira Web Studio</p><h3>Vill du ha en liknande premiumwebb?</h3><p>Den här sidan visar en möjlig riktning för en modern bilhandel.</p><a class="button outline" href="#kontakt">Prata om din sida<span class="arrow" aria-hidden="true">→</span></a></div>
+  </div>
+  <div class="footer-bottom"><span>${e(input.brand)} ${e(input.subtitle)} · Fiktiv demonstration</span><span>Omnira Web Studio · Konceptpreview</span></div>
+ </div></footer>`
  return {format:'static-website.v1',title:input.brand+' '+input.subtitle+' – premiumdemo',css,pages:[{key:'index',title:input.brand+' '+input.subtitle+' – fiktivt showroom',bodyHtml,behaviors}]}
 }

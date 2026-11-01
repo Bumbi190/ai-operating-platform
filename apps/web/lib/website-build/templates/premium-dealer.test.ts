@@ -61,3 +61,18 @@ describe('approved premium dealership template',()=>{
   for(const a of provenance.assets)expect(createHash('sha256').update(readFileSync(new URL(a.file,base))).digest('hex')).toBe(a.sha256)
  })
 })
+
+ it('finishes with a premium branded footer instead of a thin legal row',()=>{
+  const draft=createPremiumDealerDraft(input()),html=draft.pages[0].bodyHtml
+  expect(html).toContain('class="premium-footer"')
+  expect(html).toContain('Handlarbörsen')
+  expect(html).toContain('Digitalt showroom')
+  expect(html).toContain('Utforska')
+  expect(html).toContain('Demo & transparens')
+  expect(html).toContain('Omnira Web Studio')
+  expect(html).toContain('Vill du ha en liknande premiumwebb?')
+  expect(html).toContain('href="#kontakt"')
+  expect(draft.css).toContain('.footer-grid')
+  expect(draft.css).toContain('.footer-cta')
+  expect(draft.css).toContain('linear-gradient')
+ })

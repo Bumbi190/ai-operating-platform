@@ -1,9 +1,11 @@
+import {createHash} from 'node:crypto'
 import {escapeHtml as e} from '../preview-runtime'
+import {vehicle3DAsset} from '../assets/vehicle-3d'
 import type {WebsiteBehavior,WebsiteDraft} from '../types'
 import {premiumDealerStyle} from './premium-dealer-style'
 
 export type DealerRaster={src:string;width:number;height:number;alt:string}
-export type DealerCar={id:string;name:string;fuel:'el'|'hybrid'|'bensin';year:number;km:number;price:number;image:DealerRaster;spin?:DealerRaster[]}
+export type DealerCar={id:string;name:string;fuel:'el'|'hybrid'|'bensin';year:number;km:number;price:number;image:DealerRaster;spin?:DealerRaster[];model3dAssetId?:string}
 export type PremiumDealerInput={brand:string;subtitle:string;hero:DealerRaster;cars:DealerCar[];accent?:string}
 const labels={el:'El',hybrid:'Hybrid',bensin:'Bensin'}
 const amount=(value:number)=>new Intl.NumberFormat('sv-SE').format(value)
@@ -13,6 +15,7 @@ function raster(image:DealerRaster){
  for(const n of [image.width,image.height])if(!Number.isInteger(n)||n<1||n>8192)throw Error('INVALID_DEALER_IMAGE_SIZE')
  text(image.alt,200)
 }
+function rasterSha(image:DealerRaster){return createHash('sha256').update(Buffer.from(image.src.slice(image.src.indexOf(',')+1),'base64')).digest('hex')}
 function validate(input:PremiumDealerInput){
  if(!input||!Array.isArray(input.cars)||input.cars.length<1||input.cars.length>16)throw Error('INVALID_DEALER_CATALOG')
  text(input.brand,80);text(input.subtitle,80);raster(input.hero)
@@ -30,6 +33,13 @@ function validate(input:PremiumDealerInput){
    if(new Set(car.spin.map(frame=>frame.width+'x'+frame.height)).size!==1)throw Error('INVALID_DEALER_SPIN_SIZE')
    ids.push(car.id+'-spin-title',car.id+'-spin-control',...car.spin.map((_,i)=>car.id+'-spin-'+i))
   }
+  if(car.model3dAssetId){
+   const model=vehicle3DAsset(car.model3dAssetId)
+   if(!model||model.truthClass!=='fictional_concept')throw Error('INVALID_DEALER_MODEL3D_ASSET')
+   if(!car.spin)throw Error('INVALID_DEALER_MODEL3D_FALLBACK')
+   if(rasterSha(car.image)!==model.poster.sha256)throw Error('INVALID_DEALER_MODEL3D_POSTER')
+   ids.push(car.id+'-model3d',car.id+'-model3d-fallback',car.id+'-model3d-title')
+  }
   ids.push(car.id,...['interest','form','vehicle','message'].map(s=>car.id+'-'+s))
  }
  if(new Set(ids).size!==ids.length)throw Error('INVALID_DEALER_ID')
@@ -41,14 +51,20 @@ function spinHtml(car:DealerCar){
  return `<section class="spin-demo" aria-labelledby="${car.id}-spin-title"><div class="spin-heading"><h4 id="${car.id}-spin-title">360° konceptvy</h4><span>${car.spin.length} renderade vinklar</span></div><div class="spin-stage">${frames}</div><label class="spin-control" for="${car.id}-spin-control">Dra för att rotera bilen<input id="${car.id}-spin-control" type="range" min="0" max="${car.spin.length-1}" step="1" value="0" aria-label="Rotera den fiktiva konceptbilen"></label><p class="spin-note">Interaktiv fotosekvens av en fiktiv 3D-renderad konceptbil. Detta är en 360° demo, inte en digital tvilling av ett verkligt fordon.</p></section>`
 }
 
+function model3dHtml(car:DealerCar){
+ if(!car.model3dAssetId)return spinHtml(car)
+ return `<section class="model3d-demo" aria-labelledby="${car.id}-model3d-title"><div class="model3d-heading"><h4 id="${car.id}-model3d-title">Fri 3D-konceptvy</h4><span>Samma 3D-källa som bilden</span></div><div id="${car.id}-model3d" class="model3d-stage" data-vehicle-3d="${car.model3dAssetId}" aria-label="Fri 3D-vy av en fiktiv konceptbil" hidden></div><div id="${car.id}-model3d-fallback" class="model3d-fallback"><p class="model3d-fallback-label">360° fallback</p>${spinHtml(car)}</div><p class="model3d-note">Fri interaktiv vy av en fiktiv 3D-modell. Bilden ovan är renderad från samma 3D-källa. Detta är inte en digital tvilling eller ett verkligt lagerfordon.</p></section>`
+}
+
 /** Reusable static draft template, not an agent call or an approval. Caller supplies vetted raster assets. */
 export function createPremiumDealerDraft(input:PremiumDealerInput):WebsiteDraft{
  validate(input)
- const accent=input.accent??'#efb563',css=premiumDealerStyle(accent),hasSpin=input.cars.some(c=>!!c.spin)
+ const accent=input.accent??'#efb563',css=premiumDealerStyle(accent),hasSpin=input.cars.some(c=>!!c.spin),hasModel3d=input.cars.some(c=>!!c.model3dAssetId)
  const behaviors:WebsiteBehavior[]=[{kind:'filter',triggerId:'fuel',targetIds:input.cars.map(c=>c.id),attribute:'data-fuel',emptyId:'empty',countId:'count'}]
  for(const c of input.cars){
   behaviors.push({kind:'toggle',triggerId:c.id+'-interest',targetIds:[c.id+'-form']})
   if(c.spin)behaviors.push({kind:'spin',triggerId:c.id+'-spin-control',targetIds:c.spin.map((_,i)=>c.id+'-spin-'+i)})
+  if(c.model3dAssetId)behaviors.push({kind:'model3d',triggerId:c.id+'-model3d',targetIds:[c.id+'-model3d-fallback'],assetId:c.model3dAssetId})
  }
  const cards=input.cars.map((c,i)=>`<article class="car" id="${c.id}" data-fuel="${c.fuel}">
  <div class="card-top"><span>OMNIRA CONCEPT / ${String(i+1).padStart(2,'0')}</span><span class="badge ${c.fuel}">${labels[c.fuel]}</span></div>
@@ -56,7 +72,7 @@ export function createPremiumDealerDraft(input:PremiumDealerInput):WebsiteDraft{
  <div class="car-body"><div class="car-heading"><h3>${e(c.name)}</h3><strong class="price">${amount(c.price)} kr</strong></div>
  <p class="spec-line">${c.year}<span>·</span>${amount(c.km)} km<span>·</span>${labels[c.fuel]}</p></div>
  <details><summary>Utforska ${e(c.name)}</summary><div class="detail-body"><p>Fiktivt exempel ${e(c.id.toUpperCase())}. Pris och fordonsfakta är påhittade. Bilden är en AI-illustration, inte ett fotografi av en lagerbil.</p>
- ${spinHtml(c)}
+ ${model3dHtml(c)}
  <dl><div><dt>Årsmodell</dt><dd>${c.year}</dd></div><div><dt>Körsträcka</dt><dd>${amount(c.km)} km</dd></div><div><dt>Drivlina</dt><dd>${labels[c.fuel]}</dd></div><div><dt>Exempelpris</dt><dd>${amount(c.price)} kr</dd></div></dl>
  <button class="button" id="${c.id}-interest" aria-expanded="false" aria-controls="${c.id}-form">Visa testförfrågan</button>
  <section id="${c.id}-form" hidden><h4>Testförfrågan för ${e(c.name)}</h4><p class="demo-note">Endast demonstration. Inget skickas och inga uppgifter sparas.</p>
@@ -69,12 +85,12 @@ export function createPremiumDealerDraft(input:PremiumDealerInput):WebsiteDraft{
  <nav class="nav-links" aria-label="Huvudnavigation"><a href="#lager">Utforska bilar</a><a href="#om">Om demon</a><a href="#kontakt">Kontakt</a></nav><a class="button outline" href="#lager"><span class="arrow" aria-hidden="true">→</span>Utforska bilar</a></div></header>
  <main><section class="hero"><div class="hero-inner shell"><div class="hero-copy"><p class="kicker">En idé från Omnira Web Studio</p><h1>En ny vy<br>på <em>bilaffären.</em></h1>
  <p class="intro">Utforska ${countWord} fiktiva konceptbilar. Välj drivlina, öppna detaljer och prova nästa steg – utan att någonting skickas.</p><a class="button" href="#lager">Utforska konceptbilarna<span class="arrow" aria-hidden="true">→</span></a></div></div>
- <figure class="scene">${imageHtml(input.hero)}<figcaption class="scene-note">${hasSpin?'<strong>Ett showroom att utforska.</strong><br>360°-konceptvy finns i första bilen. Fri 3D ingår ännu inte.':'<strong>Ett showroom att inspireras av.</strong><br>AI-genererad stillbild. Interaktiv 3D ingår inte i denna version.'}</figcaption></figure></section>
+ <figure class="scene">${imageHtml(input.hero)}<figcaption class="scene-note">${hasModel3d?'<strong>Ett showroom att utforska.</strong><br>Fri 3D-konceptvy och 360° fallback finns i första bilen.':hasSpin?'<strong>Ett showroom att utforska.</strong><br>360°-konceptvy finns i första bilen. Fri 3D ingår ännu inte.':'<strong>Ett showroom att inspireras av.</strong><br>AI-genererad stillbild. Interaktiv 3D ingår inte i denna version.'}</figcaption></figure></section>
  <div class="shell"><section class="inventory" id="lager" aria-labelledby="inventory-heading"><div class="section-head"><div><p class="kicker">${e(countWord)} bilar. Nya perspektiv.</p><h2 id="inventory-heading">Hitta ditt nästa perspektiv.</h2>
  <p class="description">Alla fordonsfakta och priser är påhittade exempel.<br>AI-genererade illustrationer återanvänds för att visa designen, inte faktiska fordon.</p></div>
  <div class="filter"><label for="fuel">Filtrera på drivlina</label><select id="fuel"><option value="*">Alla drivlinor</option><option value="el">El</option><option value="hybrid">Hybrid</option><option value="bensin">Bensin</option><option value="vatgas">Vätgas - inga exempel ännu</option></select></div></div>
  <p class="count" id="count" role="status">${count} av ${count} visas</p><p class="empty" id="empty" hidden>Inga exempelbilar matchar. Välj Alla drivlinor för att återställa listan.</p><div class="catalog">${cards}</div></section>
- <section class="about" id="om"><div><p class="kicker">Digitalt showroom. Mänsklig känsla.</p><h2>Mer än en lista.<br>En första upplevelse.</h2></div><div><p>Här provar vi hur en tydlig bilöversikt och ett filmiskt uttryck kan samspela. Bilderna är AI-genererade konceptillustrationer. Uppgifter, priser och namn är exempel.</p><p>Filtrering, detaljer och testformulär fungerar lokalt.${hasSpin?' Första konceptbilen har en interaktiv 360°-bildsekvens från tolv renderade vinklar.':''} En fotosekvens är inte samma sak som en fri 3D-modell: verklig GLB/Three.js-visning och kundpublicering återstår. Handlarbörsens B2B-marknadsplats ändras inte.</p></div></section>
+ <section class="about" id="om"><div><p class="kicker">Digitalt showroom. Mänsklig känsla.</p><h2>Mer än en lista.<br>En första upplevelse.</h2></div><div><p>Här provar vi hur en tydlig bilöversikt och ett filmiskt uttryck kan samspela. Bilderna är AI-genererade konceptillustrationer. Uppgifter, priser och namn är exempel.</p><p>Filtrering, detaljer och testformulär fungerar lokalt.${hasModel3d?' Första konceptbilen har en fri GLB/Three.js-vy och en 360°-bildsekvens som fallback, båda från den styrda konceptkällan.':hasSpin?' Första konceptbilen har en interaktiv 360°-bildsekvens från tolv renderade vinklar.':''} ${hasModel3d?'3D-bilen är fortfarande fiktiv och ska inte tolkas som en digital tvilling av ett verkligt lagerfordon.':'En fotosekvens är inte samma sak som en fri 3D-modell: verklig GLB/Three.js-visning och kundpublicering återstår.'} Handlarbörsens B2B-marknadsplats ändras inte.</p></div></section>
  <section class="contact" id="kontakt"><div><h2>Hittat ditt nästa perspektiv?</h2><p>Välj en konceptbil och prova intresseflödet. Inget skickas eller sparas.</p></div><a class="button outline" href="#lager">Utforska bilarna<span class="arrow" aria-hidden="true">→</span></a></section></div></main>
  <footer class="premium-footer"><div class="footer-visual" aria-hidden="true">${imageHtml(input.hero)}</div><div class="shell">
   <div class="footer-grid">

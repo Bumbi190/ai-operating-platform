@@ -2,9 +2,11 @@ import {describe,it,expect} from 'vitest'
 import {readFileSync} from 'node:fs'
 import {createHash} from 'node:crypto'
 import {compileWebsiteArtifact} from '../artifact'
+import {vehicle3DAsset} from '../assets/vehicle-3d'
 import {createPremiumDealerDraft,type PremiumDealerInput} from './premium-dealer'
 const asset=(name:string,width:number)=>({src:'data:image/webp;base64,'+readFileSync(new URL('../../../e2e/website-catalog/assets/premium/'+name+'.webp',import.meta.url)).toString('base64'),width,height:name==='showroom-hero'?367:140,alt:'AI-genererad konceptillustration'})
 const photos=[asset('concept-silver',331),asset('concept-green',329),asset('concept-blue',322),asset('concept-black',331)]
+const modelPoster={src:'data:image/webp;base64,'+readFileSync(new URL('../../../e2e/website-catalog/assets/premium/3d/demo-motors-poster.webp',import.meta.url)).toString('base64'),width:1280,height:720,alt:'Fiktiv konceptbil renderad från samma 3D-källa som fri 3D-vy'}
 function input():PremiumDealerInput{return {brand:'Handlarbörsen',subtitle:'DEMO MOTORS',hero:asset('showroom-hero',963),cars:Array.from({length:8},(_,i)=>({id:'concept-0'+(i+1),name:'Koncept '+(i+1),fuel:(['el','hybrid','bensin'] as const)[i%3],year:2025,km:i*1000,price:300000+i*10000,image:photos[i%4]}))}}
 describe('approved premium dealership template',()=>{
  it('uses real readable text, cinematic layout and four provided vehicle illustrations',()=>{
@@ -32,6 +34,27 @@ describe('approved premium dealership template',()=>{
   expect(()=>createPremiumDealerDraft(short)).toThrow('INVALID_DEALER_SPIN')
   const mixed=input();mixed.cars[0].spin=[photos[0],photos[0],photos[0],photos[1]]
   expect(()=>createPremiumDealerDraft(mixed)).toThrow('INVALID_DEALER_SPIN_SIZE')
+ })
+
+ it('binds the free 3D viewer to the exact same-source poster and keeps the 360 fallback',()=>{
+  const data=input(),assetId='vehicle3d:demo-motors-concept-v1'
+  data.cars[0].image=modelPoster
+  data.cars[0].spin=Array.from({length:4},(_,i)=>({...photos[0],alt:'Konceptvy '+(i+1)}))
+  data.cars[0].model3dAssetId=assetId
+  const draft=createPremiumDealerDraft(data),html=draft.pages[0].bodyHtml
+  expect(html).toContain('class="model3d-stage"')
+  expect(html).toContain('data-vehicle-3d="'+assetId+'"')
+  expect(html).toContain('Fri 3D-konceptvy')
+  expect(html).toContain('fiktiv 3D-modell')
+  expect(html).toContain('360° fallback')
+  expect(draft.pages[0].behaviors.filter(b=>b.kind==='model3d')).toEqual([{kind:'model3d',triggerId:'concept-01-model3d',targetIds:['concept-01-model3d-fallback'],assetId}])
+  const artifact=compileWebsiteArtifact(draft)
+  expect(artifact.assets).toHaveLength(3)
+  expect(artifact.pages[0].html).toContain(vehicle3DAsset(assetId)!.glb.path)
+  const mismatch=input()
+  mismatch.cars[0].spin=Array.from({length:4},()=>photos[0])
+  mismatch.cars[0].model3dAssetId=assetId
+  expect(()=>createPremiumDealerDraft(mismatch)).toThrow('INVALID_DEALER_MODEL3D_POSTER')
  })
  it('compiles within the unchanged artifact limit and keeps forms explicitly disconnected',()=>{
   const artifact=compileWebsiteArtifact(createPremiumDealerDraft(input()))

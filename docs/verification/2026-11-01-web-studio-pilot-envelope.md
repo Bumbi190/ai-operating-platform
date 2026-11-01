@@ -39,3 +39,13 @@ Owner approval/binding: `C:\Users\Andre\Projects\Omnira\Docs\OMNIRA_HB_PREVIEW_B
 
 ## Next bounded action
 Wire and test an attended native executor with a truthful provider quote, exact approved input and the permanent allowance; then enable only this dedicated demo for one bounded initial generation. Keep the existing preview and approved premium design as comparison baseline. Any extra spend requires a concrete proposal and new approval. Do not rebuild the site or enlarge platform scope merely to add budget machinery.
+
+
+## Fresh attended-seam verification — 2026-11-01
+- TDD RED: the new worker hook test initially showed the provider was called because the hook did not exist. GREEN after the minimal hook implementation.
+- Quote TDD RED: module absent; GREEN after canonical quote implementation. A feedback expectation was corrected only after root-cause verification showed canonical 4-decimal SEK quantization must round 6.615 upward to 6.6151; no ceiling was weakened.
+- Fresh focused tests: 6/6 passed (2 worker-hook + 4 paid-step quote), zero skips.
+- Focused TypeScript project for the four changed/new files: exit 0. Full local web TypeScript attempted with 1536MiB heap hit OOM/134; this is not reported as a successful full typecheck. The previous remote full typecheck remains evidence only for 531cac0, not these local changes.
+- No paid provider request, image generation, project resume, native budget increase, build session or run was created by this implementation slice.
+- Real demo plan exists as proposal only: approvedDecision=null and activeSessionId=null at save time. Raw SQL save does not create mockups; the normal app read path hydrates three exact mockups through `website_build_mockup_prepare`.
+- Current local source changes are additive and not deployed. A later push requires the normal shared-branch approval boundary.

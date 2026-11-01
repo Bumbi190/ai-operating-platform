@@ -36,3 +36,13 @@ Preflight returned reuse_existing / explicit_existing_pr. Browser extension cont
 - Real USD10 local allowance initialized ONCE outside the worktree, bound to native project/conversation and five-file approved template/asset manifest. It is NOT connected to the real provider execution path. Native pause/zero monthly setting remain in place.
 - New hosted project creation is a real owner-authorized app-data write through existing RPCs. No SQL schema, production deployment, provider credentials, shared budget or live marketplace data were modified.
 - Quality decision retained: propose a concrete increase if needed; never silently lower premium ambition or enlarge the authorized total.
+
+
+## Attended paid-step seam and real demo plan — 2026-11-01
+- Dedicated project remains paused and native monthly budget remains 0 until an attended paid run is explicitly admitted.
+- Real plan revision 1 is saved but NOT approved or started: plan `346fbcae-a8b5-4b70-a4fa-263d624733f9`, revision `1286b657-f154-4e3e-b19b-9a42bd772477`, SHA256 `ec617c3bb751bb4e5865276573909b6dc646fa8f87cf3be2b3969772175885c6`.
+- Plan uses `premium-dealer-demo-v1`, the approved dark showroom direction, eight fictional vehicles and preview-only features. It has no customer outreach, real inventory or publication authority.
+- The worker now has an optional attended `beforePaidStep` seam. Default production behavior is unchanged when absent. When present, the hook receives the exact project/session/run/claim/model/operation/maxTokens/system+user payload, then native stop/claim authority is re-established before `runStep`.
+- `paid-step-quote.ts` derives the pilot allowance from the same canonical token-window ceiling and ledger-upward SEK quantization used by governed spend. At the pinned fallback FX 10.5 for tests, Sonnet 4.6 / 12k output is 8.19 SEK = 0.780000 USD hard allowance; feedback / 2k is 6.6151 SEK = 0.630010 USD. Real execution MUST read current rates again.
+- Hosted website runs normally default to max_attempts=3. Therefore the first paid pilot MUST NOT use unattended drain until retry behavior is bound to the non-renewing owner allowance. The first pilot is attended/single-attempt only.
+- Review boundary: operator must open Studio, review an exact mockup and approve it. No SQL/UI auto-approval is permitted. Opening/reading the plan may hydrate the three versioned mockups; it does not authorize a build.

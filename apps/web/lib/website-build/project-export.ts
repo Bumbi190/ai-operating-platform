@@ -35,6 +35,8 @@ export async function assembleProjectExport(
     "src",
     "assets/images",
     "assets/media",
+    "dist",
+    "dist/assets/images",
     "plans",
     "previews",
   ])
@@ -56,39 +58,71 @@ export async function assembleProjectExport(
       bytes: bytes.length,
     });
   }
-  for (const file of data.artifact.files) {
-    add(
-      "src/" + file.path,
-      file.content,
-      file.path.endsWith(".html") ? "text/html" : "application/javascript",
+  const imagePattern =
+    /src="data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})"/g;
+  const images = new Map<
+    string,
+    { extension: "png" | "jpeg" | "webp"; bytes: Buffer }
+  >();
+  for (const file of data.artifact.files)
+    for (const match of file.content.matchAll(imagePattern)) {
+      const bytes = Buffer.from(match[2], "base64"),
+        hash = createHash("sha256").update(bytes).digest("hex"),
+        extension = match[1] as "png" | "jpeg" | "webp";
+      const previous = images.get(hash);
+      if (
+        previous &&
+        (previous.extension !== extension ||
+          !previous.bytes.equals(bytes))
+      )
+        throw new WebsiteBuildError("INVALID_ARTIFACT_PATH");
+      if (!previous) images.set(hash, { extension, bytes });
+    }
+  const deployContent = (content: string) => {
+    const rewritten = content.replace(
+      imagePattern,
+      (_full, extension: string, encoded: string) => {
+        const bytes = Buffer.from(encoded, "base64"),
+          hash = createHash("sha256").update(bytes).digest("hex"),
+          registered = images.get(hash);
+        if (!registered || registered.extension !== extension)
+          throw new WebsiteBuildError("INVALID_ARTIFACT_PATH");
+        return `src="assets/images/${hash}.${extension}"`;
+      },
     );
+    return images.size
+      ? rewritten.replace(
+          "img-src data:;",
+          "img-src &#39;self&#39;;",
+        )
+      : rewritten;
+  };
+  for (const file of data.artifact.files) {
+    const type = file.path.endsWith(".html")
+      ? "text/html"
+      : "application/javascript";
+    add("src/" + file.path, file.content, type);
     add(
       "previews/v" + data.revisionNumber + "/" + file.path,
       file.content,
-      file.path.endsWith(".html") ? "text/html" : "application/javascript",
+      type,
     );
+    add(
+      "dist/" + file.path,
+      file.path.endsWith(".html") ? deployContent(file.content) : file.content,
+      type,
+    );
+  }
+  for (const [hash, image] of images) {
+    const name = hash + "." + image.extension;
+    add("assets/images/" + name, image.bytes, "image/" + image.extension);
+    add("dist/assets/images/" + name, image.bytes, "image/" + image.extension);
   }
   add(
     "previews/v" + data.revisionNumber + "/artifact.json",
     JSON.stringify(data.artifact, null, 2),
     "application/json",
   );
-  const images = new Set<string>();
-  for (const file of data.artifact.files)
-    for (const match of file.content.matchAll(
-      /src="data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})"/g,
-    )) {
-      const bytes = Buffer.from(match[2], "base64"),
-        hash = createHash("sha256").update(bytes).digest("hex");
-      if (!images.has(hash)) {
-        images.add(hash);
-        add(
-          "assets/images/" + hash + "." + match[1],
-          bytes,
-          "image/" + match[1],
-        );
-      }
-    }
   add("plans/brief.md", data.brief, "text/markdown");
   if (data.planRevision)
     add(
@@ -118,6 +152,14 @@ export async function assembleProjectExport(
           : null,
         location: data.location,
         physicalDirectoryCreated: false,
+        deployable: {
+          directory: "dist",
+          entry: "index.html",
+          assets: "assets/images",
+          revisionId: data.revisionId,
+          revisionNumber: data.revisionNumber,
+          artifactSha256: data.artifact.sha256,
+        },
         manifestExcludes: "project.json",
         files,
       },

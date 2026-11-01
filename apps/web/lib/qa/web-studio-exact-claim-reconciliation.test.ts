@@ -21,16 +21,18 @@ describe('exact-claim source history, not migration execution',()=>{
    expect(createHash('md5').update(match![1]).digest('hex')).toBe(observation.bodyMd5[entry])
   }
  })
- it('matches the observed exact191-name set and retains closed enforcement',()=>{
+ it('preserves the historical191-name digest and enforces the newer campaign history',()=>{
   const names=observation.migration_names as string[]
   expect(names).toHaveLength(191);expect(new Set(names).size).toBe(191)
   expect(createHash('md5').update([...names].sort().join('\n')).digest('hex')).toBe(observation.orderedNameMd5)
-  expect(evaluateAppliedMigrationLedger(names,state())).toMatchObject({canonicalSqlCount:168,enforcedCount:154,appliedLedgerCount:191,unknownLedgerNames:[],duplicateLedgerNames:[]})
+  expect(()=>evaluateAppliedMigrationLedger(names,state())).toThrow(/social_campaign_preparation/)
+  const current=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-01-web-studio-campaign-observation.json'),'utf8'))
+  expect(evaluateAppliedMigrationLedger(current.migration_names,state())).toMatchObject({canonicalSqlCount:169,enforcedCount:155,appliedLedgerCount:192,unknownLedgerNames:[],duplicateLedgerNames:[]})
   expect(GRANDFATHERED_MIGRATION_NAMES).toHaveLength(14);expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).toHaveLength(30)
   expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain(name);expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).not.toContain(name)
  })
  it('still refuses missing, duplicated and unrelated unknown migration names',()=>{
-  const names=observation.migration_names as string[],current=state()
+  const names=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-01-web-studio-campaign-observation.json'),'utf8')).migration_names as string[],current=state()
   expect(()=>evaluateAppliedMigrationLedger(names.filter(n=>n!==name),current)).toThrow(/human_story_exact_claim/)
   expect(()=>evaluateAppliedMigrationLedger([...names,name],current)).toThrow(/duplicate/)
   expect(()=>evaluateAppliedMigrationLedger([...names,'unreviewed_future_change'],current)).toThrow(/unknown/)

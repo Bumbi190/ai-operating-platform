@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-10-31T15:57:42.354Z",
+  "repository": "Bumbi190/ai-operating-platform",
+  "project": "Omnira",
+  "task": "LinkedIn campaign batches: three new illustration assets per owner request, matching captions, proposed publication dates and project-bound preparation receipts",
+  "workId": "NOVA-SOCIAL-CAMPAIGN",
+  "proposedBranch": "feat/nova-social-campaign-20261031",
+  "mainSha": "b2335bc7e9565b4cd2081edfb38e5f90ef9a994a",
+  "openPrCount": 123,
+  "worktreeCount": 229,
+  "decision": "new_branch_approved",
+  "code": "no_matching_work",
+  "candidates": [],
+  "branchMatches": [],
+  "worktreeMatches": [],
+  "reason": "Inspected all earlier metadata matches. Family581 implements future recurring family-only text using pre-owned images, not requested new LinkedIn campaign images; native-hardlink branch is Windows sandbox and 9x2 is read-only listing. None is reusable and active worktrees remain untouched.",
+  "limitations": "Metadata/local-name similarity is a hint; review actual file scope and agent ownership before new work.",
+  "sideEffects": "None. No branch, worktree, PR, commit, deployment or API mutation is performed."
+}

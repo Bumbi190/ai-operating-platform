@@ -52,6 +52,7 @@ jobs:
             lib/qa/sales-inbox-ledger-reconciliation.test.ts \
             lib/qa/web-studio-migration-reconciliation.test.ts \
             lib/qa/web-studio-exact-claim-reconciliation.test.ts \
+            lib/qa/web-studio-campaign-reconciliation.test.ts \
             --reporter=default --reporter=json \
             --outputFile="$RUNNER_TEMP/migration-guard-integrity.json"
 
@@ -93,6 +94,13 @@ jobs:
           const exactAssertions = exactClaim?.assertionResults ?? []
           if (exactAssertions.length < 5 || exactAssertions.some(assertion => assertion.status !== 'passed')) {
             console.error('::error::all five exact-claim source/ledger checks must pass')
+            process.exit(1)
+          }
+
+          const campaign = files.find(file => String(file.name).endsWith('/web-studio-campaign-reconciliation.test.ts'))
+          const campaignAssertions = campaign?.assertionResults ?? []
+          if (campaignAssertions.length < 4 || campaignAssertions.some(assertion => assertion.status !== 'passed')) {
+            console.error('::error::all four Studio campaign-history checks must pass')
             process.exit(1)
           }
 

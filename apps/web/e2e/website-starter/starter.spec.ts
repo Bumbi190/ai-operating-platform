@@ -7,7 +7,10 @@ for(const width of [390,768,1440])test('planned showroom retains pictures and fi
  const baseImages=f.locator('.scene img,.car-image img')
  for(const image of await baseImages.all())await image.scrollIntoViewIfNeeded()
  const imageStatus=await baseImages.evaluateAll(nodes=>nodes.map(i=>({ok:(i as HTMLImageElement).complete&&(i as HTMLImageElement).naturalWidth>0,src:(i as HTMLImageElement).src})))
- expect(imageStatus).toHaveLength(9);expect(imageStatus.every(i=>i.ok)).toBe(true);expect(new Set(imageStatus.map(i=>i.src)).size).toBe(5)
+ expect(imageStatus).toHaveLength(9);expect(imageStatus.every(i=>i.ok)).toBe(true)
+ // Hero + four regular illustrations + approved same-source poster for the 3D concept car.
+ expect(new Set(imageStatus.map(i=>i.src)).size).toBe(6)
+ expect(imageStatus[1].src).not.toBe(imageStatus[2].src)
  await expect(f.locator('.spin-stage img')).toHaveCount(12)
  await f.locator('#concept-01 summary').click()
  const spin=f.locator('#concept-01-spin-control')
@@ -26,7 +29,8 @@ for(const width of [390,768,1440])test('planned showroom retains pictures and fi
 })
 test('model roundtrip changes only accent and preserves images, catalog and previous version',async({page,request})=>{
  const metrics=await (await request.get('/metrics')).json()
- expect(metrics.assets).toBe(17);expect(metrics.hasRawBase64InModelInput).toBe(false);expect(metrics.mockupBytes).toBeLessThan(48000)
+ // The model input now carries 18 approved references, including the 3D poster.
+ expect(metrics.assets).toBe(18);expect(metrics.hasRawBase64InModelInput).toBe(false);expect(metrics.mockupBytes).toBeLessThan(48000)
  expect(metrics.modelInputBytes).toBeLessThan(48000)
  // Production model cap is 200000 bytes; also require substantial reduction versus full raster HTML.
  expect(metrics.editInputBytes).toBeLessThan(200000);expect(metrics.editInputBytes).toBeLessThan(metrics.renderedHtmlBytes/2)

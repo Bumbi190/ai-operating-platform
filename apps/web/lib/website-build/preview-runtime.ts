@@ -86,8 +86,10 @@ export function escapeHtml(value: string): string {
 export function scriptJson(value: unknown): string {
   return JSON.stringify(value).replace(/</g, '\\u003c').replace(/&/g, '\\u0026').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')
 }
-export function websiteCsp(scriptSource: string): string {
-  return `default-src 'none'; script-src ${scriptSource}; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`
+export function websiteCsp(scriptSource: string,capabilities:{model3d?:boolean}={}): string {
+  const model3d=capabilities.model3d===true
+  const self=model3d?" 'self'":''
+  return `default-src 'none'; script-src ${scriptSource}${self}; style-src 'unsafe-inline'; img-src data:${self}; connect-src ${model3d?"'self'":"'none'"}; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`
 }
 
 /** Client-safe renderer; callers receive artifacts only through the authorized API. */
@@ -97,11 +99,12 @@ export function renderPreviewDocument(artifact: WebsiteArtifact, pageKey: string
   const match = page.html.match(/<script type="application\/json" id="__atlas_config">([\s\S]*?)<\/script>/)
   if (!match) throw new Error('PREVIEW_CONFIG_MISSING')
   const config = JSON.parse(match[1])
+  const model3d=Array.isArray(config?.behaviors)&&config.behaviors.some((behavior:any)=>behavior?.kind==='model3d')
   const bytes = new Uint8Array(24)
   globalThis.crypto.getRandomValues(bytes)
   const nonce = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
   return page.html
-    .replace(/<meta http-equiv="Content-Security-Policy" content="[^"]*">/, `<meta http-equiv="Content-Security-Policy" content="${escapeHtml(websiteCsp(`'nonce-${nonce}'`))}">`)
+    .replace(/<meta http-equiv="Content-Security-Policy" content="[^"]*">/, `<meta http-equiv="Content-Security-Policy" content="${escapeHtml(websiteCsp(`'nonce-${nonce}'`,{model3d}))}">`)
     .replace(match[0], `<script type="application/json" id="__atlas_config">${scriptJson({ ...config, preview: { token: channelToken, artifactHash: artifact.sha256,pageKey } })}</script>`)
     .replace(/<script src="website\.js" integrity="[^"]*" crossorigin="anonymous"><\/script>/, `<script nonce="${nonce}">${WEBSITE_RUNTIME}</script>`)
     .replace(/<script id="__atlas_runtime">[\s\S]*?<\/script>/, `<script nonce="${nonce}">${WEBSITE_RUNTIME}</script>`)

@@ -4,6 +4,7 @@ import JSZip from 'jszip'
 import {bundledRaster} from './assets/bundled-rasters'
 import {readBundledVehicle3DAssetBytes,vehicle3DAsset} from './assets/vehicle-3d'
 import { escapeHtml, scriptJson, websiteCsp, WEBSITE_RUNTIME, renderPreviewDocument } from './preview-runtime'
+import {MODEL3D_RUNTIME_ASSET,readModel3DRuntimeBytes} from './model3d-runtime-asset'
 import { WEBSITE_BUILD_LIMITS, type WebsiteArtifact, type WebsiteBehavior, type WebsiteDraft } from './types'
 
 export class WebsiteArtifactError extends Error {
@@ -199,6 +200,12 @@ function validateArtifactAssets(artifact:WebsiteArtifact):void{
     const item=record(raw)
     const keys=['id','kind','path','sha256','bytes']
     if(Object.keys(item).length!==keys.length||keys.some(k=>!Object.hasOwn(item,k)))fail('INVALID_ARTIFACT_ASSET')
+    if(item.kind==='model3d-runtime'){
+      const expected=MODEL3D_RUNTIME_ASSET
+      if(item.id!==expected.id||item.path!==expected.path||item.sha256!==expected.sha256||item.bytes!==expected.bytes||seen.has(expected.path))fail('INVALID_ARTIFACT_ASSET')
+      seen.add(expected.path)
+      continue
+    }
     const manifest=typeof item.id==='string'?vehicle3DAsset(item.id):undefined
     if(!manifest)fail('INVALID_ARTIFACT_ASSET')
     const expected=item.kind==='vehicle3d-glb'?manifest.glb:item.kind==='vehicle3d-poster'?manifest.poster:null
@@ -217,6 +224,7 @@ function validateArtifactAssets(artifact:WebsiteArtifact):void{
     const manifest=vehicle3DAsset(id)
     if(!manifest||!assets.some(a=>a.id===id&&a.kind==='vehicle3d-glb')||!assets.some(a=>a.id===id&&a.kind==='vehicle3d-poster'))fail('MISSING_ARTIFACT_ASSET')
   }
+  if(required.size&&!assets.some(a=>a.id===MODEL3D_RUNTIME_ASSET.id&&a.kind==='model3d-runtime'))fail('MISSING_ARTIFACT_ASSET')
 }
 export function assertWebsiteArtifact(artifact: WebsiteArtifact): void {
   const { sha256, ...payload } = artifact
@@ -241,6 +249,7 @@ export function compileWebsiteArtifact(input: unknown): WebsiteArtifact {
   let forms = false
   const model3dAssetIds=new Set<string>()
   const scriptHash = createHash('sha256').update(WEBSITE_RUNTIME).digest('base64')
+  const model3dRuntimeIntegrity='sha256-'+Buffer.from(MODEL3D_RUNTIME_ASSET.sha256,'hex').toString('base64')
   const pages = rawPages.map((page,index) => {
     const pageTitle = text(page.title, 200)
     const markup = validateMarkup(text(page.bodyHtml), pageKeys, homeAlias, keys[index])
@@ -254,17 +263,22 @@ export function compileWebsiteArtifact(input: unknown): WebsiteArtifact {
       return [behavior.assetId,{glb:manifest.glb.path,poster:manifest.poster.path,truthClass:manifest.truthClass}]
     }))
     const config = scriptJson({ behaviors, pages: keys, vehicle3dAssets })
-    const html = `<!doctype html><html lang="sv"><head><meta http-equiv="Content-Security-Policy" content="${escapeHtml(websiteCsp(`'sha256-${scriptHash}'`))}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(pageTitle || title)}</title><style>*,*::before,*::after{box-sizing:border-box}body{margin:0}[hidden]{display:none!important}img{max-width:100%;height:auto}${css}</style></head><body>${markup.html}<script type="application/json" id="__atlas_config">${config}</script><script id="__atlas_runtime">${WEBSITE_RUNTIME}</script></body></html>`
+    const hasModel3d=behaviors.some(behavior=>behavior.kind==='model3d')
+    const model3dScript=hasModel3d?`<script type="module" src="${MODEL3D_RUNTIME_ASSET.path}" integrity="${model3dRuntimeIntegrity}" crossorigin="anonymous"></script>`:''
+    const html = `<!doctype html><html lang="sv"><head><meta http-equiv="Content-Security-Policy" content="${escapeHtml(websiteCsp(`'sha256-${scriptHash}'`,{model3d:hasModel3d}))}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(pageTitle || title)}</title><style>*,*::before,*::after{box-sizing:border-box}body{margin:0}[hidden]{display:none!important}img{max-width:100%;height:auto}${css}</style></head><body>${markup.html}<script type="application/json" id="__atlas_config">${config}</script><script id="__atlas_runtime">${WEBSITE_RUNTIME}</script>${model3dScript}</body></html>`
     return { key: keys[index], title: pageTitle, html }
   })
-  const assets=[...model3dAssetIds].flatMap(id=>{
-    const manifest=vehicle3DAsset(id)
-    if(!manifest)fail('INVALID_MODEL3D_ASSET')
-    return [
-      {id,kind:'vehicle3d-glb' as const,path:manifest.glb.path,sha256:manifest.glb.sha256,bytes:manifest.glb.bytes},
-      {id,kind:'vehicle3d-poster' as const,path:manifest.poster.path,sha256:manifest.poster.sha256,bytes:manifest.poster.bytes}
-    ]
-  })
+  const assets=[
+    ...[...model3dAssetIds].flatMap(id=>{
+      const manifest=vehicle3DAsset(id)
+      if(!manifest)fail('INVALID_MODEL3D_ASSET')
+      return [
+        {id,kind:'vehicle3d-glb' as const,path:manifest.glb.path,sha256:manifest.glb.sha256,bytes:manifest.glb.bytes},
+        {id,kind:'vehicle3d-poster' as const,path:manifest.poster.path,sha256:manifest.poster.sha256,bytes:manifest.poster.bytes}
+      ]
+    }),
+    ...(model3dAssetIds.size?[MODEL3D_RUNTIME_ASSET]:[])
+  ]
   const payload = { format: 'static-website.v1' as const, pages, files: [...pages.map(p => ({ path: `${p.key}.html`, content: p.html })), { path: 'website.js', content: WEBSITE_RUNTIME }], assets, integrationNeeds: forms ? ['form_delivery'] : [] }
   const artifact = { ...payload, sha256: artifactHash(payload) }
   assertWebsiteArtifact(artifact)
@@ -280,8 +294,9 @@ export async function exportWebsiteZip(artifact: WebsiteArtifact): Promise<Uint8
   const zip = new JSZip()
   for (const file of artifact.files) zip.file(file.path, file.content, { date: new Date('2000-01-01T00:00:00Z') })
   for(const asset of artifact.assets??[]){
-    const kind=asset.kind==='vehicle3d-glb'?'glb':'poster'
-    const bytes=readBundledVehicle3DAssetBytes(asset.id,kind)
+    const bytes=asset.kind==='model3d-runtime'
+      ?readModel3DRuntimeBytes()
+      :readBundledVehicle3DAssetBytes(asset.id,asset.kind==='vehicle3d-glb'?'glb':'poster')
     if(bytes.byteLength!==asset.bytes||createHash('sha256').update(bytes).digest('hex')!==asset.sha256)fail('BUNDLED_VEHICLE_3D_HASH_MISMATCH')
     zip.file(asset.path,bytes,{date:new Date('2000-01-01T00:00:00Z')})
   }

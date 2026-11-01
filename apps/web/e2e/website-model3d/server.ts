@@ -31,8 +31,8 @@ const catalog=cars.map((car,i)=>({
 const artifact=compileWebsiteArtifact(createPremiumDealerDraft({
  brand:'Handlarbörsen',subtitle:'DEMO MOTORS',hero,cars:catalog
 }))
-const assets=artifact.assets
-if(!assets||assets.length!==3)throw Error('MISSING_MODEL3D_EXPORT_ASSETS')
+const assets=artifact.assets??[]
+if(assets.length!==3)throw Error('MISSING_MODEL3D_EXPORT_ASSETS')
 async function start(){
 const zip=await JSZip.loadAsync(await exportWebsiteZip(artifact))
 const paths=new Map<string,{bytes:Buffer;contentType:string}>()

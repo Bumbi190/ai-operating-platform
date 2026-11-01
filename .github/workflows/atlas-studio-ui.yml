@@ -84,6 +84,12 @@ on:
       - 'apps/web/e2e/website-catalog/**'
       - 'apps/web/e2e/website-starter/**'
       - 'apps/web/playwright.website-starter.config.ts'
+      - 'apps/web/e2e/website-model3d/**'
+      - 'apps/web/playwright.website-model3d.config.ts'
+      - 'apps/web/lib/website-build/model3d-*'
+      - 'apps/web/lib/website-build/public-preview-*'
+      - 'apps/web/lib/website-build/runtime/**'
+      - 'apps/web/app/assets/**'
       - 'apps/web/lib/website-build/model-rasters*'
       - 'apps/web/playwright.website-catalog.config.ts'
       - 'apps/web/lib/website-build/catalog-filter.test.ts'
@@ -126,6 +132,8 @@ jobs:
       - run: npx playwright test --config=playwright.website-catalog.config.ts
         working-directory: apps/web
       - run: npx playwright test --config=playwright.website-starter.config.ts
+        working-directory: apps/web
+      - run: npx playwright test --config=playwright.website-model3d.config.ts
         working-directory: apps/web
       - run: npx playwright test --config=playwright.atlas-studio-ui.config.ts
         working-directory: apps/web

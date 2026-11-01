@@ -51,8 +51,16 @@ before(()=>{
   assert.ok(start>=0&&end>start,'Exact native source function '+name);scalar(source.slice(start,end+delimiter.length+1))
  }
  scalar('grant execute on function public.claim_runs(integer,integer) to service_role;')
- const proposed=root+'docs/architecture/proposed-sql/social_campaign_preparation_NOT_APPLIED.sql'
- if(existsSync(proposed))scalar(readFileSync(proposed,'utf8'))
+ // Current production native claim selector, reconciled byte-for-byte from ledger.
+ const native=readFileSync(path('20261031204433_human_story_exact_claim.sql'),'utf8').replace(/\r\n/g,'\n')
+ for(const [name,delimiter] of [['public.claim_runs_selected','$fn$'],['public.claim_runs','$shared$']]){
+  const marker=name==='public.claim_runs_selected'?'create function ':'create or replace function '
+  const start=native.indexOf(marker+name+'('),end=native.indexOf(delimiter+';',native.indexOf('as '+delimiter,start)+('as '+delimiter).length)
+  assert.ok(start>=0&&end>start,'Current native source '+name);scalar(native.slice(start,end+delimiter.length+1))
+ }
+ assert.equal(scalar("select md5(prosrc) from pg_proc where oid='public.claim_runs(integer,integer)'::regprocedure"),'674fa65b9d3661c4e8e768497ca7fb5f','Live native claim wrapper')
+ assert.equal(scalar("select md5(prosrc) from pg_proc where oid='public.claim_runs_selected(integer,integer,uuid)'::regprocedure"),'f203ce7e576e0578437e6196997a622d','Live native selector')
+ scalar(readFileSync(path('20261101062259_social_campaign_preparation.sql'),'utf8'))
 })
 after(()=>{
  if(!started)return

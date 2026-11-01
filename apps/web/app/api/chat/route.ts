@@ -72,6 +72,7 @@ import {WEEKLY_MARKETING_TOOLS,WEEKLY_MARKETING_TOOL_NAMES,WEEKLY_MARKETING_GUID
 import {SOCIAL_PUBLICATION_TOOLS,SOCIAL_PUBLICATION_TOOL_NAMES,handleSocialPublicationTool} from '@/lib/social-launch/publication/atlas-tools'
 import {SOCIAL_PROFILE_TOOLS,SOCIAL_PROFILE_TOOL_NAMES,SOCIAL_PROFILE_GUIDE,handleSocialProfileTool} from '@/lib/social-launch/profile/atlas-tools'
 import {SOCIAL_CAMPAIGN_TOOLS,SOCIAL_CAMPAIGN_TOOL_NAMES,SOCIAL_CAMPAIGN_GUIDE,SOCIAL_CAMPAIGN_STUDIO_GUIDE,handleCampaignTool} from '@/lib/social-launch/campaign/atlas-tools'
+import {isSocialPreparationTurn,isSocialReceiptTool,socialPreparationReceipt,renderSocialPreparation,type SocialPreparationReceipt} from '@/lib/social-launch/preparation-receipts'
 import {SOCIAL_CONTENT_TOOLS,SOCIAL_CONTENT_TOOL_NAMES,SOCIAL_CONTENT_GUIDE,handleSocialContentTool} from '@/lib/social-launch/content/atlas-tools'
 import {HB_STRATO_INBOX_TOOLS,HB_STRATO_INBOX_TOOL_NAMES,HB_STRATO_INBOX_GUIDE,hbStratoInboxReadEnabled,handleHbStratoInboxTool} from '@/lib/handlarborsen/distribution/atlas-strato-inbox'
 import {isHandlarborsenInboxReadIntent} from '@/lib/handlarborsen/distribution/strato-inbox-intent'
@@ -1079,7 +1080,13 @@ export async function POST(request: Request) {
       'Respond succinctly in Swedish.',
     ].join('\n')
   }
-  const forceToolFirstTurn = actionIntent && activeTools.length > 0
+  // Buffer before discovering the model's actual tool calls, so an inline
+  // claim cannot reach speech before a social write has even run. Isolated
+  // read-only turns have no social tools and retain their existing stream.
+  const bufferSocialProse = offeredTools.some(tool => isSocialReceiptTool(tool.name))
+  const socialPreparationTurn = bufferSocialProse && isSocialPreparationTurn(messages)
+  if (socialPreparationTurn && voice) systemPrompt += '\nThe short speech limit applies only to the spoken answer, never to complete social tool arguments. Prepare each requested item in full.\n'
+  const forceToolFirstTurn = (actionIntent || socialPreparationTurn) && activeTools.length > 0
   // A Notion answer must not come from the model's memory when the approved
   // read tool is available. Keep Notion's narrower tool selection authoritative.
   const forceNotionFirstTurn = notionReadOnlyTurn
@@ -1168,10 +1175,26 @@ export async function POST(request: Request) {
       let navigateSucceeded = false  // emitterades ett LYCKAT navigate-event DENNA förfrågan?
       // present_links räknas INTE — det visar bara genvägar, det navigerar inte.
       let delegateToolUsed = false  // kördes ett LYCKAT delegate/delegate_dream_finding DENNA förfrågan?
+      let socialResponseControlled = socialPreparationTurn
+      const socialReceipts: SocialPreparationReceipt[] = []
+      let socialResponseSent = false
+      async function finishSocialResponse(incomplete: boolean) {
+        if (!socialResponseControlled || socialResponseSent) return
+        socialResponseSent = true
+        const result = renderSocialPreparation(socialReceipts, !!voice, incomplete)
+        send('text', { text: result.text })
+        await saveMessage('assistant', result.text)
+        if (result.links.length) {
+          send('links', { links: result.links })
+          await saveMessage('assistant', null, { kind: 'links', links: result.links })
+        }
+      }
       let sourceReadIssued = false  // max one source read per guarded question
       // Tystar delegerings-ärlighetsspärren — bara en verklig, lyckad delegering räknas.
 
       async function runConversation(msgs: Anthropic.MessageParam[]) {
+        let modelFinished = false
+        let incompleteResponse = false
         // Agentic loop — Claude can use tools multiple times
         for (let i = 0; i < 10; i++) {
           // STREAMA svaret token-för-token. Detta är nyckeln: TTS kan börja på
@@ -1202,7 +1225,7 @@ export async function POST(request: Request) {
             : {}
           const modelInput = {
             model: modelPolicy.chatModel,
-            max_tokens: voice ? 150 : (fastPath ? 1200 : 4096),
+            max_tokens: voice ? (socialPreparationTurn ? 4096 : 150) : (fastPath ? 1200 : 4096),
             system: systemPrompt,
             tools: sourceReadTurn && sourceReadIssued ? [] : offeredTools, // one read then no more tools
             ...toolChoice,
@@ -1220,14 +1243,32 @@ export async function POST(request: Request) {
                 send('timing', { reqType, contextMs, firstTokenMs })
               }
             }
-            if (delta) send('text', { text: delta })
+            if (delta && !bufferSocialProse) send('text', { text: delta })
           })
           const response = await llm.finalMessage()
+          if (bufferSocialProse && response.content.some((b: Anthropic.ContentBlock) => b.type === 'tool_use' && isSocialReceiptTool(b.name))) {
+            socialResponseControlled = true
+          }
+          // A complete tool stop is mandatory before executing ANY tool block.
+          // Never replay a truncated generation automatically.
+          if (response.stop_reason !== 'end_turn' && response.stop_reason !== 'tool_use') {
+            incompleteResponse = true
+            if (!socialResponseControlled) {
+              const warning = 'Svaret avbröts innan det blev komplett; inga ofullständiga verktygsanrop kördes.'
+              send('text', { text: warning })
+              await saveMessage('assistant', warning)
+            }
+            break
+          }
 
           // If no tool use, we're done — save final assistant text
           if (response.stop_reason !== 'tool_use') {
+            modelFinished = true
+            if (socialResponseControlled) break
             const textBlocks = response.content.filter((b: Anthropic.ContentBlock) => b.type === 'text')
             let fullText = textBlocks.map((b: Anthropic.ContentBlock) => (b as Anthropic.TextBlock).text).join('')
+
+            if (bufferSocialProse && fullText) send('text', { text: fullText })
 
             // ÄRLIGHETSSPÄRR (safety net): om Atlas PÅSTÅR en åtgärd ("jag triggar/kör …")
             // men inget ÅTGÄRDS-verktyg (trigger_workflow/delegate) faktiskt kördes denna
@@ -1279,7 +1320,10 @@ export async function POST(request: Request) {
             .map(b => (b as Anthropic.TextBlock).text)
             .join('')
             .trim()
-          if (inlineText) void saveMessage('assistant', inlineText)
+          if (inlineText && !socialResponseControlled) {
+            if (bufferSocialProse) send('text', { text: inlineText })
+            void saveMessage('assistant', inlineText)
+          }
 
           for (const toolUse of toolUseBlocks) {
             send('tool_call', { tool: toolUse.name, input: toolUse.input })
@@ -1299,6 +1343,12 @@ export async function POST(request: Request) {
               }
             } catch (err) {
               result = { error: err instanceof Error ? err.message : 'Okänt fel' }
+            }
+
+            if (bufferSocialProse && isSocialReceiptTool(toolUse.name)) {
+              socialResponseControlled = true
+              const receipt = socialPreparationReceipt(toolUse.name, toolUse.input, result)
+              if (receipt) socialReceipts.push(receipt)
             }
 
             // Markera att en VERKLIG åtgärd skedde — bara åtgärdsverktyg som LYCKADES.
@@ -1409,6 +1459,8 @@ export async function POST(request: Request) {
           ]
         }
 
+        await finishSocialResponse(incompleteResponse || !modelFinished)
+
         // Latens-sammanfattning från servern: hur lång tid Atlas Brain tog att
         // bygga + tid till första token. Klienten loggar resten (STT, TTS, totalt).
         const serverTotalMs = Date.now() - tStart
@@ -1430,6 +1482,12 @@ export async function POST(request: Request) {
             : messages
         await runConversation(conversationMessages)
       } catch (err) {
+        if (socialResponseControlled) {
+          await finishSocialResponse(true)
+          send('done', {})
+          controller.close()
+          return
+        }
         const code = classifyAnthropicError(err)
         console.error(`[atlas-chat] Anthropic request failed (${code})`, {
           name: err instanceof Error ? err.name : 'UnknownError',

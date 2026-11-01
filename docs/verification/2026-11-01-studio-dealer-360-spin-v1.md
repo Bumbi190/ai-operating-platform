@@ -51,6 +51,15 @@ Broad `lib/website-build` baseline was also attempted without the isolated Postg
 - 108 skipped
 These are fixture-required suites and are not evidence of feature regressions. The proper isolated DB suite remains required before PR merge.
 
+## Permanent browser regression gate
+The existing real starter pipeline Playwright suite now treats the spin as part of the approved showroom contract:
+- 390px, 768px and 1440px browser viewports: PASS.
+- Actual plan -> mockup -> model input -> raster resolution -> artifact pipeline: PASS.
+- 5 base visual assets + 12 spin frames = 17 governed assets; raw base64 remains absent from model input.
+- Spin disclosure, lazy-loaded first frame, frame 9 selection, `aria-valuetext`, catalog filtering and isolated iframe boundary: PASS.
+- Model roundtrip still preserves imagery/catalog while changing only the requested accent: PASS.
+- Playwright result: 4/4 tests PASS.
+
 ## Deliberate limitations
 - This is a frame-based 360° viewer, not a GLB/Three.js free camera.
 - It is a fictional proof asset, not a real used-car representation.

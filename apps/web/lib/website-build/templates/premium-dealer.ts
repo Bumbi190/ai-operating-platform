@@ -65,7 +65,7 @@ export function createPremiumDealerDraft(input:PremiumDealerInput):WebsiteDraft{
    <div class="footer-brand"><a class="footer-logo" href="#">${e(input.brand)}<small>${e(input.subtitle)}</small></a><p>Digitalt showroom med tydlig struktur, premiumkänsla och fokus på nästa steg.</p></div>
    <nav class="footer-links" aria-label="Utforska"><h3>Utforska</h3><a href="#lager">Bilar</a><a href="#om">Om demon</a><a href="#kontakt">Kontakt</a></nav>
    <div class="footer-links"><h3>Demo & transparens</h3><span>Fiktiv demonstration</span><span>AI-genererade konceptbilder</span><span>Ingen verklig försäljning</span></div>
-   <div class="footer-cta"><p class="kicker">Omnira Web Studio</p><h3>Vill du ha en liknande premiumwebb?</h3><p>Den här sidan visar en möjlig riktning för en modern bilhandel.</p><a class="button outline" href="#kontakt">Prata om din sida<span class="arrow" aria-hidden="true">→</span></a></div>
+   <div class="footer-statement"><p class="kicker">Omnira Web Studio</p><h3>Byggd för nästa affär.</h3><p>En modern bilhandel förtjänar en digital upplevelse med samma precision som bilarna den representerar.</p><a class="footer-action" href="#kontakt"><span>Se vad vi kan skapa</span><span class="footer-action-arrow" aria-hidden="true">↗</span></a></div>
   </div>
   <div class="footer-bottom"><span>${e(input.brand)} ${e(input.subtitle)} · Fiktiv demonstration</span><span>Omnira Web Studio · Konceptpreview</span></div>
  </div></footer>`

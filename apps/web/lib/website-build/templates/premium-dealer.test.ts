@@ -62,7 +62,7 @@ describe('approved premium dealership template',()=>{
  })
 })
 
- it('finishes with a premium branded footer instead of a thin legal row',()=>{
+ it('finishes with a luxury automotive footer instead of a boxed SaaS CTA',()=>{
   const draft=createPremiumDealerDraft(input()),html=draft.pages[0].bodyHtml
   expect(html).toContain('class="premium-footer"')
   expect(html).toContain('Handlarbörsen')
@@ -70,9 +70,12 @@ describe('approved premium dealership template',()=>{
   expect(html).toContain('Utforska')
   expect(html).toContain('Demo & transparens')
   expect(html).toContain('Omnira Web Studio')
-  expect(html).toContain('Vill du ha en liknande premiumwebb?')
+  expect(html).toContain('Byggd för nästa affär.')
+  expect(html).toContain('Se vad vi kan skapa')
   expect(html).toContain('href="#kontakt"')
-  expect(draft.css).toContain('.footer-grid')
-  expect(draft.css).toContain('.footer-cta')
+  expect(html).not.toContain('class="footer-cta"')
+  expect(draft.css).toContain('.footer-statement')
+  expect(draft.css).toContain('.footer-action')
+  expect(draft.css).not.toContain('.footer-cta{')
   expect(draft.css).toContain('linear-gradient')
  })

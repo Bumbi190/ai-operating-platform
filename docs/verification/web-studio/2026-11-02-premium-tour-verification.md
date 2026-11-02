@@ -40,3 +40,13 @@ Browser tests use real Chromium against the local authored compiler/media harnes
 Observed Higgsfield balance1191→1093 reconciles98credits, including unused queued jobs and the rejected image. No credits were purchased or subscription changed. Detailed assumptions and contribution sensitivity are in 2026-11-02-premium-delivery-economics.md.
 
 The previous Vercel deployment was READY but the control browser reached its sign-in wall. The new exact-head deployment and CI must be recorded after push. Authenticated hosted playback and the owner's visual acceptance remain open; green tests do not close either item. No main merge, production database change, customer publication or paid subscription change is part of this work.
+
+## Motion revision after owner playback feedback
+
+The owner reported jerky movement and a different feel from the reference. On the previous preview, a 160 px scroll step presented only the destination frame, 0.583 s forward and 0 s on return. The opening also converted native footage to 24 fps before a half-speed retime. In a 160×90 luma comparison, 59 of 119 successive opening frame pairs differed by less than 0.35 levels on average.
+
+The revised master uses a new continuous five-second approach from the approved fictional wide shot, followed by the exterior orbit and the cockpit. Cuts are at 5 s and 9 s. The 13 s H.264 yuv420p master is 1600×900 at 30 fps and 3,970,838 bytes. It fully decodes. The same luma check found 20 of 149 near-identical opening pairs. It measures frame change, not aesthetic quality.
+
+Forward scroll uses native playback toward the current target. Reverse and denied-playback fallback take bounded seek steps. A Chromium test records presented media times in both directions. A local sample presented 16 frames forward and 11 backward for the 160 px movement. The regression assertion requires intermediate frames and arrival near the target. The catalog and motion preferences passed their existing checks. The local run covered 17 Chromium and 19 scoped unit cases.
+
+One new Wan opening cost 17.5 credits (balance 1119.25 to 1101.75). Net premium media usage is now 89.25 credits, plus 9 for the earlier pilot. This remains inside the 100-credit premium allowance. Device-specific playback on the authenticated hosted preview and the owner's judgment of reference feel remain open.

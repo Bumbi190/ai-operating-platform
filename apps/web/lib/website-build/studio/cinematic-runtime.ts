@@ -32,8 +32,9 @@ export const CINEMATIC_RUNTIME=String.raw`(()=>{
  function ensureSource(){
   if(!video.getAttribute('src')){ready=false;video.src=video.dataset.src;video.load();}
  }
+ let scrollPlayDenied=false;
  function pauseMode(next,align){
-  epoch++;video.pause();mode=next;controls();
+  epoch++;video.pause();video.playbackRate=1;mode=next;controls();
   if(align)scene.scrollIntoView({block:'start',behavior:'instant'});
  }
  function stop(){
@@ -54,7 +55,30 @@ export const CINEMATIC_RUNTIME=String.raw`(()=>{
  function scrollUpdate(){
   queued=false;if(mode!=='scroll'||!ready||video.seeking)return;
   const r=scene.getBoundingClientRect(),fraction=Math.max(0,Math.min(1,-r.top/Math.max(1,r.height-innerHeight)));
-  const t=fraction*lastTime();if(Math.abs(video.currentTime-t)>.035)video.currentTime=t;
+  const target=fraction*lastTime(),gap=target-video.currentTime;
+  if(document.hidden||Math.abs(gap)<.035){
+   if(!video.paused)video.pause();
+   return;
+  }
+  // Outside the sticky stage there is nothing to animate.
+  if(r.bottom<=0||r.top>=innerHeight){video.pause();video.currentTime=target;return;}
+  if(gap>0&&!scrollPlayDenied){
+   // Let the decoder present consecutive frames between wheel events.
+   video.playbackRate=Math.min(2.4,Math.max(.55,gap*4));
+   if(video.paused){
+    const token=epoch;
+    video.play().catch(()=>{
+     if(mode==='scroll'&&epoch===token){scrollPlayDenied=true;schedule();}
+    });
+   }
+   schedule();
+  }else{
+   // Browsers cannot reliably play backwards. Bound each reverse step and
+   // wait for seeked before asking the decoder to present another frame.
+   video.pause();
+   const step=Math.min(Math.abs(gap),Math.max(1/30,Math.min(.12,Math.abs(gap)*.14)));
+   video.currentTime+=Math.sign(gap)*step;
+  }
  }
  function schedule(){if(!queued){queued=true;requestAnimationFrame(scrollUpdate);}}
  function enableScroll(align){
@@ -99,7 +123,7 @@ export const CINEMATIC_RUNTIME=String.raw`(()=>{
  });
  video.addEventListener('timeupdate',render);
  video.addEventListener('seeked',()=>{render();if(mode==='scroll')schedule();});
- video.addEventListener('ended',()=>{pauseMode('paused',false);status.textContent='Rundturen är klar. Utforska bilarna nedanför.';render();controls();});
+ video.addEventListener('ended',()=>{if(mode==='scroll'){render();return;}pauseMode('paused',false);status.textContent='Rundturen är klar. Utforska bilarna nedanför.';render();controls();});
  video.addEventListener('error',()=>{if(mode!=='still')fail();});
  play.hidden=false;motion.hidden=false;controls();
  play.addEventListener('click',startPlay);
@@ -113,7 +137,8 @@ export const CINEMATIC_RUNTIME=String.raw`(()=>{
  seek.addEventListener('keyup',releaseSeek);seek.addEventListener('blur',releaseSeek);
  seek.addEventListener('change',releaseSeek);
  addEventListener('scroll',schedule,{passive:true});addEventListener('resize',schedule,{passive:true});
- document.addEventListener('visibilitychange',()=>{if(document.hidden&&mode==='play'){pauseMode('paused',false);status.textContent='Rundturen pausades.';}});
+ document.addEventListener('visibilitychange',()=>{if(mode==='scroll'){if(document.hidden)video.pause();else schedule();}
+  if(document.hidden&&mode==='play'){pauseMode('paused',false);status.textContent='Rundturen pausades.';}});
  reduced.addEventListener('change',()=>{if(reduced.matches)stop();});
  if(!reduced.matches&&!matchMedia('(max-width: 760px)').matches&&!matchMedia('(pointer: coarse)').matches&&!(navigator.connection&&navigator.connection.saveData))enableScroll(false);
 })();`

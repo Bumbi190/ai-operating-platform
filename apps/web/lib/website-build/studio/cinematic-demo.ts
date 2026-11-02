@@ -41,6 +41,13 @@ const styles=`
 .cinema-caption strong{display:block;color:#e5e9e7;font-size:11px;font-weight:500;margin-bottom:2px}
 .cinema-accessible{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @keyframes cinema-copy-in{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+@media(min-width:761px) and (min-height:701px){
+ .cinema-content{padding-top:clamp(42px,7vh,84px)}
+ .cinema-copy h1,.cinema-copy h2{font-size:clamp(44px,4.6vw,76px);margin-bottom:12px}
+ .cinema-kicker{margin-bottom:14px}.cinema-intro{font-size:15px;max-width:320px}
+ .cinema-console{position:absolute;left:clamp(22px,5.5vw,90px);bottom:max(112px,17vh);width:min(470px,45vw)}
+ .cinema-status{min-height:1.6em}
+}
 @media(max-width:760px){
  .cinema{height:380svh}.cinema.is-still{height:92svh;min-height:720px}.cinema-stage{min-height:720px}
  .cinema-content{padding-top:52px;padding-bottom:85px}
@@ -80,17 +87,17 @@ export function createCinematicDemoHtml(baseHtml:string):string{
  <video id="cinema-video" class="cinema-video" data-src="${root+names.video}" muted playsinline preload="none" aria-hidden="true" hidden></video>
  <div class="cinema-shade"></div><div class="cinema-content">
  <div class="cinema-copy" id="cinema-copy-0" data-tour-copy="0">
- <p class="cinema-kicker">Demo Motors · En ny bilupplevelse</p>
- <h1 id="cinema-title">En bilhall.<br><em>En upplevelse.</em></h1>
- <p class="cinema-intro">Från den första blicken till detaljerna som stannar kvar. Välkommen in.</p></div>
+ <p class="cinema-kicker">Demo Motors · 01 · Visning i kvällsljus</p>
+ <h1 id="cinema-title">Välkommen till<br><em>bilhallen.</em></h1>
+ <p class="cinema-intro">Följ med över gården och fram till den midnattsblå SUV:en.</p></div>
  <div class="cinema-copy" id="cinema-copy-1" data-tour-copy="1" hidden>
  <p class="cinema-kicker">02 · Bilen i fokus</p>
- <h2>Linjer att<br><em>stanna vid.</em></h2>
- <p class="cinema-intro">En ny vinkel, ett nytt intryck. Utforska bilen i din egen takt.</p></div>
+ <h2>Runt den<br><em>blå SUV:en.</em></h2>
+ <p class="cinema-intro">Följ karossens linje från strålkastaren till bakskärmen.</p></div>
  <div class="cinema-copy" id="cinema-copy-2" data-tour-copy="2" hidden>
  <p class="cinema-kicker">03 · Kom närmare</p>
- <h2>Detaljer som<br><em>får ta plats.</em></h2>
- <p class="cinema-intro">Materialen, formerna och ljuset. En känsla som följer med dig.</p></div>
+ <h2>Från<br><em>förarplats.</em></h2>
+ <p class="cinema-intro">Grafitgrå klädsel och varm metall i kvällsljuset.</p></div>
  <div class="cinema-console">
  <nav class="cinema-chapters" aria-label="Rundturens kapitel">
  <button id="cinema-chapter-0" class="cinema-chapter" type="button" data-tour-chapter="0" aria-current="step" hidden><span>01</span>Hallen</button>

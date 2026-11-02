@@ -228,3 +228,56 @@ test('short portrait phone keeps the tour controls above the concept caption',as
   }
  }finally{await context.close()}
 })
+
+test('one wheel notch traverses intermediate decoded frames in both directions',async({page})=>{
+ await page.goto('/build/demo-motors/cinematic')
+ const trace=await page.locator('#cinema-video').evaluate(async(v:HTMLVideoElement)=>{
+  const scene=document.getElementById('cinema-scene')!
+  if(v.readyState<2)await new Promise(resolve=>v.addEventListener('loadeddata',resolve,{once:true}))
+  window.scrollTo({top:scene.offsetTop,behavior:'instant'})
+  const move=async(top:number,target:number)=>{
+   const frames:number[]=[]
+   let callback=0
+   const observe:VideoFrameRequestCallback=(_,frame)=>{
+    frames.push(frame.mediaTime)
+    callback=v.requestVideoFrameCallback(observe)
+   }
+   callback=v.requestVideoFrameCallback(observe)
+   window.scrollTo({top,behavior:'instant'})
+   const until=performance.now()+3000
+   while(performance.now()<until && (!frames.length||Math.abs(frames[frames.length-1]-target)>.07)){
+    await new Promise(resolve=>setTimeout(resolve,25))
+   }
+   v.cancelVideoFrameCallback(callback)
+   return frames
+  }
+  const distance=160
+  const target=distance/(scene.offsetHeight-innerHeight)*(v.duration-.04)
+  const forward=await move(scene.offsetTop+distance,target)
+  const backward=await move(scene.offsetTop,0)
+  return {target,forward,backward}
+ })
+ await test.info().attach('decoded-scroll-trace', {body:JSON.stringify(trace),contentType:'application/json'})
+ for(const frames of [trace.forward,trace.backward]){
+  expect(frames.filter(t=>t>.055&&t<trace.target-.055).length,JSON.stringify(trace)).toBeGreaterThanOrEqual(3)
+ }
+ expect(Math.abs(trace.forward.at(-1)!-trace.target)).toBeLessThan(.07)
+ expect(trace.backward.at(-1)!).toBeLessThan(.07)
+})
+
+test('scroll still presents the requested view when browser playback is denied',async({page})=>{
+ await page.addInitScript(()=>{
+  HTMLMediaElement.prototype.play=()=>Promise.reject(new DOMException('Playback denied','NotAllowedError'))
+ })
+ await page.goto('/build/demo-motors/cinematic')
+ const video=page.locator('#cinema-video')
+ await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.readyState)).toBeGreaterThanOrEqual(2)
+ const target=await video.evaluate((v:HTMLVideoElement)=>{
+  const s=document.getElementById('cinema-scene')!
+  window.scrollTo({top:s.offsetTop+(s.offsetHeight-innerHeight)*.25,behavior:'instant'})
+  return (v.duration-.04)*.25
+ })
+ await expect.poll(()=>video.evaluate((v:HTMLVideoElement,t)=>Math.abs(v.currentTime-t),target)).toBeLessThan(.07)
+ await expect.poll(()=>decodedFrame(page)).not.toBe('')
+ await expect(page.locator('#cinema-motion')).toHaveAttribute('aria-pressed','true')
+})

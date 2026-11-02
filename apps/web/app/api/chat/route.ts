@@ -1310,9 +1310,19 @@ export async function POST(request: Request) {
           if (response.stop_reason !== 'end_turn' && response.stop_reason !== 'tool_use' && !textOnlyTruncation) {
             incompleteResponse = true
             if (!socialResponseControlled) {
-              const warning = 'Svaret avbröts innan det blev komplett; inga ofullständiga verktygsanrop kördes.'
+              const warning = voiceDocument
+                ? response.stop_reason === 'max_tokens' ? VOICE_DOCUMENT_INCOMPLETE_WARNING : VOICE_DOCUMENT_STREAM_INTERRUPTED_WARNING
+                : '\n\nSvaret avbröts innan det blev komplett; inga ofullständiga verktygsanrop kördes.'
+              // Only already-emitted read-only text is a recoverable draft.
+              // Potential social claims remain withheld and are never persisted.
+              const partial = !bufferSocialProse ? streamedDraft : ''
               send('text', { text: warning })
-              await saveMessage('assistant', warning)
+              const saved = await saveMessage('assistant', partial + warning, {
+                kind: 'incomplete_draft', continuationAllowed: voiceDocument,
+                errorCode: 'ATLAS_RESPONSE_INCOMPLETE',
+              })
+              send('draft_interrupted', { saved, continuationAllowed: voiceDocument })
+              streamedDraft = ''
             }
             break
           }
@@ -1416,6 +1426,10 @@ export async function POST(request: Request) {
                 result = { ok: false, code: 'source_turn_read_only' }
               } else if (sourceReadTurn && sourceReadIssued) {
                 result = { ok: false, code: 'source_read_already_used' }
+              } else if (continuingIncompleteDocument) {
+                result = { ok: false, code: 'voice_document_no_tools' }
+              } else if (voiceDocument && !VOICE_DOCUMENT_READ_TOOLS.has(toolUse.name)) {
+                result = { ok: false, code: 'voice_document_read_only' }
               } else {
                 if (sourceReadTurn) sourceReadIssued = true
                 result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds, toolUse.id, await resolveOwnedConversationId(), verifiedBuildContext, voice||inputSource==='voice'?'voice':'text',studioContext?.projectId??null,{sessionDb:supabase,sameOrigin:assertSameOrigin(request)===null},notionReadOnlyTurn,lastUserText,stratoInboxReadIntent,sourceReadTurn)

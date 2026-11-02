@@ -271,7 +271,7 @@ function streamingFixture(pauseMs = 1200, playbackMode: 'speakers' | 'headphones
     let resolve!: (text: string) => void, reject!: (error: Error) => void
     const result = new Promise<string>((yes, no) => { resolve = yes; reject = no })
     void result.catch(() => {})
-    const turn = { signal, resolve, reject, send: vi.fn((_bytes: Uint8Array) => { if (failSend) throw new Error('stream_failed') }), finish: vi.fn(() => result), abort: vi.fn() }
+    const turn = { signal, resolve, reject, send: vi.fn((_bytes: Uint8Array) => { if (failSend) throw new Error('atlas_voice_stream_transport') }), finish: vi.fn(() => result), abort: vi.fn() }
     turns.push(turn); return turn
   })
   const capture = createPcmVoiceCapture({ pauseMs, playbackMode, receive, draft, notice, active, processing, interrupt }, {
@@ -368,7 +368,7 @@ describe('optional streaming microphone turns', () => {
   it('preserves microphone capture when a streamed final fails transiently, then accepts a newly spoken question', async () => {
     const f = streamingFixture(); await f.capture.start()
     f.frames(200, true); f.capture.finish()
-    f.turns[0].reject(new Error('temporary_realtime_disconnect'))
+    f.turns[0].reject(new Error('atlas_voice_stream_transport'))
     await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
     expect(f.stop).not.toHaveBeenCalled()
     expect(f.receive).not.toHaveBeenCalled()
@@ -411,7 +411,7 @@ describe('fresh phrase recovery after realtime failure',()=>{
  it('drops the failed audio and accepts the next separated phrase over batch without reopening a socket',async()=>{
   const f=streamingFixture();await f.capture.start()
   f.frames(200,true);f.capture.finish()
-  f.turns[0].reject(new Error('temporary_realtime_disconnect'))
+  f.turns[0].reject(new Error('atlas_voice_stream_transport'))
   await Promise.resolve();await Promise.resolve();await Promise.resolve()
   f.frames(1000,true)
   expect(f.transcribe).not.toHaveBeenCalled()

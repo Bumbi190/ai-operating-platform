@@ -7,7 +7,8 @@ import { VOICE_DOCUMENT_INCOMPLETE_WARNING, VOICE_DOCUMENT_STREAM_INTERRUPTED_WA
 
 vi.mock('server-only', () => ({}))
 const state = vi.hoisted(() => ({
-  outcome: 'fail' as 'fail' | 'max_tokens' | 'complete',
+  outcome: 'fail' as 'fail' | 'max_tokens' | 'complete' | 'partial_tool' | 'refusal',
+  tool: null as string | null,
   user: { id: 'operator-one', email: 'owner@example.test' },
   requestedConversation: 'conv-owned',
   calls: [] as Array<{ max_tokens: number; tools: Array<{name:string}>; messages: unknown[] }>,
@@ -66,8 +67,9 @@ vi.mock('@/lib/ai/anthropic', () => ({
           const part=state.outcome==='complete' ? 'Här kommer den säkra fortsättningen.' : '## Claude-prompt\n\nSteg ett är halvfärdigt'
           textHandler?.(part)
           if (state.outcome === 'fail') throw new Error('Provider transport disconnected after streamed text')
-          return { stop_reason: state.outcome==='max_tokens' ? 'max_tokens' : 'end_turn',
-            content: [{type:'text',text:part}] }
+          const tool = state.tool && state.calls.length === 1 ? {type:'tool_use',id:'adversarial-tool',name:state.tool,input:{project_id:'11111111-1111-4111-8111-111111111111',name:'Must not save',steps:[],trigger:'manual'}} : null
+          return { stop_reason: state.outcome==='partial_tool' || state.outcome==='max_tokens' ? 'max_tokens' : state.outcome==='refusal' ? 'refusal' : tool ? 'tool_use' : 'end_turn',
+            content: [{type:'text',text:part},...(tool || state.outcome==='partial_tool' ? [tool ?? {type:'tool_use',id:'partial',name:'get_current_time',input:{}}] : [])] }
         },
       }
     } },
@@ -95,6 +97,7 @@ const assistantDraft = () => state.writes.filter(x=>x.table==='conversation_mess
   .map(x=>x.payload).find(x=>x.role==='assistant')
 beforeEach(()=>{
   state.outcome='fail'
+  state.tool=null
   state.calls.length=0
   state.writes.length=0
   state.fallbackCalls=0
@@ -146,4 +149,28 @@ describe('Nova real-stream draft recovery',()=>{
     expect(assistantDraft()).toBeUndefined()
     expect(state.fallbackCalls).toBe(0)
   }, 15_000)
+})
+
+describe('server-enforced voice drafting boundary',()=>{
+ it.each(['save_workflow','trigger_workflow'])('refuses an unadvertised %s during a document turn',async tool=>{
+  state.outcome='complete';state.tool=tool
+  const {events}=await post(owned([{role:'user',content:requestPrompt}]))
+  const result=events.find(e=>e.event==='tool_result' && e.tool===tool)?.result
+  expect(result).toMatchObject({ok:false,code:'voice_document_read_only'})
+  expect(state.writes.filter(w=>w.table==='workflows'||w.table==='runs')).toEqual([])
+ })
+ it('refuses every tool on deliberate incomplete-document continuation',async()=>{
+  state.outcome='complete';state.tool='get_current_time'
+  const {events}=await post(owned([{role:'user',content:requestPrompt},{role:'assistant',content:'Delvis'+VOICE_DOCUMENT_INCOMPLETE_WARNING},{role:'user',content:'Fortsätt'}],false))
+  expect(events.find(e=>e.event==='tool_result')?.result).toMatchObject({ok:false,code:'voice_document_no_tools'})
+ })
+ it.each(['partial_tool','refusal'] as const)('preserves text and continuation metadata after %s',async outcome=>{
+  state.outcome=outcome
+  const {events}=await post(owned([{role:'user',content:requestPrompt}]))
+  expect(events.some(e=>e.event==='tool_call')).toBe(false)
+  expect(events.some(e=>e.event==='draft_interrupted'&&e.continuationAllowed===true)).toBe(true)
+  const saved=assistantDraft()
+  expect(saved.content).toContain('Steg ett är halvfärdigt')
+  expect(saved.tool_data).toMatchObject({kind:'incomplete_draft',continuationAllowed:true})
+ })
 })

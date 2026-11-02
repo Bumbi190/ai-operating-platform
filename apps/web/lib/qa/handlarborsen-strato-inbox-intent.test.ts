@@ -44,7 +44,7 @@ describe('Explicit Atlas Strato inbox READ request routing',()=>{
   expect(source).toContain('&& !hbSalesOverviewReadIntent && !hbReplyLifecycleReadIntent')
   expect(source).toContain('&& !isNotionKnowledgeIntent(lastUserText) && hbStratoInboxReadEnabled()')
   expect(source).toContain('&& isHandlarborsenInboxReadIntent(lastUserText)')
-  expect(source).toContain('const fastPath = !pendingNovaCuratorReview && !stratoInboxReadIntent && !hbCompositeEvidenceIntent')
+  expect(source).toContain('const fastPath = !pendingNovaCuratorReview && !continuingIncompleteDocument && !stratoInboxReadIntent && !hbCompositeEvidenceIntent')
   expect(source).toContain('notionReadOnlyTurn,lastUserText,stratoInboxReadIntent,sourceReadTurn)')
   expect(source).toContain('const navIntent = !pendingNovaCuratorReview && !stratoInboxReadIntent &&')
   expect(source).toContain('const forceStratoReadFirstTurn = stratoInboxReadIntent')

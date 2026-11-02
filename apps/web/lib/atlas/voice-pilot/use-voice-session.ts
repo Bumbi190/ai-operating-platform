@@ -186,10 +186,13 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
       if (mounted.current && token === lifetime.current && audioToken === speechEpoch.current) speak().enqueue(text, voice)
     } catch { if (mounted.current && token === lifetime.current && audioToken === speechEpoch.current) setNotice('Klicka på provlyssna igen för att aktivera ljudet i webbläsaren.') }
   }
-  async function startMic(mode: 'speakers' | 'headphones' = playbackMode) {
+  async function startMic(mode: 'speakers' | 'headphones' = playbackMode, preferredInputMode: 'batch' | 'streaming' = micProblem ? 'batch' : inputMode) {
     if (micRef.current || openingRef.current) return
     if (!enabled || !mounted.current) return
     openingRef.current = true
+    // A deliberate reconnect after a failed stream starts a fresh governed batch
+    // capture. No failed audio is retained or resent, and permission is rechecked.
+    setInputMode(preferredInputMode)
     setMicProblem(null)
     latest.current.beforeStart?.(); setNotice(''); setOpening(true)
     const token = lifetime.current, micToken = ++captureEpoch.current
@@ -199,7 +202,7 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
       // Resume in the tap before awaiting the lazy transport module.
       const prepared = speak().prepare()
       void prepared.catch(() => {})
-      const streamTurn = streamingAvailable && inputMode === 'streaming'
+      const streamTurn = streamingAvailable && preferredInputMode === 'streaming'
       ? (await import('@/lib/atlas/voice-pilot/stream-client')).beginVoiceStream : undefined
       if (!currentMic()) return
       const next = createPcmVoiceCapture({ pauseMs, playbackMode: mode,

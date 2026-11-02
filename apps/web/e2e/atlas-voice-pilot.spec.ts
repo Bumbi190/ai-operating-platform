@@ -283,7 +283,7 @@ for (const action of ['correction', 'mode', 'signout', 'pagehide'] as const) {
 }
 
 test('streaming connection failure discards the old question and recovers on a new batch phrase', async ({ page }) => {
-  await openStreaming(page, '&stream=fail-once')
+  await openStreaming(page, '&stream=drop-after-ready')
   await page.getByRole('button', { name: 'Säg första frågan' }).click()
   await expect(page.getByRole('alert')).toContainText('Frågan skickades inte')
   await expect(page.getByRole('status').filter({ hasText: 'Aktiva mikrofonspår: 1' })).toBeVisible()
@@ -671,3 +671,24 @@ for (const minimized of [false, true]) {
     expect(bodies[1].messages.at(-1).content).toBe('Lägg till en blå knapp.')
   })
 }
+
+test('recovery: an unverified stream stops capture and a deliberate reconnect starts a fresh batch question', async ({ page }) => {
+  await openStreaming(page, '&stream=fail-once')
+  await page.getByRole('button', { name: 'Säg första frågan' }).click()
+  await expect(page.getByRole('alert')).toContainText('Mikrofonen är stoppad')
+  await expect(page.getByRole('status').filter({ hasText: 'Aktiva mikrofonspår: 0' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'Chattbegäranden: 0' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'Transkriberingar: 0' })).toBeVisible()
+  expect((await streamStats(page)).connections).toBe(1)
+  await page.getByRole('button', { name: 'Starta mikrofonen', exact: true }).click()
+  await expect(page.getByRole('status').filter({ hasText: /^Atlas lyssnar$/ })).toBeVisible()
+  await expect(page.getByLabel('Taligenkänning')).toHaveValue('batch')
+  await page.getByRole('button', { name: 'Håll chattsvar: på' }).click()
+  await page.getByRole('button', { name: 'Säg första avbrottet' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Chattbegäranden: 1' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'Transkriberingar: 1' })).toBeVisible()
+  const bodies = await page.evaluate(() => (window as any).fixtureChatBodies)
+  expect(bodies).toHaveLength(1)
+  expect(bodies[0].messages.at(-1).content).toBe('Lägg till en blå knapp.')
+  expect((await streamStats(page)).connections).toBe(1)
+})

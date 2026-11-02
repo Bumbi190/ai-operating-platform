@@ -61,7 +61,12 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
   }
   /** Drop just the failed streamed question, not the browser microphone. */
   function failedRealtimeTurn(error: unknown) {
-    if (isVoiceAccessFailure(error)) { stop(); options.notice(VOICE_ACCESS_NOTICE); return }
+    if (!(error instanceof Error) || error.message !== 'atlas_voice_stream_transport') {
+      stop()
+      options.notice(isVoiceAccessFailure(error) ? VOICE_ACCESS_NOTICE
+        : 'Talanslutningen kunde inte fortsätta säkert. Mikrofonen är stoppad. Tryck på mikrofonen för att återansluta.')
+      return
+    }
     // Discard the failed question; only a new phrase after silence may use batch.
     useRealtime = false
     options.onStreamFallback?.()

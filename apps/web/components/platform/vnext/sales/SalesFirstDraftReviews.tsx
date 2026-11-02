@@ -107,6 +107,7 @@ export function SalesFirstDraftReviews({ model, openReviewKey, onOpenReviewKeyCh
         const expanded = openReviewKey === key
         const contact = model.contacts.find(c => c.id === draft.contactId)
         const offer = model.offers.find(o => o.id === draft.offerRevisionId)
+        const editorialOnly = draft.preparationMode === 'editorial_only'
         const actionable = draft.current && !!draft.approvalId && ['pending', 'revised', 'needs_input'].includes(draft.status)
         const title = contact
           ? [contact.companyName, contact.branchName || 'Huvudkontor'].join(' · ')
@@ -131,6 +132,7 @@ export function SalesFirstDraftReviews({ model, openReviewKey, onOpenReviewKeyCh
             </button>
             {expanded && (
               <div className={styles.replyDetail} id={contentId}>
+                {editorialOnly && <p className={styles.notice}><strong>Endast granskningsutkast.</strong> Historikens begränsningar kvarstår. Textgodkännande ger inget sändningstillstånd.</p>}
                 <p>Kontrollera kontakt, erbjudande och svarstext. Ingenting skickas vid godkännande.</p>
                 <dl className={styles.metadata}>
                   <dt>Från</dt><dd>{draft.senderEmail}</dd>

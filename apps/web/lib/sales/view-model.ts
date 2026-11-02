@@ -4,6 +4,10 @@ const labels:Record<string,string>={queued:'Väntar på lokal worker',running:'F
 export function salesStatusLabel(status:string):string{return labels[status]??'Okänd status'}
 export function canPrepareContact(c:SalesContact,timing?:ContactTiming):boolean{return c.confirmed===true&&!c.excluded&&!c.suppressed&&c.history==='not_contacted'&&timing?.initialPreparationAllowed===true&&timing.contactId===c.id&&timing.contactVersion===c.version}
 
+export function canPrepareEditorialContact(c:SalesContact,timing?:ContactTiming):boolean{
+ return c.confirmed===true&&!c.excluded&&!c.suppressed&&c.history==='not_contacted'&&timing?.editorialPreparationAllowed===true&&timing.contactId===c.id&&timing.contactVersion===c.version
+}
+
 export function salesConnectionLabel(s:import('./host-types').HostStatus):string {
  if(s.connectionState==='revoked')return 'Anslutningen är återkallad'
  if(s.connectionState==='offline')return 'Datorn är inte ansluten just nu'

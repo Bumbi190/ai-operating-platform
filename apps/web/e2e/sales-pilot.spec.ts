@@ -16,7 +16,7 @@ test('five exact drafts survive reload; edit, editorial approval and mobile layo
  await page.setViewportSize({width:1440,height:1000});await page.goto('/sales')
  await expect(page.getByRole('heading',{name:'Säljförberedelse'})).toBeVisible()
  await page.getByRole('heading',{name:'Uppdrag',exact:true}).click();await expect(page.getByText('Väntar på lokal worker',{exact:true})).toBeVisible();await page.getByRole('heading',{name:'Kontakter',exact:true}).click();await page.getByRole('heading',{name:'Erbjudande och Atlas-uppdrag',exact:true}).click()
- for(let i=0;i<5;i++)await page.getByRole('checkbox').nth(i).check()
+ for(let i=0;i<5;i++)await page.locator('li').filter({hasText:'Testbil '+(i+1)}).getByRole('checkbox').check()
  await page.getByRole('button',{name:'Kopiera uppdrag till Atlas'}).click()
  const request=await page.evaluate(()=>navigator.clipboard.readText());expect(request).toContain('Testbil 1, Nord (shared@example.se)');expect(request).toContain('Testbil 2, Syd (shared@example.se)');expect(request).toContain('Skicka inget.')
  model.jobs[0].status='awaiting_review';model.jobs[0].attempts=5
@@ -31,4 +31,36 @@ test('five exact drafts survive reload; edit, editorial approval and mobile layo
  await page.getByRole('heading',{name:'Erbjudande och Atlas-uppdrag',exact:true}).click();await expect(page.getByText('Redo att förbereda utkast',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Pausa förberedelsen',exact:true}).click();await expect(page.getByText('Förberedelsen är pausad',{exact:true})).toBeVisible();await expect(page.getByText('Worker token',{exact:true})).toHaveCount(0)
  const folder=process.env.SALES_BROWSER_ARTIFACT_DIR??'../../.superpowers/sdd/2026-10-17-sales-strato-inbox/browser';mkdirSync(folder,{recursive:true});await page.screenshot({path:`${folder}/sales-desktop.png`,fullPage:true})
  await page.setViewportSize({width:390,height:844});await expect(page.getByRole('heading',{name:'Säljförberedelse'})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.screenshot({path:`${folder}/sales-mobile.png`,fullPage:true})
+})
+
+test('editorial selection is explicit and partial history never appears as send permission',async({page,context})=>{
+ await context.grantPermissions(['clipboard-read','clipboard-write'])
+ const contact={id:'30000000-0000-4000-8000-000000000001',projectId,companyName:'Review Company',branchName:'Malmö',email:'review@example.se',websiteUrl:null,version:1,pilotMonths:6,history:'not_contacted',historySource:'Current available sources checked; older coverage remains unknown.',confirmed:true,excluded:false,suppressed:false}
+ const jobId='60000000-0000-4000-8000-000000000002'
+ const model:any={projectId,state:'ok',workerState:'not_connected',contacts:[contact],offers:[{id:offerId,projectId,senderEmail:'info@handlarborsen.se',offerText:'6 månader gratis',freeMonths:6,productFacts:['Stängd B2B-marknadsplats'],confirmed:true,createdAt:'2026-11-02T09:00:00Z'}],jobs:[],drafts:[{preparationMode:'editorial_only',contactId:contact.id,contactVersion:1,offerRevisionId:offerId,senderEmail:'info@handlarborsen.se',toEmail:contact.email,subject:'Ett granskningsutkast',body:'Vill ni titta på pilotupplägget?',evidenceIds:[],questions:[],id:'70000000-0000-4000-8000-000000000002',projectId,jobId,sha256:'a'.repeat(64),approvalId:'90000000-0000-4000-8000-000000000002',runId:null,status:'pending',current:true,createdAt:'2026-11-02T09:02:00Z'}],evidence:[],workers:[],workspaceUrl:'/projects/handlarborsen/sales',sendingEnabled:false}
+ model.timing={projectId,evaluatedAt:'2026-11-02T09:00:00Z',historyRevisions:[],rules:null,customerSendingEnabled:false,contacts:[{contactId:contact.id,contactVersion:1,historyRevisionId:'80000000-0000-4000-8000-000000000002',initialPreparationAllowed:false,editorialPreparationAllowed:true,blockers:['HISTORY_REVIEW_REQUIRED','SOURCE_GAP','NOT_INITIAL_CONTACT'],reminderCount:null}],workspaceUrl:'/sales#contact-timing'}
+ const posts:string[]=[]
+ await page.route('**/api/sales?*',r=>r.fulfill({json:new URL(r.request().url()).searchParams.has('connection')?{connections:[],sendingEnabled:false}:model}))
+ await page.route('**/api/sales/mailbox?*',r=>r.fulfill({json:null}))
+ await page.route('**/api/sales',async r=>{posts.push(r.request().method());await r.fulfill({status:403,json:{code:'UNEXPECTED_WRITE'}})})
+ await page.goto('/sales')
+ await page.getByRole('heading',{name:'Kontakter',exact:true}).click()
+ const recipient=page.locator('li').filter({hasText:'Review Company'}).getByRole('checkbox')
+ await expect(recipient).toBeDisabled()
+ await page.getByRole('checkbox',{name:/Förbered endast för granskning/}).check()
+ await expect(recipient).toBeEnabled()
+ await recipient.check()
+ await page.getByRole('heading',{name:'Erbjudande och Atlas-uppdrag',exact:true}).click()
+ await page.getByRole('button',{name:'Kopiera uppdrag till Atlas'}).click()
+ const request=await page.evaluate(()=>navigator.clipboard.readText())
+ expect(request).toContain('Skapa endast ett granskningsutkast')
+ expect(request).toContain('Skicka inget.')
+ await page.getByRole('heading',{name:'Mejlutkast att granska',exact:true}).click()
+ await page.getByRole('article').getByRole('button',{name:'Visa förslag'}).click()
+ await expect(page.getByRole('article')).toContainText('Endast granskningsutkast.')
+ await expect(page.getByRole('article')).toContainText('Textgodkännande ger inget sändningstillstånd.')
+ await expect(page.getByRole('button',{name:/^Skicka/})).toHaveCount(0)
+ expect(posts).toEqual([])
+ await page.setViewportSize({width:390,height:844})
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
 })

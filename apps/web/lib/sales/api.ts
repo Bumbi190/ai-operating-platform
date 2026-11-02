@@ -25,7 +25,7 @@ export function createSalesApi(deps:Dependencies){return async(request:Request):
    const result=url.searchParams.has('jobId')?await readSalesJob(deps.db(),p,{projectId,jobId:salesId(url.searchParams.get('jobId'))}):await readSalesWorkspace(deps.db(),p,projectId)
    return Response.json(result,{headers:salesHeaders})
   }
-  const v=await readBody(request);fields(v,['operation','projectId','id','companyName','branchName','email','websiteUrl','history','historySource','offerKind','pilotMonths','confirmed','excluded','suppressed','expectedVersion','senderEmail','offerText','productFacts','offerKind','freeMonths','conversationId','contactIds','offerRevisionId','idempotencyKey','revisionId','draft','jobId','workerId','action','templateKey','expectedPreviousId','subject','body'])
+  const v=await readBody(request);fields(v,['operation','projectId','id','companyName','branchName','email','websiteUrl','history','historySource','offerKind','pilotMonths','confirmed','excluded','suppressed','expectedVersion','senderEmail','offerText','productFacts','offerKind','freeMonths','conversationId','contactIds','offerRevisionId','idempotencyKey','revisionId','draft','preparationMode','jobId','workerId','action','templateKey','expectedPreviousId','subject','body'])
   const projectId=salesId(v.projectId);scoped(p,projectId);if(!deps.enabled(projectId))throw new SalesError('NOT_FOUND',404)
   const {operation,...input}=v;const db=deps.db();let result:unknown
   const call=(name:string,value:unknown)=>salesRpc(db,name,{p_principal:p,p_input:value})

@@ -12,9 +12,10 @@ export function normalizeSalesEmail(v:string):string{
 }
 export function ids(v:unknown,max:number):string[]{if(!Array.isArray(v)||v.length>max)throw new SalesError('INVALID_BODY');const a=v.map(salesId);if(new Set(a).size!==a.length)throw new SalesError('INVALID_BODY');return a}
 export function parsePrepareSalesInput(v:unknown):PrepareSalesInput{
-  fields(v,['projectId','conversationId','contactIds','offerRevisionId','idempotencyKey'])
+  fields(v,['projectId','conversationId','contactIds','offerRevisionId','idempotencyKey','preparationMode'])
+  if('preparationMode' in v&&v.preparationMode!=='editorial_only')throw new SalesError('INVALID_BODY')
   const contactIds=ids(v.contactIds,5);if(!contactIds.length)throw new SalesError('INVALID_BODY')
-  return {projectId:salesId(v.projectId),conversationId:salesId(v.conversationId),contactIds,offerRevisionId:salesId(v.offerRevisionId),idempotencyKey:text(v.idempotencyKey,100)}
+  return {projectId:salesId(v.projectId),conversationId:salesId(v.conversationId),contactIds,offerRevisionId:salesId(v.offerRevisionId),idempotencyKey:text(v.idempotencyKey,100),...(v.preparationMode==='editorial_only'?{preparationMode:'editorial_only' as const}:{})}
 }
 export function parseSalesDraft(v:unknown):SalesDraft{
   fields(v,['contactId','contactVersion','offerRevisionId','senderEmail','toEmail','subject','body','evidenceIds','questions'])

@@ -75,6 +75,8 @@ try{
  sql(readFileSync(resolve(migrations,'20261031110000_sales_discovery_candidates.sql'),'utf8'));
  console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_discovery.sql'),'utf8')));
  console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_discovery_admission.sql'),'utf8')));
+ sql(readFileSync(resolve(migrations,'20261102090200_sales_editorial_only_drafts.sql'),'utf8'));
+ console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_editorial_only.sql'),'utf8')));
 
  // Re-run existing negative cases under final schema, each explicitly reviewed before preparation.
  let regression=readFileSync(resolve(root,'apps/web/supabase/tests/sales_pilot_regressions.sql'),'utf8');
@@ -122,7 +124,18 @@ try{
  await sendSourceRaces({container,db,sql,run:concurrent});
  await replyReviewRaces({container,db,run:concurrent,principal,input,claimed});
  console.log('START: isolated Vitest SQL/API/Python integration suite');
- const integration=spawnSync(process.execPath,[resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/qa/sales-integration.test.ts','lib/qa/sales-timing-integration.test.ts','lib/qa/sales-host-integration.test.ts','lib/qa/sales-mailbox-integration.test.ts','lib/qa/sales-inbox-integration.test.ts','lib/qa/sales-reply-integration.test.ts',...(container==='omnira-sales-sending-20261018'?['lib/qa/sales-send-integration.test.ts']:[]),'--maxWorkers=1','--minWorkers=1'],{cwd:resolve(root,'apps/web'),env:{...process.env,SALES_FIXTURE_DATABASE:db,SALES_FIXTURE_CONTAINER:container},encoding:'utf8',maxBuffer:2e6,timeout:240000})
+ const integration=spawnSync(process.execPath,[resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/qa/sales-integration.test.ts','lib/qa/sales-timing-integration.test.ts','lib/qa/sales-editorial-integration.test.ts','lib/qa/sales-host-integration.test.ts','lib/qa/sales-mailbox-integration.test.ts','lib/qa/sales-inbox-integration.test.ts','lib/qa/sales-reply-integration.test.ts',...(container==='omnira-sales-sending-20261018'?['lib/qa/sales-send-integration.test.ts']:[]),'--maxWorkers=1','--minWorkers=1'],{cwd:resolve(root,'apps/web'),env:{...process.env,SALES_FIXTURE_DATABASE:db,SALES_FIXTURE_CONTAINER:container},encoding:'utf8',maxBuffer:2e6,timeout:240000})
  console.log(integration.stdout);if(integration.status!==0)throw Error('Sales slice integration failed: '+String(integration.error?.message??integration.stderr??'unknown').slice(0,5000))
+ }
+ if(process.argv.includes('--verify-editorial-rollback')){
+ const f=JSON.parse(docker(['exec','-i',container,'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-U','postgres','-d',db],"select sales_regression_fixture('editorial-rollback');"));
+ sql("select sales_fixture_review_timing('"+f.projectId+"');");
+ const q=v=>"'"+JSON.stringify(v).replaceAll("'","''")+"'::jsonb";
+ sql('select sales_prepare_editorial_job('+q(f.principal)+','+q({...f.input,preparationMode:'editorial_only'})+');');
+ sql(readFileSync(resolve(root,'docs/superpowers/reports/2026-11-02-harvey-editorial-disable-proposal.sql'),'utf8'));
+ sql("do $$begin begin perform sales_claim_job('"+f.token+"','{}');raise exception 'TEST FAILED: disabled editorial job claimed';exception when serialization_failure then null;end;begin perform sales_prepare_editorial_job("+q(f.principal)+','+q({...f.input,idempotencyKey:'after-disable',preparationMode:'editorial_only'})+");raise exception 'TEST FAILED: disabled editorial mode queued';exception when object_not_in_prerequisite_state then null;end;end$$;");
+ const normal=JSON.parse(docker(['exec','-i',container,'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-U','postgres','-d',db],"select sales_regression_fixture('normal-after-editorial-rollback');"));
+ sql("select sales_fixture_review_timing('"+normal.projectId+"');select sales_prepare_job("+q(normal.principal)+','+q(normal.input)+');');
+ console.log('PASS: operational forward rollback fences existing editorial jobs, refuses new editorial work and preserves normal preparation');
  }
 }finally{docker(['exec',container,'dropdb','-U','postgres',db])}

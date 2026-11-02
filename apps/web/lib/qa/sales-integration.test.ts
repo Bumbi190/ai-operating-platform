@@ -39,7 +39,7 @@ suite('sales slice against real PostgreSQL',()=>{
   await workerCall('complete',{...claim.ref,drafts})
   const workspace=async()=>{const r=await api(new Request(`https://fixture.invalid/api/sales?projectId=${projectId}`));expect(r.status).toBe(200);return r.json()}
   const prepared=await workspace();expect(prepared.drafts).toHaveLength(5);expect(prepared.sendingEnabled).toBe(false);expect(new Set(prepared.drafts.map((d:any)=>d.contactId)).size).toBe(5)
-  const old=prepared.drafts[0],{id,projectId:_,jobId,sha256,approvalId,runId,status,current,createdAt,...draft}=old
+  const old=prepared.drafts[0],{id,projectId:_,jobId,sha256,approvalId,runId,status,current,createdAt,preparationMode,...draft}=old
   await operator({operation:'revise',revisionId:old.id,draft:{...draft,body:'En ändrad fråga om 12 månader gratis.'}})
   expect(sql(`select resolve_approval('${approvalId}','${runId}','${projectId}','approved',null);`)).toBe('LOST')
   const revised=await workspace();expect(revised.drafts).toHaveLength(5);expect(revised.drafts.find((d:any)=>d.contactId===old.contactId).sha256).not.toBe(sha256)

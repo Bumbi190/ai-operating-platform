@@ -67,6 +67,10 @@ Public email is unconfirmed evidence. The owner must verify the business, recipi
 4. Start the qualified specialist. It fetches only a manually confirmed HTTPS homepage, records bounded literal evidence and reserves each model attempt before dispatch. Redirects, private destinations and model-selected URLs are refused. Source failures become review questions.
 5. Review the exact saved addresses, offer, subject, body, source and questions. Editing creates an immutable revision and invalidates older pending text reviews. Resolve missing facts before approval. Editorial approval sends nothing.
 
+## Editorial-only drafts (pending schema release)
+
+An explicit preparationMode=editorial_only uses the separate sales_prepare_editorial_job RPC. It requires an owner-reviewed, fresh saved audit of Strato sent/inbox and Resend, with no observed contact events, no failed sources, and the same contact/offer/project/conversation checks. Honest older-history gaps and a missing older-history attestation stay visible; normal initialPreparationAllowed is not changed. The server marks the immutable snapshot and job receipt, and rechecks the same history/rule/contact versions before worker claims, model permits and commits. The UI labels these drafts as review-only. Initial draft revisions are not admitted to the reply-only sending tables or authority functions; text approval cannot convert one into a send job. The new additive migration must be reviewed and applied before this mode can run. No live mode or customer send is activated by the code change.
+
 ## Runtime limits and failure handling
 
 Claude runs once per contact from a temporary empty directory with tools, MCP servers, hooks, slash commands, Chrome, session persistence and normal settings sources disabled. Streams advertising tools or unsupported output are refused. Custom API-provider environments and detected managed policies are blocked. There is no paid API fallback. Raw CLI output and stderr are not persisted as job diagnostics.

@@ -10,5 +10,5 @@ export async function salesRpc<T>(db:SalesDb,name:string,args:Record<string,unkn
  if(data===null||data===undefined)throw new SalesError('UNAVAILABLE',503);return data as T
 }
 export async function readSalesWorkspace(db:SalesDb,p:SalesPrincipal,projectId:string):Promise<SalesWorkspace>{scoped(p,projectId);return salesRpc(db,'sales_read_workspace',{p_principal:p,p_input:{projectId}})}
-export async function prepareSalesDrafts(db:SalesDb,p:SalesPrincipal,value:PrepareSalesInput):Promise<SalesJobSummary>{const input=parsePrepareSalesInput(value);scoped(p,input.projectId);return salesRpc(db,'sales_prepare_job',{p_principal:p,p_input:input})}
+export async function prepareSalesDrafts(db:SalesDb,p:SalesPrincipal,value:PrepareSalesInput):Promise<SalesJobSummary>{const input=parsePrepareSalesInput(value);scoped(p,input.projectId);return salesRpc(db,input.preparationMode==='editorial_only'?'sales_prepare_editorial_job':'sales_prepare_job',{p_principal:p,p_input:input})}
 export async function readSalesJob(db:SalesDb,p:SalesPrincipal,ref:SalesJobRef):Promise<SalesJobSummary>{scoped(p,ref.projectId);salesId(ref.jobId);return salesRpc(db,'sales_read_job',{p_principal:p,p_input:ref})}

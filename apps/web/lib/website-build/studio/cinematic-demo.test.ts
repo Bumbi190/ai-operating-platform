@@ -59,7 +59,7 @@ describe('authored fictional cinematic variant',()=>{
   const suffix=cinematicAssetResponse(request('bytes=-32'),name)
   expect(Buffer.from(await suffix.arrayBuffer())).toEqual(full.subarray(-32))
   const rest=cinematicAssetResponse(request('bytes=100-'),name)
-  expect(Buffer.from(await rest.arrayBuffer())).toEqual(full.subarray(100))
+  expect(Buffer.from(await rest.arrayBuffer()).equals(full.subarray(100))).toBe(true)
  })
  it.each(['bytes=999999999-','bytes=50-20','bytes=-0','bytes=0-10,20-30','nonsense'])(
   'rejects an invalid byte range %s without disclosing media bytes',async range=>{

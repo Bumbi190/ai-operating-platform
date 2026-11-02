@@ -4,13 +4,18 @@ test('real video seeks forward and backward while catalog filtering stays functi
  await page.goto('/build/demo-motors/cinematic')
  const video=page.locator('#cinema-video')
  await expect(page.locator('#cinema-motion')).toHaveAttribute('aria-pressed','true')
- await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.readyState)).toBeGreaterThan(0)
- await page.screenshot({path:'../../.superpowers/cinematic-pilot/desktop.png',fullPage:false})
+ await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.readyState)).toBeGreaterThanOrEqual(2)
+ await expect.poll(()=>decodedFrame(page)).not.toBe('')
+ const opening=await decodedFrame(page);expect(opening).not.toBe('')
+ await page.screenshot({path:'../../.superpowers/cinematic-pilot/desktop.png',fullPage:false,animations:'disabled'})
  await page.evaluate(()=>window.scrollTo(0,document.getElementById('cinema-scene')!.offsetTop+innerHeight*.8))
  await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(1)
  await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.paused)).toBe(true)
+ await expect.poll(async()=>{const f=await decodedFrame(page);return f!==''&&f!==opening}).toBe(true)
+ const forward=await decodedFrame(page);expect(forward).not.toBe('')
  await page.evaluate(()=>window.scrollTo(0,0))
  await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeLessThan(.2)
+ await expect.poll(async()=>{const f=await decodedFrame(page);return f!==''&&f!==forward}).toBe(true)
  await page.locator('#fuel').selectOption('el')
  await expect(page.locator('.car:visible')).toHaveCount(3)
  await expect(page.locator('#count')).toHaveText('3 av 8 visas')
@@ -61,7 +66,7 @@ test('mobile starts with a lightweight poster and has no horizontal overflow',as
   return {sceneBottom:scene.bottom,stageBottom:stage.bottom}
  })
  expect(bounds.stageBottom).toBeLessThanOrEqual(bounds.sceneBottom+1)
- await page.screenshot({path:'../../.superpowers/cinematic-pilot/mobile.png',fullPage:false})
+ await page.screenshot({path:'../../.superpowers/cinematic-pilot/mobile.png',fullPage:false,animations:'disabled'})
  await page.locator('.cinema-actions a').click()
  await expect(page.locator('#inventory-heading')).toBeInViewport()
 })
@@ -83,4 +88,143 @@ test('without JavaScript the real catalog and poster remain available',async({br
  await expect(page.locator('#cinema-motion')).toBeHidden()
  await expect(page.locator('.car')).toHaveCount(8)
  await context.close()
+})
+
+async function decodedFrame(page:import('@playwright/test').Page){
+ return page.locator('#cinema-video').evaluate((v:HTMLVideoElement)=>{
+  if(v.readyState<2||v.seeking)return ''
+  const c=document.createElement('canvas');c.width=32;c.height=18
+  const x=c.getContext('2d')!;x.drawImage(v,0,0,32,18)
+  return Array.from(x.getImageData(0,0,32,18).data).join(',')
+ })
+}
+
+test('mobile Play visibly advances frames without scroll and Pause holds the film',async({page})=>{
+ await page.setViewportSize({width:390,height:844})
+ await page.goto('/build/demo-motors/cinematic')
+ const play=page.locator('#cinema-play'),video=page.locator('#cinema-video')
+ await expect(play).toBeVisible({timeout:1500})
+ expect(await video.getAttribute('src')).toBeNull()
+ await play.click()
+ await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.paused)).toBe(false)
+ await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(.5)
+ await expect.poll(()=>decodedFrame(page)).not.toBe('')
+ const first=await decodedFrame(page)
+ expect(first).not.toBe('')
+ await expect.poll(async()=>{const frame=await decodedFrame(page);return frame!==''&&frame!==first}).toBe(true)
+ await play.click()
+ await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.paused)).toBe(true)
+ const stopped=await video.evaluate((v:HTMLVideoElement)=>v.currentTime)
+ await page.waitForTimeout(350)
+ expect(Math.abs(await video.evaluate((v:HTMLVideoElement)=>v.currentTime)-stopped)).toBeLessThan(.1)
+})
+
+test('chapter buttons and keyboard timeline reveal the actual interior before inventory',async({page})=>{
+ await page.setViewportSize({width:1440,height:1000})
+ await page.goto('/build/demo-motors/cinematic')
+ const video=page.locator('#cinema-video')
+ await expect(page.locator('#cinema-chapter-2')).toBeVisible({timeout:1500})
+ await page.locator('#cinema-chapter-2').click()
+ await expect(page.locator('#cinema-chapter-2')).toHaveAttribute('aria-current','step')
+ await expect(page.locator('#cinema-copy-2')).toBeVisible()
+ await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.readyState)).toBeGreaterThanOrEqual(2)
+ expect(await video.evaluate((v:HTMLVideoElement)=>v.duration)).toBeGreaterThan(12)
+ await expect.poll(()=>decodedFrame(page)).not.toBe('')
+ const interior=await decodedFrame(page)
+ expect(interior).not.toBe('')
+ await page.screenshot({path:'../../.superpowers/premium-showroom/interior-desktop.png',animations:'disabled'})
+ await page.locator('#cinema-chapter-1').click()
+ await expect(page.locator('#cinema-copy-1')).toBeVisible()
+ await expect.poll(()=>decodedFrame(page)).not.toBe('')
+ await page.screenshot({path:'../../.superpowers/premium-showroom/car-desktop.png',animations:'disabled'})
+ await page.locator('#cinema-chapter-0').click()
+ await expect(page.locator('#cinema-chapter-0')).toHaveAttribute('aria-current','step')
+ await expect.poll(async()=>{const frame=await decodedFrame(page);return frame!==''&&frame!==interior}).toBe(true)
+ await page.locator('#cinema-seek').press('End')
+ await expect(page.locator('#cinema-chapter-2')).toHaveAttribute('aria-current','step')
+ await page.locator('.cinema-actions a').click()
+ await expect(page.locator('#inventory-heading')).toBeInViewport()
+})
+
+test('changing reduced motion stops explicit playback and restores the poster',async({page})=>{
+ await page.goto('/build/demo-motors/cinematic')
+ const play=page.locator('#cinema-play'),video=page.locator('#cinema-video')
+ await expect(play).toBeVisible({timeout:1500})
+ await play.click()
+ await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.paused)).toBe(false)
+ await page.emulateMedia({reducedMotion:'reduce'})
+ await expect(video).toBeHidden()
+ await expect(page.locator('#cinema-motion')).toHaveAttribute('aria-pressed','false')
+ expect(await video.getAttribute('src')).toBeNull()
+})
+
+test('denied playback offers a real retry without claiming the tour is playing',async({page})=>{
+ await page.addInitScript(()=>{HTMLMediaElement.prototype.play=function(){return Promise.reject(new Error('fixture playback denied'))}})
+ await page.setViewportSize({width:390,height:844})
+ await page.goto('/build/demo-motors/cinematic')
+ await expect(page.locator('#cinema-play')).toBeVisible({timeout:1500})
+ await page.locator('#cinema-play').click()
+ await expect(page.locator('#cinema-status')).toContainText('kunde inte starta')
+ await expect(page.locator('#cinema-play')).toBeEnabled()
+ await expect(page.locator('#cinema-play')).toHaveAttribute('aria-pressed','false')
+})
+
+test('turning scroll off midway keeps poster and controls in the viewport',async({page})=>{
+ await page.goto('/build/demo-motors/cinematic')
+ const video=page.locator('#cinema-video')
+ await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.readyState)).toBeGreaterThanOrEqual(2)
+ await page.evaluate(()=>{const s=document.getElementById('cinema-scene')!;window.scrollTo(0,s.offsetTop+(s.offsetHeight-innerHeight)*.6)})
+ await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(2)
+ await page.locator('#cinema-motion').click()
+ await expect(page.locator('#cinema-play')).toBeInViewport()
+ const bounds=await page.locator('.cinema-stage').boundingBox()
+ expect(bounds!.y).toBeGreaterThanOrEqual(-2)
+})
+
+test('keyboard focus on the timeline stays synchronized while the movie plays',async({page})=>{
+ await page.setViewportSize({width:390,height:844})
+ await page.goto('/build/demo-motors/cinematic')
+ await page.locator('#cinema-play').click()
+ const video=page.locator('#cinema-video'),slider=page.locator('#cinema-seek')
+ await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(.3)
+ await slider.focus()
+ const initial=Number(await slider.inputValue())
+ await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(1.5)
+ expect(Number(await slider.inputValue())).toBeGreaterThan(initial+30)
+})
+
+test('landscape touch controls and timeline remain reachable midway through scroll',async({browser})=>{
+ const context=await browser.newContext({viewport:{width:844,height:390},isMobile:true,hasTouch:true})
+ try{
+ const page=await context.newPage();await page.goto('/build/demo-motors/cinematic')
+ await page.locator('#cinema-motion').click()
+ const video=page.locator('#cinema-video')
+ await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.readyState)).toBeGreaterThanOrEqual(2)
+ await page.evaluate(()=>{const s=document.getElementById('cinema-scene')!;window.scrollTo(0,s.offsetTop+(s.offsetHeight-innerHeight)*.6)})
+ await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(2)
+ for(const id of ['cinema-play','cinema-seek']){
+  const rect=await page.locator('#'+id).boundingBox()
+  expect(rect!.y).toBeGreaterThanOrEqual(0)
+  expect(rect!.y+rect!.height).toBeLessThanOrEqual(390)
+ }
+ }finally{await context.close()}
+})
+
+
+test('short portrait phone keeps the tour controls above the concept caption',async({browser})=>{
+ const context=await browser.newContext({viewport:{width:320,height:568},isMobile:true,hasTouch:true})
+ try{
+  const page=await context.newPage();await page.goto('/build/demo-motors/cinematic')
+  await page.locator('#cinema-motion').click()
+  const video=page.locator('#cinema-video')
+  await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.readyState)).toBeGreaterThanOrEqual(2)
+  await page.evaluate(()=>{const s=document.getElementById('cinema-scene')!;window.scrollTo(0,s.offsetTop+(s.offsetHeight-innerHeight)*.6)})
+  await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(2)
+  const caption=await page.locator('.cinema-caption').boundingBox()
+  for(const id of ['cinema-play','cinema-motion','cinema-seek']){
+   const r=await page.locator('#'+id).boundingBox()
+   expect(r!.y).toBeGreaterThanOrEqual(0)
+   expect(r!.y+r!.height).toBeLessThanOrEqual(Math.min(568,caption!.y-4))
+  }
+ }finally{await context.close()}
 })

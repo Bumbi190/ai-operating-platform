@@ -26,7 +26,8 @@ export type CaptureBytesPorts={
 }
 type Proof={kind:CaptureKind;sha256:string;bytes:number}
 type Result=
- | {status:'bytes_checked_for_human_review'|'pixels_checked_for_human_review';projectId:string;listingId:string;captureId:string;checked:ReadonlyArray<Proof>}
+ | {status:'bytes_checked_for_human_review';projectId:string;listingId:string;captureId:string;checked:ReadonlyArray<Proof>}
+ | {status:'pixels_checked_for_human_review';projectId:string;listingId:string;captureId:string;checked:ReadonlyArray<Proof>}
  | {status:'refused';reason:string}
 const refused=(reason:string):Result=>({status:'refused',reason})
 
@@ -95,9 +96,8 @@ async function checkCapture(
   }
   proofs.push({kind:photo.kind,sha256:actual,bytes:bytes.byteLength})
  }
- return {
-  status:inspectPixels?'pixels_checked_for_human_review':'bytes_checked_for_human_review',
-  projectId:checked.projectId,listingId:checked.listingId,captureId:checked.captureId,
-  checked:proofs
- }
+ const evidence={projectId:checked.projectId,listingId:checked.listingId,
+  captureId:checked.captureId,checked:proofs}
+ if(inspectPixels)return {status:'pixels_checked_for_human_review',...evidence}
+ return {status:'bytes_checked_for_human_review',...evidence}
 }

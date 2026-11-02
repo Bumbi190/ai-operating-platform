@@ -42,7 +42,8 @@ describe('trusted private original capture bytes (pre-production only)',()=>{
   const {intake,objects}=fixtures(),io=ports(objects)
   const result=await checkPrivateVehicleCaptureBytes(intake,access,io)
   expect(result).toMatchObject({status:'bytes_checked_for_human_review',projectId,listingId,captureId})
-  if(result.status!=='bytes_checked_for_human_review')throw Error(result.reason)
+  if(result.status==='refused')throw Error(result.reason)
+  expect(result.status).toBe('bytes_checked_for_human_review')
   expect(result.checked).toHaveLength(6)
   expect(io.readPrivateOriginal).toHaveBeenCalledTimes(6)
   expect(io.readPrivateOriginal).toHaveBeenCalledWith(VEHICLE_CAPTURE_PRIVATE_BUCKET,

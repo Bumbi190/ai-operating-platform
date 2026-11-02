@@ -25,7 +25,7 @@ describe('read-only showroom route access and file integrity',()=>{
   access.mockResolvedValue({ok:true,userId:'fixture',allowedProjectIds:['test-project']})
   const shortcut=await shortcutGet(req)
   expect(shortcut.status).toBe(307)
-  expect(shortcut.headers.get('location')).toBe('https://studio.example/build/demo-motors/index.html')
+  expect(shortcut.headers.get('location')).toBe('https://studio.example/build/demo-motors/cinematic')
   const response=await documentGet()
   const html=await response.text()
   expect(response.status).toBe(200)

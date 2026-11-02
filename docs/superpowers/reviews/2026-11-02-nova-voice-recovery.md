@@ -29,3 +29,7 @@ No image generation, publication, production deployment, budget/credential/schem
 Vercel initially blocked Preview on two owner-applied migrations missing from source. Root re-read live migration metadata/digests and imported only the exact reviewed SQL blobs, retaining frozen guard algorithms and histories. RED5failed/1passed, then58/58guard tests passed. A separate read-only dependency review of bf3db2b..1e295e0 found no blockers, checked Git source/ledger representation parity and six mandatory anti-skip cases. It did not approve production or re-review the inherited Harvey feature. See the source-parity report.
 
 CI and final hosted Preview readiness are recorded on PR578 for the final head. No production release is inferred from a successful build. Planning received an explicit author second-pass; that planning pass was not independent.
+
+## Managed input default
+
+The final server composition selects governed batch transcription in Production as well as Preview. This promotes the previously owner-accepted Preview path instead of requiring a new user to hit a realtime error first. The realtime entry/authority gates remain unchanged for isolated tests. Existing wiring regression was RED on the former preference and GREEN after the composition change; the five-case real-worklet browser harness already exercises this same managed batch path. No provider is changed and all spend controls remain in place. Physical audible latency still needs owner acceptance.

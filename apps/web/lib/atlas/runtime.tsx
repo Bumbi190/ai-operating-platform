@@ -154,7 +154,7 @@ interface AtlasRuntimeProviderProps {
   children: React.ReactNode
   /** Server-selected conversation release; never inferred from URL or storage. */
   voiceConversationEnabled?: boolean
-  /** Live Production may prefer realtime STT. Preview keeps the governed batch path until websocket acceptance is proven. */
+  /** Managed calls use governed batch STT for stability. Realtime remains an explicit trial option. */
   voiceRealtimePreferred?: boolean
   voiceReadOnly?: boolean
   projects?: { id: string; slug: string; name: string; color: string }[]

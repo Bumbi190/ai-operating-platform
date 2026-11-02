@@ -54,8 +54,10 @@ for(const width of [390,1440])test('showroom Studio journey: approve, build, cha
  const firstFrame=first.contentFrame()
  await expect(firstFrame.locator('.car')).toHaveCount(8)
  const original=await firstFrame.locator('body').innerText()
- const images=await firstFrame.locator('img').evaluateAll(nodes=>nodes.map(n=>(n as HTMLImageElement).src))
- expect(images).toHaveLength(9);expect(new Set(images).size).toBe(5)
+ // Check the static approved assets, not the transient WebGL loading poster.
+ const imageSelector='.scene img,.car-image img,.footer-visual img,.spin-stage img'
+ const images=await firstFrame.locator(imageSelector).evaluateAll(nodes=>nodes.map(n=>(n as HTMLImageElement).src))
+ expect(images).toHaveLength(22);expect(new Set(images).size).toBe(18)
  await firstFrame.getByLabel('Filtrera på drivlina').selectOption('el');await expect(firstFrame.locator('.car:visible')).toHaveCount(3)
  await firstFrame.getByLabel('Filtrera på drivlina').selectOption('*')
  await page.screenshot({path:info.outputPath('studio-showroom-v1-'+width+'.png'),animations:'disabled'})
@@ -68,7 +70,7 @@ for(const width of [390,1440])test('showroom Studio journey: approve, build, cha
  const second=page.getByTitle('Webbpreview version 2');await expect(second).toBeVisible()
  const changed=second.contentFrame()
  expect(await changed.locator('body').innerText()).toBe(original)
- expect(await changed.locator('img').evaluateAll(nodes=>nodes.map(n=>(n as HTMLImageElement).src))).toEqual(images)
+ expect(await changed.locator(imageSelector).evaluateAll(nodes=>nodes.map(n=>(n as HTMLImageElement).src))).toEqual(images)
  expect(await changed.locator('html').evaluate(el=>getComputedStyle(el).getPropertyValue('--accent').trim())).toBe('#71d7ba')
  const saved=await readState(page)
  expect(saved.session.revisions).toHaveLength(2)

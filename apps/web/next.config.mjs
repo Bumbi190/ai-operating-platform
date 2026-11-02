@@ -10,6 +10,12 @@ const nextConfig = {
       '/build/demo-motors/cinematic/assets/*': [
         './lib/website-build/studio/cinematic-assets/hero.webp',
         './lib/website-build/studio/cinematic-assets/showroom.mp4',
+        './lib/website-build/studio/cinematic-assets/nord-r-*.webp',
+        './lib/website-build/studio/cinematic-assets/nord-r.glb',
+      ],
+      '/build/demo-motors/assets/*': [
+        './lib/website-build/studio/cinematic-assets/nord-r-front.webp',
+        './lib/website-build/studio/cinematic-assets/nord-r.glb',
       ],
     },
   },

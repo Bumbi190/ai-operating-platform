@@ -3,7 +3,8 @@ import {createServer} from 'node:http'
 import {compileWebsiteArtifact} from '../../lib/website-build/artifact'
 import {premiumDealerStarterDraft} from '../../lib/website-build/templates/premium-dealer-starter'
 import {createCinematicDemoHtml} from '../../lib/website-build/studio/cinematic-demo'
-import {cinematicAssetResponse} from '../../lib/website-build/studio/cinematic-assets'
+import {listingViewerResponse} from '../../lib/website-build/studio/cinematic-listing'
+import {cinematicAssetResponse,isListingViewerAsset} from '../../lib/website-build/studio/cinematic-assets'
 import {readPublicWebsitePreviewAsset} from '../../lib/website-build/public-preview-assets'
 import type {PlanContent} from '../../lib/website-build/planning/types'
 const port=19993
@@ -21,6 +22,9 @@ const server=createServer(async(req,res)=>{
  const url=new URL(req.url??'/','http://127.0.0.1:'+port)
  res.setHeader('cache-control','no-store')
  if(url.pathname==='/'||url.pathname==='/build/demo-motors/cinematic'){
+  if(url.searchParams.get('view')==='nord-r'){
+   const viewer=listingViewerResponse();res.writeHead(200,Object.fromEntries(viewer.headers));res.end(await viewer.text());return
+  }
   res.writeHead(200,{'content-type':'text/html; charset=utf-8'});res.end(html);return
  }
  const prefix='/build/demo-motors/cinematic/assets/'
@@ -31,7 +35,11 @@ const server=createServer(async(req,res)=>{
  }
  const assetPrefix='/build/demo-motors/assets/'
  if(url.pathname.startsWith(assetPrefix)){
-  const asset=readPublicWebsitePreviewAsset(url.pathname.slice(assetPrefix.length).split('/'))
+  const parts=url.pathname.slice(assetPrefix.length).split('/')
+  if(isListingViewerAsset(parts)){
+   const response=cinematicAssetResponse(new Request(url),parts[1]);res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));return
+  }
+  const asset=readPublicWebsitePreviewAsset(parts)
   if(asset){res.writeHead(200,{'content-type':asset.contentType});res.end(Buffer.from(asset.bytes));return}
  }
  res.writeHead(404);res.end()

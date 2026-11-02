@@ -7,6 +7,8 @@ import {createCinematicDemoHtml} from './cinematic-demo'
 import {cinematicAssetNames,cinematicAssetResponse,verifyCinematicBytes} from './cinematic-assets'
 import {GET as htmlGet} from '../../../app/(platform)/build/demo-motors/cinematic/route'
 import {GET as assetGet} from '../../../app/(platform)/build/demo-motors/cinematic/assets/[name]/route'
+import nord from './cinematic-assets/nord-r.json'
+import {GET as viewerMediaGet} from '../../../app/(platform)/build/demo-motors/assets/[...path]/route'
 const request=(range?:string)=>new Request('https://example.test/build/demo-motors/cinematic/assets/test',{
  headers:range?{range}:{}
 })
@@ -36,7 +38,7 @@ describe('authored fictional cinematic variant',()=>{
   expect(()=>verifyCinematicBytes(Buffer.from('independent fixturE'),descriptor)).toThrow('CINEMATIC_INTEGRITY')
   expect(()=>verifyCinematicBytes(bytes.subarray(1),descriptor)).toThrow('CINEMATIC_INTEGRITY')
  })
- it('serves only the three pinned local assets and rejects path traversal',async()=>{
+ it('serves pinned tour assets and rejects path traversal',async()=>{
   const names=cinematicAssetNames()
   for(const name of Object.values(names)){
    const response=cinematicAssetResponse(request(),name)
@@ -86,5 +88,31 @@ describe('cinematic HTML and media share the owner gate',()=>{
   expect(await html.text()).toContain('cinema-scene')
   const video=await assetGet(request('bytes=0-31'),{params:{name:cinematicAssetNames().video}})
   expect(video.status).toBe(206)
+ })
+})
+
+describe('Nord R private model and reference gallery',()=>{
+ beforeEach(()=>access.mockReset())
+ const viewer=new Request('https://example.test/build/demo-motors/cinematic?view=nord-r')
+ const modelPath=['3d',nord.model.sha256+'.glb']
+ it.each([401,403])('protects the 3D frame and its exact media at %s',async status=>{
+  access.mockResolvedValue(status===401?{ok:false,response:new Response(null,{status})}:{ok:true,userId:'fixture',allowedProjectIds:[]})
+  expect((await htmlGet(viewer)).status).toBe(status)
+  expect((await viewerMediaGet(request(),{params:{path:modelPath}})).status).toBe(status)
+ })
+ it('ties the generated model to the original front reference and serves only the reviewed media',async()=>{
+  access.mockResolvedValue({ok:true,userId:'fixture',allowedProjectIds:['owned-project']})
+  expect(nord.model.referenceJob).toBe(nord.front.sourceJob)
+  const frame=await htmlGet(viewer)
+  expect(frame.headers.get('x-frame-options')).toBe('SAMEORIGIN')
+  expect(await frame.text()).toContain(modelPath.join('/'))
+  const model=await viewerMediaGet(request(),{params:{path:modelPath}})
+  expect(model.status).toBe(200)
+  expect(createHash('sha256').update(Buffer.from(await model.arrayBuffer())).digest('hex')).toBe(nord.model.sha256)
+  expect((await viewerMediaGet(request(),{params:{path:['3d','nord-r.glb']}})).status).toBe(404)
+  for(const view of [nord.front,nord.rear,nord.cabin]){
+   const response=await assetGet(request(),{params:{name:view.sha256+'.webp'}})
+   expect(response.status).toBe(200);expect(response.headers.get('content-type')).toBe('image/webp')
+  }
  })
 })

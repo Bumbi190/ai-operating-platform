@@ -1,6 +1,7 @@
 import {resolveProjectAccess} from '@/lib/auth/project-access'
 import {readPublicWebsitePreviewAsset} from '@/lib/website-build/public-preview-assets'
 
+import {cinematicAssetResponse,isListingViewerAsset} from '@/lib/website-build/studio/cinematic-assets'
 export const runtime='nodejs'
 export const dynamic='force-dynamic'
 
@@ -9,6 +10,7 @@ export async function GET(_request:Request,{params}:{params:{path:string[]}}):Pr
  const access=await resolveProjectAccess()
  if(!access.ok)return access.response
  if(!access.allowedProjectIds.length)return new Response('Forbidden',{status:403})
+ if(isListingViewerAsset(params.path))return cinematicAssetResponse(_request,params.path[1])
  let asset:ReturnType<typeof readPublicWebsitePreviewAsset>
  try{asset=readPublicWebsitePreviewAsset(params.path)}catch{
   return new Response(null,{status:500,headers:{'cache-control':'no-store'}})

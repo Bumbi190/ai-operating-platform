@@ -1,5 +1,7 @@
 import {parse,parseFragment,serialize,type DefaultTreeAdapterMap} from 'parse5'
 import {cinematicAssetNames} from './cinematic-assets'
+import {listingCardContent,listingDialog} from './cinematic-listing'
+import {listingStyles} from './cinematic-listing-styles'
 type Node=DefaultTreeAdapterMap['node']
 type Element=DefaultTreeAdapterMap['element']
 function find(node:Node,predicate:(element:Element)=>boolean):Element|null{
@@ -88,16 +90,16 @@ export function createCinematicDemoHtml(baseHtml:string):string{
  <div class="cinema-shade"></div><div class="cinema-content">
  <div class="cinema-copy" id="cinema-copy-0" data-tour-copy="0">
  <p class="cinema-kicker">Demo Motors · 01 · Visning i kvällsljus</p>
- <h1 id="cinema-title">Välkommen till<br><em>bilhallen.</em></h1>
- <p class="cinema-intro">Följ med över gården och fram till den midnattsblå SUV:en.</p></div>
+ <h1 id="cinema-title">Kväll hos<br><em>Demo Motors.</em></h1>
+ <p class="cinema-intro">Utanför hallen väntar Nord R, kvällens visningsbil.</p></div>
  <div class="cinema-copy" id="cinema-copy-1" data-tour-copy="1" hidden>
  <p class="cinema-kicker">02 · Bilen i fokus</p>
- <h2>Runt den<br><em>blå SUV:en.</em></h2>
- <p class="cinema-intro">Följ karossens linje från strålkastaren till bakskärmen.</p></div>
+ <h2>Nord R i<br><em>midnattsblått.</em></h2>
+ <p class="cinema-intro">Följ ljuset längs karossen, från fronten till bakskärmen.</p></div>
  <div class="cinema-copy" id="cinema-copy-2" data-tour-copy="2" hidden>
  <p class="cinema-kicker">03 · Kom närmare</p>
- <h2>Från<br><em>förarplats.</em></h2>
- <p class="cinema-intro">Grafitgrå klädsel och varm metall i kvällsljuset.</p></div>
+ <h2>Bakom<br><em>ratten.</em></h2>
+ <p class="cinema-intro">Grafitgrå klädsel, dämpade skärmar och hallens ljus genom vindrutan.</p></div>
  <div class="cinema-console">
  <nav class="cinema-chapters" aria-label="Rundturens kapitel">
  <button id="cinema-chapter-0" class="cinema-chapter" type="button" data-tour-chapter="0" aria-current="step" hidden><span>01</span>Hallen</button>
@@ -117,8 +119,29 @@ export function createCinematicDemoHtml(baseHtml:string):string{
  const fragment=parseFragment(markup),parent=hero.parentNode,index=parent.childNodes.indexOf(hero)
  for(const child of fragment.childNodes)child.parentNode=parent
  parent.childNodes.splice(index,1,...fragment.childNodes)
- const style=parseFragment('<style>'+styles+'</style>').childNodes[0];style.parentNode=head;head.childNodes.push(style)
+ const featured=find(doc,e=>attr(e,'id')?.value==='concept-04')
+ const heading=find(doc,e=>attr(e,'id')?.value==='inventory-heading')
+ if(!featured?.parentNode||!heading||!('childNodes' in featured.parentNode))throw Error('CINEMATIC_INVENTORY')
+ const details=featured.childNodes.find(n=>'tagName' in n&&n.tagName==='details')
+ featured.childNodes=[...parseFragment(listingCardContent()).childNodes,...(details?[details]:[])]
+ for(const child of featured.childNodes)child.parentNode=featured
+ const catalog=featured.parentNode
+ catalog.childNodes.splice(catalog.childNodes.indexOf(featured),1)
+ catalog.childNodes.unshift(featured)
+ heading.childNodes=[{nodeName:'#text',value:'Bilar i hallen',parentNode:heading}]
+ const inventory=find(doc,e=>attr(e,'id')?.value==='lager')
+ const intro=inventory&&find(inventory,e=>attr(e,'class')?.value==='description')
+ if(intro)intro.childNodes=[{nodeName:'#text',value:'Öppna Nord R från rundturen eller filtrera bland hallens åtta konceptbilar. Alla priser och fordonsuppgifter är exempel.',parentNode:intro}]
+ const about=find(doc,e=>attr(e,'id')?.value==='om')
+ if(about){
+  const paragraphs=about.childNodes.flatMap(n=>'childNodes' in n?n.childNodes:[]).filter(n=>'tagName' in n&&n.tagName==='p')
+  const last=paragraphs[paragraphs.length-1]
+  if(last&&'childNodes' in last)last.childNodes=[{nodeName:'#text',value:'Nord R har en roterbar 3D-tolkning av bilens frontbild och tre bilder från samma konceptserie. I annonsen kan du prova ett fast pris, föreslå ett bud eller skriva en fråga till Demo Motors.',parentNode:last}]
+ }
+ const modal=parseFragment(listingDialog()).childNodes[0];modal.parentNode=body;body.childNodes.push(modal)
+ const style=parseFragment('<style>'+styles+listingStyles+'</style>').childNodes[0];style.parentNode=head;head.childNodes.push(style)
  const script=parseFragment('<script src="'+root+names.runtime+'" defer></script>').childNodes[0];script.parentNode=body;body.childNodes.push(script)
  if(!/(^|;)\s*media-src\s/.test(csp.value))csp.value+="; media-src 'self'"
+ csp.value=csp.value.replace("frame-src 'none'","frame-src 'self'")
  return serialize(doc)
 }

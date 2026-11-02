@@ -325,7 +325,21 @@ for(const width of [1440,390]){
 test('featured listing keeps the reference photos available if the private model fails',async({page})=>{
  await page.route('**/assets/3d/*.glb',r=>r.abort())
  await page.goto('/build/demo-motors/cinematic');await page.locator('#lot-open').click()
- await expect(page.frameLocator('#lot-stage iframe').locator('#vehicle-fallback')).toBeVisible()
+ await expect(page.locator('#lot-load')).toContainText('kunde inte laddas')
  await page.locator('[data-lot-photo="front"]').click();await expect(page.locator('#lot-photo')).toBeVisible()
  await page.locator('#lot-close').click();await expect(page.locator('#lot-open')).toBeFocused()
+})
+
+test('missing viewer module keeps the front photo and can retry into interactive 3D',async({page})=>{
+ const script='**/assets/runtime/*.js'
+ await page.route(script,r=>r.fulfill({status:500,body:''}))
+ await page.goto('/build/demo-motors/cinematic')
+ await page.locator('#lot-open').click()
+ await expect(page.locator('#lot-load')).toContainText('kunde inte laddas')
+ await expect(page.locator('#lot-photo')).toBeVisible()
+ await page.unroute(script)
+ await page.locator('#lot-orbit').click()
+ await expect(page.frameLocator('#lot-stage iframe').locator('#vehicle-stage')).toHaveAttribute('data-model3d-state','ready',{timeout:20000})
+ await expect(page.locator('#lot-stage iframe')).toBeVisible()
+ await expect(page.locator('#lot-load')).toBeHidden()
 })

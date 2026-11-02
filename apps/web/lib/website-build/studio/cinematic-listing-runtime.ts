@@ -5,14 +5,41 @@ export const LISTING_RUNTIME=String.raw`(()=>{
  const orbit=dialog.querySelector('#lot-orbit'),thumbs=[...dialog.querySelectorAll('[data-lot-photo]')];
  const form=dialog.querySelector('#lot-form'),amount=form.elements.amount,message=form.elements.message;
  const result=dialog.querySelector('#lot-result'),close=dialog.querySelector('#lot-close');
- let action='',frame=null;
+ const loadStatus=dialog.querySelector('#lot-load');
+ let action='',frame=null,observer=null,deadline=0;
+ function stopWatching(){clearTimeout(deadline);if(observer)observer.disconnect();observer=null;}
+ function removeFrame(){stopWatching();if(frame)frame.remove();frame=null;}
+ function failed(){
+  removeFrame();photo.hidden=false;loadStatus.hidden=false;
+  loadStatus.textContent='3D-vyn kunde inte laddas. Välj 3D-vy för att försöka igen.';
+ }
+ function loadModel(){
+  if(frame)return;
+  photo.src=thumbs[0].querySelector('img').getAttribute('src');photo.alt='Nord R framifrån';photo.hidden=false;
+  loadStatus.textContent='Laddar 3D-modellen…';loadStatus.hidden=false;
+  const next=document.createElement('iframe');frame=next;next.style.visibility='hidden';
+  next.title='Fri 3D-vy av Nord R';
+  next.addEventListener('load',()=>{
+   if(frame!==next)return;
+   const root=next.contentDocument?.getElementById('vehicle-stage');
+   if(!root||!root.dataset.model3dState){failed();return;}
+   function check(){
+    if(frame!==next)return;
+    if(root.dataset.model3dState==='fallback'){failed();return;}
+    if(root.dataset.model3dState==='ready'){
+     stopWatching();photo.hidden=true;loadStatus.hidden=true;next.style.visibility='visible';
+    }
+   }
+   observer=new MutationObserver(check);observer.observe(root,{attributes:true,attributeFilter:['data-model3d-state']});check();
+  },{once:true});
+  deadline=setTimeout(()=>{if(frame===next)failed();},15000);
+  next.src='/build/demo-motors/cinematic?view=nord-r';stage.append(next);
+ }
  function showView(button){
-  if(frame&&button!==orbit){frame.remove();frame=null;}
   [orbit,...thumbs].forEach(b=>b.setAttribute('aria-pressed',String(b===button)));
-  photo.hidden=button===orbit;
-  if(button===orbit){
-   if(!frame){frame=document.createElement('iframe');frame.title='Fri 3D-vy av Nord R';frame.src='/build/demo-motors/cinematic?view=nord-r';stage.append(frame);}
-  }else{photo.src=button.querySelector('img').getAttribute('src');photo.alt='Nord R · '+button.textContent.trim();}
+  if(button===orbit){loadModel();return;}
+  removeFrame();loadStatus.hidden=true;photo.hidden=false;
+  photo.src=button.querySelector('img').getAttribute('src');photo.alt='Nord R · '+button.textContent.trim();
  }
  function clearDeal(){action='';form.reset();form.hidden=true;result.textContent='';}
  open.hidden=false;
@@ -29,7 +56,7 @@ export const LISTING_RUNTIME=String.raw`(()=>{
  });
  close.addEventListener('click',()=>dialog.close());
  dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
- dialog.addEventListener('close',()=>{if(frame){frame.remove();frame=null;}clearDeal();open.focus({preventScroll:true});});
+ dialog.addEventListener('close',()=>{removeFrame();clearDeal();open.focus({preventScroll:true});});
  [orbit,...thumbs].forEach(button=>button.addEventListener('click',()=>showView(button)));
  const confirm=dialog.querySelector('#lot-confirm');
  dialog.querySelectorAll('[data-deal]').forEach(button=>button.addEventListener('click',()=>{

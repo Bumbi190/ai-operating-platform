@@ -1,4 +1,5 @@
-import {readFileSync} from 'node:fs'
+import {existsSync,readFileSync} from 'node:fs'
+import path from 'node:path'
 
 export const MODEL3D_RUNTIME_ASSET=Object.freeze({
  id:'runtime:model3d-v1',
@@ -9,5 +10,7 @@ export const MODEL3D_RUNTIME_ASSET=Object.freeze({
 })
 
 export function readModel3DRuntimeBytes():Uint8Array{
- return readFileSync(new URL('./runtime/model3d-v1.bin',import.meta.url))
+ const cwd=process.cwd()
+ const root=existsSync(path.join(cwd,'lib','website-build'))?cwd:path.join(cwd,'apps','web')
+ return readFileSync(path.join(root,'lib','website-build','runtime','model3d-v1.bin'))
 }

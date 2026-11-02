@@ -13,7 +13,9 @@ const nextConfig = {
         './lib/website-build/studio/cinematic-assets/nord-r-*.webp',
         './lib/website-build/studio/cinematic-assets/nord-r.glb',
       ],
+      '/assets/*': ['./lib/website-build/runtime/model3d-v1.bin'],
       '/build/demo-motors/assets/*': [
+        './lib/website-build/runtime/model3d-v1.bin',
         './lib/website-build/studio/cinematic-assets/nord-r-front.webp',
         './lib/website-build/studio/cinematic-assets/nord-r.glb',
       ],

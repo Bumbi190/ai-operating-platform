@@ -11,6 +11,8 @@ const nextConfig = {
         './lib/website-build/studio/cinematic-assets/hero.webp',
         './lib/website-build/studio/cinematic-assets/showroom.mp4',
         './lib/website-build/studio/cinematic-assets/nord-r.mp4',
+        './lib/website-build/studio/cinematic-assets/reel-*.mp4',
+        './lib/website-build/studio/cinematic-assets/reel-*.webp',
         './lib/website-build/studio/cinematic-assets/nord-r-*.webp',
         './lib/website-build/studio/cinematic-assets/nord-r.glb',
       ],

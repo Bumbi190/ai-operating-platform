@@ -3,8 +3,9 @@ import {createServer} from 'node:http'
 import {compileWebsiteArtifact} from '../../lib/website-build/artifact'
 import {premiumDealerStarterDraft} from '../../lib/website-build/templates/premium-dealer-starter'
 import {createCinematicDemoHtml} from '../../lib/website-build/studio/cinematic-demo'
+import {reelResponse} from '../../lib/website-build/studio/cinematic-reel'
 import {listingViewerResponse} from '../../lib/website-build/studio/cinematic-listing'
-import {cinematicAssetResponse,isListingViewerAsset} from '../../lib/website-build/studio/cinematic-assets'
+import {cinematicAssetNames,cinematicAssetResponse,isListingViewerAsset} from '../../lib/website-build/studio/cinematic-assets'
 import {readPublicWebsitePreviewAsset} from '../../lib/website-build/public-preview-assets'
 import type {PlanContent} from '../../lib/website-build/planning/types'
 const port=19993
@@ -22,6 +23,10 @@ const server=createServer(async(req,res)=>{
  const url=new URL(req.url??'/','http://127.0.0.1:'+port)
  res.setHeader('cache-control','no-store')
  if(url.pathname==='/'||url.pathname==='/build/demo-motors/cinematic'){
+  if(url.searchParams.get('view')==='visning'){
+   const names=cinematicAssetNames(),reel=reelResponse(names.reelRuntime)
+   res.writeHead(reel.status,Object.fromEntries(reel.headers));res.end(await reel.text());return
+  }
   if(url.searchParams.get('view')==='nord-r'){
    const viewer=listingViewerResponse();res.writeHead(200,Object.fromEntries(viewer.headers));res.end(await viewer.text());return
   }

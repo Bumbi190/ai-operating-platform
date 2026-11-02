@@ -78,6 +78,7 @@ describe('cinematic HTML and media share the owner gate',()=>{
    ?{ok:false,response:new Response(null,{status:401})}
    :{ok:true,userId:'fixture',allowedProjectIds:[]})
   expect((await htmlGet()).status).toBe(status)
+  expect((await htmlGet(new Request('https://example.test/build/demo-motors/cinematic?view=visning'))).status).toBe(status)
   expect((await assetGet(request(),{params:{name:cinematicAssetNames().video}})).status).toBe(status)
  })
  it('serves the authored page and ranged video only to an owner',async()=>{

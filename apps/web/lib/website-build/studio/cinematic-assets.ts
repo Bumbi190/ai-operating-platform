@@ -4,13 +4,16 @@ import path from 'node:path'
 import manifest from './cinematic-assets/manifest.json'
 import {CINEMATIC_RUNTIME} from './cinematic-runtime'
 
+import {REEL_RUNTIME,reelFiles} from './cinematic-reel'
 import listing from './cinematic-assets/nord-r.json'
 import {nordFilmName} from './cinematic-listing'
 import {LISTING_RUNTIME} from './cinematic-listing-runtime'
 type Integrity={bytes:number;sha256:string}
 const runtime=Buffer.from(CINEMATIC_RUNTIME+"\n;"+LISTING_RUNTIME)
 const sha=(bytes:Uint8Array)=>createHash('sha256').update(bytes).digest('hex')
+const reelRuntime=Buffer.from(REEL_RUNTIME)
 const names={
+ reelRuntime:'reel.'+sha(reelRuntime).slice(0,16)+'.js',
  poster:'hero.'+manifest.poster.sha256.slice(0,16)+'.webp',
  video:'showroom.'+manifest.video.sha256.slice(0,16)+'.mp4',
  runtime:'runtime.'+sha(runtime).slice(0,16)+'.js'
@@ -27,8 +30,9 @@ export function verifyCinematicBytes(bytes:Uint8Array,expected:Integrity){
   throw Error('CINEMATIC_INTEGRITY')
 }
 function readAsset(name:string):{bytes:Buffer;contentType:string}|null{
+ if(name===names.reelRuntime)return {bytes:reelRuntime,contentType:'text/javascript; charset=utf-8'}
  if(name===names.runtime)return {bytes:runtime,contentType:'text/javascript; charset=utf-8'}
- const descriptor=name===names.poster?manifest.poster:name===names.video?manifest.video:name===nordFilmName()?listing.film:listingFiles.get(name)
+ const descriptor=name===names.poster?manifest.poster:name===names.video?manifest.video:name===nordFilmName()?listing.film:listingFiles.get(name)??reelFiles.get(name)
  if(!descriptor)return null
  const cwd=process.cwd()
  const root=existsSync(path.join(cwd,'lib','website-build'))?cwd:path.join(cwd,'apps','web')

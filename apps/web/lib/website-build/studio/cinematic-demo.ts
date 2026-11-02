@@ -12,6 +12,7 @@ function find(node:Node,predicate:(element:Element)=>boolean):Element|null{
 const attr=(node:Element,key:string)=>node.attrs.find(a=>a.name===key)
 const styles=`
 .cinema{height:440svh;position:relative;background:#091116;color:#fbf9f4;--tour-progress:0}
+.reel-link{text-align:center}.reel-link a{color:#dfc398;text-underline-offset:4px}
 .cinema [hidden]{display:none!important}
 .cinema.is-still{height:96svh;min-height:710px}
 .cinema-stage{position:sticky;top:0;height:100svh;min-height:710px;overflow:hidden;isolation:isolate}
@@ -137,6 +138,9 @@ export function createCinematicDemoHtml(baseHtml:string):string{
   const paragraphs=about.childNodes.flatMap(n=>'childNodes' in n?n.childNodes:[]).filter(n=>'tagName' in n&&n.tagName==='p')
   const last=paragraphs[paragraphs.length-1]
   if(last&&'childNodes' in last)last.childNodes=[{nodeName:'#text',value:'I Nord R:s annons kan du scrolla från utsidan in till förarplatsen. Där finns också tre referensbilder och en roterbar 3D-tolkning av frontbilden. I annonsen kan du prova ett fast pris, föreslå ett bud eller skriva en fråga till Demo Motors.',parentNode:last}]
+
+  const link=parseFragment('<p class="reel-link"><a href="?view=visning">Se bilhallen på 18 sekunder ↗</a></p>').childNodes[0]
+  link.parentNode=about;about.childNodes.push(link)
  }
  const modal=parseFragment(listingDialog()).childNodes[0];modal.parentNode=body;body.childNodes.push(modal)
  const style=parseFragment('<style>'+styles+listingStyles+'</style>').childNodes[0];style.parentNode=head;head.childNodes.push(style)

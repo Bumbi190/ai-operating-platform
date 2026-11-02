@@ -1,0 +1,26 @@
+{
+  "wide": {
+    "filename": "reel-wide.mp4",
+    "contentType": "video/mp4",
+    "bytes": 3573591,
+    "sha256": "999103f2b68353cc9ea27278800b530fe4aab92c75537bab6ad29c820000a0f3"
+  },
+  "widePoster": {
+    "filename": "reel-wide.webp",
+    "contentType": "image/webp",
+    "bytes": 30870,
+    "sha256": "4bf96a8f0aeea5f8e5e5bbb4fca9232e592d3e7e5ac47e68fde41a254a9c7790"
+  },
+  "portrait": {
+    "filename": "reel-portrait.mp4",
+    "contentType": "video/mp4",
+    "bytes": 3543172,
+    "sha256": "dbf7d2bcfd629b508a5ad712e905a4b5c40120e0861d6cc158dca43807864104"
+  },
+  "portraitPoster": {
+    "filename": "reel-portrait.webp",
+    "contentType": "image/webp",
+    "bytes": 29274,
+    "sha256": "a4e4a178863a5de0ca95fda4269f1cc8f86e6123d8de71c78d9ebc6383152137"
+  }
+}

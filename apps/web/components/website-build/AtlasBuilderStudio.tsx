@@ -94,6 +94,7 @@ export function AtlasBuilderStudio({model}:{model:StudioView}){
    <div className={styles.headerActions}>
     <div id={controlsId+'-actions'} className={styles.headerActionButtons}>
      <StudioSettings key={selected?.id??'new'}>
+      <p><a href="/build/demo-motors" target="_blank" rel="noopener noreferrer">Visa Demo Motors i 3D ↗</a></p>
       <label>Visa <select aria-label="Projektlista" value={view.include??'active'} onChange={e=>void open({},e.target.value as Filter)}><option value="active">Aktiva projekt</option><option value="archived">Arkiverade projekt</option><option value="trashed">Papperskorgen</option></select></label>
       {selected&&<div className={styles.setup}>
        <StudioLifecycleActions key={selected.id} project={selected} onChanged={state=>{if(current.current.selected?.id===selected.id)void open({projectSlug:selected.slug,conversationId:current.current.conversation?.id},state)}}/>
@@ -104,7 +105,6 @@ export function AtlasBuilderStudio({model}:{model:StudioView}){
        {selected.workspaceRequest&&<p>Begärd mapp: {selected.workspaceRequest.root.root} · väntar på datoranslutning.</p>}
       </div>}
      </StudioSettings>
-     <a href="/build/demo-motors" target="_blank" rel="noopener noreferrer" title="Fiktiv, skrivskyddad bilhandlardemo. Inget AI-jobb startas.">Visa Demo Motors i 3D ↗</a>
      <button type="button" onClick={reload}>Uppdatera</button>
     </div>
     {selected&&<StudioCostControl key={selected.id} projectId={selected.id} projectSlug={selected.slug} paused={selected.lifecycle.executionPaused} onPauseChange={paused=>rememberPause(selected.id,paused)}/>}

@@ -107,3 +107,18 @@ for(const width of [1280,1440,1920])test('desktop header keeps controls in one r
  await expect(meter.getByRole('button',{name:'Stoppa projektet',exact:true})).toBeInViewport()
  await page.screenshot({path:info.outputPath('bounded-header-'+width+'.png')})
 })
+
+test('mobile showroom link remains reachable without crowding the chat controls',async({page})=>{
+ await page.setViewportSize({width:390,height:900})
+ await page.route('**/api/website-build/studio/costs?*',route=>route.fulfill({json:costs()}))
+ await page.goto('/build?costs=1')
+ const header=page.getByRole('region',{name:'Bygg med Atlas',exact:true}).locator(':scope > header')
+ await expect(header.getByRole('link',{name:/Demo Motors/})).toHaveCount(0)
+ await page.getByRole('button',{name:'Projektkontroller',exact:true}).click()
+ await page.getByRole('button',{name:'Inställningar',exact:true}).click()
+ const modal=page.getByRole('dialog',{name:'Projektinställningar'})
+ await expect(modal.getByRole('link',{name:/Visa Demo Motors i 3D/})).toHaveAttribute('href','/build/demo-motors')
+ await modal.getByRole('button',{name:'Stäng inställningar'}).click()
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+ await expect(page.getByLabel('Meddelande till Atlas')).toBeVisible()
+})

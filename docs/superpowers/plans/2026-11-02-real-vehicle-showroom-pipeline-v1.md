@@ -99,3 +99,15 @@ Misslyckad grind => `Refused/ReviewRequired`. Lägg **inte** automatiskt en konc
 - Ingen uppladdningsfunktion, databas- eller annonseringsintegration, betald modell, produktionsflagga, kunddata eller faktisk ny 3D-modell i denna omgång.
 - Fortsätt i **befintlig** `codex/atlas-builder-references-20261017` / PR #368, utan ny PR, main-merge eller production-release.
 - Nästa tekniska beslut: designa privat originalbildslagring och autentiserad granskarlogg med en plan för pilot på en faktiskt fotograferad bil. Beslut om första riktiga fordonet tas separat från denna kodgrind.
+
+## 6. P1a implemented: private-byte verification adapter contract (2 November 2026)
+
+The new `private-capture-bytes.ts` is an **injected, pre-production server-side gate**. It does not make any live Supabase requests and is not exposed as an upload endpoint. It accepts only a structurally valid capture package, server-derived project allow-list, an independently authorized listing-to-project binding, and a private object reader. It then reads all six photos from the one fixed private bucket contract `vehicle-originals-private`, with a 15 MB per-file cap, checks actual bytes against declared lengths, basic file signatures and SHA-256 hashes, and returns only `bytes_checked_for_human_review`.
+
+**No trust escalation:** this gate does not decode or visually inspect pixels, prove that declared dimensions match image data, prove camera originals/seller rights, validate the reviewer identity, sign evidence, or publish a 3D model. Header checks are not malware scanning or a complete decoder. The private reader, ownership SQL and bucket do not exist in production yet; those require an explicit separate implementation/release approval.
+
+**Acceptansprover:** rejects cross-project access before any object read, unbound listing before reading, wrong private path, duplicated/synthetic metadata, missing storage, byte mismatches, fake signatures, altered actual SHA and provider failures. All decisions fail closed. Owner/project scope must come from the server's authenticated project-access layer, not client fields.
+
+**Architecture decision:** start with owner-authenticated downloads from a private bucket. Supabase Storage buckets are private by default and Storage has separate RLS on `storage.objects`; signing or publicizing URLs is not an alternative to verifying per-project ownership for this workflow. Supabase recommends using Storage APIs rather than mutating `storage` metadata tables directly. References: https://supabase.com/docs/guides/storage/security/access-control , https://supabase.com/docs/guides/storage/buckets/fundamentals , https://supabase.com/docs/guides/storage/schema/design .
+
+**Next implementation:** design the real listing-owner binding and private bucket policy against actual Omnira schema; do not assume Handlarbörsen's separate database is mounted in this project. Require a scoped RLS policy, an authenticated API with bounded download, independent image decoder/dimensions, file integrity and reviewer audit before any personal or dealer photo enters a production environment.

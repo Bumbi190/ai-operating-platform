@@ -20,8 +20,10 @@ it('proposes in the owned conversation and returns a real review URL without dec
  expect(r.workspaceUrl).toBe('/projects/social-'+f.projectId+'/social');expect(r.channels.find((c:any)=>c.channel==='instagram').connection).toBe('unreadable');expect(r.publicationReady).toBe(false)
  const read=await handleSocialLaunchTool('get_social_launch_plan',{projectId:f.projectId},f.p,f.conversationId,db) as any;expect(read.plan.currentRevision.id).toBe(r.plan.currentRevision.id)
 })
-it('refuses missing, foreign or wrong-project conversation and unowned project',async()=>{
+it('refuses missing/foreign conversation and unowned project, permits another owned chat',async()=>{
  const f=fixture(),other=fixture()
+ expect(await handleSocialLaunchTool('get_social_launch_plan',{projectId:f.projectId},f.p,other.conversationId,db)).toHaveProperty('workspaceUrl')
+ const foreignUser=randomUUID();testSql("insert into auth.users(id) values('"+foreignUser+"');update conversations set user_id='"+foreignUser+"' where id='"+other.conversationId+"';")
  for(const [principal,conversation] of [[f.p,null],[f.p,other.conversationId],[{...f.p,allowedProjectIds:[]},f.conversationId]] as const){
   expect(await handleSocialLaunchTool('get_social_launch_plan',{projectId:f.projectId},{userId:principal.userId,allowedProjectIds:[...principal.allowedProjectIds]},conversation,db)).toMatchObject({code:'NOT_FOUND'})
  }

@@ -1,0 +1,47 @@
+# Add an independent GitHub CodeQL static-analysis check to existing PR #602.
+# Free standard runner on this PUBLIC repository. Not a human security approval.
+# No schedules, no push/deployment, no project credentials, no model/LLM billing.
+name: Atlas Source Curator CodeQL
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/atlas-source-curator-codeql.yml'
+      - 'apps/web/lib/atlas/source-curator/**'
+      - 'apps/web/lib/atlas/source-inspection/**'
+      - 'apps/web/app/api/chat/route.ts'
+      - 'apps/web/lib/qa/nova-curator-routing.test.mjs'
+      - 'apps/web/lib/qa/nova-source-curator.test.mjs'
+      - 'apps/web/lib/qa/nova-source-chat-route.test.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  security-events: write
+
+concurrency:
+  group: atlas-source-curator-codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-javascript-typescript:
+    name: CodeQL JavaScript and TypeScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout pull request code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Initialize CodeQL security analysis
+        uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          queries: +security-extended
+      - name: Analyze and upload code scanning results
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:javascript-typescript

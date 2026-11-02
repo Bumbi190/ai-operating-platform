@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-11-01T06:49:46.977Z",
+  "repository": "Bumbi190/ai-operating-platform",
+  "project": "Omnira",
+  "task": "Nova paid image campaign preparation incorrectly blocked by publication status in live global chat acceptance after merged PR610",
+  "workId": "NOVA-CAMPAIGN-LIVE-20261101",
+  "proposedBranch": "feat/nova-social-campaign-20261031",
+  "mainSha": "123d33fe5d59d768ea1aba2899d4e19bf4516f8a",
+  "openPrCount": 123,
+  "worktreeCount": 229,
+  "decision": "review_required",
+  "code": "matching_local_branch",
+  "candidates": [],
+  "branchMatches": [],
+  "worktreeMatches": [
+    {
+      "branch": "feat/nova-social-campaign-20261031",
+      "path": "C:/Users/Andre/Projects/Omnira/.worktrees/nova-crosschat-social-20261031",
+      "locked": false
+    }
+  ],
+  "reason": "Continue the same owned branch/worktree for the newly observed live acceptance defect; PR610 is merged, compare open work before a necessary bounded follow-up PR",
+  "limitations": "Metadata/local-name similarity is a hint; review actual file scope and agent ownership before new work.",
+  "sideEffects": "None. No branch, worktree, PR, commit, deployment or API mutation is performed."
+}

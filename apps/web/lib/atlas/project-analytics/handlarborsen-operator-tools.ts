@@ -7,6 +7,7 @@ import {
 } from '@/lib/atlas/collectors/handlarborsen-marketplace'
 import { loadHandlarborsenMarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-read'
 import { readHandlarborsenSalesOverview } from '@/lib/atlas/project-analytics/handlarborsen-sales-overview'
+import { readHandlarborsenReplyLifecycle } from '@/lib/atlas/project-analytics/handlarborsen-reply-lifecycle'
 import { compareHandlarborsenWorkflowEvidence } from '@/lib/atlas/project-analytics/handlarborsen-evidence-comparison'
 
 /**
@@ -18,6 +19,7 @@ export const HANDLARBORSEN_READ_TOOL_NAMES = [
   'handlarborsen_statistics',
   'handlarborsen_latest_mail',
   'handlarborsen_sales_overview',
+  'handlarborsen_reply_lifecycle',
   'handlarborsen_compare_workflow_evidence',
 ] as const
 export type HandlarborsenReadTool = (typeof HANDLARBORSEN_READ_TOOL_NAMES)[number]
@@ -36,6 +38,11 @@ export const HANDLARBORSEN_READ_TOOLS = [
   {
     name: 'handlarborsen_sales_overview',
     description: 'Läs exakt antal lagrade Handlarbörsen-säljkontakter, suppressed/confirmed/excluded-flaggor, inkommande Strato-meddelandeposter, svar som väntar på granskning, svarsutkast, registrerade SMTP-jobb och SCB-granskningskön. Allt är projektägargrindade HEAD-counts; INGA kontaktuppgifter, mejltexter eller företagsidentiteter kan hämtas. confirmed betyder inte tillåten kontakt, suppressed kan överlappa confirmed, smtp_accepted betyder inte levererat, SCB-underlag utanför databaskön ingår inte. Inget skrivs eller skickas.',
+    input_schema: { type: 'object' as const, properties: {}, required: [] },
+  },
+  {
+    name: 'handlarborsen_reply_lifecycle',
+    description: 'Läs Handlarbörsens verkliga SVARS- och SKICKSTATUS i flera skilda dimensioner. Koppla ihop reply-jobb, aktuellt utkast, approvals-status och registrerat skickajobb; kontrollera om en sändpolicy är giltig vid lästid och visa den senaste väntetids-/påminnelseregeln. Endast projektägaren; inga kontakt-ID:n, adresser eller mejltexter returneras. awaiting_review kan samexistera med approved och smtp_accepted. smtp_accepted är INTE verifierad leverans. Ett tidigare godkännande ger INTE rätt att skicka nu. Inget skickas, ändras eller körs.',
     input_schema: { type: 'object' as const, properties: {}, required: [] },
   },
   {
@@ -104,6 +111,9 @@ export async function handleHandlarborsenReadTool(name: HandlarborsenReadTool, c
   }
   if (name === 'handlarborsen_sales_overview') {
     return readHandlarborsenSalesOverview(context)
+  }
+  if (name === 'handlarborsen_reply_lifecycle') {
+    return readHandlarborsenReplyLifecycle(context)
   }
   if (name === 'handlarborsen_compare_workflow_evidence') {
     return compareHandlarborsenWorkflowEvidence(context)

@@ -56,10 +56,10 @@ describe('explicit voice deliverables keep their complete written content', () =
     expect(continuesIncompleteVoiceDocument(VOICE_DOCUMENT_CONTINUATION_COMMAND, 'Text' + VOICE_DOCUMENT_STREAM_INTERRUPTED_WARNING)).toBe(true)
     expect(route).toContain('const activeTools = continuingIncompleteDocument ? []')
     expect(route).toContain('if(visiblePlan && !continuingIncompleteDocument)')
-    expect(route).toContain('const voiceDocument = Boolean((voice && needsCompleteVoiceDocument(lastUserText)) || continuingIncompleteDocument)')
+    expect(route).toContain('const voiceDocument = !isSocialPreparationTurn(messages) && Boolean((voice && needsCompleteVoiceDocument(lastUserText)) || continuingIncompleteDocument)')
     expect(route).toContain("if (incomplete) send('draft_interrupted'")
-    expect(route).toContain("if (streamedDraft.trim()) {")
-    expect(route).toContain('safeTurn: (voiceDocument || fastPath || staticConversation)')
+    expect(route).toContain("if (streamedDraft.trim() && !bufferSocialProse) {")
+    expect(route).toContain('safeTurn: !sourceReadTurn && !notionReadOnlyTurn && !stratoInboxReadIntent && !pendingNovaCuratorReview && (voiceDocument || fastPath || staticConversation)')
   })
   it('gives a bounded artifact allowance and a clear incomplete warning', () => {
     expect(VOICE_DOCUMENT_MAX_TOKENS).toBeGreaterThanOrEqual(2400)

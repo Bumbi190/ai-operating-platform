@@ -1,0 +1,361 @@
+{
+  "tables": [
+    {
+      "rls": true,
+      "anon": false,
+      "name": "social_campaigns",
+      "service": true,
+      "force_rls": true,
+      "authenticated": false
+    },
+    {
+      "rls": true,
+      "anon": false,
+      "name": "social_campaign_items",
+      "service": true,
+      "force_rls": true,
+      "authenticated": false
+    }
+  ],
+  "functions": [
+    {
+      "anon": false,
+      "name": "social_campaign_cancel",
+      "service": true,
+      "body_sha256": "759eaf984d12dd18f5c5beac837df43b76b684e0251246d43b97c9557e5bb2dd",
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "authenticated": false
+    },
+    {
+      "anon": false,
+      "name": "social_campaign_check_item",
+      "service": true,
+      "body_sha256": "395899eef2428cc2023317d4cba8d8ed6c86e2cad2e6a4218b7d24b78990e6e0",
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "authenticated": false
+    },
+    {
+      "anon": false,
+      "name": "social_campaign_claim_item",
+      "service": true,
+      "body_sha256": "7b40c63432a121c8ea35948bac17c37977a6c201a542adefc92e0f7221c32034",
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "authenticated": false
+    },
+    {
+      "anon": false,
+      "name": "social_campaign_closed",
+      "service": true,
+      "body_sha256": "5ed2dd86e87a9e55e028374dd243486c5c323db0b8fb224bdca2ef96bea33b20",
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "authenticated": false
+    },
+    {
+      "anon": false,
+      "name": "social_campaign_commit_item",
+      "service": true,
+      "body_sha256": "7ed5711248950fe36837187dcb78fd9027e4034e3d8965aa25b034443f29ca5c",
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "authenticated": false
+    },
+    {
+      "anon": false,
+      "name": "social_campaign_current",
+      "service": true,
+      "body_sha256": "0490f8b7d02ecf0378736668fd8f1a52a733aeb32c3a840426c54d21cffeb296",
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "authenticated": false
+    },
+    {
+      "anon": false,
+      "name": "social_campaign_enqueue",
+      "service": true,
+      "body_sha256": "034eb5cc688aecee538ed61d6e4f3c2132eb5163e7199e811347ab0169a275c1",
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "authenticated": false
+    },
+    {
+      "anon": false,
+      "name": "social_campaign_lock",
+      "service": true,
+      "body_sha256": "a6dc6ee7f61c973b8108597d65a17a9cf291b0d4355f274fd329b3d8f7027250",
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "authenticated": false
+    },
+    {
+      "anon": false,
+      "name": "social_campaign_mark_item",
+      "service": true,
+      "body_sha256": "2cb6f7aacb9d02a760e000b19846b57f1f45998b91c62adfbd49205f0988bf83",
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "authenticated": false
+    },
+    {
+      "anon": false,
+      "name": "social_campaign_read",
+      "service": true,
+      "body_sha256": "5d274cc9a0ec55a5db1cb9ce0116f964dba5f32c9aceea7cde26be8869b44aa6",
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "authenticated": false
+    },
+    {
+      "anon": false,
+      "name": "social_campaign_record_asset",
+      "service": true,
+      "body_sha256": "3dc95a3e9e6fc28880c59182ad9b631960e50f97cf95b41984539652335309c1",
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "authenticated": false
+    },
+    {
+      "anon": false,
+      "name": "social_campaign_replay",
+      "service": true,
+      "body_sha256": "c596824fc8f37e4f3bd62b946b6a8d975e54db3b5c90cd49536a3c42bc44305f",
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "authenticated": false
+    },
+    {
+      "anon": false,
+      "name": "social_campaign_save_ready",
+      "service": true,
+      "body_sha256": "a8f58e7b41b55a00239fa1a06bc09f0b9e76c4451096d67ce3174acc542f6ef9",
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "authenticated": false
+    },
+    {
+      "anon": false,
+      "name": "social_campaign_snapshot",
+      "service": true,
+      "body_sha256": "e0f3cfddb47e06df1cfedebe66cadfea51a9e91e3afa90b638c9edacfcc448d5",
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "authenticated": false
+    }
+  ],
+  "migration": {
+    "name": "social_campaign_preparation",
+    "sha256": "1c2606bbb98cb3192b4a240b017fc6452a005e93d81183ae8373e11c97367aa1",
+    "version": "20261101062748"
+  },
+  "ledger_names": [
+    "media_scripts_updated_at_and_stuck_watchdog",
+    "add_render_input_props_for_edge_render",
+    "20260601_business_metrics",
+    "20260601_media_insights",
+    "20260601_insights_cron",
+    "20260601_briefing_cron",
+    "add_youtube_columns",
+    "cost_events",
+    "project_budgets",
+    "atlas_bi_foundation",
+    "atlas_growth_account_snapshots",
+    "atlas_growth_opportunities",
+    "atlas_growth_script_topic_format",
+    "g1_multitenant_platform_tokens",
+    "stripe_intelligence_revenue_snapshots",
+    "durable_runs_claim_reaper",
+    "durable_runs_claim_public_rpc",
+    "token_health_monitoring",
+    "pipeline_retry_state",
+    "cron_heartbeat",
+    "marketing_engine_foundation",
+    "media_insights_multiplatform",
+    "media_insights_retention",
+    "media_scripts_breaking_flag",
+    "pr2_route_webhook_isolation",
+    "schedule_dream_cron",
+    "bug_monitoring_foundation",
+    "create_website_content_system_a",
+    "manager_task_dream_link",
+    "dream_issues_ledger",
+    "enable_rls_cost_rates_dream_issues",
+    "harden_set_updated_at_search_path",
+    "atlas_actions",
+    "media_rls_hardening",
+    "h1p1_execution_policy_foundation",
+    "h1p3_run_steps_snapshot",
+    "migration_guard_fn",
+    "h1p4_run_policy_snapshot",
+    "h1p4_pr2_run_rejected_status",
+    "website_content_hero_image",
+    "h1p5_outputs_run_id_unique",
+    "website_content_hero_image_brief",
+    "website_content_hero_editor_brief_rename",
+    "website_content_hero_image_observability",
+    "h1p5_runs_claim_id",
+    "h1p5_runs_cancel_requested",
+    "atlas_schema_init",
+    "atlas_memory_events",
+    "atlas_memories",
+    "atlas_memory_rls",
+    "atlas_record_event_fn",
+    "atlas_salience_fn",
+    "atlas_event_type_to_class_fn",
+    "atlas_consolidate_fn",
+    "atlas_memory_cron",
+    "h5_atlas_observability",
+    "h1_episodic_retention",
+    "atlas_signals",
+    "150100_atlas_signals_evolution",
+    "150000_atlas_project_lifecycle",
+    "150200_collector_runs",
+    "150300_atlas_collector_cron",
+    "atlas_recall_fn",
+    "atlas_memory_health",
+    "atlas_recall_pin_focus_ranking",
+    "backfill_platform_memory",
+    "backfill_content_feedback",
+    "backfill_dream_issues",
+    "backfill_operator_memories",
+    "enable_public_rls_for_internal_tables",
+    "publish_channel_state",
+    "atlas_authorizations",
+    "atlas_decision_ledger",
+    "atlas_mission_ledger",
+    "atlas_delegation_ledger",
+    "manager_tasks_work_packages",
+    "atlas_entities",
+    "atlas_intelligence",
+    "atlas_intelligence_cron",
+    "project_api_credentials",
+    "workflow_instance_core",
+    "workflow_instance_core_hardening",
+    "workflow_gate_authorization",
+    "workflow_scheduled_continuation",
+    "workflow_scheduler_project_pause",
+    "workflow_attested_evidence",
+    "workflow_escalation_index",
+    "execution_stop_safety",
+    "spend_budget_gate",
+    "workflow_action_binding",
+    "action_failure_model",
+    "readonly_action_authorization",
+    "budget_scopes",
+    "unified_stop_authority",
+    "workflow_transition_stop_guard",
+    "stop_atomic_execution_admission",
+    "media_asset_foundation",
+    "media_job_lifecycle",
+    "media_job_lifecycle_repairs",
+    "durable_cancellation_reaper",
+    "workflow_stories",
+    "workflow_manual_privileged_provenance",
+    "spend_advisory_overrides",
+    "workflow_stories_rls",
+    "declarative_rls_parity",
+    "cost_ledger_rls_isolation",
+    "agent_scorecards_view_isolation",
+    "platform_tokens_client_revoke",
+    "platform_credential_events",
+    "platform_credential_events_search_path",
+    "social_account_bindings",
+    "platform_credential_events_account_binding",
+    "social_credential_health",
+    "platform_tokens_project_binding",
+    "social_account_bindings_the_prompt_evidence",
+    "youtube_project_oauth",
+    "sdf1b1_code_work_control_plane",
+    "dream_issue_reconciliation",
+    "survival_state_events",
+    "sdf1c1_trusted_broker_identity",
+    "sdf1c1b_broker_claim_credentials",
+    "survival_funding_phase2b",
+    "sdf1c2_broker_control_channel",
+    "autonomy_license_phase2c",
+    "autonomy_trace_decisions",
+    "autonomy_bind_atomic",
+    "m0_durable_spend_settlement",
+    "autonomy_authority_serialization",
+    "survival_input_epoch",
+    "survival_commit_fence",
+    "survival_threshold_status_canonical",
+    "m4a_licensed_authority_substrate",
+    "m4b_licensed_bind",
+    "handlarborsen_marketplace_snapshots",
+    "handlarborsen_guarded_snapshot_store",
+    "atlas_analysis_drafts",
+    "omnira_org_memberships_v1",
+    "omnira_collaborator_proposals_v1",
+    "website_build_sessions",
+    "handlarborsen_competitor_observations_v1",
+    "website_build_planning_v1",
+    "atlas_builder_studio_workspace",
+    "atlas_builder_output_allowance_v2",
+    "website_saved_draft_worker_protocol",
+    "website_mockup_review",
+    "social_launch_plans_v1",
+    "social_project_connections_v1",
+    "social_content_preparation_v1",
+    "social_project_profiles_v1",
+    "social_manual_publication_v1",
+    "handlarborsen_competitor_candidates_v1",
+    "handlarborsen_competitor_review_decisions_v1",
+    "atlas_sales_pilot",
+    "handlarborsen_candidate_inbox_v1",
+    "sales_managed_host",
+    "sales_strato_connection",
+    "atlas_local_text",
+    "atlas_local_text_lifecycle",
+    "sales_strato_inbox",
+    "handlarborsen_test_data_reviews",
+    "handlarborsen_watch_runs_v1",
+    "sales_reply_preparation",
+    "sales_reply_sending",
+    "social_publication_reconciliation",
+    "social_schedule_batches",
+    "social_schedule_checkpoint_recovery",
+    "social_schedule_review_snapshots",
+    "handlarborsen_metrics_definition",
+    "handlarborsen_test_data_integration",
+    "media_news_review_evidence",
+    "sales_contact_timing",
+    "sales_email_copy_versions",
+    "user_calendar_v1",
+    "user_calendar_recurrence",
+    "higgsfield_mcp_readonly",
+    "atlas_fallback_reservation_ceiling",
+    "atlas_fallback_reservation_locktime",
+    "human_story_start",
+    "user_calendar_responsibility",
+    "user_calendar_workflow_link",
+    "family_social_repeat_guard",
+    "instagram_receipt_reconciliation",
+    "social_schedule_cancelled_reservations",
+    "family_weekly_preparation",
+    "calendar_manual_publication_reports",
+    "handlarborsen_scb_review_only_candidates",
+    "handlarborsen_owner_review_archive_20261029",
+    "sales_b2b_offers",
+    "sales_discovery_candidates",
+    "social_owner_crosschat_context",
+    "human_story_exact_claim",
+    "social_campaign_preparation"
+  ]
+}

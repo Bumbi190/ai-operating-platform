@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { BrokerEnrollmentPackage, BrokerSettingsModel, StoredBroker } from '@/lib/atlas/code-broker/types'
 import styles from './SettingsSurface.module.css'
+import { OwnerSigningReview } from './OwnerSigningReview'
 
 const STATUS: Record<StoredBroker['status'], string> = {
   pending: 'Väntar på godkännande', active: 'Godkänd', revoked: 'Återkallad', lost: 'Förlorad', retired: 'Avslutad',
@@ -78,6 +79,10 @@ export function SettingsBrokerPanel({ model }: { model: BrokerSettingsModel }) {
         </div>
       ) : null}
       {message ? <p className={styles.outcome} role="status">{message}</p> : null}
+
+      {/* A new read-only safety stage. Existing enrollment and activation
+          actions are deliberately separate and unchanged. */}
+      <OwnerSigningReview model={model} />
     </section>
   )
 }

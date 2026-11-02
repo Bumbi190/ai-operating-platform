@@ -22,9 +22,13 @@ field is always `false`.
 
 The Windows read-only preflight is
 `scripts/atlas-model-router/preflight.ps1` in the repo root.
-A running local Ollama server is NOT enough: it must return a successful
-inference with GPU/RAM within limits before its `inferenceSmokePassed`
-can be set true.
+A running local Ollama server is NOT enough. A trusted host must independently
+verify the current RAM/VRAM/temperature preflight (`localResourcePreflightPassed`)
+AND a successful model inference (`inferenceSmokePassed`). Both are mandatory
+for local selection. The PowerShell preflight's `localInferencePreflightPass`
+only covers resource headroom and Ollama availability; it does **not** prove
+inference. Never copy these flags from an untrusted client or reuse stale
+observations. Neither flag by itself grants execution authority.
 
 Codex login alone does NOT prove available quota. 2026-10-22: a one-time
 `codex exec --ephemeral --ignore-user-config --sandbox read-only` in a

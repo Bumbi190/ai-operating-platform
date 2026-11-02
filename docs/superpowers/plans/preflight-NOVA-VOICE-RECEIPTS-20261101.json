@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-11-01T08:38:44.276Z",
+  "repository": "Bumbi190/ai-operating-platform",
+  "project": "Omnira",
+  "task": "Nova voice social campaign tool budget and truthful persistence receipts",
+  "workId": "NOVA-VOICE-RECEIPTS-20261101",
+  "proposedBranch": "feat/nova-social-campaign-20261031",
+  "mainSha": "cb909318ea820a92aa30324caa09d9ab42041d75",
+  "openPrCount": 123,
+  "worktreeCount": 229,
+  "decision": "review_required",
+  "code": "matching_open_pr",
+  "candidates": [
+    {
+      "number": 578,
+      "title": "Nova: complete copyable voice workflows and Claude prompts, faster speech handoff",
+      "head": "feat/atlas-nova-latency-20261028",
+      "url": "https://github.com/Bumbi190/ai-operating-platform/pull/578"
+    }
+  ],
+  "branchMatches": [
+    "feat/atlas-nova-voice-option-20261027",
+    "fix/nova-crosschat-social-20261031"
+  ],
+  "worktreeMatches": [
+    {
+      "branch": "feat/atlas-nova-voice-option-20261027",
+      "path": "C:/Users/Andre/Projects/Omnira/.worktrees/atlas-nova-voice-option-20261027",
+      "locked": false
+    },
+    {
+      "branch": "feat/nova-social-campaign-20261031",
+      "path": "C:/Users/Andre/Projects/Omnira/.worktrees/nova-crosschat-social-20261031",
+      "locked": false
+    }
+  ],
+  "reason": "Continue owned merged campaign branch for action tool receipts; PR578 is an unmerged long-document voice scope and its worktree has unrelated untracked files",
+  "limitations": "Metadata/local-name similarity is a hint; review actual file scope and agent ownership before new work.",
+  "sideEffects": "None. No branch, worktree, PR, commit, deployment or API mutation is performed."
+}

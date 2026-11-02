@@ -104,6 +104,7 @@ export function AtlasBuilderStudio({model}:{model:StudioView}){
        {selected.workspaceRequest&&<p>Begärd mapp: {selected.workspaceRequest.root.root} · väntar på datoranslutning.</p>}
       </div>}
      </StudioSettings>
+     <a href="/build/demo-motors" target="_blank" rel="noopener noreferrer" title="Fiktiv, skrivskyddad bilhandlardemo. Inget AI-jobb startas.">Visa Demo Motors i 3D ↗</a>
      <button type="button" onClick={reload}>Uppdatera</button>
     </div>
     {selected&&<StudioCostControl key={selected.id} projectId={selected.id} projectSlug={selected.slug} paused={selected.lifecycle.executionPaused} onPauseChange={paused=>rememberPause(selected.id,paused)}/>}

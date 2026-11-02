@@ -89,8 +89,8 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Owner cross-chat context APPLIED 20261031145817. Source-only reconciliation of
 // two parallel Harvey migrations already APPLIED 20261031120736 / 20261031120804.
 // Their exact SQL body hashes were matched to the production ledger before inclusion.
-export const EXPECTED_CANONICAL_SQL_COUNT = 169
-export const EXPECTED_ENFORCED_COUNT = 155
+export const EXPECTED_CANONICAL_SQL_COUNT = 171
+export const EXPECTED_ENFORCED_COUNT = 157
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([
@@ -329,3 +329,6 @@ export function evaluateAppliedMigrationLedger(appliedNames, repositoryState) {
 // Nov1 owner-approved Nova campaign rollout: human_story_exact_claim is source-only
 // reconciliation of live ledger20261031204433 (SHA256 a7ffd88a4b1881b3173e4dfe98af5d6d6ea1d7bb47b0c09411954cbd698a32e6).
 // social_campaign_preparation is the only new apply. Frozen14/30 lists unchanged.
+
+// Exact source-only reconciliation: owner-applied Harvey SCB/editorial migrations.
+// 171 canonical /157 enforced; frozen14/30 histories and policy logic unchanged.

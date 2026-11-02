@@ -53,6 +53,7 @@ jobs:
             lib/qa/web-studio-migration-reconciliation.test.ts \
             lib/qa/web-studio-exact-claim-reconciliation.test.ts \
             lib/qa/web-studio-campaign-reconciliation.test.ts \
+            lib/qa/web-studio-harvey-reconciliation.test.ts \
             --reporter=default --reporter=json \
             --outputFile="$RUNNER_TEMP/migration-guard-integrity.json"
 
@@ -101,6 +102,13 @@ jobs:
           const campaignAssertions = campaign?.assertionResults ?? []
           if (campaignAssertions.length < 4 || campaignAssertions.some(assertion => assertion.status !== 'passed')) {
             console.error('::error::all four Studio campaign-history checks must pass')
+            process.exit(1)
+          }
+
+          const harvey = files.find(file => String(file.name).endsWith('/web-studio-harvey-reconciliation.test.ts'))
+          const harveyAssertions = harvey?.assertionResults ?? []
+          if (harveyAssertions.length < 9 || harveyAssertions.some(assertion => assertion.status !== 'passed')) {
+            console.error('::error::all nine exact applied Harvey source/ledger checks must pass')
             process.exit(1)
           }
 

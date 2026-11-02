@@ -21,3 +21,7 @@ apps/web/lib/website-build/runtime/model3d-v1.js whitespace=-trailing-space,-spa
 
 # Hash-pinned browser bundle must retain exact bytes on Windows and CI.
 apps/web/lib/website-build/runtime/model3d-v1.bin -text
+
+# Preserve exact reviewed Harvey migration blobs; already applied, source sync only.
+apps/web/supabase/migrations/20261102064659_handlarborsen_scb_live_preview_candidates.sql -text
+apps/web/supabase/migrations/20261102090200_sales_editorial_only_drafts.sql -text

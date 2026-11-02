@@ -89,6 +89,7 @@ on:
       - 'docs/sql/atlas-studio-real-vehicle-*-proposed.sql'
       - 'docs/verification/web-studio/vehicle-capture-rls-*.sql'
       - 'scripts/verification/run-vehicle-capture-rls.ps1'
+      - 'apps/web/scripts/vehicle-capture-storage-auth-proof.mjs'
       - 'apps/web/lib/website-build/reference-analysis/**'
       - 'apps/web/e2e/reference-picker/**'
       - 'apps/web/playwright.reference-picker.config.ts'
@@ -201,6 +202,9 @@ jobs:
       - name: Run real local Auth Storage and reference handlers
         working-directory: apps/web
         run: npx --no-install vitest run --config vitest.reference-auth.config.ts
+      - name: Verify original vehicle photo privacy using real isolated GoTrue and Storage
+        working-directory: apps/web
+        run: node scripts/vehicle-capture-storage-auth-proof.mjs
       - name: Verify browser HTTP guard
         working-directory: apps/web
         run: node --test e2e/reference-auth/fetch-guard.test.cjs e2e/reference-auth/transports.test.cjs e2e/reference-auth/lifecycle.test.mjs e2e/reference-auth/cors.test.mjs

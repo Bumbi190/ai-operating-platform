@@ -4,7 +4,7 @@ const mocks=vi.hoisted(()=>({
 }))
 vi.mock('@/lib/auth/project-access',()=>({resolveProjectAccess:mocks.resolve}))
 vi.mock('@/lib/supabase/server',()=>({createClient:mocks.create}))
-vi.mock('./private-capture-bytes',()=>({checkPrivateVehicleCaptureBytes:mocks.check}))
+vi.mock('./private-capture-bytes',()=>({checkPrivateVehicleCaptureImages:mocks.check}))
 vi.mock('./owner-scoped-storage',()=>({makeOwnerScopedCapturePorts:mocks.make}))
 import {checkCaptureForHumanReview} from './server-capture-review'
 
@@ -17,7 +17,7 @@ describe('server-owned photo review entrypoint stays inert until opt-in',()=>{
   mocks.resolve.mockResolvedValue(owner)
   mocks.create.mockResolvedValue({auth:{getUser:vi.fn(async()=>({data:{user:{id:userId}},error:null}))}})
   mocks.make.mockReturnValue({test:'owner-scoped-ports'})
-  mocks.check.mockResolvedValue({status:'bytes_checked_for_human_review',checked:[]})
+  mocks.check.mockResolvedValue({status:'pixels_checked_for_human_review',checked:[]})
  })
  it('does not construct an authenticated storage client when auth is absent',async()=>{
   mocks.resolve.mockResolvedValueOnce({ok:false,response:new Response(null,{status:401})})
@@ -34,7 +34,7 @@ describe('server-owned photo review entrypoint stays inert until opt-in',()=>{
  })
  it('passes only server-side owner id / owned projects to the adapter',async()=>{
   const intake={fixture:'opaque'}
-  expect(await checkCaptureForHumanReview(intake)).toMatchObject({status:'bytes_checked_for_human_review'})
+  expect(await checkCaptureForHumanReview(intake)).toMatchObject({status:'pixels_checked_for_human_review'})
   expect(mocks.make).toHaveBeenCalledWith(expect.objectContaining({auth:expect.any(Object)}),{
    userId,allowedProjectIds:[projectId]
   })

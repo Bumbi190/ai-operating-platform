@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto'
 import {evaluateVehicleCaptureIntake,type CaptureKind} from './capture-intake'
+import {inspectVehiclePhotoPixels} from './image-inspection'
 
 /**
  * Pre-production, dependency-injected boundary. No actual Supabase bucket,
@@ -23,8 +24,9 @@ export type CaptureBytesPorts={
  listingBelongsToProject:(projectId:string,listingId:string)=>Promise<boolean>
  readPrivateOriginal:(bucket:typeof VEHICLE_CAPTURE_PRIVATE_BUCKET,path:string,maxBytes:number)=>Promise<Uint8Array|null>
 }
+type Proof={kind:CaptureKind;sha256:string;bytes:number}
 type Result=
- | {status:'bytes_checked_for_human_review';projectId:string;listingId:string;captureId:string;checked:ReadonlyArray<{kind:CaptureKind;sha256:string;bytes:number}>}
+ | {status:'bytes_checked_for_human_review'|'pixels_checked_for_human_review';projectId:string;listingId:string;captureId:string;checked:ReadonlyArray<Proof>}
  | {status:'refused';reason:string}
 const refused=(reason:string):Result=>({status:'refused',reason})
 
@@ -47,6 +49,20 @@ function hasSignature(data:Uint8Array,type:Format):boolean{
 export async function checkPrivateVehicleCaptureBytes(
  intake:unknown,access:CaptureAccessBinding,ports:CaptureBytesPorts
 ):Promise<Result>{
+ return checkCapture(intake,access,ports,false)
+}
+
+/** New release gate: original bytes AND complete image pixels must be valid. */
+export async function checkPrivateVehicleCaptureImages(
+ intake:unknown,access:CaptureAccessBinding,ports:CaptureBytesPorts
+):Promise<Result>{
+ return checkCapture(intake,access,ports,true)
+}
+
+async function checkCapture(
+ intake:unknown,access:CaptureAccessBinding,ports:CaptureBytesPorts,
+ inspectPixels:boolean
+):Promise<Result>{
  const checked=evaluateVehicleCaptureIntake(intake)
  if(checked.status!=='ready_for_human_review')return refused(checked.reason)
  if(!access||typeof access.userId!=='string'||!access.userId.trim()||
@@ -62,7 +78,7 @@ export async function checkPrivateVehicleCaptureBytes(
 
  const raw=record(intake)!
  const images=raw.images as Photo[]
- const proofs:Extract<Result,{status:'bytes_checked_for_human_review'}>['checked'][number][]=[]
+ const proofs:Proof[]=[]
  for(const photo of images){
   let bytes:Uint8Array|null
   try{
@@ -73,10 +89,14 @@ export async function checkPrivateVehicleCaptureBytes(
    return refused('PHOTO_BYTES_OR_FORMAT_MISMATCH')
   const actual=createHash('sha256').update(bytes).digest('hex')
   if(actual!==photo.sha256)return refused('PHOTO_CONTENT_HASH_MISMATCH')
+  if(inspectPixels){
+   const pixels=await inspectVehiclePhotoPixels(bytes,photo)
+   if(pixels.status==='refused')return refused(pixels.reason)
+  }
   proofs.push({kind:photo.kind,sha256:actual,bytes:bytes.byteLength})
  }
  return {
-  status:'bytes_checked_for_human_review',
+  status:inspectPixels?'pixels_checked_for_human_review':'bytes_checked_for_human_review',
   projectId:checked.projectId,listingId:checked.listingId,captureId:checked.captureId,
   checked:proofs
  }

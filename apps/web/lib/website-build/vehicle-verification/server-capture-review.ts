@@ -1,7 +1,7 @@
 import 'server-only'
 import {resolveProjectAccess} from '@/lib/auth/project-access'
 import {createClient} from '@/lib/supabase/server'
-import {checkPrivateVehicleCaptureBytes} from './private-capture-bytes'
+import {checkPrivateVehicleCaptureImages} from './private-capture-bytes'
 import {makeOwnerScopedCapturePorts,type OwnerCaptureAuthenticatedClient} from './owner-scoped-storage'
 
 /**
@@ -18,7 +18,7 @@ export async function checkCaptureForHumanReview(input:unknown){
   const {data:{user},error}=await client.auth.getUser()
   if(error||!user||user.id!==access.userId)
    return {status:'refused' as const,reason:'SESSION_MISMATCH'}
-  return await checkPrivateVehicleCaptureBytes(
+  return await checkPrivateVehicleCaptureImages(
    input,{userId:access.userId,allowedProjectIds:access.allowedProjectIds},
    makeOwnerScopedCapturePorts(
     client as unknown as OwnerCaptureAuthenticatedClient,

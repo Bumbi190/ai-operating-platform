@@ -126,3 +126,40 @@ The server-only, **not routed** `server-capture-review.ts` obtains the existing 
 - The SQL intentionally does not generate or approve a visual model, identify license authenticity, decode pixels, or expose dealer data across the two separate Supabase projects.
 
 The production migration, creation of a bucket, metadata writer, admin review, and first customer/car photo pilot are held behind independent budget, privacy and owner release gates.
+
+## 8. P1d — actual image codec and pixel verification (2026-11-02)
+
+Added `apps/web/lib/website-build/vehicle-verification/image-inspection.ts` and
+a strict **new** entrypoint `checkPrivateVehicleCaptureImages()` in
+`private-capture-bytes.ts`. The disabled/unrouted server review entrypoint now
+uses the *pixel checked* variant; the former bytes-only function remains explicitly
+named and returns only `bytes_checked_for_human_review`, never real-car verification.
+
+**Order of trust checks:** validate input metadata and ownership; confirm exact
+listing/project binding before any private download; read six separately scoped
+originals with per-file byte cap; verify format signature and content SHA-256;
+then decode each image with pinned Sharp 0.34.4. Only after all six complete does
+the result become `pixels_checked_for_human_review`.
+
+**Pixel safety:** enforce JPEG/PNG/WebP actual decoder format, exact declared
+width/height, minimum side 480, maximum side 8192, maximum 12 million pixels,
+15 MB compressed input limit, max four channels, no animated/multi-frame image,
+no unnormalized EXIF rotation, fail-on-warning decode. Running Sharp's
+`metadata()` alone is insufficient: the validator calls `stats()` to force a
+full pixel decode and reject truncated/invalid image payloads. The multi-frame
+metadata probe explicitly loads all pages in metadata to avoid the normal Sharp
+default of silently selecting only the first frame. It performs no remote
+fetch, no image generation and no public upload.
+
+**Local automated verification:** 50/50 focused vehicle verification Vitest
+tests PASS, including genuine synthetic PNG/JPEG/WebP, six-photo pipeline,
+wrong dimensions, forged-but-rehashed corrupt PNG, EXIF rotation, real animated
+two-frame WebP and a very compressed 16-million-pixel image refused under the
+12-million-pixel budget. Targeted TypeScript compile PASS. No customer images
+were read. Exact commit CI, hosted deployment status and any broader
+regressions must be verified separately before release.
+
+**Not authenticated physical proof:** pixel verification cannot attest the
+actual pictured car, faked EXIF, time/place, rights, damage, trim or wheels.
+Those remain a human-review and source-provenance gate. The code is STILL NOT
+on any production upload route; existing Demo Motors remains fictional.

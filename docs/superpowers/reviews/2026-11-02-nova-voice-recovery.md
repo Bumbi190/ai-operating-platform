@@ -20,6 +20,12 @@ The three Important cases were reproduced as nine failing tests before the corre
 - Browser5/5: compact and expanded interruption, one microphone remains open, correction dispatched exactly once after pending job, speaker echo suppression, post-ready transport recovery, and unverified handshake stopping before explicit fresh batch reconnect.
 - Deliberate batch reconnect separately RED: old behavior remained streaming after restart; GREEN is included in the5-case browser run.
 - Typecheck initially identified a new implicit-any in the shortcut; it was typed explicitly. Six existing Higgsfield/Remotion dependency errors remain in the local shared dependency installation. Do not describe the local whole-project typecheck as green.
-- Full project command and baseline classification are tracked in the associated evidence directory; final figures must be filled from the actual reports.
+- Full pre-review project command:806files,14986passed,412failed,1397pending. Exact-main baseline:120existing failed-suite files,2654passed,406failed,297pending. Every named failure is accounted for:404 reproduced on main;8 pass current focused rechecks;0 unresolved names. Two baseline failures were already corrected by inherited voice work. See the full named accounting file; this is not a green whole-repository claim.
 
 No image generation, publication, production deployment, budget/credential/schema or domain changes were performed. Physical microphone, speaker/headphone listening and audible latency remain owner acceptance.
+
+## Separate Preview dependency review
+
+Vercel initially blocked Preview on two owner-applied migrations missing from source. Root re-read live migration metadata/digests and imported only the exact reviewed SQL blobs, retaining frozen guard algorithms and histories. RED5failed/1passed, then58/58guard tests passed. A separate read-only dependency review of bf3db2b..1e295e0 found no blockers, checked Git source/ledger representation parity and six mandatory anti-skip cases. It did not approve production or re-review the inherited Harvey feature. See the source-parity report.
+
+CI and final hosted Preview readiness are recorded on PR578 for the final head. No production release is inferred from a successful build. Planning received an explicit author second-pass; that planning pass was not independent.

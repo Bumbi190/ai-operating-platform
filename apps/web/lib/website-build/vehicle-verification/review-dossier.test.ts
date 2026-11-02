@@ -5,7 +5,7 @@ import {REVIEW_VIEWS,REVIEW_FEATURES,assessVehicleReviewDraft} from './review-do
 const projectId='11111111-1111-4111-8111-111111111111'
 const listingId='22222222-2222-4222-8222-222222222222'
 const captureId='33333333-3333-4333-8333-333333333333'
-const hash=(i:number)=>i.toString(16).repeat(64)
+const hash=(i:number)=>i.toString(16).padStart(2,'0').repeat(32)
 function dossier(){
  const originalPhotos=CAPTURE_KINDS.map((kind,i)=>({kind,sha256:hash(i+1)}))
  const comparisons=REVIEW_VIEWS.map((kind,i)=>({

@@ -9,7 +9,7 @@ import { applyReview, LifecycleError } from '@/lib/handlarborsen/lead-finder/lif
 import { buildPreview, MAX_PREVIEW_CANDIDATES } from '@/lib/handlarborsen/lead-finder/pipeline'
 import { getReadiness } from '@/lib/handlarborsen/lead-finder/readiness'
 import {
-  assertScbLiveBaseUrl, createScbPageFetcher, mapLegalEntity, mapWorkplace, normalizeSni, ScbContractError, ScbLiveSearchDisabledError, ScbNetworkError,
+  assertScbLiveBaseUrl, createScbPageFetcher, fetchScbLegalEntityByOrgnr, mapLegalEntity, mapWorkplace, normalizeSni, ScbContractError, ScbLiveSearchDisabledError, ScbNetworkError,
 } from '@/lib/handlarborsen/lead-finder/scb-client'
 import { paginateScb, requireScbApiKey, ScbHttpError, ScbKeyMissingError } from '@/lib/handlarborsen/lead-finder/scb-source'
 import type { ExistingEntry, Provenance, ScbRegisterRecord } from '@/lib/handlarborsen/lead-finder/types'
@@ -344,6 +344,26 @@ describe('SCB AFR HTTP adapter (mocked, no live requests)', () => {
   it('live search stays disabled unless the caller carries explicit approval', () => {
     expect(() => createScbPageFetcher({ source: 'arbetsstallen', sni: '47811', baseUrl: BASE, apiKey: KEY })).toThrow(ScbLiveSearchDisabledError)
     expect(() => createScbPageFetcher({ source: 'arbetsstallen', sni: '47811', baseUrl: 'https://apiafr.scb.se', apiKey: KEY, liveApproved: true })).not.toThrow()
+  })
+
+  it('uses the reviewed 12-digit PeOrgNr JE path and keeps the API key only in the header', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (url, init) => {
+      expect(String(url)).toContain(`/v1/juridiskaenheter/16${ORG.alpha}`)
+      expect(String(url)).not.toContain(KEY)
+      expect(init?.headers).toMatchObject({ 'X-API-Key': KEY, Accept: 'application/json' })
+      return Response.json({ peOrgNr: `16${ORG.alpha}`, namn: 'Alpha Bil AB', ftgStat: '1', jurform: '49' })
+    })
+    const body = await fetchScbLegalEntityByOrgnr({ orgnr: ORG.alpha, baseUrl: BASE, apiKey: KEY, fetchImpl })
+    expect(fetchImpl).toHaveBeenCalledOnce()
+    expect(body).toMatchObject({ peOrgNr: `16${ORG.alpha}`, namn: 'Alpha Bil AB' })
+  })
+
+  it('maps an exact JE 404 to null and rejects a non-legal identity before fetch', async () => {
+    const notFound = vi.fn<typeof fetch>(async () => new Response(null, { status: 404 }))
+    await expect(fetchScbLegalEntityByOrgnr({ orgnr: ORG.alpha, baseUrl: BASE, apiKey: KEY, fetchImpl: notFound })).resolves.toBeNull()
+    const noFetch = vi.fn<typeof fetch>()
+    await expect(fetchScbLegalEntityByOrgnr({ orgnr: '199001011234', baseUrl: BASE, apiKey: KEY, fetchImpl: noFetch })).rejects.toThrow(/supported legal organisation number/)
+    expect(noFetch).not.toHaveBeenCalled()
   })
 })
 

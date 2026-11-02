@@ -2,6 +2,7 @@ import { SCB_LIVE_SEARCH_APPROVED } from './readiness'
 import { requireScbApiKey, SCB_LIMITS, ScbHttpError, ScbKeyMissingError } from './scb-source'
 import type { ScbPage, ScbPageFetcher } from './scb-source'
 import type { ScbRegisterRecord } from './types'
+import { parseLegalOrgnr } from './scb-status-policy'
 
 /**
  * Server-only SCB AFR page fetcher. Built strictly from the official OpenAPI
@@ -180,6 +181,58 @@ export function assertScbLiveBaseUrl(baseUrl: string): void {
     u.search !== '' || u.hash !== '' || /[?#]/.test(baseUrl)
   ) {
     throw new RangeError(`baseUrl must be exactly https://${SCB_LIVE_HOST}`)
+  }
+}
+
+export interface ScbLegalEntityLookupConfig {
+  orgnr: string
+  baseUrl: string
+  version?: string
+  apiKey?: string
+  fetchImpl?: typeof fetch
+  liveApproved?: boolean
+}
+
+/**
+ * Exact JE lookup from the reviewed SCB AFR v1 contract.
+ * A legal entity path uses PeOrgNr: `16` + the ordinary 10-digit organisation number.
+ * Returns the raw server-only object so scb-status-policy can allowlist fields.
+ */
+export async function fetchScbLegalEntityByOrgnr(config: ScbLegalEntityLookupConfig): Promise<unknown | null> {
+  if (!config.fetchImpl && !SCB_LIVE_SEARCH_APPROVED && config.liveApproved !== true) throw new ScbLiveSearchDisabledError()
+  if (!config.fetchImpl) assertScbLiveBaseUrl(config.baseUrl)
+  const parsed = parseLegalOrgnr(config.orgnr)
+  if (!parsed.ok) throw new RangeError('orgnr must be a supported legal organisation number')
+  const apiKey = config.apiKey === undefined ? requireScbApiKey() : config.apiKey.trim()
+  if (!apiKey) throw new ScbKeyMissingError()
+  const version = config.version ?? '1'
+  if (!/^\d+$/.test(version)) throw new RangeError('version must be numeric')
+  let origin: URL
+  try { origin = new URL(config.baseUrl) } catch { throw new RangeError('baseUrl must be an absolute URL') }
+  if (origin.protocol !== 'https:') throw new RangeError('baseUrl must be https')
+  const url = new URL(`/v${version}/juridiskaenheter/16${parsed.orgnr}`, origin)
+  const doFetch = config.fetchImpl ?? fetch
+  let res: Response
+  try {
+    res = await doFetch(url, {
+      method: 'GET',
+      headers: { 'X-API-Key': apiKey, Accept: 'application/json' },
+      redirect: 'error',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+  } catch {
+    throw new ScbNetworkError()
+  }
+  if (res.status === 404) {
+    await res.body?.cancel()
+    return null
+  }
+  if (!res.ok) throw new ScbHttpError(res.status, retryAfterMs(res.headers.get('retry-after')))
+  try {
+    return await res.json()
+  } catch {
+    throw new ScbContractError('legal entity body is not valid JSON')
   }
 }
 

@@ -1,6 +1,11 @@
 import { HANDLARBORSEN_PROJECT_ID } from '@/lib/atlas/handlarborsen-test-data/contracts'
 import type { AccessResult } from './api'
-import { createScbPageFetcher, SCB_LIVE_HOST } from './scb-client'
+import { buildExclusionIndex, lookupExclusions } from './exclusions'
+import { documentedPilotHistoryEntries } from './documented-pilot-history'
+import { normalizeCompanyName, normalizeOrgnr } from './identity'
+import type { KnownContacts } from './known-contacts'
+import { createScbPageFetcher, fetchScbLegalEntityByOrgnr, SCB_LIVE_HOST } from './scb-client'
+import { CONTACTABILITY_BLOCKED, evaluateScbCompany, type ScbStatusResult } from './scb-status-policy'
 import { paginateScb } from './scb-source'
 import { getReadiness, scbPreviewSearchApproved } from './readiness'
 import type { ScbRegisterRecord } from './types'
@@ -13,9 +18,11 @@ const MAX_SAMPLE = 5
 const MAX_PAGES = 2
 const PAGE_SIZE = 5000
 const MAX_ROWS = MAX_PAGES * PAGE_SIZE
+const LEGAL_LOOKUP_GAP_MS = 400
 
 const headers = { 'cache-control': 'private, no-store' }
 const respond = (status: number, value: unknown) => Response.json(value, { status, headers })
+const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
 
 export interface ScbProbeSearchResult {
   rows: ScbRegisterRecord[]
@@ -27,6 +34,9 @@ export interface ScbProbeDeps {
   env: Record<string, string | undefined>
   resolveAccess: () => Promise<AccessResult>
   search?: () => Promise<ScbProbeSearchResult>
+  reviewLegalEntity?: (orgnr: string) => Promise<ScbStatusResult>
+  loadKnownContacts?: () => Promise<KnownContacts>
+  sleep?: (ms: number) => Promise<void>
 }
 
 export async function runScbPreviewProbe(env: Record<string, string | undefined> = process.env): Promise<ScbProbeSearchResult> {
@@ -45,6 +55,23 @@ export async function runScbPreviewProbe(env: Record<string, string | undefined>
     maxRows: MAX_ROWS,
     requestsPerSecond: 2,
   })
+}
+
+async function reviewScbLegalEntity(orgnrRaw: string, env: Record<string, string | undefined>): Promise<ScbStatusResult> {
+  const orgnr = normalizeOrgnr(orgnrRaw)
+  if (!orgnr) {
+    return {
+      ok: false, reason: 'bad_expected_orgnr', manualReviewOnly: true,
+      outreachReady: false, contactability: CONTACTABILITY_BLOCKED,
+    }
+  }
+  const je = await fetchScbLegalEntityByOrgnr({
+    orgnr,
+    baseUrl: `https://${SCB_LIVE_HOST}`,
+    apiKey: env.SCB_API_KEY,
+    liveApproved: true,
+  })
+  return evaluateScbCompany({ expectedOrgnr: orgnr, je })
 }
 
 function parseConfirmation(text: string): boolean {
@@ -79,11 +106,7 @@ export async function leadFinderScbProbeApi(request: Request, deps: ScbProbeDeps
   if (!access.allowedProjectIds.includes(HANDLARBORSEN_PROJECT_ID)) return respond(403, { status: 'denied' })
 
   let text: string
-  try {
-    text = await request.text()
-  } catch {
-    return respond(400, { status: 'body_invalid' })
-  }
+  try { text = await request.text() } catch { return respond(400, { status: 'body_invalid' }) }
   if (text.length > MAX_BODY_BYTES) return respond(413, { status: 'body_too_large' })
   if (!parseConfirmation(text)) return respond(400, { status: 'confirmation_invalid' })
 
@@ -105,6 +128,50 @@ export async function leadFinderScbProbeApi(request: Request, deps: ScbProbeDeps
     seen.add(key)
     return true
   })
+  const sampleRows = matching.slice(0, MAX_SAMPLE)
+
+  let known: KnownContacts | null = null
+  if (deps.loadKnownContacts) {
+    try { known = await deps.loadKnownContacts() } catch { known = null }
+  }
+  const connectedEntries = known?.status === 'ready' ? known.entries : []
+  const historyIndex = buildExclusionIndex([...connectedEntries, ...documentedPilotHistoryEntries()])
+  const historyCoverage = known?.status === 'ready' ? 'omnira_plus_documented_partial' : 'documented_partial'
+  const review = deps.reviewLegalEntity ?? ((orgnr: string) => reviewScbLegalEntity(orgnr, deps.env))
+  const wait = deps.sleep ?? sleep
+
+  const legalReviews: Array<Record<string, unknown>> = []
+  for (const row of sampleRows) {
+    await wait(LEGAL_LOOKUP_GAP_MS)
+    let evaluated: ScbStatusResult
+    try { evaluated = await review(row.orgnr) } catch { return respond(503, { status: 'unavailable' }) }
+    if (!evaluated.ok) {
+      legalReviews.push({
+        workplaceName: row.name.trim(), city: row.city,
+        legalCompanyName: null, identityReview: 'needs_manual_review',
+        scbStatusClass: 'UNKNOWN_NEEDS_REVIEW', legalFormClass: 'MISSING_NEEDS_REVIEW',
+        historyMatches: [], warnings: ['LEGAL_IDENTITY_NOT_CONFIRMED'],
+        manualReviewOnly: true, contactability: CONTACTABILITY_BLOCKED, outreachReady: false,
+      })
+      continue
+    }
+    const historyMatches = lookupExclusions(historyIndex, {
+      orgnr: evaluated.orgnr,
+      normalizedName: normalizeCompanyName(evaluated.legalName),
+    })
+    legalReviews.push({
+      workplaceName: row.name.trim(), city: row.city,
+      legalCompanyName: evaluated.legalName,
+      identityReview: 'scb_legal_entity_confirmed',
+      scbStatusClass: evaluated.status.class,
+      legalFormClass: evaluated.legalForm.class,
+      historyMatches,
+      warnings: evaluated.warnings.slice(0, 12),
+      manualReviewOnly: true,
+      contactability: evaluated.contactability,
+      outreachReady: false,
+    })
+  }
 
   return respond(200, {
     status: 'ok',
@@ -119,14 +186,15 @@ export async function leadFinderScbProbeApi(request: Request, deps: ScbProbeDeps
     scannedRows: result.rows.length,
     truncated: result.truncated,
     matchCount: matching.length,
-    sample: matching.slice(0, MAX_SAMPLE).map(row => ({
-      name: row.name.trim(),
-      city: row.city,
-      cfar: row.cfar,
-      sniCodes: row.sniCodes,
+    sample: sampleRows.map(row => ({
+      name: row.name.trim(), city: row.city, cfar: row.cfar, sniCodes: row.sniCodes,
     })),
+    legalReviews,
+    historyCoverage,
+    knownOmniraContacts: known?.status === 'ready' ? known.count : null,
+    externalPilotRegistryConnected: false,
     persisted: false,
-    contactability: 'BLOCKED_PENDING_VERIFICATION',
+    contactability: CONTACTABILITY_BLOCKED,
     outreachReady: false,
   })
 }

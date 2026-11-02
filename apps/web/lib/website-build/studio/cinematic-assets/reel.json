@@ -2,8 +2,8 @@
   "wide": {
     "filename": "reel-wide.mp4",
     "contentType": "video/mp4",
-    "bytes": 3573591,
-    "sha256": "999103f2b68353cc9ea27278800b530fe4aab92c75537bab6ad29c820000a0f3"
+    "bytes": 3566417,
+    "sha256": "bfe6571f379b003fa4a4892456b41c715c4284ad16673402c02bb86d1137182e"
   },
   "widePoster": {
     "filename": "reel-wide.webp",
@@ -14,8 +14,8 @@
   "portrait": {
     "filename": "reel-portrait.mp4",
     "contentType": "video/mp4",
-    "bytes": 3543172,
-    "sha256": "dbf7d2bcfd629b508a5ad712e905a4b5c40120e0861d6cc158dca43807864104"
+    "bytes": 3564932,
+    "sha256": "8d88515e1a4a596dba567bd4f14c1fb6bfb8698eb0dd30db05155e1753aa3b7d"
   },
   "portraitPoster": {
     "filename": "reel-portrait.webp",
@@ -26,8 +26,8 @@
   "scroll": {
     "filename": "reel-scroll.mp4",
     "contentType": "video/mp4",
-    "bytes": 2701787,
-    "sha256": "6f88d9262fd056482777b754269c359ad6499ce746f8c7c32181e4739f64bdbe"
+    "bytes": 2711411,
+    "sha256": "82ca0437eecde9c69b786a5db3a59b059664d1aff9d7b769703074bb70f4fca3"
   },
   "backdrop": {
     "filename": "reel-evening.webp",

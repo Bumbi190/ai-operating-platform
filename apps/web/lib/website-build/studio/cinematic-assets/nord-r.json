@@ -23,14 +23,14 @@
   "model": {
     "filename": "nord-r.glb",
     "contentType": "model/gltf-binary",
-    "bytes": 2538216,
-    "sha256": "ac0f6cffc6f134439ce7ed5c281697053d78e2b589629fc4b540c791ca0a77fb",
+    "bytes": 2631508,
+    "sha256": "f925257a0920debec1b2045dcce2681538e2c1a9d586320776979515e6f94ece",
     "sourceSha256": "e52bae912ecc8dab1c073ae2cddd538598cd4a2f859a1047fd3f189ed391e1e0",
     "sourceJob": "13dc6c54-08a9-4cdf-b40a-b9e2d2e4626c",
     "referenceJob": "7791c922-b988-49f4-affc-035e49d05743",
     "model": "tripo_h3_1_image_to_3d",
     "quotedCredits": 12,
-    "displayRevision": "2048 color, 1536 normal, mesh-projected contact shadow"
+    "displayRevision": "Midnight-blue paint clearcoat mask, cool and warm studio reflections"
   },
   "film": {
     "filename": "nord-r.mp4",
@@ -57,12 +57,12 @@
   },
   "orbit": {
     "filename": "nord-r-orbit.webp",
-    "bytes": 9500,
-    "sha256": "f723bd1b2ebbd5e54b8b46c990dd5b5b7952564e1d3ee2cefd1baf3c0b397bb6",
+    "bytes": 9672,
+    "sha256": "da67547714558cd46b78c643fccc199b0941413224c2f19d61120d2c97f449cb",
     "contentType": "image/webp",
     "width": 320,
     "height": 164,
-    "modelSha256": "ac0f6cffc6f134439ce7ed5c281697053d78e2b589629fc4b540c791ca0a77fb",
+    "modelSha256": "f925257a0920debec1b2045dcce2681538e2c1a9d586320776979515e6f94ece",
     "studioSha256": "03769528d7a0faafb986a70a4ac2b6ed59245ce6b634eabe350112fc703d3ff2"
   }
 }

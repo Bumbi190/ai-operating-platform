@@ -440,3 +440,28 @@ test('desktop can switch to uninterrupted playback at the current chapter',async
  await expect.poll(()=>film.evaluate((v:HTMLVideoElement)=>v.paused)).toBe(true)
  await expect.poll(()=>film.evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(9)
 })
+
+test('dealer preview exposes key figures and a planning contact separately from the demo sale',async({page})=>{
+ await page.setViewportSize({width:1280,height:800})
+ await page.goto('/build/demo-motors/cinematic?view=visning')
+ const contact=page.getByRole('link',{name:'Planera vår hemsida'})
+ await expect(contact).toHaveCount(2)
+ for(const link of await contact.all()){
+  const url=new URL((await link.getAttribute('href'))!)
+  expect(url.protocol).toBe('mailto:')
+  expect(url.pathname).toBe('info@handlarborsen.se')
+  expect(url.searchParams.get('subject')).toContain('hemsida')
+ }
+ await expect(page.locator('.factline')).toContainText('480 mil')
+ await page.getByRole('link',{name:'Prova Nord R själv'}).click()
+ await page.locator('#lot-open').click()
+ const fits=await page.locator('#lot-dialog').evaluate(dialog=>{
+  const bounds=dialog.getBoundingClientRect()
+  return Array.from(dialog.querySelectorAll('.lot-header,.lot-info,.lot-sheet footer')).every(el=>{
+   const r=el.getBoundingClientRect();return r.top>=bounds.top&&r.bottom<=bounds.bottom
+  })
+ })
+ expect(fits).toBe(true)
+ await page.setViewportSize({width:390,height:844})
+ await expect(page.locator('.lot-keyfacts')).toBeInViewport()
+})

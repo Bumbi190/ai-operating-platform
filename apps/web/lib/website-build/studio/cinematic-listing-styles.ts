@@ -26,5 +26,8 @@ export const listingStyles=`
 #lot-form{margin-top:12px;border-top:1px solid #536266;padding-top:8px}#lot-form p,#lot-result{font:14px/1.4 system-ui;color:#ebe1d1}#lot-result:empty{display:none}#lot-form label{display:grid;gap:5px;font:13px system-ui}#lot-form input,#lot-form textarea{width:100%;padding:9px;color:white;background:#12232a;border:1px solid #728588;border-radius:6px}#lot-confirm{margin-top:10px}
 .lot-sheet footer{margin-top:20px;padding:14px 0 0;border-top:1px solid #ffffff26;color:#b3c1c3;font:11px/1.5 system-ui;background:none}
 @media(max-width:700px){.catalog #concept-04{grid-template-columns:1fr}.lot-visual{min-height:0;aspect-ratio:1.8}.lot-summary{padding:20px}#lot-dialog{width:96vw;max-width:96vw;max-height:94dvh;border-radius:15px}.lot-gallery,.lot-info{grid-template-columns:1fr}.lot-views{grid-template:56px/repeat(5,minmax(0,1fr))}.lot-stage{aspect-ratio:1.5}.lot-views b{width:16px;height:16px;font-size:13px}.lot-header #lot-title small{display:block;font-size:13px;margin-top:3px}}
+.lot-keyfacts{display:none;margin:6px 0 0;color:#f4dcaf;font:600 13px/1.4 system-ui}.lot-keyfacts span{color:#9b907f}
+@media(min-width:701px) and (max-height:920px){.lot-sheet{padding:18px 22px}.lot-header{margin-bottom:10px}.lot-header #lot-title{font-size:33px}.lot-stage{aspect-ratio:auto;height:clamp(165px,37dvh,350px)}.lot-info{margin-top:12px}.lot-info dl{gap:4px 14px}.lot-sheet footer{margin-top:10px;padding-top:8px}#lot-film-controls{padding:3px 10px}}
+@media(max-width:700px),(max-height:620px){.lot-keyfacts{display:block}}
 @media(prefers-reduced-motion:reduce){.catalog .car{transition:none}.catalog .car:hover{transform:none}}
 `

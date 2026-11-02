@@ -40,7 +40,10 @@ try {
  $files = @(
   @{source=(Join-Path $fixture 'vehicle-capture-rls-bootstrap.sql');target='/tmp/bootstrap.sql'},
   @{source=$proposal;target='/tmp/proposal.sql'},
-  @{source=(Join-Path $fixture 'vehicle-capture-rls-assertions.sql');target='/tmp/assertions.sql'}
+  @{source=(Join-Path $fixture 'vehicle-capture-rls-assertions.sql');target='/tmp/assertions.sql'},
+  @{source=(Join-Path $fixture 'vehicle-review-audit-bootstrap.sql');target='/tmp/audit-bootstrap.sql'},
+  @{source=(Join-Path $root 'docs\\sql\\atlas-studio-real-vehicle-review-audit-p2b-proposed.sql');target='/tmp/audit-proposal.sql'},
+  @{source=(Join-Path $fixture 'vehicle-review-audit-assertions.sql');target='/tmp/audit-assertions.sql'}
  )
  foreach ($file in $files) {
    Run-Docker @('cp',$file.source,($name+':'+$file.target))
@@ -49,7 +52,7 @@ try {
    Run-Docker @('exec',$name,'psql','-X','-v','ON_ERROR_STOP=1',
      '-U','postgres','-d','vehicle_capture_rls_fixture','-f',$file.target)
  }
- Write-Host 'PASS: isolated PostgreSQL proposal verified with synthetic A/B owners and Storage operation assertions.'
+ Write-Host 'PASS: isolated Postgres vehicle photo RLS and append-only reviewer audit assertions.'
 } finally {
  if ($created) {
   & docker rm -f $name 2>$null | Out-Null

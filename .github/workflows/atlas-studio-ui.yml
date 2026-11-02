@@ -88,6 +88,7 @@ on:
       - 'docs/superpowers/plans/*real-vehicle*'
       - 'docs/sql/atlas-studio-real-vehicle-*-proposed.sql'
       - 'docs/verification/web-studio/vehicle-capture-rls-*.sql'
+      - 'docs/verification/web-studio/vehicle-review-audit-*.sql'
       - 'scripts/verification/run-vehicle-capture-rls.ps1'
       - 'apps/web/scripts/vehicle-capture-storage-auth-proof.mjs'
       - 'apps/web/lib/website-build/reference-analysis/**'
@@ -239,7 +240,7 @@ jobs:
         run: node --test apps/web/scripts/website-test-target.test.mjs apps/web/scripts/website-test-mode.test.mjs
       - name: Cache disposable PostgreSQL image
         run: docker pull postgres:17-alpine
-      - name: Verify proposed private vehicle photo RLS with synthetic owners
+      - name: Verify proposed vehicle photo RLS and append-only human review with synthetic owners
         shell: pwsh
         run: ./scripts/verification/run-vehicle-capture-rls.ps1
       - name: Install isolated Chromium

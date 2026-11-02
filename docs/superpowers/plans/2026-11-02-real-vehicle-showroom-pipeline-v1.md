@@ -221,3 +221,51 @@ durable reviewer-assignment and append-only audit table, followed by actual
 backend session integration and owner-authorized visual comparison. The current
 Demo Motors review page stays explicitly fictional/read-only and its Approve
 control remains disabled.
+
+## 10. P2b proposed append-only reviewer database + isolated SQL verification
+
+**Implementation only (2 November 2026), NOT applied to any real Supabase DB:**
+`docs/sql/atlas-studio-real-vehicle-review-audit-p2b-proposed.sql`
+contains an owner/project/listing-bound reviewer-assignment table, an
+append-only immutable revision table, a separately mutable `current`
+revision pointer and an append-only inspection event table. The event
+table accepts ONLY the three non-approval outcomes
+`human_review_required`, `revision_required` and
+`additional_evidence_required`. Each event is bound to
+reviewer, listing, capture, GLB SHA, immutable revision ID, evidence digest
+and deterministic event checksum.
+
+The event writer `website_review_private.append_pending(...)` is
+`SECURITY INVOKER` in a non-exposed schema. Its EXECUTE privilege is
+granted only to `service_role`. No signed-in or anonymous user may read
+or write these tables directly. The function checks actual project ownership,
+active reviewer assignment and current evidence revision using `FOR SHARE`
+row locks that conflict with concurrent revocation or revision-change UPDATEs.
+Duplicate `event_id`, changed GLB hash, stale revision, foreign reviewer,
+invalid/expired server timestamp and revoked assignment are rejected.
+Immutable evidence rows and audit events cannot be UPDATEd or DELETEd.
+
+**Verified in isolated PostgreSQL 17 on Hultgren:** existing
+`scripts/verification/run-vehicle-capture-rls.ps1` now also executes
+the complete proposed audit SQL and two synthetic-owner assertion scripts.
+There is no network, port, host mount or customer record; Postgres is
+memory-limited to 192MB, and the disposable container is removed.
+The test passed on synthetic owner A/B, exact-event replay, source/GLB swap,
+stale revision after switching the current pointer, assignment revocation,
+and audit/revision mutation refusal. A one-hour stale timestamp was refused.
+Exact fixture: `docs/verification/web-studio/vehicle-review-audit-*.sql`,
+proof log: `vehicle-review-audit-proof.md`. The preexisting CI Studio
+job now runs these SQL assertions as part of its isolated RLS step.
+
+**Important limits:** These tests are PostgreSQL-only. A true concurrent
+two-connection interleaving test, hosted Supabase RLS, actual source-photo
+origin and license verification, reviewer-session binding, production audit
+persistence and actual customer UI acceptance remain unverified. A trusted
+backend must independently verify reviewer ID from the authenticated
+session; `service_role` can impersonate reviewers and must NEVER be
+exposed to a browser. The SQL function in a private schema is NOT callable
+as an ordinary public `supabase-js.rpc` endpoint and requires a
+separately designed, reviewed backend database writer. An event hash is not
+a digital signature. No public `approved`/verified label, customer
+Storage, 3D-generating provider, SQL migration deployment or owner
+publication permission was created.

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "truthClass": "fictional_marketing",
+  "imageJob": "3a820ee0-88e2-4f70-a27c-964666420923",
+  "videoJob": "71441e43-4fd2-4f2f-b8b5-2b293eb64fbb",
+  "imageModel": "nano_banana_2_1",
+  "videoModel": "kling3_0",
+  "quotedCredits": {
+    "image": 1.5,
+    "video": 7.5,
+    "total": 9
+  },
+  "imagePrompt": "Photorealistic cinematic establishing frame for a fictional Scandinavian premium used-car dealership website, widescreen 16:9. Original architecture: low modern charcoal brick and glass showroom with warm amber interior light, northern birch and pine trees behind, Nordic blue-hour sky, recently damp asphalt with subtle realistic reflections, tasteful low landscape lights. Camera elevated about 6 meters, looking diagonally down across a compact clean forecourt. Main subject: one unbranded deep metallic midnight-blue modern SUV on the right half, visible complete from front three-quarter, all four wheels grounded, convincing precise geometry and restrained road-car proportions, charcoal multi-spoke wheels. Five smaller parked cars spaced naturally near the building in the middle distance. Broad quiet darker asphalt area in the left third for later website typography. The camera has a clear unobstructed diagonal approach toward the hero SUV. Luxury automotive photography, believable Swedish small business, natural perspective, realistic glass, paint and tires, detailed but clean composition. No text, no signage lettering, no logos, no brands, no watermarks, no UI, no people, no license plate characters. This is a fictional marketing scene, not a photograph of any real dealership or listed vehicle.",
+  "videoPrompt": "A single continuous five-second premium automotive camera move starting exactly from the supplied frame. The same fictional Scandinavian showroom at blue hour, same warm interior lights, trees, damp forecourt and exactly the same parked midnight-blue SUV. Camera glides slowly forward and descends from its elevated viewpoint toward a clean front three-quarter hero view of that SUV, ending around two metres above the asphalt. Smooth physically plausible dolly, no cuts, no teleportation, no whip pan. All cars remain parked and solid; preserve their silhouettes, paint, wheels, windows and proportions from first frame to last. Reflections change naturally only with the camera. Keep the quiet left area suitable for separately overlaid website text. No people, no text, no logos, no new vehicles, no changing car parts, no wheel morphing, no generated UI. Stable photographic realism, restrained luxury, a controlled shot designed to scrub forward and backward with website scrolling.",
+  "poster": {
+    "filename": "hero.webp",
+    "bytes": 215304,
+    "sha256": "78a03cf38f0fed584fb6cdb969cc8bbbbbf7a345dbd9be99198b6838b72820c6",
+    "contentType": "image/webp"
+  },
+  "video": {
+    "filename": "showroom.mp4",
+    "bytes": 1800939,
+    "sha256": "6979b137e822b8a827a10a392a68256536e75e91d0e16e1e756c6c64b01cde24",
+    "contentType": "video/mp4",
+    "encoding": "H264 720p 24fps CRF23 keyframe interval6 faststart; silent",
+    "sourceSha256": "42e01ece86310b6d4883aae279e1a5be86927860721fa238471fc58b4e64cea6"
+  }
+}

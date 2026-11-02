@@ -69,6 +69,10 @@ on:
       - 'apps/web/app/(platform)/build/page.tsx'
       - 'apps/web/app/(platform)/build/demo-motors/**'
       - 'apps/web/lib/website-build/studio/demo-motors-*'
+      - 'apps/web/lib/website-build/studio/cinematic-*'
+      - 'apps/web/lib/website-build/studio/cinematic-assets/**'
+      - 'apps/web/e2e/website-cinematic/**'
+      - 'apps/web/playwright.website-cinematic.config.ts'
       - 'apps/web/components/website-build/AtlasBuilderStudio.tsx'
       - 'apps/web/components/website-build/StudioEmptyPreview.tsx'
       - 'apps/web/app/api/website-build/studio/costs/**'
@@ -135,7 +139,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck --workspace=apps/web
-      - run: npx vitest run lib/website-build/studio/costs.test.ts lib/website-build/studio/page-query.test.ts lib/website-build/studio/demo-motors-readonly.test.ts lib/website-build/studio/demo-motors-route.test.ts lib/website-build/artifact.test.ts lib/website-build/catalog-filter.test.ts lib/website-build/templates lib/website-build/planning/starter-flow.test.ts lib/website-build/model-rasters.test.ts lib/website-build/rejected-draft.test.ts lib/website-build/feedback-interpretation.test.ts lib/qa/runner-text-output.test.ts lib/qa/atlas-home-markdown.test.tsx lib/qa/atlas-static-conversation-route.test.ts lib/qa/atlas-openai-chat.test.ts lib/qa/openai-stream-metering.test.ts lib/qa/m0-spend-ceiling.test.ts lib/qa/m0-durable-spend.test.ts lib/qa/execution-authority-signal.test.ts
+      - run: npx vitest run lib/website-build/studio/costs.test.ts lib/website-build/studio/page-query.test.ts lib/website-build/studio/demo-motors-readonly.test.ts lib/website-build/studio/demo-motors-route.test.ts lib/website-build/studio/cinematic-demo.test.ts lib/website-build/artifact.test.ts lib/website-build/catalog-filter.test.ts lib/website-build/templates lib/website-build/planning/starter-flow.test.ts lib/website-build/model-rasters.test.ts lib/website-build/rejected-draft.test.ts lib/website-build/feedback-interpretation.test.ts lib/qa/runner-text-output.test.ts lib/qa/atlas-home-markdown.test.tsx lib/qa/atlas-static-conversation-route.test.ts lib/qa/atlas-openai-chat.test.ts lib/qa/openai-stream-metering.test.ts lib/qa/m0-spend-ceiling.test.ts lib/qa/m0-durable-spend.test.ts lib/qa/execution-authority-signal.test.ts
         working-directory: apps/web
       - run: npx playwright install --with-deps chromium
         working-directory: apps/web
@@ -148,6 +152,8 @@ jobs:
       - run: npx playwright test --config=playwright.website-starter.config.ts
         working-directory: apps/web
       - run: npx playwright test --config=playwright.website-model3d.config.ts
+        working-directory: apps/web
+      - run: npx playwright test --config=playwright.website-cinematic.config.ts
         working-directory: apps/web
       - run: npx playwright test --config=playwright.atlas-studio-ui.config.ts
         working-directory: apps/web

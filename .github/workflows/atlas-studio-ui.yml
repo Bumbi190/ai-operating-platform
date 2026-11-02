@@ -84,6 +84,8 @@ on:
       - 'apps/web/scripts/reference-*'
       - 'apps/web/lib/qa/website-reference-auth.integration.test.ts'
       - 'apps/web/lib/website-build/assets/**'
+      - 'apps/web/lib/website-build/vehicle-verification/**'
+      - 'docs/superpowers/plans/*real-vehicle*'
       - 'apps/web/lib/website-build/reference-analysis/**'
       - 'apps/web/e2e/reference-picker/**'
       - 'apps/web/playwright.reference-picker.config.ts'
@@ -131,7 +133,7 @@ jobs:
         working-directory: apps/web
       - run: npx playwright install --with-deps chromium
         working-directory: apps/web
-      - run: npx vitest run lib/website-build/assets lib/website-build/reference-analysis lib/atlas/conversation/controller.test.ts
+      - run: npx vitest run lib/website-build/assets lib/website-build/vehicle-verification lib/website-build/reference-analysis lib/atlas/conversation/controller.test.ts
         working-directory: apps/web
       - run: npx playwright test --config=playwright.reference-picker.config.ts
         working-directory: apps/web

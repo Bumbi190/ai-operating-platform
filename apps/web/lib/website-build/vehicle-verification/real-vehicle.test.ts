@@ -40,9 +40,9 @@ const review={
 const refuse=(m:unknown,e:unknown,r:unknown)=>expect(evaluateRealVehicleEvidence(m,e,r).status).toBe('Refused')
 
 describe('real vehicle visual evidence gate',()=>{
- it('accepts a structurally complete, human-reviewed four-angle match',()=>{
+ it('only passes structural preflight; it does not claim actual review authority',()=>{
   expect(evaluateRealVehicleEvidence(manifest,evidence,review)).toMatchObject({
-   status:'Verified',assetId:manifest.id,glbSha256:hash
+   status:'PreflightPassed',assetId:manifest.id,glbSha256:hash
   })
  })
  it('refuses fictional source and AI-only inferred geometry',()=>{

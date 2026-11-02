@@ -11,7 +11,7 @@ const REAL_SOURCES=new Set(['licensed_cad_oem','photogrammetry','verified_vendor
 const MATCH_FIELDS=['shape','color','trim','wheels'] as const
 const VEHICLE_FIELDS=['make','model','modelYear','trim','exteriorColor','wheels'] as const
 type Result=
- | {status:'Verified';assetId:string;glbSha256:string;checkedKinds:Vehicle3DReferenceKind[]}
+ | {status:'PreflightPassed';assetId:string;glbSha256:string;checkedKinds:Vehicle3DReferenceKind[]}
  | {status:'Refused';reason:string}
 const refused=(reason:string):Result=>({status:'Refused',reason})
 function object(value:unknown):Record<string,unknown>|null{
@@ -76,6 +76,8 @@ export function evaluateRealVehicleEvidence(
     review.approvedAt!==manifest.evidence.reviewer.approvedAt||
     !isFourViews(review.checkedViews))
   return refused('UNBOUND_OR_MISSING_HUMAN_REVIEW')
- return {status:'Verified',assetId:manifest.id,
+ // A caller MUST NOT interpret this as publish authorization: reviewer identity,
+ // image bytes and visual comparisons are not independently authenticated here.
+ return {status:'PreflightPassed',assetId:manifest.id,
   glbSha256:manifest.glb.sha256,checkedKinds:[...REQUIRED]}
 }

@@ -48,6 +48,7 @@ jobs:
         working-directory: apps/web
         run: |
           npx --no vitest run lib/qa/migration-guard-v2.test.ts \
+            lib/qa/nova-voice-migration-parity.test.ts \
             lib/qa/handlarborsen-watch-runs-migration.test.ts \
             lib/qa/sales-inbox-ledger-reconciliation.test.ts \
             --reporter=default --reporter=json \
@@ -77,6 +78,12 @@ jobs:
           const salesAssertions = sales?.assertionResults ?? []
           if (salesAssertions.length < 3 || salesAssertions.some(assertion => assertion.status !== 'passed')) {
             console.error('::error::all three exact sales inbox source/ledger/registry checks must pass')
+            process.exit(1)
+          }
+
+          const voice = files.find(file => String(file.name).endsWith('/nova-voice-migration-parity.test.ts'))
+          if (!voice || voice.assertionResults.length !== 6 || voice.assertionResults.some(a => a.status !== 'passed')) {
+            console.error('::error::all six exact voice migration parity checks must pass')
             process.exit(1)
           }
 

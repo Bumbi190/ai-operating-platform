@@ -89,8 +89,8 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Owner cross-chat context APPLIED 20261031145817. Source-only reconciliation of
 // two parallel Harvey migrations already APPLIED 20261031120736 / 20261031120804.
 // Their exact SQL body hashes were matched to the production ledger before inclusion.
-export const EXPECTED_CANONICAL_SQL_COUNT = 169
-export const EXPECTED_ENFORCED_COUNT = 155
+export const EXPECTED_CANONICAL_SQL_COUNT = 171
+export const EXPECTED_ENFORCED_COUNT = 157
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

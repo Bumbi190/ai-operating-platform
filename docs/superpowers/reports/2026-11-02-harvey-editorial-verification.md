@@ -15,6 +15,7 @@ Existing repository Bumbi190/ai-operating-platform; continue Draft PR #386, bran
 | Real PostgreSQL + API/Python integration | 7/7 passed, including editorial Atlas/SQL; SQL contracts and concurrency races passed |
 | Python worker regressions | 169 passed |
 | Desktop/mobile Playwright | 11 passed, including explicit mode, no send action and draft whose parent is outside job summary |
+| Required migration-integrity CI suite, rerun locally | 61 passed, zero failed/pending/skipped; captured historical ledger unchanged |
 | TypeScript | tsc --noEmit exit 0 |
 | Non-destructive forward rollback | Real SQL check passed: existing editorial job fenced, new editorial work refused, ordinary preparation still works |
 | Diff whitespace | git diff --check exit 0 |
@@ -48,3 +49,7 @@ Before any later real Carstore draft, refresh all currently available source che
 Use the non-destructive forward-disable proposal in 2026-11-02-harvey-editorial-disable-proposal.sql as a new reviewed migration. It refuses new editorial jobs and makes pending editorial snapshot checks fail closed. It retains contact history, draft/request provenance, UI metadata, existing normal preparation and reply-send rules. Cancel or reconcile queued editorial work through existing owner RPCs as appropriate; never delete history or edit the applied ledger. Re-enabling needs a new reviewed forward migration restoring the two function bodies, not replaying the complete trigger-creating migration. The current production definitions were read and saved separately before activation planning.
 
 Raw verification logs and preflight receipt are in the existing Temp/harvey-resume-20261101 evidence directory on Hultgren. No secrets, mailbox bodies or customer addresses are committed in this report. Stop only the owned local sales fixture after checks, and preserve other worktrees and services.
+
+## Delivery follow-up
+
+Runtime commit 72d548983eb994b59f73991c3989e33c1d14ed21 was pushed normally to the existing Draft PR and verified against the remote branch; worktree clean. GitHub then exposed 13 obsolete numeric expectations in the separate migration-guard-v2 suite. Current/hypothetical counts were incremented for the one new migration; the captured historical ledger stayed unchanged, and the historical pre-live-SCB repository fixture explicitly excludes both later migrations. A new omission/duplicate test requires editorial-only SQL exactly once. The exact three-file CI suite now passes 61 tests locally; guard code, frozen lists and missing-production checks are unchanged. The follow-up delivery changes only tests, this report and the completed plan. New-head CI remains distinct from local evidence.

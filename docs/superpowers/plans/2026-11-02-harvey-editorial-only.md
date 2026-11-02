@@ -22,4 +22,4 @@ Cross-project IDs; explicit mode cannot become a default; failed source must dif
 - [x] Extend PrepareSalesInput, parser, store routing, API/Atlas schema and guide; default remains ordinary initial.
 - [x] Add a review-only selector and clear labels to existing SalesWorkspace/FirstDraftReviews; editing/review remain exact-version only.
 - [x] Run focused tests, existing Sales/worker regressions, real SQL/API lifecycle, TypeScript and diff checks. Review the complete diff in a second pass.
-- [ ] Commit/push only to PR #386 after head/state checks. Record actual results and exact unapplied SQL hash/impact/rollback for release review. No live customer model run until the required schema is approved and applied.
+- [x] Commit/push only to PR #386 after head/state checks. Record actual results and exact unapplied SQL hash/impact/rollback for release review. No live customer model run until the required schema is approved and applied.

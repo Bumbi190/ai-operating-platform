@@ -5,6 +5,9 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { preferredAtlasVoice } from '@/lib/atlas/voice-pilot/voices'
 import { createMicSignalStore } from '@/lib/atlas/voice-pilot/mic-diagnostics'
+import { hydrateTranscript } from '@/lib/os/chat-shared'
+import { VOICE_DOCUMENT_CONTINUATION_COMMAND, VOICE_DOCUMENT_STREAM_INTERRUPTED_WARNING } from '@/lib/atlas/voice-pilot/document-mode'
+import { continuesIncompleteVoiceDocument } from '@/lib/atlas/voice-pilot/document-mode'
 
 beforeEach(() => vi.stubGlobal('React', React))
 afterEach(() => vi.unstubAllGlobals())
@@ -99,6 +102,72 @@ describe('Compact persistent Atlas call shell', () => {
     expect(html).toContain('Byt röst')
     expect(html).not.toContain('4xkUqaR9MYOJHoaC1Nak')
   })
+  it('shows the full Claude prompt and a copy action only on written assistant replies', () => {
+    const prompt = '### Prompt till Claude\\n\\nBehåll säkerhetsgränserna och verifiera alla tester.'
+    const live = session({ snapshot: {
+      id: 'long-document-thread', history: [
+        { role: 'user', content: 'Skriv prompt till Claude' },
+        { role: 'assistant', content: prompt },
+      ], entries: [], testDataReviews: [], pending: false,
+    } })
+    const html = render(live)
+    expect(html).toContain('Behåll säkerhetsgränserna')
+    expect(html).toContain('aria-label="Kopiera hela svaret"')
+    expect(html).toContain('Kopiera hela svaret')
+    expect((html.match(/aria-label="Kopiera hela svaret"/g) ?? [])).toHaveLength(1)
+    expect(render(live, true)).not.toContain('Kopiera hela svaret')
+    expect((render(live, true).match(/<button /g) ?? [])).toHaveLength(3)
+  })
+  it('renders full Claude Markdown and fenced code in the real voice chat rather than a plain paragraph', () => {
+    const prompt = '### Prompt till Claude\n\n**Uppgift:** gör detta säkert.\n\n\`\`\`ts\nconst safe = true\n\`\`\`'
+    const html = render(session({ snapshot: {
+      id: 'markdown-document-thread', history: [
+        { role: 'user', content: 'Skriv en komplett Claude-prompt' },
+        { role: 'assistant', content: prompt },
+      ], entries: [{kind: 'assistant', text: prompt}], testDataReviews: [], pending: false,
+    } }))
+    expect(html).toContain('<h3>Prompt till Claude</h3>')
+    expect(html).toContain('<strong>Uppgift:</strong>')
+    expect(html).toContain('<pre>')
+    expect(html).toContain('language-ts')
+    expect(html).toContain('aria-label="Kopiera hela svaret"')
+    expect(html).not.toContain('Fortsätt utkast')
+  })
+  it('hydrates a truncated Claude draft and offers only a deliberate, text-only continuation', () => {
+    const partial = '### Claude-prompt\n\nSteg 1 är skrivet.' + VOICE_DOCUMENT_STREAM_INTERRUPTED_WARNING
+    const saved = [{ role: 'assistant' as const, content: partial,
+      tool_data: { kind: 'incomplete_draft', continuationAllowed: true }, created_at: null }]
+    const snapshot = { id: 'voice-interrupted', history: [
+      { role: 'user', content: 'Skapa en fullständig Claude-prompt' },
+      { role: 'assistant', content: partial },
+    ], entries: hydrateTranscript(saved), testDataReviews: [], pending: false }
+    const html = render(session({ snapshot }))
+    expect(html).toContain('Ofullständigt utkast')
+    expect(html).toContain('Kopiera ofullständigt utkast')
+    expect(html).toContain('Fortsätt utkast')
+    expect(html).not.toContain('aria-label="Kopiera hela svaret"')
+    expect(continuesIncompleteVoiceDocument(VOICE_DOCUMENT_CONTINUATION_COMMAND, partial)).toBe(true)
+    expect(render(session({ snapshot, sending: true }))).not.toContain('>Fortsätt utkast</button>')
+    expect(render(session({ snapshot }), true)).not.toContain('>Fortsätt utkast</button>')
+    const source = readFileSync(join(process.cwd(), 'components/platform/os/AtlasVoicePanel.tsx'), 'utf8')
+    expect(source).toContain('s.submitText(VOICE_DOCUMENT_CONTINUATION_COMMAND)')
+  })
+  it('does not offer continuation of a failed non-document answer', () => {
+    const partial = 'Kontrollen av projektet avbröts.'
+    const html = render(session({ snapshot: {
+      id: 'tool-failure', history: [{ role: 'assistant', content: partial }],
+      entries: [{ kind: 'assistant', text: partial, incomplete: true, continuationAllowed: false }],
+      testDataReviews: [], pending: false,
+    } }))
+    expect(html).toContain('Ofullständigt utkast')
+    expect(html).not.toContain('Fortsätt utkast')
+  })
+  it('labels batch transcription honestly while preview uses stable mode', () => {
+    const stable = render(session({ inputMode: 'batch' }))
+    expect(stable).toContain('stabilt läge')
+    expect(stable).toContain('ljudet tolkas när du har pratat klart')
+    expect(render(session({ inputMode: 'streaming' }))).toContain('realtidsläge')
+  })
   it('offers optional browser microphone selection in expanded chat without a fourth dock control', () => {
     const html = render(session({
       micDevices: [
@@ -149,4 +218,20 @@ describe('Compact persistent Atlas call shell', () => {
     expect(home).toContain('<Phone size={19} />')
     expect(home).toContain('<PhoneOff size={19} />')
   })
+})
+
+describe('voice correction control availability', () => {
+  it.each([false, true])('offers a stop control while output is preparing in minimized=%s', minimized => {
+    const html = render(session({ outputBusy: true, speaking: false }), minimized)
+    expect(html).toContain('aria-label="Stoppa rösten"')
+  })
+  it.each([false, true])('offers a stop control during a pending tool turn in minimized=%s', minimized => {
+    const html = render(session({ sending: true, snapshot: { id: null, history: [], entries: [], testDataReviews: [], pending: true } }), minimized)
+    expect(html).toContain('aria-label="Stoppa rösten"')
+  })
+})
+
+it('makes resumed listening visible while an interrupted job continues in the background',()=>{
+ const html=render(session({sending:true,listening:true,speaking:false}),true)
+ expect(html).toContain('Lyssnar · arbetar vidare')
 })

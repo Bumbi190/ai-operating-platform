@@ -97,3 +97,30 @@ it.each(['ready', 'final', 'absolute'])('cleans up the %s timeout', async mode =
   else await expect(current.finish('pause')).rejects.toBeDefined()
   expect(vi.getTimerCount()).toBe(0); expect(ws().close).toHaveBeenCalledTimes(1)
 })
+
+it('distinguishes a post-ready transport loss from an unverified handshake',async()=>{
+ const current=start();ready();current.send(pcm());ws().onclose?.()
+ await expect(current.finish('pause')).rejects.toThrow('atlas_voice_stream_transport')
+})
+it.each(['handshake','wire-aborted','wire-unavailable'])('PCM stops on %s instead of changing transport automatically',async mode=>{
+ const {createPcmVoiceCapture}=await import('@/lib/atlas/voice-pilot/pcm-capture')
+ let frame!:(pcm:Float32Array,prob:number)=>void
+ const active=vi.fn(),transcribe=vi.fn(async()=> 'must not reach chat'),receive=vi.fn(),fallback=vi.fn()
+ const capture=createPcmVoiceCapture({pauseMs:1200,active,receive,notice:()=>{},draft:()=>{},interrupt:()=>{},onStreamFallback:fallback},{
+  open:async cb=>{frame=cb;return {sampleRate:16000,stop:()=>{}}},
+  transcribe,streamTurn:signal=>start(signal)
+ })
+ await capture.start()
+ const frames=(ms:number,speech=false)=>{for(let i=0;i<ms;i+=20)frame(new Float32Array(320).fill(speech?.02:0),speech?.95:.01)}
+ frames(200,true)
+ if(mode==='handshake')ws().onclose?.()
+ else {ready();ws().event({type:'failed',code:mode==='wire-aborted'?'aborted':'unavailable'})}
+ frames(1200)
+ await Promise.resolve();await Promise.resolve()
+ expect(active).toHaveBeenLastCalledWith(false)
+ frames(400);frames(200,true);frames(1200)
+ expect(transcribe).not.toHaveBeenCalled()
+ expect(receive).not.toHaveBeenCalled()
+ expect(fallback).not.toHaveBeenCalled()
+ capture.stop()
+})

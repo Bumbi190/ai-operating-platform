@@ -264,14 +264,14 @@ describe('microphone stream health', () => {
 
 function streamingFixture(pauseMs = 1200, playbackMode: 'speakers' | 'headphones' = 'speakers') {
   let frame!: (value: Float32Array, probability: number) => void
-  const receive = vi.fn(), draft = vi.fn(), notice = vi.fn(), active = vi.fn(), processing = vi.fn(), interrupt = vi.fn(), stop = vi.fn(), transcribe = vi.fn()
+  const receive = vi.fn(), draft = vi.fn(), notice = vi.fn(), active = vi.fn(), processing = vi.fn(), interrupt = vi.fn(), stop = vi.fn(), transcribe = vi.fn(async (_pcm: Uint8Array, _signal: AbortSignal, _reason: string) => "Ny fråga via vanlig taligenkänning.")
   const turns: { send: ReturnType<typeof vi.fn>; finish: ReturnType<typeof vi.fn>; abort: ReturnType<typeof vi.fn>; signal: AbortSignal; resolve(text: string): void; reject(error: Error): void }[] = []
   let failSend = false
   const streamTurn = vi.fn((signal: AbortSignal) => {
     let resolve!: (text: string) => void, reject!: (error: Error) => void
     const result = new Promise<string>((yes, no) => { resolve = yes; reject = no })
     void result.catch(() => {})
-    const turn = { signal, resolve, reject, send: vi.fn((_bytes: Uint8Array) => { if (failSend) throw new Error('stream_failed') }), finish: vi.fn(() => result), abort: vi.fn() }
+    const turn = { signal, resolve, reject, send: vi.fn((_bytes: Uint8Array) => { if (failSend) throw new Error('atlas_voice_stream_transport') }), finish: vi.fn(() => result), abort: vi.fn() }
     turns.push(turn); return turn
   })
   const capture = createPcmVoiceCapture({ pauseMs, playbackMode, receive, draft, notice, active, processing, interrupt }, {
@@ -349,34 +349,35 @@ describe('optional streaming microphone turns', () => {
     f.frames(300); f.frames(100)
     expect(f.streamTurn).toHaveBeenCalledTimes(1)
     f.frames(200, true)
-    expect(f.streamTurn).toHaveBeenCalledTimes(2)
-    f.capture.finish(); await f.resolve('Ny fråga')
-    expect(f.receive).toHaveBeenCalledTimes(1); expect(f.receive).toHaveBeenCalledWith('Ny fråga')
+    expect(f.streamTurn).toHaveBeenCalledTimes(1)
+    f.capture.finish(); await Promise.resolve(); await Promise.resolve()
+    expect(f.receive).toHaveBeenCalledTimes(1); expect(f.receive).toHaveBeenCalledWith('Ny fråga via vanlig taligenkänning.')
     f.capture.stop()
   })
-  it('fails closed after two consecutive streaming transport failures without silently rerouting to batch', async () => {
+  it('never opens a second socket after a send failure and keeps the new phrase on governed batch', async () => {
     const f = streamingFixture(); await f.capture.start()
     f.frames(200, true); f.failSend(); f.frames(200, true)
-    f.frames(400); f.frames(200, true)
-    expect(f.streamTurn).toHaveBeenCalledTimes(2)
-    expect(f.stop).toHaveBeenCalledTimes(1)
-    expect(f.active).toHaveBeenLastCalledWith(false)
-    expect(f.transcribe).not.toHaveBeenCalled()
-    expect(f.receive).not.toHaveBeenCalled()
+    f.frames(400); f.frames(200, true); f.frames(1200)
+    await Promise.resolve(); await Promise.resolve()
+    expect(f.streamTurn).toHaveBeenCalledTimes(1)
+    expect(f.transcribe).toHaveBeenCalledTimes(1)
+    expect(f.receive.mock.calls).toEqual([['Ny fråga via vanlig taligenkänning.']])
+    expect(f.stop).not.toHaveBeenCalled()
+    f.capture.stop()
   })
   it('preserves microphone capture when a streamed final fails transiently, then accepts a newly spoken question', async () => {
     const f = streamingFixture(); await f.capture.start()
     f.frames(200, true); f.capture.finish()
-    f.turns[0].reject(new Error('temporary_realtime_disconnect'))
+    f.turns[0].reject(new Error('atlas_voice_stream_transport'))
     await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
     expect(f.stop).not.toHaveBeenCalled()
     expect(f.receive).not.toHaveBeenCalled()
     f.frames(1000, true)
     expect(f.streamTurn).toHaveBeenCalledTimes(1)
     f.frames(400); f.frames(200, true)
-    expect(f.streamTurn).toHaveBeenCalledTimes(2)
-    f.capture.finish(); await f.resolve('Vi fortsätter')
-    expect(f.receive).toHaveBeenCalledTimes(1); expect(f.receive).toHaveBeenCalledWith('Vi fortsätter')
+    expect(f.streamTurn).toHaveBeenCalledTimes(1)
+    f.capture.finish(); await Promise.resolve(); await Promise.resolve()
+    expect(f.receive).toHaveBeenCalledTimes(1); expect(f.receive).toHaveBeenCalledWith('Ny fråga via vanlig taligenkänning.')
     f.capture.stop()
   })
   it('still closes capture on an authority failure in streaming finalization', async () => {
@@ -404,4 +405,24 @@ describe('optional streaming microphone turns', () => {
     expect(f.streamTurn).toHaveBeenCalledTimes(3); expect(f.receive.mock.calls).toEqual([['turn0'], ['turn1'], ['turn2']])
     expect(f.turns.every(turn => turn.finish.mock.calls.length === 1 && turn.signal.aborted)).toBe(true)
   })
+})
+
+describe('fresh phrase recovery after realtime failure',()=>{
+ it('drops the failed audio and accepts the next separated phrase over batch without reopening a socket',async()=>{
+  const f=streamingFixture();await f.capture.start()
+  f.frames(200,true);f.capture.finish()
+  f.turns[0].reject(new Error('atlas_voice_stream_transport'))
+  await Promise.resolve();await Promise.resolve();await Promise.resolve()
+  f.frames(1000,true)
+  expect(f.transcribe).not.toHaveBeenCalled()
+  f.frames(400);f.frames(200,true);f.frames(1200)
+  await Promise.resolve();await Promise.resolve()
+  expect(f.streamTurn).toHaveBeenCalledTimes(1)
+  expect(f.transcribe).toHaveBeenCalledTimes(1)
+  const pcm = new Int16Array(f.transcribe.mock.calls[0][0].buffer)
+  expect(Array.from(pcm).filter(n=>n>0)).toHaveLength(3200)
+  expect(f.receive.mock.calls).toEqual([['Ny fråga via vanlig taligenkänning.']])
+  expect(f.stop).not.toHaveBeenCalled()
+  f.capture.stop()
+ })
 })

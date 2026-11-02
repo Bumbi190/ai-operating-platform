@@ -96,8 +96,8 @@ export function beginVoiceStream(signal: AbortSignal): RealtimeTurn {
         result = value.text; ended = true; cleanup(); yes(result)
       } catch { fail('invalid_event') }
     }
-    socket.onerror = () => fail('unavailable')
-    socket.onclose = () => fail('unavailable')
+    socket.onerror = () => fail(available ? 'transport' : 'unavailable')
+    socket.onclose = () => fail(available ? 'transport' : 'unavailable')
   } catch { fail('unavailable') }
   return turn
 }

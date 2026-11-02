@@ -19,7 +19,7 @@ it('defaults to batch even when streaming is available', () => {
   expect(html).toMatch(/value="batch" selected=""/)
   expect(html).not.toMatch(/value="streaming" selected=""/)
 })
-it('defaults the thinking pause to 1.4 seconds and keeps every other choice', () => {
+it('defaults the isolated trial pause to 1.4 seconds; the live call already uses 1.2', () => {
   const html = renderToStaticMarkup(React.createElement(AtlasVoiceTrial))
   expect(html).toMatch(/<option value="1400" selected="">1,4 sekunder/)
   for (const value of [1200, 2000, 3500, 5000]) expect(html).toMatch(new RegExp(`<option value="${value}"(?! selected)`))

@@ -239,3 +239,15 @@ describe('fresh review regression matrix',()=>{
   expect(r.text).toMatch(/aktuell matchande version/i)
  })
 })
+
+describe('voice campaign status handoff',()=>{
+ it('uses a verified campaign receipt without waiting for another model round',async()=>{
+  rpcData.social_campaign_read=campaignView('review_ready')
+  steps=[{name:'get_social_campaign',input:{projectId:PROJECT,campaignId:CAMPAIGN},text:'forged status before tool'}]
+  const r=await run('Vad är status på LinkedIn-kampanjen?',true)
+  expect(r.text).toContain('3 av 3')
+  expect(r.text).not.toContain('forged')
+  expect(r.persisted).toBe(r.text)
+  expect(calls).toHaveLength(1)
+ })
+})

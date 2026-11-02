@@ -1,8 +1,11 @@
 'use client'
 
-import { useEffect, useRef, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
-import { MessageCircle, Mic, MicOff, Minus, PhoneOff, Send } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { VOICE_DOCUMENT_CONTINUATION_COMMAND } from '@/lib/atlas/voice-pilot/document-mode'
+import { Check, Copy, MessageCircle, Mic, MicOff, Minus, PhoneOff, Send, Square } from 'lucide-react'
 import type { AtlasVoiceSession } from '@/lib/atlas/voice-pilot/use-voice-session'
 import { isAtlasSwedishVoice } from '@/lib/atlas/voice-pilot/voices'
 import { createMicSignalStore, type MicSignalStore } from '@/lib/atlas/voice-pilot/mic-diagnostics'
@@ -40,20 +43,42 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
   runtimeNotice?: string
 }) {
   const panel = useRef<HTMLElement>(null), messages = useRef<HTMLDivElement>(null)
+  const [copyResult, setCopyResult] = useState<{ index: number; ok: boolean } | null>(null)
+  const copyAssistantReply = (text: string, index: number) => {
+    // Explicit user gesture: copy the entire final artifact, not the TTS intro.
+    if (!navigator.clipboard?.writeText) { setCopyResult({ index, ok: false }); return }
+    void navigator.clipboard.writeText(text).then(
+      () => setCopyResult({ index, ok: true }),
+      () => setCopyResult({ index, ok: false }),
+    )
+  }
   useEffect(() => { if (!minimized) panel.current?.focus() }, [minimized])
   useEffect(() => {
     if (messages.current) messages.current.scrollTop = messages.current.scrollHeight
   }, [s.snapshot.entries, s.reply, minimized])
 
+  // The controller's transcript carries persisted incomplete-draft metadata;
+  // the text-only history alone cannot distinguish an unfinished Claude prompt.
+  const latestAssistant = [...s.snapshot.entries].reverse().find(entry => entry.kind === 'assistant')
+  const latestAssistantIndex = s.snapshot.history.reduce((last, message, index) => message.role === 'assistant' ? index : last, -1)
+  const incompleteIndex = latestAssistant?.kind === 'assistant' && latestAssistant.incomplete
+    && s.snapshot.history[latestAssistantIndex]?.content === latestAssistant.text ? latestAssistantIndex : -1
+  const continuationIndex = incompleteIndex >= 0 && latestAssistant?.kind === 'assistant' && latestAssistant.continuationAllowed
+    && !s.snapshot.pending && !s.sending ? incompleteIndex : -1
   const micOn = s.mic || s.opening
   const muteLabel = micOn ? 'Muta mikrofonen' : s.micProblem ? 'Återanslut mikrofonen' : 'Slå på mikrofonen'
   const voiceLabel = s.voice === 'nova' ? 'Nova' : s.voices.find(v => v.key === s.voice)?.label ?? 'Atlas'
-  const status = s.transcribing ? 'Tolkar det du sa' : s.speaking ? 'Pratar' : s.sending ? 'Arbetar'
+  const status = s.transcribing ? 'Tolkar det du sa' : s.speaking ? 'Pratar' : s.sending ? s.listening ? 'Lyssnar · arbetar vidare' : 'Arbetar'
     : s.opening ? 'Startar mikrofonen' : s.listening ? 'Lyssnar' : micOn ? 'Redo att lyssna'
     : s.micProblem ? 'Återanslut mikrofon' : 'Mikrofonen är mutad'
   const mute = () => s.toggleMute()
   const muteIcon = micOn ? <Mic size={17} /> : <MicOff size={17} />
   const endIcon = <PhoneOff size={17} />
+  const canInterrupt = s.speaking || s.outputBusy || s.sending || s.snapshot.pending
+  const interruptControl = canInterrupt ? <button type="button" className={styles.interrupt}
+    onClick={s.interruptForCorrection} aria-label="Stoppa rösten" title="Stoppa rösten och säg något nytt">
+    <Square size={13} /> Stopp
+  </button> : null
   const micStore = s.micSignalStore ?? EMPTY_SIGNAL_STORE
 
   if (minimized) return <aside className={styles.dock} aria-label="Pågående röstsamtal med Atlas">
@@ -64,6 +89,7 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
       </div>
     </div>
     <div className={styles.actions}>
+      {interruptControl}
       <button type="button" onClick={mute} aria-label={muteLabel} aria-pressed={!micOn} title={muteLabel}>{muteIcon}</button>
       <button type="button" onClick={onShow} aria-label="Visa chatten" title="Visa chatten"><MessageCircle size={18} /></button>
       <button type="button" className={styles.hangup} onClick={onClose} aria-label="Lägg på" title="Lägg på">{endIcon}</button>
@@ -79,6 +105,7 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
         </div>
       </div>
       <div className={styles.actions}>
+        {interruptControl}
         <button type="button" onClick={mute} aria-label={muteLabel} aria-pressed={!micOn} title={muteLabel}>{muteIcon}</button>
         <button type="button" onClick={onMinimize} aria-label="Minimera chatten" title="Minimera chatten"><Minus size={18} /></button>
         <button type="button" className={styles.hangup} onClick={onClose} aria-label="Lägg på" title="Lägg på">{endIcon}</button>
@@ -91,9 +118,28 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
       {!s.snapshot.history.length && !s.snapshot.pending && <p className={styles.empty}>Säg något till Nova, eller skriv här. Samtalet fortsätter när du minimerar chatten och navigerar i Omnira.</p>}
       {s.snapshot.history.map((message, i) => <div key={i} className={message.role === 'user' ? styles.userMessage : styles.atlasMessage}>
         <small>{message.role === 'user' ? 'Du' : voiceLabel}</small>
-        <p>{message.content}</p>
+        {message.role === 'assistant'
+          ? <div className={styles.markdown}><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>{message.content}</ReactMarkdown></div>
+          : <p>{message.content}</p>}
+        {i === incompleteIndex &&
+          <p className={styles.incompleteDraft} role="status">Ofullständigt utkast – använd inte som färdig Claude-prompt.</p>}
+        {message.role === 'assistant' && message.content.trim() &&
+          <button type="button" className={styles.copyReply}
+            onClick={() => copyAssistantReply(message.content, i)}
+            aria-label={i === incompleteIndex ? 'Kopiera ofullständigt utkast' : 'Kopiera hela svaret'}
+            title={i === incompleteIndex ? 'Kopiera endast som ofullständigt utkast' : 'Kopiera hela svaret, inklusive eventuell Claude-prompt'}>
+            {copyResult?.index === i && copyResult.ok ? <Check size={13} /> : <Copy size={13} />}
+            {copyResult?.index === i ? copyResult.ok ? 'Kopierat!' : 'Kopiera manuellt' : i === incompleteIndex ? 'Kopiera utkast' : 'Kopiera hela svaret'}
+          </button>}
+        {message.role === 'assistant' && i === continuationIndex &&
+          <button type="button" className={styles.continueDraft}
+            onClick={() => { void s.submitText(VOICE_DOCUMENT_CONTINUATION_COMMAND) }}>
+            Fortsätt utkast
+          </button>}
       </div>)}
-      {s.snapshot.pending && <p className={styles.pending}>{s.reply || 'Nova arbetar…'}</p>}
+      {s.snapshot.pending && <div className={styles.pending} role="status">
+        {s.reply ? <div className={styles.markdown}><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>{s.reply}</ReactMarkdown></div> : 'Nova arbetar…'}
+      </div>}
       {s.snapshot.testDataReviews.length > 0 && s.snapshot.id && <p className={styles.review}>
         {s.snapshot.testDataReviews.length} granskning(ar) väntar. <Link href={'/chat/' + s.snapshot.id}>Öppna i hela chatten</Link>
       </p>}
@@ -107,6 +153,7 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
     </form>
     <details className={styles.voiceSettings}>
       <summary>Mikrofontest</summary>
+      <p>Taligenkänning: {s.inputMode === 'batch' ? 'stabilt läge – ljudet tolkas när du har pratat klart' : 'realtidsläge'}.</p>
       <p>Prata normalt. Staplarna vid Nova ska röra sig när mikrofonen får ljud. Om de inte gör det, prova en annan mikrofon här.</p>
       <label htmlFor="atlas-shared-mic-device">Välj mikrofon</label>
       <select id="atlas-shared-mic-device" value={s.micDeviceId}

@@ -70,12 +70,12 @@ vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({ from: (t: string) => makeBuilder(t), rpc: () => Promise.resolve({ data: null, error: null }) }),
 }))
 
-let streamCalls: Array<{ system: string; tools: unknown[]; toolChoice?: unknown }> = []
+let streamCalls: Array<{ system: string; tools: unknown[]; toolChoice?: unknown; maxTokens?: number }> = []
 vi.mock('@anthropic-ai/sdk', () => {
   class FakeAnthropic {
     messages = {
       stream: (args: any) => {
-        streamCalls.push({ system: args.system, tools: args.tools, toolChoice: args.tool_choice })
+        streamCalls.push({ system: args.system, tools: args.tools, toolChoice: args.tool_choice, maxTokens: args.max_tokens })
         const handlers: Record<string, (d: any) => void> = {}
         return {
           on(event: string, cb: (d: any) => void) { handlers[event] = cb; return this },
@@ -294,5 +294,36 @@ describe('voice operator tools are actually offered and forced when requested', 
     expect(streamCalls[0]?.tools).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: 'handlarborsen_statistics' }),
     ]))
+  }, 15000)
+})
+
+describe('Atlas voice deliverable routing (real POST /api/chat)', () => {
+  it('gives a complete Claude prompt the documented voice budget without suppressing markdown', async () => {
+    const system = await ask('Skriv en komplett prompt till Claude för att planera workflow i Omnira', { voice: true })
+    expect(streamCalls[0]?.maxTokens).toBe(3200)
+    expect(streamCalls[0]?.toolChoice).toBeUndefined()
+    // Asking for a Claude prompt is a read-only drafting request, not a code/workflow execution approval.
+    const allowedTools = (streamCalls[0]?.tools ?? []) as Array<{ name: string }>
+    expect(allowedTools.some(tool => ['trigger_workflow', 'save_workflow', 'run_media_step', 'delegate', 'start_website_build'].includes(tool.name))).toBe(false)
+    expect(system).toContain('SKRIFTLIG LEVERANS')
+    expect(system).toContain('Kapa inte efter två meningar')
+    expect(system).not.toContain('Svara med HÖGST 2 meningar')
+  }, 15000)
+
+  it('allows a voice continuation only after an explicitly incomplete prior document', async () => {
+    const { VOICE_DOCUMENT_INCOMPLETE_WARNING } = await import('@/lib/atlas/voice-pilot/document-mode')
+    const system = await ask('Fortsätt', { voice: true, messages: [
+      { role: 'user', content: 'Skriv prompt till Claude' },
+      { role: 'assistant', content: 'Första delen.' + VOICE_DOCUMENT_INCOMPLETE_WARNING },
+      { role: 'user', content: 'Fortsätt' },
+    ] })
+    expect(streamCalls[0]?.maxTokens).toBe(3200)
+    expect(system).toContain('komplettera återstående delar')
+  }, 15000)
+  it('keeps routine spoken project questions short and cheap', async () => {
+    const system = await ask('Hur många verifierade företag har Handlarbörsen?', { voice: true })
+    expect(streamCalls[0]?.maxTokens).toBe(150)
+    expect(system).toContain('Svara med HÖGST 2 meningar')
+    expect(system).not.toContain('SKRIFTLIG LEVERANS')
   }, 15000)
 })

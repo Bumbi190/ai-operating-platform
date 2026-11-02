@@ -74,6 +74,7 @@ server.on('upgrade', (request, socket, head) => {
     if (streamMode === 'fail-once' && streamConnections === 1) { ws.close(1008); return }
     let sequence = 0, bytes = 0, finished = false, pending
     ws.send(JSON.stringify({ type: 'ready' }))
+    if (streamMode === 'drop-after-ready' && streamConnections === 1) { ws.close(1011); return }
     ws.on('message', (raw, binary) => {
       if (finished) { ws.close(1008); return }
       if (binary) {

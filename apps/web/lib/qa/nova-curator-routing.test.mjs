@@ -76,7 +76,7 @@ test('the guard is installed on the real chat turn, not only a helper', () => {
   assert.doesNotMatch(route,/const pendingNovaCuratorReview = [^\n]*!image/)
 })
 test('the tool allowlist is empty while the specialist is unavailable', () => {
-  assert.match(route,/const activeTools = pendingNovaCuratorReview \? \[\] : notionReadOnlyTurn/)
+  assert.match(route,/const baseTools = pendingNovaCuratorReview \? \[\] : notionReadOnlyTurn/)
 })
 test('other special routing is excluded during an unavailable knowledge review', () => {
   for (const name of ['hbCompositeEvidenceIntent','externalReferenceReadIntent',

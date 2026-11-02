@@ -154,6 +154,8 @@ interface AtlasRuntimeProviderProps {
   children: React.ReactNode
   /** Server-selected conversation release; never inferred from URL or storage. */
   voiceConversationEnabled?: boolean
+  /** Managed calls use governed batch STT for stability. Realtime remains an explicit trial option. */
+  voiceRealtimePreferred?: boolean
   voiceReadOnly?: boolean
   projects?: { id: string; slug: string; name: string; color: string }[]
 }
@@ -162,6 +164,7 @@ export function AtlasRuntimeProvider({
   children,
   projects = [],
   voiceConversationEnabled = false,
+  voiceRealtimePreferred = false,
   voiceReadOnly = false,
 }: AtlasRuntimeProviderProps) {
 
@@ -817,7 +820,7 @@ export function AtlasRuntimeProvider({
   }
   const voiceSession = useAtlasVoiceSession({
     enabled: voiceConversationEnabled && !voiceReadOnly,
-    streamingAvailable: true, live: true, conversation,
+    streamingAvailable: voiceRealtimePreferred, live: true, conversation,
     projectId: activeProject?.id ?? null,
     beforeStart: deactivateLegacy, onEvent: handleVoiceEvent, onDraftCaptureEnd: setCaptureError,
   })

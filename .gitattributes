@@ -17,3 +17,7 @@ apps/web/supabase/migrations/20261018083917_media_news_review_evidence.sql -text
 
 # Preserve reviewed calendar migration bytes across worktrees.
 apps/web/supabase/migrations/20261018182213_user_calendar_v1.sql -text
+
+# Exact already-applied migration sources; no SQL is run by this reconciliation.
+apps/web/supabase/migrations/20261102064659_handlarborsen_scb_live_preview_candidates.sql -text
+apps/web/supabase/migrations/20261102090200_sales_editorial_only_drafts.sql -text

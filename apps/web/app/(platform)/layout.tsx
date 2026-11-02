@@ -239,6 +239,7 @@ export default async function PlatformLayout({
     <AtlasConversationProvider>
     <AtlasRuntimeProvider projects={isCollaborator ? [] : projects}
       voiceConversationEnabled={atlasVoiceConversationEntryEnabled(user.email, Boolean(isCollaborator))}
+      voiceRealtimePreferred={false}
       voiceReadOnly={Boolean(isCollaborator)}>
     <OperatorModeProvider uiGeneration={uiGeneration}>
       {/* Presentation preferences are applied before first paint.

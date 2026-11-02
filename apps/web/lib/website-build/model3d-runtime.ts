@@ -11,8 +11,14 @@ const POSTER_PATH=/^assets\/3d\/[a-f0-9]{64}\.(?:webp|png|jpe?g)$/
 
 export function resolveModel3DAsset(config:Model3DRuntimeConfig,behavior:Model3DRuntimeBehavior):Model3DRuntimeAsset{
  const asset=config?.vehicle3dAssets?.[behavior.assetId]
- if(!asset||!GLB_PATH.test(asset.glb)||!POSTER_PATH.test(asset.poster)||(asset.truthClass!=='fictional_concept'&&asset.truthClass!=='real_vehicle_verified'))throw Error('INVALID_MODEL3D_RUNTIME_ASSET')
- return asset
+ const glb=asset?.glb,poster=asset?.poster,truthClass=asset?.truthClass
+ if(typeof glb!=='string'||typeof poster!=='string'||!GLB_PATH.test(glb)||!POSTER_PATH.test(poster)||(truthClass!=='fictional_concept'&&truthClass!=='real_vehicle_verified'))throw Error('INVALID_MODEL3D_RUNTIME_ASSET')
+ // Capture once and own the validated values. Encode only the filename segment.
+ return Object.freeze({
+  glb:'assets/3d/'+encodeURIComponent(glb.slice('assets/3d/'.length)),
+  poster:'assets/3d/'+encodeURIComponent(poster.slice('assets/3d/'.length)),
+  truthClass
+ })
 }
 
 export function model3DControlPolicy(reducedMotion:boolean){

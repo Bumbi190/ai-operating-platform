@@ -18,6 +18,18 @@ describe('model3d runtime policy',()=>{
   const bad={vehicle3dAssets:{[behavior.assetId]:{...config.vehicle3dAssets[behavior.assetId],glb}}}
   expect(()=>resolveModel3DAsset(bad,behavior)).toThrow('INVALID_MODEL3D_RUNTIME_ASSET')
  })
+ it('returns a detached validated asset so later config changes cannot redirect the poster',()=>{
+  const source={...config.vehicle3dAssets[behavior.assetId]}
+  const resolved=resolveModel3DAsset({vehicle3dAssets:{[behavior.assetId]:source}},behavior)
+  source.poster='javascript:alert(1)'
+  expect(resolved.poster).toBe('assets/3d/2b90c29009b92c32c403cf1eabdf79e07efb6e6c59b122308939d53b42c1a091.webp')
+ })
+ it('captures changing accessors once before validating the asset',()=>{
+  let reads=0
+  const source={...config.vehicle3dAssets[behavior.assetId],get poster(){return ++reads===1?config.vehicle3dAssets[behavior.assetId].poster:'javascript:alert(1)'}}
+  const resolved=resolveModel3DAsset({vehicle3dAssets:{[behavior.assetId]:source}},behavior)
+  expect(resolved.poster).toBe('assets/3d/2b90c29009b92c32c403cf1eabdf79e07efb6e6c59b122308939d53b42c1a091.webp')
+ })
  it('uses bounded controls and disables decorative motion for reduced-motion users',()=>{
   const normal=model3DControlPolicy(false)
   const reduced=model3DControlPolicy(true)

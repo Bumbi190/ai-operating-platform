@@ -3,7 +3,22 @@ import {test,expect,request as apiRequest,type Page} from '@playwright/test'
 // Actual Studio UI/routes/SQL/worker; authentication and both model providers are fixtures.
 async function preview(page:Page,width:number){if(width<=1000)await page.getByRole('tab',{name:'Preview',exact:true}).click()}
 async function chat(page:Page,width:number){if(width<=1000)await page.getByRole('tab',{name:'Chatt',exact:true}).click()}
-const readState=async(page:Page)=>page.evaluate(async()=>{const r=await fetch('/api/website-build/studio'+location.search);if(!r.ok)throw Error('Studio state '+r.status);return r.json()})
+const readState=async(page:Page)=>{
+ const current=new URL(page.url())
+ if(current.origin!=='http://127.0.0.1:54392')throw Error('Unexpected fixture origin')
+ const params=new URLSearchParams()
+ for(const key of ['project','conversation','session','include']){
+  const value=current.searchParams.get(key)
+  if(value!==null)params.set(key,value)
+ }
+ // Use a fresh connection: this fixture closes idle sockets between worker steps.
+ const client=await apiRequest.newContext({baseURL:'http://127.0.0.1:54392',storageState:await page.context().storageState(),extraHTTPHeaders:{connection:'close'}})
+ try{
+  const r=await client.get('/api/website-build/studio',{params,maxRetries:0})
+  if(!r.ok())throw Error('Studio state '+r.status())
+  return await r.json()
+ }finally{await client.dispose()}
+}
 async function driveWorker(sessionId:string){
  if(!/^[0-9a-f-]{36}$/.test(sessionId))throw Error('Invalid synthetic session')
  // A fixture control is a mutation: use a fresh connection, never retry a stale pooled request.

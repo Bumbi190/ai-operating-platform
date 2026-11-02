@@ -78,7 +78,7 @@ describe('static website artifacts', () => {
     const runtime=artifact.assets.find((a:any)=>a.kind==='model3d-runtime')
     expect(glb.path).toBe('assets/3d/a8e79963c6b370c32611aca2514caa8213368666ee34a305ef6be45dd38aa0cb.glb')
     expect(poster.path).toBe('assets/3d/2b90c29009b92c32c403cf1eabdf79e07efb6e6c59b122308939d53b42c1a091.webp')
-    expect(runtime.path).toBe('assets/runtime/9501c3559f0bb8ac281e5c3e04a37f929f548ce278d92aff1701bb61d2a1692a.js')
+    expect(runtime.path).toBe('assets/runtime/653da4edf27bd493853dc724767544ecb9f3932e874f4a96a3ee57d90ea32595.js')
     expect(artifact.pages[0].html).toContain(glb.path)
     expect(artifact.pages[0].html).toContain(poster.path)
     expect(artifact.pages[0].html).toContain('<script type="module" src="'+runtime.path+'"')

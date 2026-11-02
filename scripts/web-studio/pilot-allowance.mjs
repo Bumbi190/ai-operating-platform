@@ -2,7 +2,7 @@
 // or native execution authority. A trusted executor must derive the true maximum
 // from the exact provider request and still use Omnira's canonical spend boundary.
 // No route, SDK, network call, refund, renewal, reset or top-up is exposed here.
-import {openSync,closeSync,writeSync,fsyncSync,readFileSync,lstatSync,mkdirSync,unlinkSync} from 'node:fs'
+import {openSync,closeSync,writeSync,fsyncSync,readSync,fstatSync,constants,lstatSync,mkdirSync,unlinkSync} from 'node:fs'
 import {resolve,isAbsolute,join} from 'node:path'
 import {createHash,randomUUID} from 'node:crypto'
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
@@ -31,8 +31,22 @@ function rootPath(directory){
  return resolve(directory)
 }
 function regular(path,maximum){
- try{const s=lstatSync(path);if(!s.isFile()||s.isSymbolicLink()||s.size>maximum)fail('ALLOWANCE_CORRUPT');return readFileSync(path,'utf8')}
- catch{fail('ALLOWANCE_CORRUPT')}
+ let fd
+ try{
+  fd=openSync(path,constants.O_RDONLY|(constants.O_NOFOLLOW??0)|(constants.O_NONBLOCK??0))
+  const opened=fstatSync(fd),named=lstatSync(path)
+  if(!opened.isFile()||opened.size>maximum||named.isSymbolicLink()||!named.isFile()||opened.dev!==named.dev||opened.ino!==named.ino)fail('ALLOWANCE_CORRUPT')
+  // Inspect and read the same open file, with a hard cap even if it grows.
+  const buffer=Buffer.alloc(Math.min(maximum+1,65536)),chunks=[];let total=0
+  for(;;){
+   const n=readSync(fd,buffer,0,Math.min(buffer.length,maximum-total+1),null)
+   if(!n)break
+   total+=n;if(total>maximum)fail('ALLOWANCE_CORRUPT')
+   chunks.push(Buffer.from(buffer.subarray(0,n)))
+  }
+  return Buffer.concat(chunks,total).toString('utf8')
+ }catch{fail('ALLOWANCE_CORRUPT')}
+ finally{if(fd!==undefined)closeSync(fd)}
 }
 function writeAll(fd,text){const b=Buffer.from(text,'utf8');let offset=0;while(offset<b.length){const n=writeSync(fd,b,offset,b.length-offset);if(n<=0)fail('ALLOWANCE_WRITE_FAILED');offset+=n}fsyncSync(fd)}
 function writeNew(path,text){const fd=openSync(path,'wx',0o600);try{writeAll(fd,text)}finally{closeSync(fd)}}

@@ -111,3 +111,24 @@ test('identity values must be strings rather than regex-coerced arrays',t=>{
  for(const key of ['id','payloadSha256','priceEvidenceSha256']){const item=attempt();assert.throws(()=>consumeAllowance(path,a,{...item,[key]:[item[key]]}))}
  assert.equal(readAllowance(path,a).attempts,0)
 })
+
+test('path replacement after metadata inspection cannot change the approval bytes read',async t=>{
+ const {path,a}=fixture(t),url=new URL('./pilot-allowance.mjs',import.meta.url).href
+ const file=join(path,'approval.json')
+ const r=await child(`import fs from 'node:fs';import {syncBuiltinESMExports} from 'node:module';
+ const target=${JSON.stringify(file)},original=fs.lstatSync;let swapped=false;
+ fs.lstatSync=function(path,...args){const stat=original(path,...args);if(path===target&&!swapped){swapped=true;fs.renameSync(target,target+'.checked');fs.writeFileSync(target,JSON.stringify(${JSON.stringify({...a,limitMicros:20_000_000})}));}return stat};
+ syncBuiltinESMExports();const {readAllowance}=await import(${JSON.stringify(url)});
+ console.log(readAllowance(${JSON.stringify(path)},${JSON.stringify(a)}).remainingMicros)`)
+ assert.equal(r.exit,0,r.stderr);assert.equal(r.stdout.trim(),'10000000')
+})
+
+test('approval growth after descriptor inspection is bounded and rejected',async t=>{
+ const {path,a}=fixture(t),url=new URL('./pilot-allowance.mjs',import.meta.url).href,file=join(path,'approval.json')
+ const r=await child(`import fs from 'node:fs';import {syncBuiltinESMExports} from 'node:module';import assert from 'node:assert/strict';
+ const target=${JSON.stringify(file)},original=fs.fstatSync;let grown=false;
+ fs.fstatSync=function(fd,...args){const stat=original(fd,...args);if(!grown){grown=true;fs.appendFileSync(target,' '.repeat(17000));}return stat};
+ syncBuiltinESMExports();const {readAllowance}=await import(${JSON.stringify(url)});
+ assert.throws(()=>readAllowance(${JSON.stringify(path)},${JSON.stringify(a)}),/ALLOWANCE_CORRUPT/)`)
+ assert.equal(r.exit,0,r.stderr)
+})

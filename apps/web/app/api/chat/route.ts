@@ -1530,6 +1530,16 @@ export async function POST(request: Request) {
             })
           }
 
+          // The canonical campaign receipt is already the entire short voice
+          // answer. Do not wait for a model round whose prose must be discarded.
+          // Preparation and mixed tool rounds still need the normal agent loop.
+          if (voice && !socialPreparationTurn && toolUseBlocks.length > 0
+            && toolUseBlocks.every((tool: Anthropic.ToolUseBlock) => tool.name === 'get_social_campaign')
+            && socialResponseControlled && socialReceipts.length > 0) {
+            modelFinished = true
+            break
+          }
+
           // Add assistant response + tool results to message history
           msgs = [
             ...msgs,

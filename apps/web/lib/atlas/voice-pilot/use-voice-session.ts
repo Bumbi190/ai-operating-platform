@@ -203,6 +203,7 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
       ? (await import('@/lib/atlas/voice-pilot/stream-client')).beginVoiceStream : undefined
       if (!currentMic()) return
       const next = createPcmVoiceCapture({ pauseMs, playbackMode: mode,
+      onStreamFallback: () => { if (currentMic()) setInputMode('batch') },
       endpoint: quietMs => { lastQuietMs.current = quietMs },
       onSignal: value => { if (currentMic()) micSignalStoreRef.current?.update(value) },
       listening: value => { if (currentMic()) setListening(value) },

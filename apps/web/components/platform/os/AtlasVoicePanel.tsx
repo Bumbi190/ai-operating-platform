@@ -5,7 +5,7 @@ import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { VOICE_DOCUMENT_CONTINUATION_COMMAND } from '@/lib/atlas/voice-pilot/document-mode'
-import { Check, Copy, MessageCircle, Mic, MicOff, Minus, PhoneOff, Send } from 'lucide-react'
+import { Check, Copy, MessageCircle, Mic, MicOff, Minus, PhoneOff, Send, Square } from 'lucide-react'
 import type { AtlasVoiceSession } from '@/lib/atlas/voice-pilot/use-voice-session'
 import { isAtlasSwedishVoice } from '@/lib/atlas/voice-pilot/voices'
 import { createMicSignalStore, type MicSignalStore } from '@/lib/atlas/voice-pilot/mic-diagnostics'
@@ -68,12 +68,17 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
   const micOn = s.mic || s.opening
   const muteLabel = micOn ? 'Muta mikrofonen' : s.micProblem ? 'Återanslut mikrofonen' : 'Slå på mikrofonen'
   const voiceLabel = s.voice === 'nova' ? 'Nova' : s.voices.find(v => v.key === s.voice)?.label ?? 'Atlas'
-  const status = s.transcribing ? 'Tolkar det du sa' : s.speaking ? 'Pratar' : s.sending ? 'Arbetar'
+  const status = s.transcribing ? 'Tolkar det du sa' : s.speaking ? 'Pratar' : s.sending ? s.listening ? 'Lyssnar · arbetar vidare' : 'Arbetar'
     : s.opening ? 'Startar mikrofonen' : s.listening ? 'Lyssnar' : micOn ? 'Redo att lyssna'
     : s.micProblem ? 'Återanslut mikrofon' : 'Mikrofonen är mutad'
   const mute = () => s.toggleMute()
   const muteIcon = micOn ? <Mic size={17} /> : <MicOff size={17} />
   const endIcon = <PhoneOff size={17} />
+  const canInterrupt = s.speaking || s.outputBusy || s.sending || s.snapshot.pending
+  const interruptControl = canInterrupt ? <button type="button" className={styles.interrupt}
+    onClick={s.interruptForCorrection} aria-label="Stoppa rösten" title="Stoppa rösten och säg något nytt">
+    <Square size={13} /> Stopp
+  </button> : null
   const micStore = s.micSignalStore ?? EMPTY_SIGNAL_STORE
 
   if (minimized) return <aside className={styles.dock} aria-label="Pågående röstsamtal med Atlas">
@@ -84,6 +89,7 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
       </div>
     </div>
     <div className={styles.actions}>
+      {interruptControl}
       <button type="button" onClick={mute} aria-label={muteLabel} aria-pressed={!micOn} title={muteLabel}>{muteIcon}</button>
       <button type="button" onClick={onShow} aria-label="Visa chatten" title="Visa chatten"><MessageCircle size={18} /></button>
       <button type="button" className={styles.hangup} onClick={onClose} aria-label="Lägg på" title="Lägg på">{endIcon}</button>
@@ -99,6 +105,7 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
         </div>
       </div>
       <div className={styles.actions}>
+        {interruptControl}
         <button type="button" onClick={mute} aria-label={muteLabel} aria-pressed={!micOn} title={muteLabel}>{muteIcon}</button>
         <button type="button" onClick={onMinimize} aria-label="Minimera chatten" title="Minimera chatten"><Minus size={18} /></button>
         <button type="button" className={styles.hangup} onClick={onClose} aria-label="Lägg på" title="Lägg på">{endIcon}</button>

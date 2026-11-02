@@ -23,6 +23,7 @@ type Options = {
   notice(message: string): void; active(value: boolean): void
   listening?(value: boolean): void; processing?(value: boolean): void; endpoint?(quietMs: number): void
   onSignal?(reading: MicSignal): void
+  onStreamFallback?(): void
 }
 type Source = { sampleRate: number; stop(): void; reset?(): void }
 type EndReason = 'pause' | 'manual' | 'limit'
@@ -48,7 +49,8 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
   let voiced = false, candidateMs = 0, quietMs = 0
   // A failed realtime turn must never replay its audio or start a second paid
   // request during continuous speech. Allow a fresh turn only after silence.
-  let waitForNewSilence = false, freshSilenceMs = 0, consecutiveStreamFailures = 0
+  let waitForNewSilence = false, freshSilenceMs = 0
+  let useRealtime = Boolean(deps.streamTurn)
   const blocked = () => options.playbackMode === 'speakers' && (output || recovering)
   const ready = () => options.listening?.(live && !!source && receivedFrame && !blocked() && !upload && !capped && !waitForNewSilence)
   function abortStream() { const owned = stream; stream = null; owned?.controller.abort(); owned?.turn.abort() }
@@ -58,28 +60,26 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
     revision++; upload?.abort(); upload = null; abortStream(); options.processing?.(false); clearAudio(); ready()
   }
   /** Drop just the failed streamed question, not the browser microphone. */
-  function failedRealtimeTurn() {
-    consecutiveStreamFailures++
-    if (consecutiveStreamFailures > 1) {
-      stop()
-      options.notice('Talanslutningen avbröts flera gånger. Tryck på mikrofonen för att återansluta.')
-      return
-    }
+  function failedRealtimeTurn(error: unknown) {
+    if (isVoiceAccessFailure(error)) { stop(); options.notice(VOICE_ACCESS_NOTICE); return }
+    // Discard the failed question; only a new phrase after silence may use batch.
+    useRealtime = false
+    options.onStreamFallback?.()
     abortStream(); clearAudio()
     waitForNewSilence = true; freshSilenceMs = 0
     options.processing?.(false); ready()
-    options.notice('Talanslutningen bröts för frågan. Vänta en kort stund och säg frågan igen.')
+    options.notice('Talanslutningen bröts. Frågan skickades inte. Nästa nya fråga använder vanlig taligenkänning. Vänta tills Nova lyssnar och säg frågan igen.')
   }
   function stop() {
     generation++; live = false; clearTimeout(recovery); clearTimeout(health); receivedFrame = false; recovering = false
-    waitForNewSilence = false; freshSilenceMs = 0; consecutiveStreamFailures = 0
+    waitForNewSilence = false; freshSilenceMs = 0; useRealtime = Boolean(deps.streamTurn)
     signalMeter.reset(); discard(); device?.abort(); device = null; source?.stop(); source = null; capped = false
     options.listening?.(false); options.active(false)
   }
   async function finish(reviewOnly = false, reason: EndReason = 'manual') {
     if (!live || !source || blocked() || upload || capped) return
     const activeStream = stream
-    if (deps.streamTurn && (!voiced || !activeStream)) { options.notice('Ingen aktiv fråga har spelats in. Börja prata innan du avslutar.'); return }
+    if (useRealtime && (!voiced || !activeStream)) { options.notice('Ingen aktiv fråga har spelats in. Börja prata innan du avslutar.'); return }
     if (idleOverflow) reviewOnly = true
     const began = now(), parts = voiced ? samples : idle
     let length = voiced ? count : idleCount
@@ -98,7 +98,6 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
     try {
       const text = (await (activeStream ? activeStream.turn.finish(reviewOnly ? 'limit' : reason) : deps.transcribe(pcm16(audio!), abort.signal, reviewOnly ? 'limit' : reason))).trim()
       if (!live || token !== generation || turn !== revision || abort.signal.aborted) return
-      if (activeStream) consecutiveStreamFailures = 0
       if (!text) options.notice('Jag kunde inte urskilja några ord. Prova igen eller skriv din fråga.')
       else {
         options.draft(text)
@@ -111,7 +110,7 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
           // Security/permission refusals still stop capture. Transient network
           // failures may only restart after a fresh, clearly separated phrase.
           if (isVoiceAccessFailure(error)) { stop(); options.notice(VOICE_ACCESS_NOTICE) }
-          else failedRealtimeTurn()
+          else failedRealtimeTurn(error)
         } else {
           options.notice('Talet kunde inte tolkas. Prova att säga frågan igen eller skriv den. Kontrollera åtkomst och budget om felet återkommer.')
         }
@@ -133,7 +132,7 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
     if (live) return
     live = true; const token = ++generation
     signalMeter.reset()
-    waitForNewSilence = false; freshSilenceMs = 0; consecutiveStreamFailures = 0
+    waitForNewSilence = false; freshSilenceMs = 0; useRealtime = Boolean(deps.streamTurn)
     device = new AbortController()
     let resample: ReturnType<typeof createPcmResampler> | undefined
     const watchStream = () => {
@@ -167,7 +166,7 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
         const speech = probability >= (voiced ? 0.25 : 0.3)
         if (!voiced) {
           idle.push(pcm); idleCount += pcm.length
-          while (idleCount > (deps.streamTurn ? PCM_RATE : maxSamples) && idle.length > 1) { idleCount -= idle.shift()!.length; if (!deps.streamTurn) idleOverflow = true }
+          while (idleCount > (useRealtime ? PCM_RATE : maxSamples) && idle.length > 1) { idleCount -= idle.shift()!.length; if (!useRealtime) idleOverflow = true }
           candidateMs = speech ? candidateMs + ms : 0
           if (candidateMs < 80) return
           voiced = true
@@ -179,21 +178,21 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
             if (skip >= part.length) { skip -= part.length; continue }
             const kept = part.subarray(skip); joined.set(kept, i); i += kept.length; skip = 0
           }
-          samples = deps.streamTurn ? [] : [joined]; count = length; idle = []; idleCount = 0; idleOverflow = false
+          samples = useRealtime ? [] : [joined]; count = length; idle = []; idleCount = 0; idleOverflow = false
           // Speaker mode uses the explicit Avbryt button. Input arriving while
           // a reply is still preparing must not silently cancel its speech epoch.
           if (options.playbackMode === 'headphones') options.interrupt()
-          if (deps.streamTurn) {
+          if (useRealtime && deps.streamTurn) {
             try {
               const controller = new AbortController()
               stream = { controller, turn: deps.streamTurn(controller.signal) }
               sendStream(joined)
-            } catch { failedRealtimeTurn(); return }
+            } catch (error) { failedRealtimeTurn(error); return }
           }
         } else {
-          if (deps.streamTurn) {
+          if (useRealtime && deps.streamTurn) {
             const kept = pcm.subarray(0, Math.max(0, maxSamples - count)); count += kept.length
-            try { sendStream(kept) } catch { failedRealtimeTurn(); return }
+            try { sendStream(kept) } catch (error) { failedRealtimeTurn(error); return }
           } else { samples.push(pcm); count += pcm.length }
         }
         quietMs = speech ? 0 : quietMs + ms

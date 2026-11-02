@@ -219,3 +219,19 @@ describe('Compact persistent Atlas call shell', () => {
     expect(home).toContain('<PhoneOff size={19} />')
   })
 })
+
+describe('voice correction control availability', () => {
+  it.each([false, true])('offers a stop control while output is preparing in minimized=%s', minimized => {
+    const html = render(session({ outputBusy: true, speaking: false }), minimized)
+    expect(html).toContain('aria-label="Stoppa rösten"')
+  })
+  it.each([false, true])('offers a stop control during a pending tool turn in minimized=%s', minimized => {
+    const html = render(session({ sending: true, snapshot: { id: null, history: [], entries: [], testDataReviews: [], pending: true } }), minimized)
+    expect(html).toContain('aria-label="Stoppa rösten"')
+  })
+})
+
+it('makes resumed listening visible while an interrupted job continues in the background',()=>{
+ const html=render(session({sending:true,listening:true,speaking:false}),true)
+ expect(html).toContain('Lyssnar · arbetar vidare')
+})

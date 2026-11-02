@@ -29,6 +29,7 @@ export interface LeadFinderProps {
   researchExtractEnabled?: boolean
   archivedResearch?: ArchiveReview
   archiveSaveEnabled?: boolean
+  scbCandidateWriteEnabled?: boolean
 }
 
 const localFilterLabels: Record<LocalReviewFilter, string> = {
@@ -123,7 +124,7 @@ function LocalReviewSection({ state, search, filter }: { state: LocalReviewState
 }
 
 /** Pure presentation: no actions, email sends, data reads or test fixtures. */
-export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search, filter, localReview = { status: 'disabled' }, localSearch = '', localFilter = 'all', importPreviewEnabled = false, importWriteEnabled = false, researchEnabled = false, researchExtractEnabled = false, archivedResearch = { status: 'disabled' }, archiveSaveEnabled = false }: LeadFinderProps) {
+export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search, filter, localReview = { status: 'disabled' }, localSearch = '', localFilter = 'all', importPreviewEnabled = false, importWriteEnabled = false, researchEnabled = false, researchExtractEnabled = false, archivedResearch = { status: 'disabled' }, archiveSaveEnabled = false, scbCandidateWriteEnabled = false }: LeadFinderProps) {
   const rows = saved.status === 'ready' ? filterCandidateViews(saved.candidates, search, filter) : []
   const total = saved.status === 'ready' ? saved.candidates.length.toString() : '—'
   const reviewCount = saved.status === 'ready'
@@ -167,7 +168,7 @@ export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search,
             </div>
             <span className={styles.flag} data-tone={readiness.liveSearchAvailable ? 'info' : 'warning'}>{!readiness.scbKeyConfigured ? 'Inväntar nyckel' : readiness.liveSearchAvailable ? 'Preview-prov redo' : 'Live avstängt'}</span>
           </div>
-          <HandlarborsenScbProbeControl enabled={readiness.liveSearchAvailable} />
+          <HandlarborsenScbProbeControl enabled={readiness.liveSearchAvailable} candidateWriteEnabled={scbCandidateWriteEnabled} />
           {researchEnabled && importPreviewEnabled ? <div className={styles.source}>
             <Search size={20} aria-hidden="true" />
             <div><strong>Tavily – manuell webbresearch</strong>

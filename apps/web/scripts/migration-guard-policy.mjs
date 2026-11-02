@@ -96,8 +96,10 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // social_campaign_preparation are already applied (ledger 20261031204433 /
 // 20261101062748). Exact canonical SQL matches the applied statements; no SQL
 // is applied here. 167/153 -> 169/155; frozen histories and enforcement unchanged.
-export const EXPECTED_CANONICAL_SQL_COUNT = 169
-export const EXPECTED_ENFORCED_COUNT = 155
+// Nov 2 Harvey/Handlarbörsen live-SCB candidate provenance: 169/155 -> 170/156.
+// Forward-only constraint reconciliation only; no grandfathering or bypass.
+export const EXPECTED_CANONICAL_SQL_COUNT = 170
+export const EXPECTED_ENFORCED_COUNT = 156
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

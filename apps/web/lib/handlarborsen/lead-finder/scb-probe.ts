@@ -147,7 +147,7 @@ export async function leadFinderScbProbeApi(request: Request, deps: ScbProbeDeps
     try { evaluated = await review(row.orgnr) } catch { return respond(503, { status: 'unavailable' }) }
     if (!evaluated.ok) {
       legalReviews.push({
-        workplaceName: row.name.trim(), city: row.city,
+        workplaceName: row.name.trim(), city: row.city, workplaceCfar: row.cfar ?? null,
         legalCompanyName: null, identityReview: 'needs_manual_review',
         scbStatusClass: 'UNKNOWN_NEEDS_REVIEW', legalFormClass: 'MISSING_NEEDS_REVIEW',
         historyMatches: [], warnings: ['LEGAL_IDENTITY_NOT_CONFIRMED'],
@@ -160,7 +160,7 @@ export async function leadFinderScbProbeApi(request: Request, deps: ScbProbeDeps
       normalizedName: normalizeCompanyName(evaluated.legalName),
     })
     legalReviews.push({
-      workplaceName: row.name.trim(), city: row.city,
+      workplaceName: row.name.trim(), city: row.city, workplaceCfar: row.cfar ?? null,
       legalCompanyName: evaluated.legalName,
       identityReview: 'scb_legal_entity_confirmed',
       scbStatusClass: evaluated.status.class,

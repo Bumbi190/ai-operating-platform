@@ -15,7 +15,7 @@ const names={
  video:'showroom.'+manifest.video.sha256.slice(0,16)+'.mp4',
  runtime:'runtime.'+sha(runtime).slice(0,16)+'.js'
 }
-const listingFiles=new Map([listing.front,listing.rear,listing.cabin,listing.model].map(file=>[
+const listingFiles=new Map([listing.front,listing.rear,listing.cabin,listing.studio,listing.orbit,listing.model].map(file=>[
  file.sha256+(file===listing.model?'.glb':'.webp'),file
 ] as const))
 export function isListingViewerAsset(parts:string[]){

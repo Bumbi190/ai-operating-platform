@@ -115,7 +115,9 @@ describe('Nord R private model and reference gallery',()=>{
   expect(model.status).toBe(200)
   expect(createHash('sha256').update(Buffer.from(await model.arrayBuffer())).digest('hex')).toBe(nord.model.sha256)
   expect((await viewerMediaGet(request(),{params:{path:['3d','nord-r.glb']}})).status).toBe(404)
-  for(const view of [nord.front,nord.rear,nord.cabin]){
+  expect(nord.orbit.modelSha256).toBe(nord.model.sha256)
+  expect(nord.orbit.studioSha256).toBe(nord.studio.sha256)
+  for(const view of [nord.front,nord.rear,nord.cabin,nord.studio,nord.orbit]){
    const response=await assetGet(request(),{params:{name:view.sha256+'.webp'}})
    expect(response.status).toBe(200);expect(response.headers.get('content-type')).toBe('image/webp')
   }

@@ -426,3 +426,17 @@ test('mobile advertising reel waits for tap, plays the portrait edit and pauses'
  await expect.poll(()=>film.evaluate((v:HTMLVideoElement)=>v.paused)).toBe(true)
  await expect(page.locator('#story')).not.toHaveClass('scroll')
 })
+
+test('desktop can switch to uninterrupted playback at the current chapter',async({page})=>{
+ await page.goto('/build/demo-motors/cinematic?view=visning')
+ const film=page.locator('#reel')
+ await page.evaluate(()=>scrollTo(0,(document.querySelector('#story')!.clientHeight-innerHeight)*.5))
+ await expect.poll(()=>film.evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(8)
+ await page.getByRole('button',{name:'Spela utan scroll'}).click()
+ await expect(page.getByRole('button',{name:'Pausa filmen'})).toBeVisible()
+ await expect.poll(()=>film.evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(9.1)
+ await page.getByRole('button',{name:'Styr med scroll'}).click()
+ await expect(page.locator('#story')).toHaveClass('scroll')
+ await expect.poll(()=>film.evaluate((v:HTMLVideoElement)=>v.paused)).toBe(true)
+ await expect.poll(()=>film.evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(9)
+})

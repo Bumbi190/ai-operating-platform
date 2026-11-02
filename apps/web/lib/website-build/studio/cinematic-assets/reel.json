@@ -22,5 +22,17 @@
     "contentType": "image/webp",
     "bytes": 29274,
     "sha256": "a4e4a178863a5de0ca95fda4269f1cc8f86e6123d8de71c78d9ebc6383152137"
+  },
+  "scroll": {
+    "filename": "reel-scroll.mp4",
+    "contentType": "video/mp4",
+    "bytes": 2701787,
+    "sha256": "6f88d9262fd056482777b754269c359ad6499ce746f8c7c32181e4739f64bdbe"
+  },
+  "backdrop": {
+    "filename": "reel-evening.webp",
+    "contentType": "image/webp",
+    "bytes": 66674,
+    "sha256": "22feffcf60292c213125995a5c7499dba8b38fe924e43c5449eea328a1bc96f3"
   }
 }

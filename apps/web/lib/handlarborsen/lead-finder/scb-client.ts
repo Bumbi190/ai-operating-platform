@@ -157,6 +157,8 @@ export interface ScbClientConfig {
   apiKey?: string
   /** Injected in tests. Without it, the live gate must be open. */
   fetchImpl?: typeof fetch
+  /** Narrow caller approval after its own owner/environment gates. */
+  liveApproved?: boolean
 }
 
 export const SCB_LIVE_HOST = 'apiafr.scb.se'
@@ -182,7 +184,7 @@ export function assertScbLiveBaseUrl(baseUrl: string): void {
 }
 
 export function createScbPageFetcher(config: ScbClientConfig): ScbPageFetcher {
-  if (!config.fetchImpl && !SCB_LIVE_SEARCH_APPROVED) throw new ScbLiveSearchDisabledError()
+  if (!config.fetchImpl && !SCB_LIVE_SEARCH_APPROVED && config.liveApproved !== true) throw new ScbLiveSearchDisabledError()
   if (!config.fetchImpl) assertScbLiveBaseUrl(config.baseUrl)
   const apiKey = config.apiKey === undefined ? requireScbApiKey() : config.apiKey.trim()
   if (!apiKey) throw new ScbKeyMissingError()

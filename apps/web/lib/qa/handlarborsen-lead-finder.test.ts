@@ -341,8 +341,9 @@ describe('SCB AFR HTTP adapter (mocked, no live requests)', () => {
     expect(f.mock.calls[0][1]).toMatchObject({ redirect: 'error' })
   })
 
-  it('live search stays disabled without an injected fetch', () => {
+  it('live search stays disabled unless the caller carries explicit approval', () => {
     expect(() => createScbPageFetcher({ source: 'arbetsstallen', sni: '47811', baseUrl: BASE, apiKey: KEY })).toThrow(ScbLiveSearchDisabledError)
+    expect(() => createScbPageFetcher({ source: 'arbetsstallen', sni: '47811', baseUrl: 'https://apiafr.scb.se', apiKey: KEY, liveApproved: true })).not.toThrow()
   })
 })
 
@@ -356,6 +357,12 @@ describe('safety gates', () => {
     expect(r.scbContractVerified).toBe(true)
     expect(r.scbLiveSearchApproved).toBe(false)
     expect(r.liveSearchAvailable).toBe(false) // key + contract are not enough without explicit approval
+    const preview = getReadiness({ SCB_API_KEY: 'secret-value', VERCEL_ENV: 'preview', HB_LEADFINDER_SCB_PREVIEW_ENABLED: 'true' })
+    expect(preview.scbLiveSearchApproved).toBe(true)
+    expect(preview.liveSearchAvailable).toBe(true)
+    const production = getReadiness({ SCB_API_KEY: 'secret-value', VERCEL_ENV: 'production', HB_LEADFINDER_SCB_PREVIEW_ENABLED: 'true' })
+    expect(production.scbLiveSearchApproved).toBe(false)
+    expect(production.liveSearchAvailable).toBe(false)
     expect(r.persistence).toBe('schema_created_import_disabled') // migration exists, import remains gated
   })
   it('Google Places is disabled even when flagged and only Place IDs are storable', () => {

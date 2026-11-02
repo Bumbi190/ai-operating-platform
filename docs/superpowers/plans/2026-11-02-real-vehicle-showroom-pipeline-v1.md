@@ -269,3 +269,36 @@ separately designed, reviewed backend database writer. An event hash is not
 a digital signature. No public `approved`/verified label, customer
 Storage, 3D-generating provider, SQL migration deployment or owner
 publication permission was created.
+
+## 11. P2c — concurrent PostgreSQL audit/revision/revocation proof (2026-11-02)
+
+Added `scripts/verification/vehicle-review-race.mjs` to the existing
+disposable, network-none, 192 MB `postgres:17-alpine` test runner. The
+script opens **two independent interactive psql sessions**, observes a real
+PostgreSQL row-lock wait in a third query, then releases the winning
+transaction to verify the result. This is not just sequential SQL.
+
+Five independently verified scenarios (each PASS locally):
+- revision change commits first; old audit is refused as stale;
+- reviewer assignment is revoked first; audit is denied;
+- pending audit acquires the row lock first; model switch waits for commit;
+- underlying vehicle listing is revoked first; audit is denied;
+- project ownership transfers first; old review is denied.
+
+To close the two additional TOCTOU windows, the private
+`append_pending` SQL proposal now locks the project owner and active
+listing under `FOR SHARE`, as well as the current model revision and
+reviewer assignment. PostgreSQL requires UPDATE privilege for these row
+locks; the privileged, non-browser `service_role` alone receives
+narrow column grants on project owner and listing state. No new client
+privileges or hosted DB changes. The local suite returned exit 0
+and cleaned the disposable container.
+
+The script refuses use outside its labeled, PID-scoped, network-none
+fixture container, and CI is configured to run it whenever this
+script or SQL changes. Exact proof and limits:
+`docs/verification/web-studio/vehicle-review-audit-proof.md`.
+The separate production-auth reviewer bridge, cryptographic attestation,
+visual car-identity comparison, real photos and approval remain
+**unimplemented**; do not mistake an append-only *pending* event
+for a verified or publishable 3D vehicle.

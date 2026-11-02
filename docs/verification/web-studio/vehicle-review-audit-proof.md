@@ -82,3 +82,52 @@ the application's SHA-256 event digest, but neither timestamp nor digest
 constitutes a cryptographic signature. The fixture also rejects a
 one-hour-old event, and the DB rejects null/invalid hashes and excessive
 difference/uncertainty arrays.
+
+## Real two-session transaction interleavings (P2c)
+
+The disposable PostgreSQL fixture runner now additionally executes
+`scripts/verification/vehicle-review-race.mjs`. This JavaScript test
+may be invoked ONLY by the PowerShell fixture with
+`OMNIRA_REVIEW_RACE_TEST=disposable-local` and an exact PID-suffixed
+container name. It verifies a matching ownership Docker label, the
+`postgres:17-alpine` image and `--network none` before running a
+single database statement. No external services are accessed.
+
+Unlike sequential SQL tests, the script opens **two real, independent**
+interactive `psql` connections and uses a third probe to confirm that
+one transaction was actually blocked in PostgreSQL
+(`pg_stat_activity.wait_event_type='Lock'`) before releasing the
+first transaction. The test has bounded per-session timeouts and
+closes its own sessions; the existing outer runner deletes its
+single disposable Docker container in `finally`.
+
+All five concurrent scenarios passed in a local run on 2 Nov 2026:
+
+1. Revision-pointer UPDATE obtains the lock before audit INSERT:
+   the pending audit blocks, then returns `stale_revision`.
+2. Reviewer-assignment deactivation gets the lock first:
+   pending audit blocks, then returns `no_permission`.
+3. Pending review event obtains the FOR SHARE lock first:
+   revision change blocks until event transaction commits, then
+   updates revision; audit remains a *pending* historical event.
+4. Revocation of the underlying listing gets the lock first:
+   pending audit blocks, then returns `no_permission`.
+5. Transfer of the project's owner gets the lock first:
+   pending audit blocks, then returns `no_permission`.
+
+The SQL proposal now uses `FOR SHARE` on **project ownership and
+listing state** in addition to current revision and reviewer
+assignment, preventing two extra time-of-check/time-of-use races.
+Because PostgreSQL requires UPDATE privileges for a FOR SHARE row
+lock, the private trusted `service_role` fixture gets
+`UPDATE(owner_id)` on `public.projects` and `UPDATE(state)`
+on `website_vehicle_capture_listings`. Neither `anon` nor
+`authenticated` receives any new privileges.
+
+The local proof completed with exit 0, five PASS lines, and
+`PASS: isolated vehicle photo RLS, append-only audit and real
+two-session lock tests.` This establishes real PostgreSQL locking
+semantics in a synthetic fixture, **not** a production reviewer
+session, physical vehicle identity, human signature, or customer
+Storage acceptance. The trusted service role still MUST remain
+server-only and independently bind the authenticated reviewer's ID.

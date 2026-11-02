@@ -106,6 +106,10 @@ grant select,insert on public.website_vehicle_review_revisions to service_role;
 grant select,insert,update on public.website_vehicle_review_current to service_role;
 grant select,insert on public.website_vehicle_review_audit to service_role;
 grant select on public.website_vehicle_capture_listings,public.projects to service_role;
+-- PostgreSQL FOR SHARE row locks need UPDATE privilege for the invoker.
+-- Grant only the ownership/state columns, not general client UPDATE rights.
+grant update(owner_id) on public.projects to service_role;
+grant update(state) on public.website_vehicle_capture_listings to service_role;
 
 -- Security-critical historical facts cannot be UPDATEd/deleted, including by
 -- a service-role caller. Deliberate revision changes use new evidence records
@@ -132,6 +136,7 @@ create function website_review_private.append_pending(
 language plpgsql security invoker set search_path='' as $$
 declare
  v_owner uuid;
+ v_listing uuid;
  v_current uuid;
  v_assigned uuid;
  v_evidence uuid;
@@ -154,16 +159,18 @@ begin
    return;
  end if;
 
+ -- Lock the ownership row against a concurrent project transfer.
  select p.owner_id into v_owner from public.projects p
-  where p.id=p_project_id;
+  where p.id=p_project_id for share;
  if v_owner is null then
   return query select false,'no_permission'::text,null::uuid; return;
  end if;
- if not exists (
-  select 1 from public.website_vehicle_capture_listings l
-  where l.id=p_listing_id and l.project_id=p_project_id
-    and l.owner_id=v_owner and l.state='evidence_only'
- ) then
+ -- A concurrent listing revoke must also conflict with this lock.
+ select l.id into v_listing from public.website_vehicle_capture_listings l
+ where l.id=p_listing_id and l.project_id=p_project_id
+   and l.owner_id=v_owner and l.state='evidence_only'
+ for share;
+ if v_listing is null then
   return query select false,'no_permission'::text,null::uuid; return;
  end if;
 

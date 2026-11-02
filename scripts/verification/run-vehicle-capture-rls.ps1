@@ -13,7 +13,7 @@ function Run-Docker {
  if ($LASTEXITCODE -ne 0) { throw "Disposable Docker command failed: $($Arguments[0]) exit $LASTEXITCODE" }
 }
 try {
- Run-Docker @('run','-d','--name',$name,'--network','none','--memory','192m',
+ Run-Docker @('run','-d','--name',$name,'--label',('omnira.vehicle.audit.fixture='+$name),'--network','none','--memory','192m',
    '--cpus','1','--pids-limit','80','--shm-size','32m',
    '-e','POSTGRES_PASSWORD=synthetic-local-only',
    '-e','POSTGRES_DB=vehicle_capture_rls_fixture',
@@ -52,7 +52,10 @@ try {
    Run-Docker @('exec',$name,'psql','-X','-v','ON_ERROR_STOP=1',
      '-U','postgres','-d','vehicle_capture_rls_fixture','-f',$file.target)
  }
- Write-Host 'PASS: isolated Postgres vehicle photo RLS and append-only reviewer audit assertions.'
+ $env:OMNIRA_REVIEW_RACE_TEST='disposable-local'
+ & node (Join-Path $PSScriptRoot 'vehicle-review-race.mjs') $name
+ if ($LASTEXITCODE -ne 0) { throw 'Disposable two-session audit race proof failed' }
+ Write-Host 'PASS: isolated vehicle photo RLS, append-only audit and real two-session lock tests.'
 } finally {
  if ($created) {
   & docker rm -f $name 2>$null | Out-Null

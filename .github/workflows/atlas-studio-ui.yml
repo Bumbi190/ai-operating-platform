@@ -90,6 +90,7 @@ on:
       - 'docs/verification/web-studio/vehicle-capture-rls-*.sql'
       - 'docs/verification/web-studio/vehicle-review-audit-*.sql'
       - 'scripts/verification/run-vehicle-capture-rls.ps1'
+      - 'scripts/verification/vehicle-review-race.mjs'
       - 'apps/web/scripts/vehicle-capture-storage-auth-proof.mjs'
       - 'apps/web/lib/website-build/reference-analysis/**'
       - 'apps/web/e2e/reference-picker/**'

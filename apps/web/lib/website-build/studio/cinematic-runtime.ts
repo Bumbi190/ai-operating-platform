@@ -30,7 +30,7 @@ export const CINEMATIC_RUNTIME=String.raw`(()=>{
   play.textContent=playing?'Pausa rundturen':ready&&video.currentTime>0&&video.currentTime<lastTime()?'Fortsätt rundturen':'Spela rundturen';
  }
  function ensureSource(){
-  if(!video.getAttribute('src')){ready=false;video.src=video.dataset.src;video.load();}
+  if(!video.getAttribute('src')){ready=false;video.preload='auto';video.src=video.dataset.src;video.load();}
  }
  let scrollPlayDenied=false;
  function pauseMode(next,align){
@@ -54,9 +54,12 @@ export const CINEMATIC_RUNTIME=String.raw`(()=>{
  }
  function scrollUpdate(){
   queued=false;if(mode!=='scroll'||!ready||video.seeking)return;
-  const r=scene.getBoundingClientRect(),fraction=Math.max(0,Math.min(1,-r.top/Math.max(1,r.height-innerHeight)));
+  const r=scene.getBoundingClientRect(),travel=Math.max(1,window.scrollY+r.bottom-innerHeight);
+  // The first gesture starts above the sticky stage, while the masthead is still visible.
+  const position=Math.max(0,Math.min(1,window.scrollY/travel));
+  const fraction=position/(.75+.25*position);
   const target=fraction*lastTime(),gap=target-video.currentTime;
-  if(document.hidden||Math.abs(gap)<.035){
+  if(document.hidden||Math.abs(gap)<.025){
    if(!video.paused)video.pause();
    return;
   }
@@ -64,7 +67,7 @@ export const CINEMATIC_RUNTIME=String.raw`(()=>{
   if(r.bottom<=0||r.top>=innerHeight){video.pause();video.currentTime=target;return;}
   if(gap>0&&!scrollPlayDenied){
    // Let the decoder present consecutive frames between wheel events.
-   video.playbackRate=Math.min(2.4,Math.max(.55,gap*4));
+   video.playbackRate=Math.min(2.4,Math.max(.85,gap*6));
    if(video.paused){
     const token=epoch;
     video.play().catch(()=>{
@@ -83,10 +86,10 @@ export const CINEMATIC_RUNTIME=String.raw`(()=>{
  function schedule(){if(!queued){queued=true;requestAnimationFrame(scrollUpdate);}}
  function enableScroll(align){
   if(broken)return;
-  const fraction=ready?video.currentTime/Math.max(.1,video.duration):0;
+  const fraction=ready?video.currentTime/Math.max(.1,lastTime()):0;
   pauseMode('scroll',false);ensureSource();
   status.textContent='Scrolla ned genom hallen och bilen. Scrolla upp för att gå tillbaka.';
-  if(align)window.scrollTo({top:scene.offsetTop+fraction*Math.max(1,scene.offsetHeight-innerHeight),behavior:'instant'});
+  if(align)window.scrollTo({top:(.75*fraction/(1-.25*fraction))*Math.max(1,window.scrollY+scene.getBoundingClientRect().bottom-innerHeight),behavior:'instant'});
   schedule();
  }
  function startPlay(){

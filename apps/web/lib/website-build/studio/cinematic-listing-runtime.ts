@@ -35,8 +35,70 @@ export const LISTING_RUNTIME=String.raw`(()=>{
   deadline=setTimeout(()=>{if(frame===next)failed();},15000);
   next.src='/build/demo-motors/cinematic?view=nord-r';stage.append(next);
  }
- function showView(button){
-  [orbit,...thumbs].forEach(b=>b.setAttribute('aria-pressed',String(b===button)));
+ const tour=dialog.querySelector('#lot-tour'),film=stage.querySelector('#lot-film');
+ const filmControls=dialog.querySelector('#lot-film-controls'),timeline=dialog.querySelector('#lot-timeline');
+ let inTour=false,filmTick=0,position=0,drag=null;
+ function setPosition(value){
+  position=Math.max(0,Math.min(1000,value));timeline.value=String(position);requestFilm();queueFilm();
+ }
+ function present(){
+  filmTick=0;
+  if(!inTour||film.readyState<2||film.seeking||!Number.isFinite(film.duration))return;
+  const end=Math.max(0,film.duration-.04),target=Number(timeline.value)/1000*end;
+  const gap=target-film.currentTime;
+  if(Math.abs(gap)>.02)film.currentTime+=Math.sign(gap)*Math.min(Math.abs(gap),Math.max(.08,Math.abs(gap)*.32));
+ }
+ function queueFilm(){if(!filmTick)filmTick=requestAnimationFrame(present);}
+ function requestFilm(){
+  if(!film.hasAttribute('src')){
+   film.preload='auto';film.src=film.dataset.src;film.load();
+   loadStatus.textContent='Laddar rundturen…';loadStatus.hidden=false;
+  }
+ }
+ function stopFilm(){
+  inTour=false;drag=null;cancelAnimationFrame(filmTick);filmTick=0;
+  film.hidden=true;filmControls.hidden=true;
+  if(film.hasAttribute('src')){film.removeAttribute('src');film.load();}
+ }
+ film.addEventListener('loadeddata',()=>{
+  if(!inTour||!film.hasAttribute('src'))return;
+  film.hidden=false;photo.hidden=true;loadStatus.hidden=true;queueFilm();
+ });
+ film.addEventListener('seeked',queueFilm);
+ film.addEventListener('error',()=>{
+  if(!inTour||!film.hasAttribute('src'))return;
+  film.removeAttribute('src');film.hidden=true;photo.hidden=false;loadStatus.hidden=false;
+  loadStatus.textContent='Filmen kunde inte laddas. Välj Rundtur för att försöka igen.';
+ });
+ timeline.addEventListener('input',()=>setPosition(Number(timeline.value)));
+ stage.addEventListener('pointerdown',e=>{
+  if(!inTour||!e.isPrimary||e.button!==0)return;
+  drag={id:e.pointerId,x:e.clientX,start:position};stage.setPointerCapture(e.pointerId);
+ });
+ stage.addEventListener('pointermove',e=>{
+  if(!drag||e.pointerId!==drag.id)return;
+  setPosition(drag.start+(e.clientX-drag.x)*1000/stage.clientWidth);
+ });
+ stage.addEventListener('lostpointercapture',()=>{drag=null;});
+ stage.addEventListener('wheel',event=>{
+  if(!inTour||event.ctrlKey||!event.deltaY||Math.abs(event.deltaX)>Math.abs(event.deltaY))return;
+  const unit=event.deltaMode===1?16:event.deltaMode===2?stage.clientHeight:1;
+  const old=position,next=Math.max(0,Math.min(1000,old+event.deltaY*unit*.55));
+  if(next===old)return;
+  event.preventDefault();setPosition(next);
+ },{passive:false});
+ function showView(button,explicit=true){
+  [tour,orbit,...thumbs].forEach(b=>b.setAttribute('aria-pressed',String(b===button)));
+  if(button===tour){
+   removeFrame();inTour=true;filmControls.hidden=false;
+   if(!film.hasAttribute('src')){
+    photo.src=tour.querySelector('img').getAttribute('src');photo.alt='Nord R inför rundturen';photo.hidden=false;
+    if(explicit||(!matchMedia('(prefers-reduced-motion: reduce)').matches&&!navigator.connection?.saveData))requestFilm();
+    else{loadStatus.textContent='Dra i reglaget eller välj Rundtur för att ladda filmen.';loadStatus.hidden=false;}
+   }
+   return;
+  }
+  stopFilm();
   if(button===orbit){loadModel();return;}
   removeFrame();loadStatus.hidden=true;photo.hidden=false;
   photo.src=button.querySelector('img').getAttribute('src');photo.alt='Nord R · '+button.textContent.trim();
@@ -47,7 +109,7 @@ export const LISTING_RUNTIME=String.raw`(()=>{
  if(fallback)fallback.hidden=true;
  open.addEventListener('click',()=>{
   const from=open.closest('article').getBoundingClientRect();
-  clearDeal();dialog.showModal();dialog.scrollTop=0;showView(orbit);
+  clearDeal();dialog.showModal();dialog.scrollTop=0;position=0;timeline.value='0';showView(tour,false);
   if(!matchMedia('(prefers-reduced-motion: reduce)').matches&&dialog.animate){
    const to=dialog.getBoundingClientRect();
    const dx=from.left+from.width/2-to.left-to.width/2,dy=from.top+from.height/2-to.top-to.height/2;
@@ -56,8 +118,8 @@ export const LISTING_RUNTIME=String.raw`(()=>{
  });
  close.addEventListener('click',()=>dialog.close());
  dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
- dialog.addEventListener('close',()=>{removeFrame();clearDeal();open.focus({preventScroll:true});});
- [orbit,...thumbs].forEach(button=>button.addEventListener('click',()=>showView(button)));
+ dialog.addEventListener('close',()=>{stopFilm();removeFrame();clearDeal();open.focus({preventScroll:true});});
+ [tour,orbit,...thumbs].forEach(button=>button.addEventListener('click',()=>showView(button)));
  const confirm=dialog.querySelector('#lot-confirm');
  dialog.querySelectorAll('[data-deal]').forEach(button=>button.addEventListener('click',()=>{
   clearDeal();action=button.dataset.deal;form.hidden=false;

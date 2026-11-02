@@ -7,6 +7,7 @@ import {createCinematicDemoHtml} from './cinematic-demo'
 import {cinematicAssetNames,cinematicAssetResponse,verifyCinematicBytes} from './cinematic-assets'
 import {GET as htmlGet} from '../../../app/(platform)/build/demo-motors/cinematic/route'
 import {GET as assetGet} from '../../../app/(platform)/build/demo-motors/cinematic/assets/[name]/route'
+import {nordFilmName} from './cinematic-listing'
 import nord from './cinematic-assets/nord-r.json'
 import {GET as viewerMediaGet} from '../../../app/(platform)/build/demo-motors/assets/[...path]/route'
 const request=(range?:string)=>new Request('https://example.test/build/demo-motors/cinematic/assets/test',{
@@ -106,6 +107,10 @@ describe('Nord R private model and reference gallery',()=>{
   const frame=await htmlGet(viewer)
   expect(frame.headers.get('x-frame-options')).toBe('SAMEORIGIN')
   expect(await frame.text()).toContain(modelPath.join('/'))
+  const film=await assetGet(request('bytes=0-63'),{params:{name:nordFilmName()}})
+  expect(film.status).toBe(206)
+  expect(film.headers.get('content-type')).toBe('video/mp4')
+  expect(film.headers.get('content-range')).toBe('bytes 0-63/'+nord.film.bytes)
   const model=await viewerMediaGet(request(),{params:{path:modelPath}})
   expect(model.status).toBe(200)
   expect(createHash('sha256').update(Buffer.from(await model.arrayBuffer())).digest('hex')).toBe(nord.model.sha256)

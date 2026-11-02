@@ -6,6 +6,8 @@ const assetRoot='/build/demo-motors/cinematic/assets/'
 const imageUrl=(key:keyof typeof listingImages)=>assetRoot+listingImages[key].sha256+'.webp'
 const views=[['front','Framifrån'],['rear','Bakifrån'],['cabin','Kupén']] as const
 
+export const nordFilmName=()=>'nord-r.'+media.film.sha256.slice(0,16)+'.mp4'
+
 export function listingCardContent(){
  return `<div class="lot-visual"><img loading="lazy" width="1440" height="810" src="${imageUrl('front')}" alt="Midnattsblå Nord R framför bilhallen"><span>UR RUNDTUREN</span></div>
  <div class="lot-summary"><p class="lot-eyebrow">Demo Motors &nbsp; / &nbsp; Utvald bil</p><h3>Nord R</h3><p class="lot-subtitle">Midnattsblå · Elektrisk SUV</p>
@@ -18,8 +20,9 @@ export function listingDialog(){
  const thumbs=views.map(([key,label])=>`<button type="button" data-lot-photo="${key}" aria-pressed="false"><img loading="lazy" src="${imageUrl(key)}" alt=""><span>${label}</span></button>`).join('')
  return `<dialog id="lot-dialog" aria-labelledby="lot-title"><div class="lot-sheet">
  <header class="lot-header"><div><p class="lot-eyebrow">Demo Motors &nbsp; / &nbsp; Konceptbil 04</p><h2 id="lot-title">Nord R <small>Midnattsblå</small></h2></div><button type="button" id="lot-close" aria-label="Stäng annonsen" autofocus>Stäng &nbsp; ×</button></header>
- <div class="lot-gallery"><div class="lot-stage" id="lot-stage"><img id="lot-photo" src="${imageUrl('front')}" alt="Nord R framifrån"><span id="lot-load" role="status" hidden></span></div>
- <nav class="lot-views" aria-label="Välj fordonsvy"><button id="lot-orbit" type="button" aria-pressed="true"><b aria-hidden="true">⟲</b><span>3D-vy</span></button>${thumbs}</nav></div>
+ <div class="lot-gallery"><div class="lot-stage" id="lot-stage"><img id="lot-photo" src="${imageUrl('front')}" alt="Nord R framifrån"><video id="lot-film" muted playsinline preload="none" data-src="${assetRoot+nordFilmName()}" hidden></video><span id="lot-load" role="status" hidden></span></div>
+ <nav class="lot-views" aria-label="Välj fordonsvy"><button id="lot-tour" type="button" aria-pressed="true"><img loading="lazy" src="${imageUrl('rear')}" alt=""><span>Rundtur</span></button><button id="lot-orbit" type="button" aria-pressed="false"><b aria-hidden="true">⟲</b><span>3D-vy</span></button>${thumbs}</nav></div>
+ <div id="lot-film-controls" hidden><label for="lot-timeline">Från utsidan till förarplatsen</label><input id="lot-timeline" type="range" min="0" max="1000" value="0" step="1" aria-label="Position i bilens rundtur"><small>Scrolla, svep i sidled eller dra i reglaget.</small></div>
  <div class="lot-info"><section aria-label="Fordonsinformation"><p class="lot-eyebrow">Fordonsinformation</p><dl>${[['Årsmodell','2025'],['Mätarställning','480 mil'],['Drivmedel','El'],['Kaross','SUV'],['Kulör','Midnattsblå'],['Säljare','Demo Motors']].map(([k,v])=>`<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl></section>
  <section class="lot-offer" aria-label="Affärsalternativ"><p class="lot-eyebrow">Fast pris · Bud välkomnas</p><strong>549 000 kr</strong><div class="lot-actions"><button type="button" data-deal="buy">Köp direkt</button><button type="button" data-deal="bid">Lägg bud</button><button type="button" data-deal="contact">Kontakta säljaren</button></div>
  <form id="lot-form" hidden><p id="lot-prompt"></p><label id="lot-amount-label" hidden>Ditt bud i kronor<input name="amount" type="number" min="1" max="99999999" step="1" inputmode="numeric" disabled></label><label id="lot-message-label" hidden>Meddelande till Demo Motors<textarea name="message" rows="2" maxlength="500" disabled></textarea></label><button type="submit" id="lot-confirm">Bekräfta</button></form><p id="lot-result" role="status"></p></section></div>

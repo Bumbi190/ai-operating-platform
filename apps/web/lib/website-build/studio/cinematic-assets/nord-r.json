@@ -30,5 +30,19 @@
     "referenceJob": "7791c922-b988-49f4-affc-035e49d05743",
     "model": "tripo_h3_1_image_to_3d",
     "quotedCredits": 12
+  },
+  "film": {
+    "filename": "nord-r.mp4",
+    "contentType": "video/mp4",
+    "bytes": 3086418,
+    "sha256": "6ba3a003eb2879ce890664325437b74a285754df07bb77c0ff79d714c8ea8070",
+    "width": 1280,
+    "height": 720,
+    "durationSeconds": 8,
+    "entryJob": "b533eef5-def0-4a76-9f6d-a2832a92c9bc",
+    "interiorJob": "f7cb7c5c-ea7f-4f03-8945-6ff638cdef9d",
+    "startReference": "d29478e5-8456-4279-b205-c0c7a2a21117",
+    "cabinReference": "9545370f-f73e-4d37-8df8-4051aba75f97",
+    "entryQuotedCredits": 17.5
   }
 }

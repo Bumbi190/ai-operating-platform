@@ -136,7 +136,7 @@ export function createCinematicDemoHtml(baseHtml:string):string{
  if(about){
   const paragraphs=about.childNodes.flatMap(n=>'childNodes' in n?n.childNodes:[]).filter(n=>'tagName' in n&&n.tagName==='p')
   const last=paragraphs[paragraphs.length-1]
-  if(last&&'childNodes' in last)last.childNodes=[{nodeName:'#text',value:'Nord R har en roterbar 3D-tolkning av bilens frontbild och tre bilder från samma konceptserie. I annonsen kan du prova ett fast pris, föreslå ett bud eller skriva en fråga till Demo Motors.',parentNode:last}]
+  if(last&&'childNodes' in last)last.childNodes=[{nodeName:'#text',value:'I Nord R:s annons kan du scrolla från utsidan in till förarplatsen. Där finns också tre referensbilder och en roterbar 3D-tolkning av frontbilden. I annonsen kan du prova ett fast pris, föreslå ett bud eller skriva en fråga till Demo Motors.',parentNode:last}]
  }
  const modal=parseFragment(listingDialog()).childNodes[0];modal.parentNode=body;body.childNodes.push(modal)
  const style=parseFragment('<style>'+styles+listingStyles+'</style>').childNodes[0];style.parentNode=head;head.childNodes.push(style)

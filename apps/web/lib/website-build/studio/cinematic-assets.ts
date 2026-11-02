@@ -5,6 +5,7 @@ import manifest from './cinematic-assets/manifest.json'
 import {CINEMATIC_RUNTIME} from './cinematic-runtime'
 
 import listing from './cinematic-assets/nord-r.json'
+import {nordFilmName} from './cinematic-listing'
 import {LISTING_RUNTIME} from './cinematic-listing-runtime'
 type Integrity={bytes:number;sha256:string}
 const runtime=Buffer.from(CINEMATIC_RUNTIME+"\n;"+LISTING_RUNTIME)
@@ -27,7 +28,7 @@ export function verifyCinematicBytes(bytes:Uint8Array,expected:Integrity){
 }
 function readAsset(name:string):{bytes:Buffer;contentType:string}|null{
  if(name===names.runtime)return {bytes:runtime,contentType:'text/javascript; charset=utf-8'}
- const descriptor=name===names.poster?manifest.poster:name===names.video?manifest.video:listingFiles.get(name)
+ const descriptor=name===names.poster?manifest.poster:name===names.video?manifest.video:name===nordFilmName()?listing.film:listingFiles.get(name)
  if(!descriptor)return null
  const cwd=process.cwd()
  const root=existsSync(path.join(cwd,'lib','website-build'))?cwd:path.join(cwd,'apps','web')

@@ -234,7 +234,7 @@ test('one wheel notch traverses intermediate decoded frames in both directions',
  const trace=await page.locator('#cinema-video').evaluate(async(v:HTMLVideoElement)=>{
   const scene=document.getElementById('cinema-scene')!
   if(v.readyState<2)await new Promise(resolve=>v.addEventListener('loadeddata',resolve,{once:true}))
-  window.scrollTo({top:scene.offsetTop,behavior:'instant'})
+  window.scrollTo({top:0,behavior:'instant'})
   const move=async(top:number,target:number)=>{
    const frames:number[]=[]
    let callback=0
@@ -252,9 +252,10 @@ test('one wheel notch traverses intermediate decoded frames in both directions',
    return frames
   }
   const distance=160
-  const target=distance/(scene.offsetHeight-innerHeight)*(v.duration-.04)
-  const forward=await move(scene.offsetTop+distance,target)
-  const backward=await move(scene.offsetTop,0)
+  const position=distance/(scene.offsetTop+scene.offsetHeight-innerHeight)
+  const target=position/(.75+.25*position)*(v.duration-.04)
+  const forward=await move(distance,target)
+  const backward=await move(0,0)
   return {target,forward,backward}
  })
  await test.info().attach('decoded-scroll-trace', {body:JSON.stringify(trace),contentType:'application/json'})
@@ -274,7 +275,7 @@ test('scroll still presents the requested view when browser playback is denied',
  await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.readyState)).toBeGreaterThanOrEqual(2)
  const target=await video.evaluate((v:HTMLVideoElement)=>{
   const s=document.getElementById('cinema-scene')!
-  window.scrollTo({top:s.offsetTop+(s.offsetHeight-innerHeight)*.25,behavior:'instant'})
+  window.scrollTo({top:(s.offsetTop+s.offsetHeight-innerHeight)*(.75*.25/(1-.25*.25)),behavior:'instant'})
   return (v.duration-.04)*.25
  })
  await expect.poll(()=>video.evaluate((v:HTMLVideoElement,t)=>Math.abs(v.currentTime-t),target)).toBeLessThan(.07)
@@ -291,6 +292,21 @@ for(const width of [1440,390]){
   await page.screenshot({path:'../../.superpowers/premium-showroom/lot-card-'+width+'.jpg'})
   await trigger.click()
   await expect(dialog).toBeVisible()
+  await expect(dialog.locator('#lot-film')).toBeVisible()
+  await expect(dialog.locator('iframe')).toHaveCount(0)
+  const slider=dialog.locator('#lot-timeline')
+  await slider.focus();await page.keyboard.press('End')
+  await expect.poll(()=>dialog.locator('#lot-film').evaluate((v:HTMLVideoElement)=>v.duration-v.currentTime)).toBeLessThan(.12)
+  await page.keyboard.press('Home')
+  await expect.poll(()=>dialog.locator('#lot-film').evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeLessThan(.12)
+  await dialog.locator('#lot-stage').hover();await page.mouse.wheel(0,160)
+  await expect.poll(()=>dialog.locator('#lot-film').evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(.3)
+  const stage=await dialog.locator('#lot-stage').boundingBox()
+  await page.mouse.move(stage!.x+stage!.width*.15,stage!.y+stage!.height*.45)
+  await page.mouse.down();await page.mouse.move(stage!.x+stage!.width*.9,stage!.y+stage!.height*.45,{steps:8});await page.mouse.up()
+  await expect.poll(()=>dialog.locator('#lot-film').evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(5)
+  await page.screenshot({path:'../../.superpowers/premium-showroom/entry-cabin-'+width+'.jpg'})
+  await dialog.locator('#lot-orbit').click()
   const viewer=dialog.frameLocator('iframe')
   await expect(viewer.locator('#vehicle-stage')).toHaveAttribute('data-model3d-state','ready',{timeout:20000})
   const canvas=viewer.locator('canvas')
@@ -325,6 +341,7 @@ for(const width of [1440,390]){
 test('featured listing keeps the reference photos available if the private model fails',async({page})=>{
  await page.route('**/assets/3d/*.glb',r=>r.abort())
  await page.goto('/build/demo-motors/cinematic');await page.locator('#lot-open').click()
+ await page.locator('#lot-orbit').click()
  await expect(page.locator('#lot-load')).toContainText('kunde inte laddas')
  await page.locator('[data-lot-photo="front"]').click();await expect(page.locator('#lot-photo')).toBeVisible()
  await page.locator('#lot-close').click();await expect(page.locator('#lot-open')).toBeFocused()
@@ -335,6 +352,7 @@ test('missing viewer module keeps the front photo and can retry into interactive
  await page.route(script,r=>r.fulfill({status:500,body:''}))
  await page.goto('/build/demo-motors/cinematic')
  await page.locator('#lot-open').click()
+ await page.locator('#lot-orbit').click()
  await expect(page.locator('#lot-load')).toContainText('kunde inte laddas')
  await expect(page.locator('#lot-photo')).toBeVisible()
  await page.unroute(script)
@@ -342,4 +360,25 @@ test('missing viewer module keeps the front photo and can retry into interactive
  await expect(page.frameLocator('#lot-stage iframe').locator('#vehicle-stage')).toHaveAttribute('data-model3d-state','ready',{timeout:20000})
  await expect(page.locator('#lot-stage iframe')).toBeVisible()
  await expect(page.locator('#lot-load')).toBeHidden()
+})
+test('the first wheel gesture advances the hero before the header has left the screen',async({page})=>{
+ await page.goto('/build/demo-motors/cinematic')
+ const video=page.locator('#cinema-video')
+ await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.readyState)).toBeGreaterThanOrEqual(2)
+ const distance=await page.locator('#cinema-scene').evaluate(el=>Math.floor(el.getBoundingClientRect().top/2))
+ expect(distance).toBeGreaterThan(10)
+ await page.mouse.wheel(0,distance)
+ await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(.07)
+ expect(await page.locator('#cinema-scene').evaluate(el=>el.getBoundingClientRect().top)).toBeGreaterThan(0)
+})
+test('listing tour waits on data saver and keeps photos if video fails',async({page})=>{
+ await page.addInitScript(()=>Object.defineProperty(navigator,'connection',{value:{saveData:true},configurable:true}))
+ await page.route('**/cinematic/assets/nord-r.*.mp4',r=>r.abort())
+ await page.goto('/build/demo-motors/cinematic');await page.locator('#lot-open').click()
+ await expect(page.locator('#lot-film')).not.toHaveAttribute('src',/.+/)
+ await page.locator('#lot-tour').click()
+ await expect(page.locator('#lot-load')).toContainText('Filmen kunde inte laddas')
+ await expect(page.locator('#lot-photo')).toBeVisible()
+ await page.locator('[data-lot-photo="cabin"]').click()
+ await expect(page.locator('#lot-photo')).toHaveAttribute('alt',/Kupén/)
 })

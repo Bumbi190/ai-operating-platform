@@ -37,47 +37,68 @@ export const LISTING_RUNTIME=String.raw`(()=>{
  }
  const tour=dialog.querySelector('#lot-tour'),film=stage.querySelector('#lot-film');
  const filmControls=dialog.querySelector('#lot-film-controls'),timeline=dialog.querySelector('#lot-timeline');
- let inTour=false,filmTick=0,position=0,drag=null;
- function setPosition(value){
+ let inTour=false,filmTick=0,position=0,drag=null,allowPlay=true,direct=false;
+ const allowWarm=()=>!matchMedia('(prefers-reduced-motion: reduce)').matches&&!navigator.connection?.saveData;
+ function warmFilm(){
+  if(film.hasAttribute('src'))return;
+  film.preload='auto';film.src=film.dataset.src;film.load();
+ }
+ function showFilm(){
+  if(!inTour||film.readyState<2)return;
+  film.hidden=false;photo.hidden=true;loadStatus.hidden=true;queueFilm();
+ }
+ function setPosition(value,jump=false){
+  direct=jump;
   position=Math.max(0,Math.min(1000,value));timeline.value=String(position);requestFilm();queueFilm();
  }
  function present(){
   filmTick=0;
   if(!inTour||film.readyState<2||film.seeking||!Number.isFinite(film.duration))return;
-  const end=Math.max(0,film.duration-.04),target=Number(timeline.value)/1000*end;
+  const end=Math.max(0,film.duration-.04),target=position/1000*end;
   const gap=target-film.currentTime;
-  if(Math.abs(gap)>.02)film.currentTime+=Math.sign(gap)*Math.min(Math.abs(gap),Math.max(.08,Math.abs(gap)*.32));
+  if(Math.abs(gap)<.026||document.hidden){film.pause();return;}
+  // Dragging addresses an exact frame. Wheel input travels through the frames in between.
+  if(direct||Math.abs(gap)>1.1){
+   film.pause();film.currentTime=direct?target:target-Math.sign(gap)*.45;return;
+  }
+  if(gap>0&&allowPlay){
+   const rate=gap>.8?1.5:1;
+   if(film.playbackRate!==rate)film.playbackRate=rate;
+   if(film.paused)film.play().catch(err=>{
+    if(err.name==='NotAllowedError'){allowPlay=false;queueFilm();}
+   });
+   queueFilm();return;
+  }
+  film.pause();film.currentTime+=Math.sign(gap)*Math.min(Math.abs(gap),Math.max(1/30,Math.abs(gap)*.10));
  }
  function queueFilm(){if(!filmTick)filmTick=requestAnimationFrame(present);}
  function requestFilm(){
-  if(!film.hasAttribute('src')){
-   film.preload='auto';film.src=film.dataset.src;film.load();
-   loadStatus.textContent='Laddar rundturen…';loadStatus.hidden=false;
-  }
+  warmFilm();
+  if(film.readyState>=2){showFilm();return;}
+  if(!film.hidden)return;
+  loadStatus.textContent='Laddar rundturen…';loadStatus.hidden=false;
  }
  function stopFilm(){
   inTour=false;drag=null;cancelAnimationFrame(filmTick);filmTick=0;
   film.hidden=true;filmControls.hidden=true;
-  if(film.hasAttribute('src')){film.removeAttribute('src');film.load();}
+  film.pause();
  }
- film.addEventListener('loadeddata',()=>{
-  if(!inTour||!film.hasAttribute('src'))return;
-  film.hidden=false;photo.hidden=true;loadStatus.hidden=true;queueFilm();
- });
- film.addEventListener('seeked',queueFilm);
+ film.addEventListener('loadeddata',showFilm);
+ document.addEventListener('visibilitychange',()=>{if(document.hidden)film.pause();else if(inTour)queueFilm();});
+ film.addEventListener('seeked',showFilm);
  film.addEventListener('error',()=>{
-  if(!inTour||!film.hasAttribute('src'))return;
-  film.removeAttribute('src');film.hidden=true;photo.hidden=false;loadStatus.hidden=false;
+  if(!film.hasAttribute('src'))return;
+  film.removeAttribute('src');if(!inTour)return;film.hidden=true;photo.hidden=false;loadStatus.hidden=false;
   loadStatus.textContent='Filmen kunde inte laddas. Välj Rundtur för att försöka igen.';
  });
- timeline.addEventListener('input',()=>setPosition(Number(timeline.value)));
+ timeline.addEventListener('input',()=>setPosition(Number(timeline.value),true));
  stage.addEventListener('pointerdown',e=>{
   if(!inTour||!e.isPrimary||e.button!==0)return;
   drag={id:e.pointerId,x:e.clientX,start:position};stage.setPointerCapture(e.pointerId);
  });
  stage.addEventListener('pointermove',e=>{
   if(!drag||e.pointerId!==drag.id)return;
-  setPosition(drag.start+(e.clientX-drag.x)*1000/stage.clientWidth);
+  setPosition(drag.start+(e.clientX-drag.x)*1000/stage.clientWidth,true);
  });
  stage.addEventListener('lostpointercapture',()=>{drag=null;});
  stage.addEventListener('wheel',event=>{
@@ -91,11 +112,10 @@ export const LISTING_RUNTIME=String.raw`(()=>{
   [tour,orbit,...thumbs].forEach(b=>b.setAttribute('aria-pressed',String(b===button)));
   if(button===tour){
    removeFrame();inTour=true;filmControls.hidden=false;
-   if(!film.hasAttribute('src')){
-    photo.src=tour.querySelector('img').getAttribute('src');photo.alt='Nord R inför rundturen';photo.hidden=false;
-    if(explicit||(!matchMedia('(prefers-reduced-motion: reduce)').matches&&!navigator.connection?.saveData))requestFilm();
-    else{loadStatus.textContent='Dra i reglaget eller välj Rundtur för att ladda filmen.';loadStatus.hidden=false;}
-   }
+   if(film.readyState>=2){showFilm();return;}
+   photo.src=tour.querySelector('img').getAttribute('src');photo.alt='Nord R inför rundturen';photo.hidden=false;
+   if(explicit||film.hasAttribute('src')||allowWarm())requestFilm();
+   else{loadStatus.textContent='Dra i reglaget eller välj Rundtur för att ladda filmen.';loadStatus.hidden=false;}
    return;
   }
   stopFilm();
@@ -104,12 +124,24 @@ export const LISTING_RUNTIME=String.raw`(()=>{
   photo.src=button.querySelector('img').getAttribute('src');photo.alt='Nord R · '+button.textContent.trim();
  }
  function clearDeal(){action='';form.reset();form.hidden=true;result.textContent='';}
+ const card=open.closest('article');
+ function anticipate(){if(allowWarm())warmFilm();}
+ if('IntersectionObserver' in window){
+  const nearCard=new IntersectionObserver(entries=>{
+   if(entries.some(entry=>entry.isIntersecting)&&allowWarm()){
+    nearCard.disconnect();warmFilm();
+   }
+  },{threshold:.25});
+  nearCard.observe(card);
+ }
+ card.addEventListener('pointerenter',anticipate);
+ open.addEventListener('focus',anticipate);
  open.hidden=false;
  const fallback=open.closest('article').querySelector('details');
  if(fallback)fallback.hidden=true;
  open.addEventListener('click',()=>{
   const from=open.closest('article').getBoundingClientRect();
-  clearDeal();dialog.showModal();dialog.scrollTop=0;position=0;timeline.value='0';showView(tour,false);
+  clearDeal();dialog.showModal();dialog.scrollTop=0;position=0;direct=true;timeline.value='0';showView(tour,false);
   if(!matchMedia('(prefers-reduced-motion: reduce)').matches&&dialog.animate){
    const to=dialog.getBoundingClientRect();
    const dx=from.left+from.width/2-to.left-to.width/2,dy=from.top+from.height/2-to.top-to.height/2;
@@ -118,7 +150,7 @@ export const LISTING_RUNTIME=String.raw`(()=>{
  });
  close.addEventListener('click',()=>dialog.close());
  dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
- dialog.addEventListener('close',()=>{stopFilm();removeFrame();clearDeal();open.focus({preventScroll:true});});
+ dialog.addEventListener('close',()=>{stopFilm();if(film.readyState>=2)film.currentTime=0;removeFrame();clearDeal();open.focus({preventScroll:true});});
  [tour,orbit,...thumbs].forEach(button=>button.addEventListener('click',()=>showView(button)));
  const confirm=dialog.querySelector('#lot-confirm');
  dialog.querySelectorAll('[data-deal]').forEach(button=>button.addEventListener('click',()=>{

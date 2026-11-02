@@ -382,3 +382,21 @@ test('listing tour waits on data saver and keeps photos if video fails',async({p
  await page.locator('[data-lot-photo="cabin"]').click()
  await expect(page.locator('#lot-photo')).toHaveAttribute('alt',/Kupén/)
 })
+test('Nord R warms at the card and reuses the decoded film across views and reopen',async({page})=>{
+ await page.goto('/build/demo-motors/cinematic')
+ const film=page.locator('#lot-film'),open=page.locator('#lot-open')
+ await expect(film).not.toHaveAttribute('src',/.+/)
+ await open.scrollIntoViewIfNeeded()
+ await expect.poll(()=>film.evaluate((v:HTMLVideoElement)=>v.readyState)).toBeGreaterThanOrEqual(2)
+ const loads=await film.evaluateHandle(v=>{
+  const counter={value:0};v.addEventListener('loadstart',()=>counter.value++);return counter
+ })
+ await open.click();await expect(film).toBeVisible()
+ await page.locator('#lot-timeline').press('End')
+ await expect.poll(()=>film.evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(7)
+ await page.locator('[data-lot-photo="front"]').click()
+ await page.locator('#lot-tour').click();await expect(film).toBeVisible()
+ await page.locator('#lot-close').click();await open.click()
+ await expect.poll(()=>film.evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeLessThan(.07)
+ expect(await loads.evaluate(counter=>counter.value)).toBe(0)
+})

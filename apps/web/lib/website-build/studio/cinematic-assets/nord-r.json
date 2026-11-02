@@ -34,8 +34,8 @@
   "film": {
     "filename": "nord-r.mp4",
     "contentType": "video/mp4",
-    "bytes": 3086418,
-    "sha256": "6ba3a003eb2879ce890664325437b74a285754df07bb77c0ff79d714c8ea8070",
+    "bytes": 2196193,
+    "sha256": "d02ce1145a60f8e63e89f9c1c19e68478995ae2d0225c4c94dbc60fb897ad85b",
     "width": 1280,
     "height": 720,
     "durationSeconds": 8,

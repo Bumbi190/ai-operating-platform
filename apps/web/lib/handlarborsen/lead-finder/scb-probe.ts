@@ -74,12 +74,16 @@ async function reviewScbLegalEntity(orgnrRaw: string, env: Record<string, string
   return evaluateScbCompany({ expectedOrgnr: orgnr, je })
 }
 
-function parseConfirmation(text: string): boolean {
+function parseRequest(text: string): { offset: 0 | 5 | 10 } | null {
   let body: unknown
-  try { body = JSON.parse(text) } catch { return false }
-  if (body === null || typeof body !== 'object' || Array.isArray(body)) return false
+  try { body = JSON.parse(text) } catch { return null }
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) return null
   const rec = body as Record<string, unknown>
-  return Object.keys(rec).length === 1 && rec.confirmation === SCB_PROBE_CONFIRMATION
+  const keys = Object.keys(rec).sort()
+  if (keys.join(',') !== 'confirmation' && keys.join(',') !== 'confirmation,offset') return null
+  if (rec.confirmation !== SCB_PROBE_CONFIRMATION) return null
+  const offset = rec.offset === undefined ? 0 : rec.offset
+  return offset === 0 || offset === 5 || offset === 10 ? { offset } : null
 }
 
 export async function leadFinderScbProbeApi(request: Request, deps: ScbProbeDeps): Promise<Response> {
@@ -108,7 +112,8 @@ export async function leadFinderScbProbeApi(request: Request, deps: ScbProbeDeps
   let text: string
   try { text = await request.text() } catch { return respond(400, { status: 'body_invalid' }) }
   if (text.length > MAX_BODY_BYTES) return respond(413, { status: 'body_too_large' })
-  if (!parseConfirmation(text)) return respond(400, { status: 'confirmation_invalid' })
+  const parsed = parseRequest(text)
+  if (!parsed) return respond(400, { status: 'confirmation_invalid' })
 
   let result: ScbProbeSearchResult
   try {
@@ -128,7 +133,7 @@ export async function leadFinderScbProbeApi(request: Request, deps: ScbProbeDeps
     seen.add(key)
     return true
   })
-  const sampleRows = matching.slice(0, MAX_SAMPLE)
+  const sampleRows = matching.slice(parsed.offset, parsed.offset + MAX_SAMPLE)
 
   let known: KnownContacts | null = null
   if (deps.loadKnownContacts) {
@@ -186,6 +191,7 @@ export async function leadFinderScbProbeApi(request: Request, deps: ScbProbeDeps
     scannedRows: result.rows.length,
     truncated: result.truncated,
     matchCount: matching.length,
+    offset: parsed.offset,
     sample: sampleRows.map(row => ({
       name: row.name.trim(), city: row.city, cfar: row.cfar, sniCodes: row.sniCodes,
     })),

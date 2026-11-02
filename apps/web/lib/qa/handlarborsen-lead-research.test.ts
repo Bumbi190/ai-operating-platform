@@ -194,6 +194,19 @@ describe('Atlas Lead Research Worker v1: research is NOT contact authorization',
     })
     expect(r.outreachReady).toBe(false)
   })
+  it('accepts a public department-scoped sales mailbox but still blocks outreach pending review',()=> {
+    const job=getJob()
+    const r=evaluateLeadEvidence(job,[obs(job,{
+      generalBusinessEmail:'forsaljning.audimalmo@syntetiskbil.se',
+      emailSourceUrl:'https://syntetiskbil.se/kontakt',
+    })])
+    expect(r.contactProposal).toMatchObject({
+      generalBusinessEmail:{value:'forsaljning.audimalmo@syntetiskbil.se',sourceUrl:'https://syntetiskbil.se/kontakt'},
+      status:'NEEDS_MANUAL_CONTACT_CHECK',
+      contactability:'BLOCKED_PENDING_VERIFICATION',
+    })
+    expect(r.outreachReady).toBe(false)
+  })
   it('never elevates personal emails, mobile numbers, wrong domains or unsafe contact pages',()=>{
     const job=getJob()
     const cases=[

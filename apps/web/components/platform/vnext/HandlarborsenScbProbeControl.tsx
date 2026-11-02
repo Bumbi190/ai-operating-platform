@@ -22,6 +22,7 @@ type LegalReview = {
 type ProbeResult = {
   status: string
   matchCount?: number
+  offset?: number
   scannedRows?: number
   pages?: number
   legalReviews?: LegalReview[]
@@ -44,7 +45,7 @@ export function HandlarborsenScbProbeControl({ enabled, candidateWriteEnabled = 
 
   if (!enabled) return null
 
-  async function run() {
+  async function run(offset = 0) {
     if (busy) return
     setBusy(true)
     setError('')
@@ -54,7 +55,7 @@ export function HandlarborsenScbProbeControl({ enabled, candidateWriteEnabled = 
       const response = await fetch('/api/atlas/handlarborsen/lead-finder/scb-probe', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ confirmation: 'TESTA SCB BILHANDLARE' }),
+        body: JSON.stringify({ confirmation: 'TESTA SCB BILHANDLARE', offset }),
         cache: 'no-store',
         credentials: 'same-origin',
       })
@@ -96,11 +97,17 @@ export function HandlarborsenScbProbeControl({ enabled, candidateWriteEnabled = 
       <strong>SCB – avgränsat Malmö-prov</strong>
       <p>Fast SNI 47.811, Malmö kommun och högst fem juridiskt kontrollerade arbetsställen. Provet är läsande tills du uttryckligen väljer en rad för kandidatgranskning.</p>
       <div className={styles.filters}>
-        <button type="button" onClick={run} disabled={busy}>{busy ? 'Testar SCB…' : 'Testa SCB-källa'}</button>
+        <button type="button" onClick={() => run(0)} disabled={busy}>{busy ? 'Testar SCB…' : 'Testa SCB-källa'}</button>
       </div>
       {error ? <p role="alert">{error}</p> : null}
       {result ? <>
-        <p><strong>{result.matchCount ?? 0} Malmöträffar</strong> efter {result.scannedRows ?? 0} lästa arbetsställen på {result.pages ?? 0} sida/sidor. Ingen post sparas automatiskt.</p>
+        <p><strong>{result.matchCount ?? 0} Malmöträffar</strong> efter {result.scannedRows ?? 0} lästa arbetsställen på {result.pages ?? 0} sida/sidor. Visar träff {(result.offset ?? 0) + 1}–{Math.min((result.offset ?? 0) + (result.legalReviews?.length ?? 0), result.matchCount ?? 0)}. Ingen post sparas automatiskt.</p>
+        <div className={styles.filters}>
+          {(result.offset ?? 0) > 0 ? <button type="button" disabled={busy || saving !== null} onClick={() => run(Math.max(0, (result.offset ?? 0) - 5))}>Föregående 5</button> : null}
+          {(result.offset ?? 0) + (result.legalReviews?.length ?? 0) < (result.matchCount ?? 0)
+            ? <button type="button" disabled={busy || saving !== null} onClick={() => run(Math.min(10, (result.offset ?? 0) + 5))}>Nästa 5</button>
+            : null}
+        </div>
         {typeof result.knownOmniraContacts === 'number'
           ? <p>Jämförelse gjord mot {result.knownOmniraContacts} Omnira-kontakter samt dokumenterad pilothistorik. Historiken är fortfarande partiell.</p>
           : <p>Omnira-kontakthistoriken kunde inte användas i provet. Resultaten förblir blockerade.</p>}

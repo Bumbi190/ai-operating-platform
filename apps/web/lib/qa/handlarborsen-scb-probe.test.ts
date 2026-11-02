@@ -99,6 +99,38 @@ describe('Handlarbörsen SCB Preview probe', () => {
     expect(res.headers.get('cache-control')).toBe('private, no-store')
   })
 
+  it('pages the bounded fourteen-match result set in fixed batches of five', async () => {
+    const many: ScbRegisterRecord[] = Array.from({ length: 12 }, (_, i) => ({
+      orgnr: withCheckDigit(`55620000${i}`),
+      name: `Malmö Bil ${i}`,
+      cfar: String(3000 + i),
+      sniCodes: ['47.811'],
+      countyCode: '12',
+      municipalityCode: '1280',
+      city: 'MALMÖ',
+    }))
+    const reviewed: string[] = []
+    const res = await leadFinderScbProbeApi(request({ confirmation: SCB_PROBE_CONFIRMATION, offset: 5 }), {
+      ...deps,
+      search: async () => ({ rows: many, pages: 1, truncated: false }),
+      reviewLegalEntity: async orgnr => {
+        reviewed.push(orgnr)
+        return evaluateScbCompany({ expectedOrgnr: orgnr, je: { peOrgNr: `16${orgnr}`, namn: 'Testbolag AB', ftgStat: '1', jurform: '49' } })
+      },
+      sleep: async () => {},
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.offset).toBe(5)
+    expect(body.matchCount).toBe(12)
+    expect(body.legalReviews).toHaveLength(5)
+    expect(body.legalReviews[0].workplaceCfar).toBe('3005')
+    expect(reviewed).toHaveLength(5)
+    expect((await leadFinderScbProbeApi(request({ confirmation: SCB_PROBE_CONFIRMATION, offset: 15 }), {
+      ...deps, search: async () => ({ rows: many, pages: 1, truncated: false }),
+    })).status).toBe(400)
+  })
+
   it('caps legal lookups at five and maps source or legal-entity failure to a generic 503', async () => {
     const many: ScbRegisterRecord[] = Array.from({ length: 8 }, (_, i) => ({
       orgnr: withCheckDigit(`55610000${i}`),

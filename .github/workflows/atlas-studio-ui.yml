@@ -86,6 +86,7 @@ on:
       - 'apps/web/lib/website-build/assets/**'
       - 'apps/web/lib/website-build/vehicle-verification/**'
       - 'docs/superpowers/plans/*real-vehicle*'
+      - 'docs/sql/atlas-studio-real-vehicle-*-proposed.sql'
       - 'apps/web/lib/website-build/reference-analysis/**'
       - 'apps/web/e2e/reference-picker/**'
       - 'apps/web/playwright.reference-picker.config.ts'

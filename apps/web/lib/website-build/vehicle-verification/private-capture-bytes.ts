@@ -15,11 +15,11 @@ type Photo={
  kind:CaptureKind;sha256:string;storageRef:string;format:Format;
  bytes:number;width:number;height:number
 }
-type Binding={
+export type CaptureAccessBinding={
  userId:string
  allowedProjectIds:readonly string[]
 }
-type Ports={
+export type CaptureBytesPorts={
  listingBelongsToProject:(projectId:string,listingId:string)=>Promise<boolean>
  readPrivateOriginal:(bucket:typeof VEHICLE_CAPTURE_PRIVATE_BUCKET,path:string,maxBytes:number)=>Promise<Uint8Array|null>
 }
@@ -45,7 +45,7 @@ function hasSignature(data:Uint8Array,type:Format):boolean{
  * reviewer credentials still need trusted inspection; status is NOT approval.
  */
 export async function checkPrivateVehicleCaptureBytes(
- intake:unknown,access:Binding,ports:Ports
+ intake:unknown,access:CaptureAccessBinding,ports:CaptureBytesPorts
 ):Promise<Result>{
  const checked=evaluateVehicleCaptureIntake(intake)
  if(checked.status!=='ready_for_human_review')return refused(checked.reason)

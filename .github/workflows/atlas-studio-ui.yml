@@ -87,6 +87,8 @@ on:
       - 'apps/web/lib/website-build/vehicle-verification/**'
       - 'docs/superpowers/plans/*real-vehicle*'
       - 'docs/sql/atlas-studio-real-vehicle-*-proposed.sql'
+      - 'docs/verification/web-studio/vehicle-capture-rls-*.sql'
+      - 'scripts/verification/run-vehicle-capture-rls.ps1'
       - 'apps/web/lib/website-build/reference-analysis/**'
       - 'apps/web/e2e/reference-picker/**'
       - 'apps/web/playwright.reference-picker.config.ts'
@@ -233,6 +235,9 @@ jobs:
         run: node --test apps/web/scripts/website-test-target.test.mjs apps/web/scripts/website-test-mode.test.mjs
       - name: Cache disposable PostgreSQL image
         run: docker pull postgres:17-alpine
+      - name: Verify proposed private vehicle photo RLS with synthetic owners
+        shell: pwsh
+        run: ./scripts/verification/run-vehicle-capture-rls.ps1
       - name: Install isolated Chromium
         working-directory: apps/web
         run: npx --no-install playwright install --with-deps chromium
@@ -242,7 +247,9 @@ jobs:
         run: node apps/web/scripts/run-website-sql-roundtrip.mjs --studio
       - name: Verify owned SQL cleanup
         if: always()
-        run: test -z "$(docker ps -aq --filter label=com.omnira.website.sql.run)"
+        run: |
+          test -z "$(docker ps -aq --filter label=com.omnira.website.sql.run)"
+          test -z "$(docker ps -aq --filter name=omnira-vehicle-capture-rls-)"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

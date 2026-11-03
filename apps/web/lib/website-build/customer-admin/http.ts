@@ -2,10 +2,10 @@
  * actual GoTrue token. The privileged fixture key never enters this module. */
 import {randomBytes} from 'node:crypto'
 import {displayPhoto, galleryPhoto} from './photo'
-import {adminView,loginView,showroomView,type Catalog,type VehicleContent,type Workspace} from './views'
+import {adminView,loginView,showroomView,siteAdminView,type Catalog,type SiteContent,type SiteWorkspace,type VehicleContent,type Workspace} from './views'
 
 type Config = {origin:string; url:string; anonKey:string}
-type Session = {token:string; expires:number; origin:string}
+type Session = {token:string; expires:number; origin:string; pageNotice?:{slug:string;version:number;message:string}}
 const sessions = new Map<string,Session>()
 const cookieName = 'ws_customer_'+randomBytes(12).toString('hex')
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -33,10 +33,10 @@ function redirect(path:string,cookie?:string) {
   if (cookie) headers.set('set-cookie',cookie)
   return new Response(null,{status:303,headers})
 }
-function errorResponse(err:unknown,base:string,selectedId?:string) {
+function errorResponse(err:unknown,base:string,editorPath:string) {
   const e=err instanceof Failure ? err : offline()
   // Messages are fixed Swedish copy. Neither SQL/Auth errors nor input are reflected.
-  const links=base?'<p><a href="'+base+'/admin'+(selectedId?'?bil='+selectedId:'')+'">Till redigeraren</a> · <a href="'+base+'">Till bilhallen</a></p>':''
+  const links=base?'<p><a href="'+base+editorPath+'">Till redigeraren</a> · <a href="'+base+'">Till bilhallen</a></p>':''
   return html('<!doctype html><html lang="sv"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Provbilhallen</title><main><h1>'+e.message+'</h1>'+links+'</main></html>',e.status)
 }
 function loopbackOrigin(value:string) {
@@ -120,20 +120,35 @@ async function saveDraft(config:Config,slug:string,id:string,version:number,form
   await rpc(config,'save',{p_slug:slug,p_vehicle:id,p_version:version,p_content:content,p_uploads:uploads},token)
 }
 
+function readPageContent(form:FormData):SiteContent {
+  // Native textareas submit CRLF. The database validates the same six fields for all clients.
+  const read=(key:keyof SiteContent,multiline=false)=>{
+    const raw=field(form,key),value=multiline?raw.replace(/\r\n/g,'\n'):raw
+    if(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/.test(value)||!multiline&&value.includes('\n'))throw invalid()
+    return value
+  }
+  return {
+    heading:read('heading').trim(),description:read('description',true),hours:read('hours',true),
+    phone:read('phone'),email:read('email'),address:read('address',true),
+  }
+}
+
 export async function handleDealerPilot(req:Request,config:Config):Promise<Response> {
-  let base='',selectedId:string|undefined
+  let base='',editorPath='/admin'
   try{
     if(!loopbackOrigin(config.origin)||!loopbackOrigin(config.url)||!config.anonKey)throw offline()
     const url=new URL(req.url)
     if(url.origin!==config.origin||req.headers.get('host')!==new URL(config.origin).host)throw forbidden()
     if(!['GET','HEAD','POST'].includes(req.method))return new Response(null,{status:405,headers:{...safeHeaders,allow:'GET, HEAD, POST'}})
-    const match=/^\/hall\/([a-z][a-z0-9-]{0,62})(?:\/(login|logout|admin|preview|foto\/([a-f0-9]{64})))?$/.exec(url.pathname)
+    const match=/^\/hall\/([a-z][a-z0-9-]{0,62})(?:\/(login|logout|admin(?:\/sidan)?|preview(?:\/sidan)?|foto\/([a-f0-9]{64})))?$/.exec(url.pathname)
     if(!match)throw missing()
     const [,slug,view='',hash]=match
     base='/hall/'+slug
+    const pageRoute=view==='admin/sidan'||view==='preview/sidan'
+    if(pageRoute)editorPath='/admin/sidan'
     if(req.method==='POST'&&req.headers.get('origin')!==config.origin)throw forbidden()
     const isPost=req.method==='POST'
-    if(isPost&&!['login','logout','admin'].includes(view)||!isPost&&view==='logout')return new Response(null,{status:405,headers:{...safeHeaders,allow:view==='logout'?'POST':'GET, HEAD'}})
+    if(isPost&&!['login','logout','admin','admin/sidan'].includes(view)||!isPost&&view==='logout')return new Response(null,{status:405,headers:{...safeHeaders,allow:view==='logout'?'POST':'GET, HEAD'}})
     const session=loginSession(req,config)
     if(view==='login'&&isPost){
       const fields=await formBody(req,8192),email=field(fields,'email').trim(),password=field(fields,'password')
@@ -175,13 +190,39 @@ export async function handleDealerPilot(req:Request,config:Config):Promise<Respo
     }
     if(!session){
       if(!isPost)return redirect(base+'/login')
-      throw new Failure(401,'Logga in för att ändra annonsen.')
+      throw new Failure(401,'Logga in för att göra ändringar.')
+    }
+    if(pageRoute){
+      const page=await rpc<SiteWorkspace>(config,'page_workspace',{p_slug:slug},session.token)
+      const active=sessions.get(session.id)
+      if(isPost){
+        const form=await formBody(req,32*1024), intent=field(form,'intent')
+        if(!['save','publish','restore'].includes(intent))throw invalid()
+        const version=integer(form,'version',0,2147483647)
+        if(page.version!==version)throw stale()
+        const saved=await rpc<{version:number}>(config,'page_edit',{
+          p_slug:slug,p_version:version,p_action:intent,
+          p_content:intent==='save'?readPageContent(form):null,
+          p_revision:intent==='restore'?integer(form,'revision',0,2147483647):null,
+        },session.token)
+        const message=intent==='save'?'Sidutkastet är sparat.':intent==='publish'?'Siduppgifterna är publicerade.':'Den valda versionen har återställts.'
+        if(active)active.pageNotice={slug,version:saved.version,message}
+        return redirect(base+'/admin/sidan')
+      }
+      if(view==='preview/sidan'){
+        if(!page.draft)throw missing()
+        const catalog=await rpc<Catalog>(config,'catalog',{p_slug:slug})
+        return html(showroomView({...catalog,siteContent:page.draft},true,undefined,true))
+      }
+      const notice=active?.pageNotice
+      if(active&&notice?.slug===slug)delete active.pageNotice
+      return html(siteAdminView(page,notice?.slug===slug&&notice.version===page.version?notice.message:undefined))
     }
     const workspace=await rpc<Workspace>(config,'workspace',{p_slug:slug},session.token)
     if(isPost){
       const form=await formBody(req,10*1024*1024),intent=field(form,'intent'),id=field(form,'vehicleId')
       if(!uuid.test(id))throw invalid()
-      selectedId=id
+      editorPath='/admin?bil='+id
       const version=integer(form,'version',0,2147483647)
       const current=workspace.vehicles.find(v=>v.id===id)
       if((current?.version??0)!==version)throw stale()
@@ -201,10 +242,10 @@ export async function handleDealerPilot(req:Request,config:Config):Promise<Respo
         const content=v.id===selected.id?v.draft:v.published
         return content?[{id:v.id,content}]:[]
       })
-      return html(showroomView({slug,brand:workspace.brand,vehicles},true,selected.id))
+      return html(showroomView({slug,brand:workspace.brand,vehicles,siteContent:workspace.siteContent},true,selected.id))
     }
     const notices:Record<string,string>={save:'Utkastet är sparat.',publish:'Annonsen är publicerad.',restore:'Den valda versionen har återställts.'}
     const done=url.searchParams.get('klart')||''
     return html(adminView(workspace,id,Object.hasOwn(notices,done)?notices[done]:undefined))
-  }catch(err){return errorResponse(err,base,selectedId)}
+  }catch(err){return errorResponse(err,base,editorPath)}
 }

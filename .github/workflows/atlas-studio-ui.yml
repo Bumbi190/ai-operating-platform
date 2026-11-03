@@ -231,6 +231,7 @@ jobs:
       - name: Verify dealer template and customer admin boundaries
         working-directory: apps/web
         run: |
+          node --test scripts/dealer-customer-pilot-cli.test.mjs
           npx --no-install vitest run lib/website-build/customer-admin lib/website-build/planning/showroom-starter.test.ts
           npx --no-install vitest run lib/qa/atlas-chat.test.ts -t 'offers the branded dealer template'
       - name: Rehearse customer drafts, publication and restore with isolated dealer logins

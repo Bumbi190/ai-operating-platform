@@ -15,6 +15,8 @@ body{margin:0;overflow-wrap:anywhere}
 .nav-actions,.actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 .nav-actions{justify-content:flex-end;flex:none}
 .nav-actions form{margin:0}
+.section-link{display:inline-flex;align-items:center;min-height:44px;padding:6px 9px;font-size:.84rem;color:var(--muted)}
+.section-link:hover,.section-link[aria-current=page]{color:var(--accent);text-decoration:underline;text-underline-offset:6px}
 .button,.nav-actions .button{min-height:44px;padding:10px 18px;gap:8px}
 .nav-actions .button{margin:0;font-size:13px}
 .button.outline{background:#111c20;border-color:#516862;color:#dfebe7}
@@ -31,7 +33,8 @@ body{margin:0;overflow-wrap:anywhere}
  .nav{min-height:66px}.nav-actions .button{padding:7px 11px}
 }
 @media(max-width:460px){
- .nav{gap:8px}.seal{width:31px;height:31px;font-size:17px}.wordmark{gap:7px}
+ .nav{gap:4px 8px;flex-wrap:wrap;padding-block:7px}.nav-actions{gap:5px;max-width:100%;flex:0 1 auto;justify-content:flex-start}.section-link{padding-inline:6px}
+ .seal{width:31px;height:31px;font-size:17px}.wordmark{gap:7px}
  .brand{font-size:16px}.brand small{font-size:8px}
  .footer .shell{align-items:flex-start;flex-direction:column}
  .preview-banner .shell{align-items:flex-start;flex-direction:column}
@@ -39,7 +42,17 @@ body{margin:0;overflow-wrap:anywhere}
 }
 `
 
-export const publicStyles = dealerShowroomCss(accent) + chrome
+export const publicStyles = dealerShowroomCss(accent) + chrome + `
+.dealer-info{border-top:1px solid var(--line);background:linear-gradient(135deg,#132524,#10191d 64%)}
+.dealer-info-inner{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:clamp(24px,5vw,72px);align-items:start;padding-block:clamp(32px,5vw,68px)}
+.dealer-info h2{margin:0;font-size:clamp(31px,4vw,52px);letter-spacing:-.045em}
+.dealer-description,.dealer-facts dd{white-space:pre-line;overflow-wrap:anywhere}
+.dealer-description{max-width:65ch;margin:14px 0 0;color:#d5e0db;line-height:1.65}
+.dealer-facts{margin:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,165px),1fr));gap:16px 22px}
+.dealer-facts>div{border-top:1px solid #3c5149;padding-top:10px}
+.dealer-facts dt{font-size:.76rem;color:var(--muted)}
+.dealer-facts dd{margin:3px 0 0}.dealer-facts a{color:var(--accent);text-decoration:underline;text-underline-offset:3px}
+`
 export const adminStyles = premiumDealerStyle(accent) + chrome + `
 .eyebrow{margin:0 0 10px;color:var(--accent);font-size:.7rem;font-weight:640;letter-spacing:.16em;text-transform:uppercase}
 .tag{display:inline-flex;align-items:center;gap:7px;font-size:.76rem;font-weight:600;color:#c1eddb;background:#162e26;border:1px solid #456455;border-radius:100px;padding:4px 10px;white-space:nowrap}
@@ -57,6 +70,8 @@ export const adminStyles = premiumDealerStyle(accent) + chrome + `
 .stats{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
 .stat{display:inline-flex;align-items:baseline;gap:5px;padding:5px 10px;border-radius:99px;font-size:.77rem;color:var(--muted)}.stat b{font-size:.92rem;color:var(--fg)}
 .workspace{display:grid;grid-template-columns:minmax(190px,.76fr) minmax(0,2.25fr);gap:clamp(17px,3vw,33px);padding-block:28px 54px;align-items:start}
+.page-workspace{max-width:1050px;padding-block:28px 54px}
+.page-workspace .editor>.button{margin-top:16px}.optional{font-size:.78rem;font-weight:400;color:var(--muted)}
 .stock-list{display:grid;gap:8px;padding:0;list-style:none;margin:0}.stock-list h2,.panel h2{font-size:clamp(22px,2.2vw,32px);letter-spacing:-.04em}
 .stock-heading{font-size:1rem;letter-spacing:0;margin:0 0 10px}
 .inventory-row{display:block;padding:13px 15px;border-radius:10px}
@@ -72,8 +87,9 @@ export const adminStyles = premiumDealerStyle(accent) + chrome + `
 .fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px 14px}
 .fields .wide{grid-column:1/-1}
 .editor label,.signin label{font-size:.84rem;font-weight:550;color:#e2ece7;margin:0}
-.editor label input,.editor label select,.signin input{margin-top:4px}
-.editor input:not([type=checkbox]),.editor select,.signin input{display:block;width:100%;border:1px solid #4d615b;border-radius:6px;padding:9px 10px;min-height:44px;font-size:16px;color:var(--fg);background:#0c1619}
+.editor label input,.editor label select,.editor label textarea,.signin input{margin-top:4px}
+.editor input:not([type=checkbox]),.editor select,.editor textarea,.signin input{display:block;width:100%;border:1px solid #4d615b;border-radius:6px;padding:9px 10px;min-height:44px;font-size:16px;color:var(--fg);background:#0c1619}
+.editor textarea{resize:vertical}
 .editor input[type=file]{min-width:0;max-width:100%;padding:4px}
 .editor input[type=file]::file-selector-button{border:0;border-radius:4px;margin-right:8px;min-height:34px;padding-inline:10px;background:#264039;color:var(--fg)}
 .editor .check{display:flex;align-items:center;gap:9px;padding-block:6px;min-height:44px}

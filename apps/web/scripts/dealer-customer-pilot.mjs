@@ -1,10 +1,10 @@
-// Run from the repository root with Node 22: --test, --serve, or --stop.
+// Run with Node 22: --test, or --serve/--stop with an optional --port 19996 or 19997.
 // The two enabled dealers and the opted-out dealer are fictional, with fresh
 // accounts in an isolated PostgreSQL/GoTrue/PostgREST stack on every run.
 import assert from 'node:assert/strict'
 import {spawn} from 'node:child_process'
 import {randomBytes,randomUUID} from 'node:crypto'
-import {readFile,mkdir,writeFile,rm} from 'node:fs/promises'
+import {lstat,mkdir,open,readFile,rm} from 'node:fs/promises'
 import {createServer} from 'node:http'
 import {homedir} from 'node:os'
 import path from 'node:path'
@@ -13,9 +13,54 @@ import {createClient} from '@supabase/supabase-js'
 import {closeHttp,fixtureEnv,listenLocally,matchesOrigin,startDealerStack} from './dealer-customer-stack.mjs'
 
 const root=fileURLToPath(new URL('../../../',import.meta.url)),web=path.join(root,'apps/web')
-const port=19996,localUrl='http://127.0.0.1:'+port
-const qaPath=path.join(process.env.LOCALAPPDATA||path.join(homedir(),'.local','state'),'Omnira','WebStudio','kundadmin-prov')
-const accessFile=path.join(qaPath,'Testinloggning.txt'),controlFile=path.join(qaPath,'aktiv.json')
+const primaryPort=19996
+const stateHome=process.env.LOCALAPPDATA||path.join(homedir(),'.local','state')
+
+export function pilotTarget(args,home=stateHome) {
+  const [mode,flag,value]=args
+  const interactive=mode==='--serve'||mode==='--stop'
+  const explicitPort=interactive&&args.length===3&&flag==='--port'&&['19996','19997'].includes(value)
+  if(!(args.length===1&&(interactive||mode==='--test'))&&!explicitPort){
+    throw Error('Usage: --test | --serve [--port 19996|19997] | --stop [--port 19996|19997]')
+  }
+  const port=explicitPort?Number(value):primaryPort
+  const folder=port===primaryPort?'kundadmin-prov':'kundadmin-prov-'+port
+  const qaPath=path.join(home,'Omnira','WebStudio',folder)
+  return {mode,port,localUrl:'http://127.0.0.1:'+port,qaPath,
+    accessFile:path.join(qaPath,'Testinloggning.txt'),controlFile:path.join(qaPath,'aktiv.json')}
+}
+
+// Hold both exclusive handles until shutdown. Never overwrite an earlier guide
+// or remove a replacement file when releasing a partially acquired pair.
+export async function reservePilotFiles({qaPath,controlFile,accessFile}) {
+  await mkdir(qaPath,{recursive:true,mode:0o700})
+  let control,access
+  async function releaseFile(file,name) {
+    if(!file)return
+    try{
+      const held=await file.stat({bigint:true})
+      const current=await lstat(name,{bigint:true})
+      if(held.dev===current.dev&&held.ino===current.ino)await rm(name)
+    }catch(error){if(error.code!=='ENOENT')throw error}
+    finally{await file.close()}
+  }
+  async function release() {
+    try{await releaseFile(access,accessFile)}finally{await releaseFile(control,controlFile)}
+  }
+  try{
+    control=await open(controlFile,'wx',0o600)
+    access=await open(accessFile,'wx',0o600)
+    return {control,access,release}
+  }catch(error){
+    await release()
+    if(error.code==='EEXIST'){
+      error.message='Private trial files already exist in '+qaPath+
+        '. If this trial has stopped, move the remaining files to a private backup folder and retry.'
+    }
+    throw error
+  }
+}
+
 const sqlLiteral=x=>"'"+String(x).replaceAll("'","''")+"'"
 const syntheticClient=(url,key)=>createClient(url,key,{auth:{autoRefreshToken:false,persistSession:false,detectSessionInUrl:false}})
 const dealers=[
@@ -62,9 +107,8 @@ async function seed(stack) {
 }
 
 async function run() {
-  assert.equal(process.argv.length,3,'Specify exactly --serve, --test, or --stop')
-  const mode=process.argv[2]
-  assert(['--test','--serve','--stop'].includes(mode),'Expected --test, --serve, or --stop')
+  const target=pilotTarget(process.argv.slice(2))
+  const {mode,port,localUrl,accessFile,controlFile}=target
   if(mode==='--stop'){
     const {token}=JSON.parse(await readFile(controlFile,'utf8'))
     assert.match(token,/^[a-f0-9]{64}$/)
@@ -77,7 +121,7 @@ async function run() {
   const {require:loadTypeScript}=await import('tsx/cjs/api')
   const {handleDealerPilot:handle}=loadTypeScript('../lib/website-build/customer-admin/http.ts',import.meta.url)
   assert.equal(typeof handle,'function','Customer-admin HTTP handler is missing')
-  let origin,stack,child,accounts,expiry,stopping=false
+  let origin,stack,child,accounts,expiry,files,stopping=false
   const runId=randomUUID(),control=randomBytes(32).toString('hex')
   let signalStop
   const stopped=new Promise(resolve=>{signalStop=resolve})
@@ -126,6 +170,10 @@ async function run() {
   process.once('SIGINT',stop);process.once('SIGTERM',stop)
   try{
     origin=await listenLocally(server,mode==='--serve'?port:0)
+    if(mode==='--serve'){
+      files=await reservePilotFiles(target)
+      await files.control.writeFile(JSON.stringify({runId,token:control}))
+    }
     stack=await startDealerStack(origin)
     if(stopping)return
     accounts=await seed(stack)
@@ -147,16 +195,14 @@ async function run() {
         assert.equal(status,0,'Customer-admin browser test run failed')
       }finally{clearTimeout(timeout)}
     }else{
-      await mkdir(qaPath,{recursive:true,mode:0o700})
       const guide=['WEB STUDIO · Privat kundadminprov','Gäller denna fiktiva visning på den här datorn.','',
         ...dealers.flatMap(d=>[d.brand+(d.photo?'':' (utan Kundadmin)'),origin+'/hall/'+d.slug+'/login',
           'E-post: '+accounts[d.key].email,'Lösenord: '+accounts[d.key].password,'']),
         'Provet stängs efter två timmar. Vid omstart skapas nya konton och nytt exempellager.'].join('\n')
-      await writeFile(controlFile,JSON.stringify({runId,token:control}),{mode:0o600})
-      await writeFile(accessFile,guide+'\n',{mode:0o600})
+      await files.access.writeFile(guide+'\n')
       console.log('READY '+origin+'/hall/bjorkglantan')
       console.log('Local test account instructions: '+accessFile)
-      console.log('Stop with --stop. Automatic cleanup in two hours.')
+      console.log('Stop with --stop'+(port===primaryPort?'':' --port '+port)+'. Automatic cleanup in two hours.')
       expiry=setTimeout(stop,2*3600*1000)
       await stopped
     }
@@ -166,14 +212,12 @@ async function run() {
     // Reserve the fixed listener until its owning credentials and database are removed.
     accounts=null
     try{
-      if(mode==='--serve'){
-        let mine=false
-        try{mine=JSON.parse(await readFile(controlFile,'utf8')).runId===runId}catch(error){if(error.code!=='ENOENT')throw error}
-        if(mine){await rm(accessFile,{force:true});await rm(controlFile,{force:true})}
-      }
+      await files?.release()
     }finally{
       try{await stack?.close()}finally{await closeHttp(server)}
     }
   }
 }
-run().catch(error=>{console.error(error.message);process.exitCode=1})
+if(process.argv[1]&&path.relative(fileURLToPath(import.meta.url),path.resolve(process.argv[1]))===''){
+  run().catch(error=>{console.error(error.message);process.exitCode=1})
+}

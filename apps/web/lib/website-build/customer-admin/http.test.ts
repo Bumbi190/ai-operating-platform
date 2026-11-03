@@ -81,4 +81,19 @@ describe('customer admin rehearsal HTTP boundary', () => {
     expect(mutation.status).toBe(401)
     expect(network).not.toHaveBeenCalled()
   })
+
+  it('protects the page editor and its private preview before contacting the database', async () => {
+    const network = vi.fn()
+    vi.stubGlobal('fetch',network)
+    const base = '/hall/bjorkglantan'
+    for (const route of ['/admin/sidan','/preview/sidan']) {
+      const result = await handleDealerPilot(request(base+route),config)
+      expect(result.status).toBe(303)
+      expect(result.headers.get('location')).toBe(base+'/login')
+    }
+    const post = (route:string) => handleDealerPilot(request(base+route,{method:'POST',headers:{origin},body:new URLSearchParams({intent:'publish',version:'0'})}),config)
+    expect((await post('/admin/sidan')).status).toBe(401)
+    expect((await post('/preview/sidan')).status).toBe(405)
+    expect(network).not.toHaveBeenCalled()
+  })
 })

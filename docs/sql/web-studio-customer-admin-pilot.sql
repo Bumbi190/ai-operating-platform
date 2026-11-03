@@ -47,11 +47,32 @@ create table dealer_pilot.publications (
 alter table dealer_pilot.vehicles add foreign key (site_slug,id,published_revision)
   references dealer_pilot.publications(site_slug,vehicle_id,revision);
 
+-- A dealership gets an optional page on its first save. Old sites need no seed row.
+create table dealer_pilot.pages (
+  site_slug text primary key references dealer_pilot.sites(slug),
+  version integer not null check (version>0),
+  draft jsonb not null,
+  published_revision integer
+);
+create table dealer_pilot.page_publications (
+  site_slug text not null references dealer_pilot.pages(site_slug),
+  revision integer not null check (revision>0),
+  action text not null check (action in ('publish','restore')),
+  content jsonb,
+  actor uuid not null,
+  created_at timestamptz not null default clock_timestamp(),
+  primary key (site_slug,revision)
+);
+alter table dealer_pilot.pages add foreign key (site_slug,published_revision)
+  references dealer_pilot.page_publications(site_slug,revision);
+
 alter table dealer_pilot.sites enable row level security;
 alter table dealer_pilot.members enable row level security;
 alter table dealer_pilot.photos enable row level security;
 alter table dealer_pilot.vehicles enable row level security;
 alter table dealer_pilot.publications enable row level security;
+alter table dealer_pilot.pages enable row level security;
+alter table dealer_pilot.page_publications enable row level security;
 revoke all on all tables in schema dealer_pilot from public, anon, authenticated;
 
 -- Definers live in the private schema, pin name resolution, and derive the editor
@@ -74,11 +95,19 @@ begin
   if not found then raise exception using errcode='42501', message='DEALER_ADMIN_DENIED'; end if;
 end $$;
 
+-- Both catalog consumers see only the row named by the public revision pointer.
+create function dealer_pilot.published_page(site text) returns jsonb
+language sql stable set search_path = pg_catalog, pg_temp as $$
+  select h.content from dealer_pilot.pages p join dealer_pilot.page_publications h
+    on (h.site_slug,h.revision)=(p.site_slug,p.published_revision) where p.site_slug=site
+$$;
+
 create function dealer_pilot.catalog(site text) returns jsonb
 language plpgsql stable security definer set search_path = pg_catalog, pg_temp as $$
 declare result jsonb;
 begin
-  select jsonb_build_object('slug',s.slug,'brand',s.brand,'vehicles',coalesce((
+  select jsonb_build_object('slug',s.slug,'brand',s.brand,
+    'siteContent',dealer_pilot.published_page(s.slug),'vehicles',coalesce((
     select jsonb_agg(jsonb_build_object('id',v.id,'version',p.revision,'content',p.content)
                      order by v.created_at,v.id)
     from dealer_pilot.vehicles v join dealer_pilot.publications p
@@ -94,7 +123,8 @@ language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare result jsonb;
 begin
   perform dealer_pilot.require_editor(site,false);
-  select jsonb_build_object('slug',s.slug,'brand',s.brand,'vehicles',coalesce((
+  select jsonb_build_object('slug',s.slug,'brand',s.brand,
+    'siteContent',dealer_pilot.published_page(s.slug),'vehicles',coalesce((
     select jsonb_agg(jsonb_build_object(
       'id',v.id,'version',v.version,'draft',v.draft,'published',p.content,
       'publishedRevision',v.published_revision,'history',coalesce((
@@ -108,6 +138,102 @@ begin
     where v.site_slug=s.slug
   ),'[]'::jsonb)) into result from dealer_pilot.sites s where s.slug=site;
   return result;
+end $$;
+
+create function dealer_pilot.page_workspace(site text) returns jsonb
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
+declare result jsonb;
+begin
+  perform dealer_pilot.require_editor(site,false);
+  select jsonb_build_object('slug',s.slug,'brand',s.brand,'version',coalesce(p.version,0),
+    'draft',p.draft,'published',dealer_pilot.published_page(s.slug),'publishedRevision',p.published_revision,
+    'history',coalesce((
+      select jsonb_agg(jsonb_build_object('revision',h.revision,'at',h.created_at,
+        'action',h.action,'available',h.content is not null) order by h.revision desc)
+      from dealer_pilot.page_publications h where h.site_slug=s.slug
+    ),'[]'::jsonb)) into result
+  from dealer_pilot.sites s left join dealer_pilot.pages p on p.site_slug=s.slug where s.slug=site;
+  return result;
+end $$;
+
+create function dealer_pilot.check_page(body jsonb) returns void
+language plpgsql set search_path = pg_catalog, pg_temp as $$
+declare fields constant text[] := array['heading','description','hours','phone','email','address'];
+        limits constant int[] := array[80,1000,400,40,254,180];
+        -- Match ordinary ECMAScript trim at the heading boundaries. All C0/C1
+        -- controls, including tab, are rejected below regardless of position.
+        spaces constant text := U&' \00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000\FEFF';
+        field text; value text; phone text; email text;
+begin
+  if jsonb_typeof(body) is distinct from 'object' then
+    raise exception using errcode='22023', message='INVALID_PAGE';
+  end if;
+  if not (body ?& fields) or body-fields<>'{}'::jsonb then
+    raise exception using errcode='22023', message='INVALID_PAGE';
+  end if;
+  for i in 1..cardinality(fields) loop
+    field := fields[i];
+    value := body->>field;
+    if jsonb_typeof(body->field)<>'string' or char_length(value)>limits[i] then
+      raise exception using errcode='22023', message='INVALID_PAGE';
+    end if;
+    if field in ('description','hours','address') then value := replace(value,chr(10),''); end if;
+    if (value collate "C") ~ U&'[\0001-\001F\007F-\009F]' then
+      raise exception using errcode='22023', message='INVALID_PAGE';
+    end if;
+  end loop;
+  email := body->>'email';
+  phone := body->>'phone';
+  if body->>'heading'='' or btrim(body->>'heading',spaces)<>body->>'heading'
+      or (phone<>'' and ((phone collate "C") !~ '^[+]?[0-9 ().-]+$'
+        or char_length(regexp_replace(phone collate "C",'[^0-9]','','g')) not between 3 and 20))
+      or (email<>'' and (email collate "C") !~
+        '^[A-Za-z0-9_+-]+([.][A-Za-z0-9_+-]+)*@[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?([.][A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$') then
+    raise exception using errcode='22023', message='INVALID_PAGE';
+  end if;
+end $$;
+
+create function dealer_pilot.page_edit(site text, expected integer, op text, body jsonb, target integer)
+returns jsonb language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
+declare current_row dealer_pilot.pages%rowtype; current_version integer;
+        next_version integer; next_content jsonb;
+begin
+  -- This site lock covers the first save too, when there is no page row to lock.
+  perform dealer_pilot.require_editor(site,true);
+  if expected is null or expected<0 or op is null or op not in ('save','publish','restore')
+     or (op='save' and target is not null)
+     or (op='publish' and (body is not null or target is not null))
+     or (op='restore' and (body is not null or target is null or target<0)) then
+    raise exception using errcode='22023', message='INVALID_PAGE_ACTION';
+  end if;
+  select * into current_row from dealer_pilot.pages where site_slug=site for update;
+  current_version := coalesce(current_row.version,0);
+  if expected<>current_version or (expected=0 and op<>'save') then
+    raise exception using errcode='40001', message='PAGE_VERSION_CONFLICT';
+  end if;
+  next_version := current_version+1;
+  if op='save' then
+    perform dealer_pilot.check_page(body);
+    insert into dealer_pilot.pages(site_slug,version,draft) values(site,next_version,body)
+    on conflict (site_slug) do update set version=excluded.version, draft=excluded.draft;
+  else
+    if op='publish' then
+      next_content := current_row.draft;
+    elsif target>0 then
+      select content into next_content from dealer_pilot.page_publications
+      where site_slug=site and revision=target;
+      if not found then raise exception using errcode='22023', message='INVALID_RESTORE_REVISION'; end if;
+    end if;
+    insert into dealer_pilot.page_publications(site_slug,revision,action,content,actor)
+    values(site,next_version,op,next_content,auth.uid());
+    update dealer_pilot.pages set version=next_version, draft=coalesce(next_content,current_row.draft),
+      published_revision=case when next_content is not null then next_version end where site_slug=site;
+    delete from dealer_pilot.page_publications where site_slug=site and revision in (
+      select h.revision from dealer_pilot.page_publications h
+      where h.site_slug=site order by h.revision desc offset 30
+    );
+  end if;
+  return jsonb_build_object('version',next_version);
 end $$;
 
 create function dealer_pilot.check_content(site text, body jsonb)
@@ -260,6 +386,12 @@ as $$ select dealer_pilot.catalog(p_slug) $$;
 create function public.dealer_pilot_workspace(p_slug text) returns jsonb
 language sql security invoker set search_path = pg_catalog, pg_temp
 as $$ select dealer_pilot.workspace(p_slug) $$;
+create function public.dealer_pilot_page_workspace(p_slug text) returns jsonb
+language sql security invoker set search_path = pg_catalog, pg_temp
+as $$ select dealer_pilot.page_workspace(p_slug) $$;
+create function public.dealer_pilot_page_edit(p_slug text,p_version integer,p_action text,p_content jsonb,p_revision integer)
+returns jsonb language sql security invoker set search_path = pg_catalog, pg_temp
+as $$ select dealer_pilot.page_edit(p_slug,p_version,p_action,p_content,p_revision) $$;
 create function public.dealer_pilot_photo(p_slug text,p_hash text,p_preview boolean) returns text
 language sql security invoker set search_path = pg_catalog, pg_temp
 as $$ select dealer_pilot.photo(p_slug,p_hash,p_preview) $$;
@@ -275,12 +407,15 @@ as $$ select dealer_pilot.save(p_slug,p_vehicle,p_version,p_content,p_uploads) $
 
 revoke all on all functions in schema dealer_pilot from public, anon, authenticated;
 revoke all on function public.dealer_pilot_catalog(text),public.dealer_pilot_workspace(text),
+  public.dealer_pilot_page_workspace(text),public.dealer_pilot_page_edit(text,integer,text,jsonb,integer),
   public.dealer_pilot_photo(text,text,boolean),public.dealer_pilot_put_photo(text,text),
   public.dealer_pilot_edit(text,uuid,integer,text,jsonb,integer),public.dealer_pilot_save(text,uuid,integer,jsonb,text[])
   from public, anon, authenticated;
 grant execute on function dealer_pilot.catalog(text),dealer_pilot.photo(text,text,boolean),
   public.dealer_pilot_catalog(text),public.dealer_pilot_photo(text,text,boolean) to anon,authenticated;
 grant execute on function dealer_pilot.workspace(text),dealer_pilot.put_photo(text,text),
+  dealer_pilot.page_workspace(text),dealer_pilot.page_edit(text,integer,text,jsonb,integer),
+  public.dealer_pilot_page_workspace(text),public.dealer_pilot_page_edit(text,integer,text,jsonb,integer),
   dealer_pilot.edit(text,uuid,integer,text,jsonb,integer),dealer_pilot.save(text,uuid,integer,jsonb,text[]),
   public.dealer_pilot_workspace(text),public.dealer_pilot_put_photo(text,text),
   public.dealer_pilot_edit(text,uuid,integer,text,jsonb,integer),public.dealer_pilot_save(text,uuid,integer,jsonb,text[])

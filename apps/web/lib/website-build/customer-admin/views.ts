@@ -12,16 +12,34 @@ export type VehicleContent = {
   sold: boolean
   photos: string[]
 }
-export type Catalog = {slug: string; brand: string; vehicles: {id: string; content: VehicleContent}[]}
+export type SiteContent = {
+  heading: string
+  description: string
+  hours: string
+  phone: string
+  email: string
+  address: string
+}
+type PublicationHistory = {revision: number; available?: boolean}[]
+export type SiteWorkspace = {
+  slug: string
+  brand: string
+  version: number
+  draft: SiteContent | null
+  published: SiteContent | null
+  publishedRevision: number | null
+  history: PublicationHistory
+}
+export type Catalog = {slug: string; brand: string; vehicles: {id: string; content: VehicleContent}[]; siteContent?: SiteContent | null}
 export type AdminVehicle = {
   id: string
   version: number
   draft: VehicleContent
   published: VehicleContent | null
   publishedRevision?: number | null
-  history: {revision: number; available?: boolean}[]
+  history: PublicationHistory
 }
-export type Workspace = {slug: string; brand: string; vehicles: AdminVehicle[]}
+export type Workspace = {slug: string; brand: string; vehicles: AdminVehicle[]; siteContent?: SiteContent | null}
 
 const fuels: VehicleContent['fuel'][] = ['El', 'Hybrid', 'Bensin', 'Diesel']
 const money = new Intl.NumberFormat('sv-SE')
@@ -51,25 +69,56 @@ function messageBlock(message?: string) {
   return message ? `<p class="feedback" role="status">${escape(message)}</p>` : ''
 }
 
-export function showroomView(catalog: Catalog, preview = false, previewVehicleId?: string): string {
+function contactHref(value: string, kind: 'phone' | 'email'): string | null {
+  if (kind === 'phone') {
+    const dialable = value.replace(/^(?:\+46|0046)[ .-]*\(0\)/,'+46')
+    const international = dialable.startsWith('+')
+    const number = international ? dialable.slice(1) : dialable
+    const digits = number.replace(/\D/g,'')
+    if (value.length > 40 || /[^0-9 ().-]/.test(number) || digits.length < 3 || digits.length > 20) return null
+    return 'tel:'+(international ? '+' : '')+digits
+  }
+  if (value.length > 254 || /[^A-Za-z0-9_.+@-]/.test(value)) return null
+  const match = /^([A-Za-z0-9_+-]+(?:\.[A-Za-z0-9_+-]+)*)@([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+)$/.exec(value)
+  return match ? 'mailto:'+encodeURIComponent(match[1])+'@'+match[2] : null
+}
+
+function siteInfo(content: SiteContent): string {
+  const rows = ([
+    ['Öppettider',content.hours],['Besöksadress',content.address],
+    ['Telefon',content.phone,contactHref(content.phone,'phone')],
+    ['E-post',content.email,contactHref(content.email,'email')],
+  ] as const).filter(([,value]) => value.trim()).map(([label,value,href]) =>
+    `<div><dt>${label}</dt><dd>${href ? `<a href="${escape(href)}">${escape(value)}</a>` : escape(value)}</dd></div>`).join('')
+  return `<section class="dealer-info" id="om-hallen" aria-labelledby="hall-info-title"><div class="shell dealer-info-inner">
+    <div><p class="dh-eyebrow">Om hallen</p><h2 id="hall-info-title">${escape(content.heading)}</h2>
+    ${content.description ? `<p class="dealer-description">${escape(content.description)}</p>` : ''}</div>
+    ${rows ? `<dl class="dealer-facts">${rows}</dl>` : ''}</div></section>`
+}
+
+export function showroomView(catalog: Catalog, preview = false, previewVehicleId?: string, pagePreview = false): string {
   const base = hallPath(catalog.slug)
+  const privatePreview = preview || pagePreview
+  const draftPhotos = preview && !pagePreview
   const cars = catalog.vehicles.map(({id, content}) => ({
-    ...content, id, photos: content.photos.filter(hash => safeHash.test(hash)).map(hash => base+'/foto/'+hash+(preview?'?utkast=1':'')),
+    ...content, id, photos: content.photos.filter(hash => safeHash.test(hash)).map(hash => base+'/foto/'+hash+(draftPhotos?'?utkast=1':'')),
   }))
   const selected = previewVehicleId ?? (cars.length === 1 ? cars[0].id : undefined)
-  const id = preview && selected && cars.some(car => car.id === selected) ? '?bil='+segment(selected) : ''
-  const banner = preview ? `<aside class="preview-banner" data-preview-banner aria-label="Privat förhandsvisning"><div class="shell">
-    <strong>Privat förhandsvisning av sparat utkast</strong><a href="${base}/admin${id}">Tillbaka till redigeringen</a></div></aside>` : ''
-  const nav = preview ? `<a class="button outline" href="${base}">Öppna bilhallen</a>` : `<a class="button outline" href="#inventory">Bilar i hallen</a>`
-  const main = `${banner}<main id="main">${renderDealerShowroom(catalog.brand,cars)}</main>`
-  return framed((preview?'Förhandsvisning · ':'')+catalog.brand,catalog.brand,base,'BILHALL',nav,main,publicStyles)
+  const id = draftPhotos && selected && cars.some(car => car.id === selected) ? '?bil='+segment(selected) : ''
+  const banner = privatePreview ? `<aside class="preview-banner" data-preview-banner aria-label="Privat förhandsvisning"><div class="shell">
+    <strong>Privat förhandsvisning av ${pagePreview?'sidans sparade utkast':'sparat utkast'}</strong><a href="${base}/admin${pagePreview?'/sidan':id}">Tillbaka till redigeringen</a></div></aside>` : ''
+  const info = catalog.siteContent?.heading.trim() ? siteInfo(catalog.siteContent) : ''
+  const infoLink = info ? '<a class="section-link" href="#om-hallen">Om hallen</a>' : ''
+  const nav = infoLink + (privatePreview ? `<a class="button outline" href="${base}">Öppna bilhallen</a>` : '<a class="button outline" href="#inventory">Bilar i hallen</a>')
+  const main = `${banner}<main id="main">${renderDealerShowroom(catalog.brand,cars)}${info}</main>`
+  return framed((privatePreview?'Förhandsvisning · ':'')+catalog.brand,catalog.brand,base,'BILHALL',nav,main,publicStyles)
 }
 
 export function loginView(slug: string, message?: string): string {
   const base = hallPath(slug)
   const main = `<main class="shell signin-layout" id="main"><section class="panel signin">
     <p class="eyebrow">För handlare</p><h1>Logga in</h1>
-    <p class="hint">Öppna ditt lager för att redigera bilar, bilder och publiceringar.</p>
+    <p class="hint">Logga in för att hantera bilannonserna och uppgifterna om din bilhall.</p>
     ${messageBlock(message)}<form id="login-form" method="post" action="${base}/login">
     <label>E-postadress<input type="email" name="email" autocomplete="username" required></label>
     <label>Lösenord<input type="password" name="password" autocomplete="current-password" required></label>
@@ -122,8 +171,7 @@ function publication(base: string, vehicle: AdminVehicle): string {
   const live = vehicle.published
   const liveLink = live ? `<a class="text-link" href="${base}#bil-${segment(vehicle.id)}">Se publicerad annons</a>` : ''
   const liveFacts = live ? `${escape(live.name)} · ${money.format(live.price)} kr · ${live.sold?'Såld':'I lager'}. ${liveLink}` : 'Bilhallen visar ännu ingen annons för den här bilen.'
-  const availableRevisions = vehicle.history.filter(item => item.revision > 0 && item.revision !== vehicle.publishedRevision)
-  const options = availableRevisions.map(item => `<option value="${text(item.revision)}">Version ${text(item.revision)}${item.available === false?' · avpublicerad':''}</option>`)
+  const options = revisionOptions(vehicle.history,vehicle.publishedRevision)
   if (live) options.push('<option value="0">Avpublicera annonsen</option>')
   const noChange = live !== null && listingStatus(vehicle) !== 'Opublicerade ändringar'
   return `<section class="commit"><p class="eyebrow">Visningen i bilhallen</p><h3>Granska och publicera</h3>
@@ -148,7 +196,7 @@ export function adminView(workspace: Workspace, vehicleId?: string, message?: st
   const sold = cars.filter(vehicle => vehicle.published?.sold).length
   const rows = cars.map(vehicle => `<li><a class="inventory-row" href="${base}/admin?bil=${segment(vehicle.id)}"${selected?.id === vehicle.id ? ' aria-current="page"' : ''}>
     <strong>${escape(vehicle.draft.name)}</strong><small>${listingStatus(vehicle)}</small></a></li>`).join('')
-  const nav = `<form method="post" action="${base}/logout"><button type="submit" class="button outline">Logga ut</button></form>`
+  const nav = adminNavigation(base,'inventory')
   const panel = selected || vehicleId === 'ny' ? editor(base,selected) : `<section class="panel">
     <p class="eyebrow">Fordonsannonser</p><h2>${vehicleId?'Annonsen finns inte i ditt lager':'Lägg upp din första bil'}</h2>
     <p class="hint">Börja med fordonsuppgifter och bilder. Du bestämmer när annonsen ska visas i bilhallen.</p></section>`
@@ -161,4 +209,62 @@ export function adminView(workspace: Workspace, vehicleId?: string, message?: st
     <nav aria-label="Dina fordonsannonser"><h2 class="stock-heading">Dina annonser</h2>${rows?`<ul class="stock-list">${rows}</ul>`:'<p class="hint">Lagret är tomt.</p>'}</nav>
     ${panel}</div></main>`
   return framed(workspace.brand+' · Kundadmin',workspace.brand,base,'KUNDADMIN',nav,main,adminStyles)
+}
+
+function adminNavigation(base: string, selected: 'inventory' | 'site'): string {
+  return `<a class="section-link" href="${base}/admin"${selected === 'inventory' ? ' aria-current="page"' : ''}>Bilannonser</a>
+    <a class="section-link" href="${base}/admin/sidan"${selected === 'site' ? ' aria-current="page"' : ''}>Sidan</a>
+    <form method="post" action="${base}/logout"><button type="submit" class="button outline">Logga ut</button></form>`
+}
+
+function revisionOptions(history: PublicationHistory, current?: number | null): string[] {
+  return history.filter(item => item.revision > 0 && item.revision !== current).map(item =>
+    `<option value="${text(item.revision)}">Version ${text(item.revision)}${item.available === false?' · avpublicerad':''}</option>`)
+}
+
+export function siteAdminView(workspace: SiteWorkspace, message?: string): string {
+  const {slug,brand,version,draft,published,publishedRevision,history} = workspace
+  const base = hallPath(slug)
+  const action = base+'/admin/sidan'
+  const currentVersion = field('version',version)
+  const content = draft ?? published
+  const keys = ['heading','description','hours','phone','email','address'] as const
+  const upToDate = !!published && !!draft && keys.every(key => published[key] === draft[key])
+  let status = draft ? 'Sparat utkast' : 'Nytt utkast'
+  if (published) status = upToDate ? 'Publicerad' : 'Opublicerade ändringar'
+  const options = revisionOptions(history,publishedRevision)
+  if (published) options.push('<option value="0">Avpublicera siduppgifterna</option>')
+  const publicLink = published ? `<a class="text-link" href="${base}#om-hallen">Se publicerade uppgifter</a>` : 'Hallen visar ännu inga uppgifter om företaget.'
+  const main = `<main id="main"><section class="worktop"><div class="shell"><div class="section-head"><div>
+    <p class="eyebrow">Kundadmin · ${escape(brand)}</p><h1 class="page-title">Sidan</h1>
+    <p class="hint">Låt besökarna veta vilka ni är, när de kan komma förbi och hur de når er.</p></div>
+    <div class="actions"><a class="button outline" href="${base}">Öppna bilhallen</a></div></div></div></section>
+    ${message?`<div class="shell feedback-wrap">${messageBlock(message)}</div>`:''}
+    <div class="shell page-workspace"><section class="panel"><div class="panel-heading"><div><p class="eyebrow">Bilhallens sida</p>
+    <h2>Om hallen</h2></div><span class="tag${published && upToDate?'':' draft'}">${status}</span></div>
+    <p class="hint">Uppgifterna visas under bilarna i hallen när du publicerar. Lämna valfria fält tomma för att dölja dem.</p>
+    <form id="page-form" class="editor" method="post" action="${action}">${field('intent','save')}${currentVersion}
+    <fieldset><legend>Presentation</legend><div class="fields">
+    <label class="wide">Rubrik<input type="text" name="heading" maxlength="80" value="${escape(content?.heading ?? '')}" required></label>
+    <label class="wide">Beskrivning <span class="optional">(valfritt)</span><textarea name="description" maxlength="1000" rows="4">${escape(content?.description ?? '')}</textarea></label></div></fieldset>
+    <fieldset><legend>Besök och kontakt</legend><div class="fields">
+    <label>Öppettider <span class="optional">(valfritt)</span><textarea name="hours" maxlength="400" rows="3">${escape(content?.hours ?? '')}</textarea></label>
+    <label>Besöksadress <span class="optional">(valfritt)</span><textarea name="address" maxlength="180" rows="3" autocomplete="street-address">${escape(content?.address ?? '')}</textarea></label>
+    <label>Telefon <span class="optional">(valfritt)</span><input type="tel" name="phone" maxlength="40" autocomplete="tel" value="${escape(content?.phone ?? '')}"></label>
+    <label>E-post <span class="optional">(valfritt)</span><input type="email" name="email" maxlength="254" autocomplete="email" value="${escape(content?.email ?? '')}"></label></div></fieldset>
+    <button type="submit" class="button">Spara utkast</button></form>
+    <section class="commit"><p class="eyebrow">Visningen i bilhallen</p><h3>Granska och publicera</h3>
+    <p class="hint">${draft?'Förhandsgranskning och publicering använder ditt senast sparade utkast.':'Spara ett första utkast för att förhandsgranska uppgifterna.'}</p>
+    <p class="hint">${publicLink}</p>
+    ${draft ? `<div class="actions"><a class="button outline" href="${base}/preview/sidan">Förhandsgranska utkast</a>
+    <form id="page-publish-form" method="post" action="${action}">${field('intent','publish')}${currentVersion}
+    <button class="button" type="submit"${upToDate?' disabled':''}>Publicera utkast</button></form></div>` : ''}</section>
+    ${options.length ? `<details class="history"><summary>Versionshistorik och återställning</summary>
+    <p class="hint">Den valda versionen visas direkt i bilhallen. Avpublicerar du uppgifterna behåller du utkastet.</p>
+    <form id="page-restore-form" method="post" action="${action}">${field('intent','restore')}${currentVersion}
+    <label for="page-restore-version">Version eller åtgärd</label><div class="actions"><select name="revision" id="page-restore-version" required>
+    <option value="" selected disabled>Välj en version eller åtgärd</option>${options.join('')}</select>
+    <button class="button outline" type="submit">Återställ version</button></div></form></details>` : ''}
+    </section></div></main>`
+  return framed('Sidan · '+brand,brand,base,'KUNDADMIN',adminNavigation(base,'site'),main,adminStyles)
 }

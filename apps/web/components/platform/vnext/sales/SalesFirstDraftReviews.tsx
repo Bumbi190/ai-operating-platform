@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { SalesWorkspace, SalesDraftRevision } from '@/lib/sales/types'
 import styles from './SalesWorkspace.module.css'
+import {SalesDraftHistory} from './SalesDraftHistory'
 
 type Props = {
   model: SalesWorkspace
@@ -148,7 +149,7 @@ export function SalesFirstDraftReviews({ model, openReviewKey, onOpenReviewKeyCh
                 <details className={styles.disclosure}>
                   <summary>Visa källunderlag och kontakthistorik</summary>
                   <div className={styles.disclosureBody}>
-                    <p>{contact?.historySource || 'Ingen verifierbar historik.'}</p>
+                    <SalesDraftHistory model={model} draft={draft}/>
                     {model.evidence?.filter(e => e.contactId === draft.contactId && draft.evidenceIds.includes(e.id)).map(e => (
                       <div key={e.id}>{e.source && (
                         <>

@@ -64,3 +64,33 @@ test('editorial selection is explicit and partial history never appears as send 
  await page.setViewportSize({width:390,height:844})
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
 })
+
+
+test('draft review shows the current saved audit and stale gaps instead of presenting an old note as the audit',async({page})=>{
+ const contact={id:'30000000-0000-4000-8000-000000000001',projectId,companyName:'History Company',branchName:'Malmö',email:'history@example.se',websiteUrl:null,version:1,pilotMonths:6,history:'not_contacted',historySource:'Äldre kontroll: 139 kontakter och 100 Resend-mejl.',confirmed:true,excluded:false,suppressed:false}
+ const historyId='80000000-0000-4000-8000-000000000003'
+ const draft={preparationMode:'editorial_only',contactId:contact.id,contactVersion:1,offerRevisionId:offerId,senderEmail:'sender@example.se',toEmail:contact.email,subject:'Granska historiken',body:'Ett sparat utkast.',evidenceIds:[],questions:[],id:'70000000-0000-4000-8000-000000000003',projectId,jobId:'60000000-0000-4000-8000-000000000003',sha256:'a'.repeat(64),approvalId:'90000000-0000-4000-8000-000000000003',runId:null,status:'pending',current:true,createdAt:'2026-11-02T10:09:21Z'}
+ const source=(channel:string,scopeRef:string)=>({sourceKey:channel,channel,identityRef:'verified fixture',scopeRef,since:'2026-10-04T00:00:00Z',through:'2026-11-02T10:00:31Z',observedAt:'2026-11-02T10:00:31Z',state:'gap',reference:'Recorded audit reference'})
+ const history={id:historyId,projectId,recipient:contact.email,version:2,previousId:null,createdAt:'2026-11-02T10:05:14Z',reviewedBy:'20000000-0000-4000-8000-000000000001',data:{schemaVersion:1,history:'unknown',olderHistoryAttestation:null,contactVersions:[{id:contact.id,version:1}],sources:[source('strato_sent','36 skickade i Strato; samtliga sex mappar kontrollerade.'),source('strato_inbox','71 Strato-mejl totalt, inga nya svar.'),source('resend','133 tillgängliga Resend-poster, paginering till slutet.')],events:[],correctionOf:null,reviewNote:'Tidigare och extern historik är fortfarande okänd.'}}
+ const model:any={projectId,state:'ok',workerState:'not_connected',contacts:[contact],offers:[],jobs:[],drafts:[draft],evidence:[],workers:[],workspaceUrl:'/projects/handlarborsen/sales',sendingEnabled:false,timing:{projectId,evaluatedAt:'2026-11-03T07:00:00Z',contacts:[{contactId:contact.id,recipient:contact.email,contactVersion:1,historyRevisionId:historyId,initialPreparationAllowed:false,editorialPreparationAllowed:false,blockers:['HISTORY_REVIEW_REQUIRED','SOURCE_GAP','SOURCE_STALE'],reminderCount:null}],historyRevisions:[{...history,id:'80000000-0000-4000-8000-000000000004',version:99,data:{...history.data,reviewNote:'DECOY-UNBOUND-HISTORY'}},history],rules:null,customerSendingEnabled:false,workspaceUrl:'/sales#contact-timing'}}
+ const writes:string[]=[]
+ await page.route('**/api/sales?*',r=>r.fulfill({json:new URL(r.request().url()).searchParams.has('connection')?{connections:[],sendingEnabled:false}:model}))
+ await page.route('**/api/sales/mailbox?*',r=>r.fulfill({json:null}))
+ await page.route('**/api/sales',r=>{writes.push(r.request().method());return r.fulfill({status:403,json:{code:'UNEXPECTED_WRITE'}})})
+ await page.goto('/sales');await page.getByRole('heading',{name:'Mejlutkast att granska',exact:true}).click()
+ const card=page.getByRole('article').filter({hasText:'History Company'})
+ await card.getByRole('button',{name:/Visa förslag/}).click();await card.getByText('Visa källunderlag och kontakthistorik',{exact:true}).click()
+ await expect(card.getByRole('heading',{name:'Senast sparade kontaktkontroll'})).toBeVisible()
+ await expect(card).toContainText('2026-11-02 11:05:14 UTC+01:00')
+ await expect(card).toContainText('Källorna behöver uppdateras')
+ await expect(card).toContainText('Historiken har luckor')
+ await expect(card).toContainText('inte en ny mejlkontroll')
+ await expect(card).not.toContainText('DECOY-UNBOUND-HISTORY')
+ await card.getByText('Visa sparad avgränsning och referens',{exact:true}).last().click()
+ await expect(card.getByText('133 tillgängliga Resend-poster, paginering till slutet.',{exact:true})).toBeVisible()
+ await expect(card.getByText(contact.historySource,{exact:true})).not.toBeVisible()
+ await card.getByText('Äldre kontaktanteckning',{exact:true}).click()
+ await expect(card.getByText(contact.historySource,{exact:true})).toBeVisible()
+ expect(writes).toEqual([])
+ await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
+})

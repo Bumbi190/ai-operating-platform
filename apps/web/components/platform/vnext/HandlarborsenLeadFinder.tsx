@@ -142,6 +142,7 @@ export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search,
         <div>
           <p className={styles.kicker}>Handlarbörsen / Tillväxt</p>
           <h1>Lead Finder</h1>
+          <Link href={`/projects/${slug}/companies`}>Företag och kontaktjournal <ArrowUpRight size={14} aria-hidden="true" /></Link>
           <p>Hitta nya bilhandlare, jämför mot tidigare kontakter och förbered beslut. Inga utskick utan separat godkännande.</p>
         </div>
         <span className={styles.safety}><LockKeyhole size={15} aria-hidden="true" /> Förberedelseläge</span>

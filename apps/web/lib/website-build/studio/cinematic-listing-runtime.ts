@@ -145,7 +145,7 @@ export const LISTING_RUNTIME=String.raw`(()=>{
   if(!matchMedia('(prefers-reduced-motion: reduce)').matches&&dialog.animate){
    const to=dialog.getBoundingClientRect();
    const dx=from.left+from.width/2-to.left-to.width/2,dy=from.top+from.height/2-to.top-to.height/2;
-   dialog.animate([{transform:'translate('+dx+'px,'+dy+'px) scale('+Math.min(.9,from.width/to.width)+','+Math.min(.9,from.height/to.height)+')',opacity:.4},{transform:'none',opacity:1}],{duration:340,easing:'cubic-bezier(.16,1,.3,1)'});
+   dialog.animate([{transform:'translate('+dx+'px,'+dy+'px) scale('+Math.min(.9,from.width/to.width)+','+Math.min(.9,from.height/to.height)+')',opacity:0},{transform:'none',opacity:1}],{duration:340,easing:'cubic-bezier(.16,1,.3,1)'});
   }
  });
  close.addEventListener('click',()=>dialog.close());

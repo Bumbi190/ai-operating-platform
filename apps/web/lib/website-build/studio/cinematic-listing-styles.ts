@@ -29,5 +29,7 @@ export const listingStyles=`
 .lot-keyfacts{display:none;margin:6px 0 0;color:#f4dcaf;font:600 13px/1.4 system-ui}.lot-keyfacts span{color:#9b907f}
 @media(min-width:701px) and (max-height:920px){.lot-sheet{padding:18px 22px}.lot-header{margin-bottom:10px}.lot-header #lot-title{font-size:33px}.lot-stage{aspect-ratio:auto;height:clamp(165px,37dvh,350px)}.lot-info{margin-top:12px}.lot-info dl{gap:4px 14px}.lot-sheet footer{margin-top:10px;padding-top:8px}#lot-film-controls{padding:3px 10px}}
 @media(max-width:700px),(max-height:620px){.lot-keyfacts{display:block}}
+@keyframes lot-backdrop-in{from{opacity:0}to{opacity:1}}
+@media(prefers-reduced-motion:no-preference){#lot-dialog[open]::backdrop{animation:lot-backdrop-in 340ms ease-out both}}
 @media(prefers-reduced-motion:reduce){.catalog .car{transition:none}.catalog .car:hover{transform:none}}
 `

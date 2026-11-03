@@ -489,3 +489,49 @@ test('dealer landing reaches the tour, listing and 3D using only its own anonymo
  for(const missing of ['/bilhandlare/bilhall?view=private','/bilhandlare/bilhall/assets/reel.json','/bilhandlare/assets/3d/unknown.glb'])
   expect((await request.get(missing)).status()).toBe(404)
 })
+
+for(const width of [1280,432]){
+ test('the recorded marketplace scrolls into view before the first listing opens at '+width,async({page})=>{
+  await page.setViewportSize({width,height:width===432?768:800})
+  await page.goto('/bilhandlare')
+  await page.getByRole('button',{name:width===432?'Spela filmen':'Spela utan scroll'}).click()
+  await page.getByRole('button',{name:'Pausa filmen'}).click()
+  const positions=await page.locator('#reel').evaluate(async(video:HTMLVideoElement)=>{
+   const portrait=video.videoHeight>video.videoWidth
+   const canvas=document.createElement('canvas')
+   canvas.width=portrait?216:320;canvas.height=portrait?384:200
+   const ctx=canvas.getContext('2d',{willReadFrequently:true})!
+   async function sample(frame:number){
+    await new Promise<void>(resolve=>{
+     video.addEventListener('seeked',()=>resolve(),{once:true})
+     video.currentTime=frame/24
+    })
+    const pad=portrait?0:video.videoWidth*.05
+    ctx.drawImage(video,pad,0,video.videoWidth-2*pad,video.videoHeight,0,0,canvas.width,canvas.height)
+    return ctx.getImageData(0,0,canvas.width,canvas.height).data
+   }
+   // Locate the settled marketplace heading in earlier *decoded* frames.
+   // A cut, a dissolve or merely advancing currentTime cannot move this patch through the screen.
+   const settled=await sample(110),top=portrait?2:14,height=portrait?23:17
+   const rows:number[]=[]
+   for(const frame of [60,68,76,84,92,100,107]){
+    const pixels=await sample(frame)
+    let best=Infinity,match=0
+    for(let y=0;y<=canvas.height-height;y++){
+     let error=0
+     for(let dy=0;dy<height;dy+=2)for(let x=Math.round(canvas.width*.045);x<canvas.width*.4;x+=2){
+      error+=Math.abs(pixels[4*((y+dy)*canvas.width+x)+1]-settled[4*((top+dy)*canvas.width+x)+1])
+     }
+     if(error<best){best=error;match=y}
+    }
+    rows.push(match/canvas.height)
+   }
+   return rows
+  })
+  expect(positions[0]-positions.at(-1)!).toBeGreaterThan(.5)
+  for(let i=1;i<positions.length;i++){
+   expect(positions[i-1]-positions[i]).toBeGreaterThan(0)
+   expect(positions[i-1]-positions[i]).toBeLessThan(.25)
+  }
+ })
+}

@@ -2,32 +2,32 @@
   "wide": {
     "filename": "reel-wide.mp4",
     "contentType": "video/mp4",
-    "bytes": 3566417,
-    "sha256": "bfe6571f379b003fa4a4892456b41c715c4284ad16673402c02bb86d1137182e"
+    "bytes": 3559462,
+    "sha256": "811437fb1d6a179fcbe0e3ab50dde61ee760095c7169f0d798f74e71e373cbf3"
   },
   "widePoster": {
     "filename": "reel-wide.webp",
     "contentType": "image/webp",
-    "bytes": 30870,
-    "sha256": "4bf96a8f0aeea5f8e5e5bbb4fca9232e592d3e7e5ac47e68fde41a254a9c7790"
+    "bytes": 31030,
+    "sha256": "6ca37436c0b482c089f6824ffbb4b26a102ebaccf9507c5d3f83a49f78e3e147"
   },
   "portrait": {
     "filename": "reel-portrait.mp4",
     "contentType": "video/mp4",
-    "bytes": 3564932,
-    "sha256": "8d88515e1a4a596dba567bd4f14c1fb6bfb8698eb0dd30db05155e1753aa3b7d"
+    "bytes": 3558817,
+    "sha256": "2ead256e3abfe75cfa1338629458f03a9313ec9a59cc55f50ea7a01e41ecef56"
   },
   "portraitPoster": {
     "filename": "reel-portrait.webp",
     "contentType": "image/webp",
-    "bytes": 29274,
-    "sha256": "a4e4a178863a5de0ca95fda4269f1cc8f86e6123d8de71c78d9ebc6383152137"
+    "bytes": 30058,
+    "sha256": "7f3262ce35fc5dcd269e7ec5bc25b2bca385bd01b4afc55d06c24bf22686b853"
   },
   "scroll": {
     "filename": "reel-scroll.mp4",
     "contentType": "video/mp4",
-    "bytes": 2711411,
-    "sha256": "82ca0437eecde9c69b786a5db3a59b059664d1aff9d7b769703074bb70f4fca3"
+    "bytes": 2712946,
+    "sha256": "021f3e2d45a29da076c51b420be1fd83c80138b7b8f6b679c496240e4610047c"
   },
   "backdrop": {
     "filename": "reel-evening.webp",

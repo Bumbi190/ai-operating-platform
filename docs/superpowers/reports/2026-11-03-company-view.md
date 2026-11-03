@@ -10,7 +10,7 @@ Actual location is kept separate from public search centre/radius. Exact email c
 
 ## Verification
 
-- Final affected unit/API/timing/navigation run: **161/161 tests**, 11 files. Of these, **30** directly cover the new projection/read/API behavior.
+- Final affected unit/API/timing/navigation run: **161/161 tests**, 11 files. Of these, **32** directly cover the new projection/read/API behavior.
 - TypeScript `tsc --noEmit`: **exit0** after review fixes.
 - Browser fixture: **8/8 desktop/mobile checks** after fixes. An additional **2/2** visual capture runs passed; desktop and mobile screenshots inspected. No horizontal overflow; filtering/details and public error/empty/result states work. Browser requests are intercepted with synthetic data and assert no unintended API writes.
 - Initial feature tests observed missing implementation. The later-bounce date regression and all five review findings were observed RED before the fixes, then GREEN.
@@ -48,3 +48,9 @@ Examples inspected include missing Unix `grep`, Windows `find` incompatibility, 
 Same Draft PR#386, branch `codex/atlas-harvey-sales-20261017`; clean detached continuation `Temp/hb-sales-slim-20261029`, starting SHA`1d15d8d1d20ea6adab0f6c681b6edbda5c4cfb6d`. No new branch/worktree/PR, resets or force pushes. Preflight found metadata overlap with#306; its competitor/history file scope was inspected and does not own this increment.
 
 Ruling: continue routine implementation under the owner's autonomous development standard and accepted reuse direction; no new micro-approval for the technical design. Ruling: keep one coherent feature commit rather than publishing intermediate failing states. Ruling: preserve Draft status and disclose broad-suite failures instead of changing unrelated subsystem tests. Preview build/SSR results, if obtained, are recorded separately in the handoff; component fixtures do not prove authenticated live SSR behavior.
+
+## Final hardening and CI resource correction
+
+Global provider UUIDs and RFC Message-IDs are now deduplicated across separate source observations; folder-scoped numeric IMAP UIDs remain scoped to their folder/source. The additional global-identity regression was observed RED then GREEN. Final affected test total is163; direct new tests32.
+
+The first Linux source-security workflow completed its security suites but its complete-workspace typecheck hit Node20's default approximately2GB JavaScript heap and aborted with exit134. The typecheck step alone now has a bounded4GB NODE_OPTIONS heap; app/worker settings, permissions and runtime behavior are unchanged. A cold local TypeScript check using4GB and --incremental false passed with exit0; subsequent checks also passed. This is CI capacity configuration, not activation of a source, worker or sending flag. Exact-head CI/Preview status is recorded in the operational handoff.

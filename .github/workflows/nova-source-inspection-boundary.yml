@@ -113,4 +113,7 @@ jobs:
 
       - name: Typecheck complete web workspace without production credentials
         working-directory: apps/web
+        env:
+          # Bound the full-workspace check above Node 20's default ~2 GB heap.
+          NODE_OPTIONS: --max-old-space-size=4096
         run: npx --no tsc --noEmit --pretty false

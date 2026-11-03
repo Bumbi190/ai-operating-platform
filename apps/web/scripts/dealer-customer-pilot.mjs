@@ -4,10 +4,14 @@
 import assert from 'node:assert/strict'
 import {spawn} from 'node:child_process'
 import {randomBytes,randomUUID} from 'node:crypto'
+import {once} from 'node:events'
+import {constants} from 'node:fs'
 import {lstat,mkdir,open,readFile,rm} from 'node:fs/promises'
 import {createServer} from 'node:http'
+import net from 'node:net'
 import {homedir} from 'node:os'
 import path from 'node:path'
+import {setTimeout as delay} from 'node:timers/promises'
 import {fileURLToPath} from 'node:url'
 import {createClient} from '@supabase/supabase-js'
 import {closeHttp,fixtureEnv,listenLocally,matchesOrigin,startDealerStack} from './dealer-customer-stack.mjs'
@@ -48,7 +52,7 @@ export async function reservePilotFiles({qaPath,controlFile,accessFile}) {
     try{await releaseFile(access,accessFile)}finally{await releaseFile(control,controlFile)}
   }
   try{
-    control=await open(controlFile,'wx',0o600)
+    control=await open(controlFile,'wx+',0o600)
     access=await open(accessFile,'wx',0o600)
     return {control,access,release}
   }catch(error){
@@ -59,6 +63,101 @@ export async function reservePilotFiles({qaPath,controlFile,accessFile}) {
     }
     throw error
   }
+}
+
+// Both peers keep the original file open. A replaced pathname cannot stop a
+// later run. Separate one-byte flags also make simultaneous stop requests safe.
+const readyControl='{"protocol":2,"request":0,"ack":0}\n'
+const requestOffset=readyControl.indexOf('0'), ackOffset=readyControl.lastIndexOf('0')
+const one=Buffer.from('1')
+async function flagIsSet(file,offset) {
+  const data=Buffer.alloc(1)
+  const {bytesRead}=await file.read(data,0,1,offset)
+  return bytesRead===1&&data[0]===one[0]
+}
+
+export async function createPilotControl(file,stop) {
+  await file.writeFile(readyControl)
+  const abort=new AbortController()
+  const task=(async()=>{
+    while(!abort.signal.aborted){
+      await delay(500,undefined,{signal:abort.signal})
+      if(await flagIsSet(file,requestOffset)){
+        await file.write(one,0,1,ackOffset)
+        stop()
+        return
+      }
+    }
+  })().catch(error=>{
+    if(error.name!=='AbortError'){console.error('Private trial control failed');stop()}
+  })
+  return {close:async()=>{abort.abort();await task}}
+}
+
+// Old, already-running servers understand only this POST. Use a direct IPv4
+// socket so its actual peer is checked before sending the short-lived bearer.
+// No proxy, DNS, redirection or endpoint from a file is involved.
+async function stopLegacyPilot(port,token) {
+  if(port!==19996&&port!==19997)throw Error('Invalid legacy trial port')
+  const loopback='127.0.0.1'
+  const socket=net.createConnection({host:loopback,localAddress:loopback,port,family:4,signal:AbortSignal.timeout(5000)})
+  try{
+    await once(socket,'connect')
+    if(socket.remoteAddress!==loopback||socket.localAddress!==loopback||socket.remotePort!==port)throw Error('Invalid legacy trial peer')
+    socket.write('POST /__pilot_stop HTTP/1.1\r\nHost: 127.0.0.1:'+port+'\r\nAuthorization: Bearer '+token+
+      '\r\nContent-Length: 0\r\nConnection: close\r\n\r\n')
+    let firstLine=''
+    for await(const bytes of socket){
+      firstLine+=bytes.toString('latin1',0,128-firstLine.length)
+      if(firstLine.includes('\r\n')||firstLine.length>=128)break
+    }
+    if(!/^HTTP\/1\.[01] 204(?: [^\r\n]*)?\r\n/.test(firstLine))throw Error('The legacy trial did not acknowledge shutdown')
+  }finally{socket.destroy()}
+}
+
+// A listener that reuses a crashed pilot's port can see that dead run's bearer.
+// Other runs have independent credentials. Such a listener cannot confirm a stop
+// with HTTP 204 alone: the original private control file must also be retired.
+async function confirmLegacyCleanup(controlFile,original) {
+  const until=performance.now()+3000
+  do{
+    try{
+      const current=await lstat(controlFile,{bigint:true})
+      if(current.dev!==original.dev||current.ino!==original.ino)return
+    }catch(error){
+      if(error.code==='ENOENT')return
+      if(error.code!=='EBUSY'&&error.code!=='EPERM')throw error
+    }
+    await delay(75)
+  }while(performance.now()<until)
+  throw Error('The legacy trial did not retire its private control file')
+}
+
+export async function requestPilotStop({controlFile,port}) {
+  const file=await open(controlFile,constants.O_RDWR|(constants.O_NOFOLLOW||0)|(constants.O_NONBLOCK||0))
+  let original
+  try{
+    const info=await file.stat({bigint:true}), current=await lstat(controlFile,{bigint:true})
+    if(!info.isFile()||!current.isFile()||current.ino!==info.ino||current.dev!==info.dev||info.size>180n||
+       (process.getuid&&(info.uid!==BigInt(process.getuid())||(info.mode&0o077n)!==0n)))throw Error('Invalid private trial control')
+    const data=Buffer.alloc(181)
+    const {bytesRead}=await file.read(data,0,data.length,0)
+    const record=data.toString('utf8',0,bytesRead)
+    if(/^\{"protocol":2,"request":[01],"ack":[01]\}\n$/.test(record)){
+      await file.write(one,0,1,requestOffset)
+      const until=Date.now()+5000
+      do{if(await flagIsSet(file,ackOffset))return;await delay(100)}while(Date.now()<until)
+      throw Error('The local trial did not acknowledge shutdown')
+    }
+    const old=/^\{"runId":"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}","token":"([0-9a-f]{64})"\}$/.exec(record)
+    if(!old)throw Error('Invalid private trial control')
+    const age=Date.now()-Number(info.mtimeMs)
+    if(age< -5000||age>125*60000)throw Error('Expired legacy trial control')
+    original=info
+    await stopLegacyPilot(port,old[1])
+  }finally{await file.close()}
+  // Release our file handle before waiting for Windows to complete deletion.
+  await confirmLegacyCleanup(controlFile,original)
 }
 
 const sqlLiteral=x=>"'"+String(x).replaceAll("'","''")+"'"
@@ -108,12 +207,9 @@ async function seed(stack) {
 
 async function run() {
   const target=pilotTarget(process.argv.slice(2))
-  const {mode,port,localUrl,accessFile,controlFile}=target
+  const {mode,port,accessFile}=target
   if(mode==='--stop'){
-    const {token}=JSON.parse(await readFile(controlFile,'utf8'))
-    assert.match(token,/^[a-f0-9]{64}$/)
-    const response=await fetch(localUrl+'/__pilot_stop',{method:'POST',headers:{authorization:'Bearer '+token},redirect:'error',signal:AbortSignal.timeout(5000)})
-    assert.equal(response.status,204,'The local pilot did not acknowledge shutdown')
+    await requestPilotStop(target)
     console.log('Shutdown requested for the current customer-admin rehearsal.')
     return
   }
@@ -121,8 +217,7 @@ async function run() {
   const {require:loadTypeScript}=await import('tsx/cjs/api')
   const {handleDealerPilot:handle}=loadTypeScript('../lib/website-build/customer-admin/http.ts',import.meta.url)
   assert.equal(typeof handle,'function','Customer-admin HTTP handler is missing')
-  let origin,stack,child,accounts,expiry,files,stopping=false
-  const runId=randomUUID(),control=randomBytes(32).toString('hex')
+  let origin,stack,child,accounts,expiry,files,pilotControl,stopping=false
   let signalStop
   const stopped=new Promise(resolve=>{signalStop=resolve})
   const stop=()=>{stopping=true;signalStop();if(child&&!child.killed)child.kill()}
@@ -133,9 +228,6 @@ async function run() {
       if(!origin||!matchesOrigin(req,origin))return res.writeHead(403).end()
       const url=new URL(req.url,origin)
       if(url.origin!==origin)return res.writeHead(403).end()
-      if(mode==='--serve'&&url.pathname==='/__pilot_stop'&&req.method==='POST'&&!req.headers.origin&&req.headers.authorization==='Bearer '+control){
-        res.writeHead(204).end(stop);return
-      }
       if(!accounts)return res.writeHead(503,{'cache-control':'no-store'}).end('Provet startar.')
       if(req.method==='GET'&&url.pathname==='/')return res.writeHead(303,{location:'/hall/bjorkglantan','cache-control':'no-store'}).end()
       if(!['GET','HEAD','POST'].includes(req.method))return res.writeHead(405,{allow:'GET, HEAD, POST','connection':'close'}).end()
@@ -172,7 +264,7 @@ async function run() {
     origin=await listenLocally(server,mode==='--serve'?port:0)
     if(mode==='--serve'){
       files=await reservePilotFiles(target)
-      await files.control.writeFile(JSON.stringify({runId,token:control}))
+      pilotControl=await createPilotControl(files.control,stop)
     }
     stack=await startDealerStack(origin)
     if(stopping)return
@@ -212,7 +304,7 @@ async function run() {
     // Reserve the fixed listener until its owning credentials and database are removed.
     accounts=null
     try{
-      await files?.release()
+      try{await pilotControl?.close()}finally{await files?.release()}
     }finally{
       try{await stack?.close()}finally{await closeHttp(server)}
     }

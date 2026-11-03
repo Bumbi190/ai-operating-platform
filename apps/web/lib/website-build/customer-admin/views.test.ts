@@ -143,10 +143,12 @@ describe('dealer page information', () => {
       expect(showroomView({...catalog,siteContent:{...info,phone}})).toContain('href="tel:'+href+'"')
     }
     expect(html).toMatch(/href="mailto:bil(?:%2B|\+)hall@example\.test"/)
-    const hostile=showroomView({...catalog,siteContent:{...info,heading:'<svg/onload=x>',description:'<script>bad</script>',email:'a@b.se?bcc=a@b.se',phone:'0300\nTel:9',hours:'',address:''}})
+    const hostile=showroomView({...catalog,siteContent:{...info,heading:'<svg/onload=x>',description:'<ScRiPt data-test>bad</ScRiPt>',email:'a@b.se?bcc=a@b.se',phone:'0300\nTel:9',hours:'',address:''}})
     expect(hostile).toContain('&lt;svg/onload=x&gt;')
-    expect(hostile).toContain('&lt;script&gt;')
-    expect(hostile).not.toMatch(/href="tel:|href="mailto:|<svg\/onload|<script>/)
+    expect(hostile).toContain('&lt;ScRiPt data-test&gt;')
+    expect(hostile.toLowerCase()).not.toContain('<script')
+    expect(hostile.toLowerCase()).not.toContain('<svg/onload')
+    expect(hostile).not.toMatch(/href="(?:tel|mailto):/i)
     expect(hostile).not.toContain('>Öppettider<')
     for (const email of ['andra@exempel.se%0Abcc=anna', 'a@b.se\r\nBcc: c@d.se']) {
       expect(showroomView({...catalog,siteContent:{...info,email}})).not.toContain('href="mailto:')

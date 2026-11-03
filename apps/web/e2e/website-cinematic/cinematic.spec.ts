@@ -286,11 +286,15 @@ test('scroll still presents the requested view when browser playback is denied',
 
 for(const width of [1440,390]){
  test('featured Nord R opens from its card with a real reference-based model and three views '+width,async({page})=>{
+  // These four stills are for local design review. Rotation is checked below in every run.
+  const captureStill=async(name:string)=>{
+   if(!process.env.CI)await page.screenshot({path:'../../.superpowers/premium-showroom/'+name+'-'+width+'.jpg'})
+  }
   await page.setViewportSize({width,height:width===390?844:1000})
   await page.goto('/build/demo-motors/cinematic')
   const trigger=page.locator('#lot-open'),dialog=page.locator('#lot-dialog')
   await trigger.scrollIntoViewIfNeeded()
-  await page.screenshot({path:'../../.superpowers/premium-showroom/lot-card-'+width+'.jpg'})
+  await captureStill('lot-card')
   await trigger.click()
   await expect(dialog).toBeVisible()
   await expect(dialog.locator('#lot-film')).toBeVisible()
@@ -306,18 +310,18 @@ for(const width of [1440,390]){
   await page.mouse.move(stage!.x+stage!.width*.15,stage!.y+stage!.height*.45)
   await page.mouse.down();await page.mouse.move(stage!.x+stage!.width*.9,stage!.y+stage!.height*.45,{steps:8});await page.mouse.up()
   await expect.poll(()=>dialog.locator('#lot-film').evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(5)
-  await page.screenshot({path:'../../.superpowers/premium-showroom/entry-cabin-'+width+'.jpg'})
+  await captureStill('entry-cabin')
   await dialog.locator('#lot-orbit').click()
   const viewer=dialog.frameLocator('iframe')
   await expect(viewer.locator('#vehicle-stage')).toHaveAttribute('data-model3d-state','ready',{timeout:20000})
   const canvas=viewer.locator('canvas')
-  await page.screenshot({path:'../../.superpowers/premium-showroom/lot-initial-'+width+'.jpg'})
+  await captureStill('lot-initial')
   const before=await canvas.screenshot()
   const box=await dialog.locator('#lot-stage').boundingBox()
   await page.mouse.move(box!.x+box!.width*.38,box!.y+box!.height*.5)
   await page.mouse.down();await page.mouse.move(box!.x+box!.width*.62,box!.y+box!.height*.5,{steps:7});await page.mouse.up()
   expect((await canvas.screenshot()).equals(before)).toBe(false)
-  await page.screenshot({path:'../../.superpowers/premium-showroom/lot-model-'+width+'.jpg'})
+  await captureStill('lot-model')
   for(const angle of ['front','rear','cabin']){
    const thumb=dialog.locator('[data-lot-photo="'+angle+'"]')
    await thumb.click();await expect(dialog.locator('#lot-photo')).toHaveAttribute('src',(await thumb.locator('img').getAttribute('src'))!)

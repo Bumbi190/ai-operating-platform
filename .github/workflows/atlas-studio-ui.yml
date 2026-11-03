@@ -183,6 +183,7 @@ jobs:
           name: atlas-studio-ui
           path: |
             .superpowers/atlas-studio-ui-playwright
+            .superpowers/cinematic-pilot/browser-results
             .superpowers/sdd/2026-10-16-activity-sheet/browser
             .superpowers/sdd/2026-10-16-atlas-social-start/browser
             .superpowers/sdd/2026-10-16-atlas-social-publication/browser

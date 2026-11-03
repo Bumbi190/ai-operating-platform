@@ -19,8 +19,14 @@ def validate_snapshot(snapshot):
    d[k]=v
   return d
  d=json.loads(raw,object_pairs_hook=pairs)
- if not isinstance(d,dict) or set(d)!=FIELDS or d['version']!=1:raise SendError('INVALID_SNAPSHOT')
- for k in ['projectId','ownerId','revisionId','sourceJobId','sourceMessageId','mailboxId','workerId','policyId']:uuid.UUID(d[k])
+ if not isinstance(d,dict):raise SendError('INVALID_SNAPSHOT')
+ initial=d.get('version')==2 and d.get('kind')=='initial'
+ initial_fields=(FIELDS-{'sourceMessageId'})|{'kind','contactId','contactVersion','offerRevisionId','historyRevisionId','ruleRevisionId','historyGapAccepted'}
+ if (not initial and (set(d)!=FIELDS or d.get('version')!=1)) or (initial and set(d)!=initial_fields):raise SendError('INVALID_SNAPSHOT')
+ if initial:
+  for key in ['contactId','offerRevisionId','historyRevisionId','ruleRevisionId']:uuid.UUID(d[key])
+  if type(d['contactVersion']) is not int or d['contactVersion']<1 or type(d['historyGapAccepted']) is not bool or d['inReplyTo'] is not None or d['references']!=[]:raise SendError('INVALID_INITIAL_ENVELOPE')
+ for k in ['projectId','ownerId','revisionId','sourceJobId','mailboxId','workerId','policyId']+([] if initial else ['sourceMessageId']):uuid.UUID(d[k])
  for k in ['mailboxGeneration','policyVersion']:
   if type(d[k]) is not int or d[k]<1:raise SendError('INVALID_SNAPSHOT')
  if not re.fullmatch('[a-f0-9]{64}',d['revisionHash']):raise SendError('INVALID_SNAPSHOT')

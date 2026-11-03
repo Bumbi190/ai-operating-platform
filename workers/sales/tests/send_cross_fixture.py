@@ -38,9 +38,11 @@ class SMTP:
  def data(self,raw):
   m=BytesParser(policy=policy.default).parsebytes(raw)
   assert str(m['From'])=='Andre <'+initial['senderEmail']+'>'
-  assert str(m['To'])==initial['recipient'] and str(m['Subject'])=='Syntetiskt sändprov'
-  assert m.get_content().replace('\r\n','\n').rstrip('\n')=='Syntetiskt svar.\n\nAndre'
-  assert not m.get('Cc') and not m.get('Bcc') and m['In-Reply-To']=='<synthetic-send-source@example.se>'
+  assert str(m['To'])==initial['recipient'] and str(m['Subject'])==initial.get('subject','Syntetiskt sändprov')
+  assert m.get_content().replace('\r\n','\n').rstrip('\n')==initial.get('body','Syntetiskt svar.\n\nAndre')
+  assert not m.get('Cc') and not m.get('Bcc')
+  if initial.get('kind')=='initial':assert not m.get('In-Reply-To') and not m.get('References')
+  else:assert m['In-Reply-To']=='<synthetic-send-source@example.se>'
   counts['data']+=1
   path=root/'data-count.json';old=json.loads(path.read_text()) if path.exists() else {'count':0};old['count']+=1;path.write_text(json.dumps(old))
   if initial.get('mode')=='crashAfterData':os._exit(25)
@@ -53,7 +55,7 @@ class EnvelopeJournal(Journal):
   if initial.get('mode')=='crashAfterLocalReceipt' and (value.get('receipt') or {}).get('status')=='smtp_accepted':os._exit(26)
 try:
  mb=Journal(root/'mailbox.json')
- if mb.load() is None:mb.save({'active':{'mailboxId':initial['mailboxId'],'generation':6,'email':initial['senderEmail'],'credentialRef':'synthetic-key'}})
+ if mb.load() is None:mb.save({'active':{'mailboxId':initial['mailboxId'],'generation':initial.get('mailboxGeneration',6),'email':initial['senderEmail'],'credentialRef':'synthetic-key'}})
  journal=Journal(root/'send-dispatch.json')
  result=run_send_once(Client(),journal,lambda:lambda snapshot,begin:send_once(snapshot,Store(),mb,EnvelopeJournal(root/'send-envelope.json'),SMTP,begin_dispatch=begin),envelope_journal=EnvelopeJournal(root/'send-envelope.json'))
  for file in root.glob('*.json'):

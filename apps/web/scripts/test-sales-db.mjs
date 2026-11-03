@@ -1,3 +1,4 @@
+import {initialSendingRaces} from './test-sales-initial-send-races.mjs'
 import {emailCopyRaces} from './test-sales-email-copy-races.mjs'
 import {timingRaces} from './test-sales-timing-races.mjs'
 import {discoveryRaces} from './test-sales-discovery-races.mjs'
@@ -77,6 +78,9 @@ try{
  console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_discovery_admission.sql'),'utf8')));
  sql(readFileSync(resolve(migrations,'20261102090200_sales_editorial_only_drafts.sql'),'utf8'));
  console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_editorial_only.sql'),'utf8')));
+ sql(readFileSync(resolve(migrations,'20261103074241_sales_initial_sending.sql'),'utf8'));
+ console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_initial_sending.sql'),'utf8')));
+ await initialSendingRaces({root,container,db,sql});
 
  // Re-run existing negative cases under final schema, each explicitly reviewed before preparation.
  let regression=readFileSync(resolve(root,'apps/web/supabase/tests/sales_pilot_regressions.sql'),'utf8');
@@ -124,7 +128,7 @@ try{
  await sendSourceRaces({container,db,sql,run:concurrent});
  await replyReviewRaces({container,db,run:concurrent,principal,input,claimed});
  console.log('START: isolated Vitest SQL/API/Python integration suite');
- const integration=spawnSync(process.execPath,[resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/qa/sales-integration.test.ts','lib/qa/sales-timing-integration.test.ts','lib/qa/sales-editorial-integration.test.ts','lib/qa/sales-host-integration.test.ts','lib/qa/sales-mailbox-integration.test.ts','lib/qa/sales-inbox-integration.test.ts','lib/qa/sales-reply-integration.test.ts',...(container==='omnira-sales-sending-20261018'?['lib/qa/sales-send-integration.test.ts']:[]),'--maxWorkers=1','--minWorkers=1'],{cwd:resolve(root,'apps/web'),env:{...process.env,SALES_FIXTURE_DATABASE:db,SALES_FIXTURE_CONTAINER:container},encoding:'utf8',maxBuffer:2e6,timeout:240000})
+ const integration=spawnSync(process.execPath,[resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/qa/sales-integration.test.ts','lib/qa/sales-timing-integration.test.ts','lib/qa/sales-editorial-integration.test.ts','lib/qa/sales-host-integration.test.ts','lib/qa/sales-mailbox-integration.test.ts','lib/qa/sales-inbox-integration.test.ts','lib/qa/sales-reply-integration.test.ts',...(container==='omnira-sales-sending-20261018'?['lib/qa/sales-send-integration.test.ts','lib/qa/sales-initial-send-integration.test.ts']:[]),'--maxWorkers=1','--minWorkers=1'],{cwd:resolve(root,'apps/web'),env:{...process.env,SALES_FIXTURE_DATABASE:db,SALES_FIXTURE_CONTAINER:container},encoding:'utf8',maxBuffer:2e6,timeout:240000})
  console.log(integration.stdout);if(integration.status!==0)throw Error('Sales slice integration failed: '+String(integration.error?.message??integration.stderr??'unknown').slice(0,5000))
  }
  if(process.argv.includes('--verify-editorial-rollback')){

@@ -121,9 +121,20 @@ def run_managed_once(project,model=''):
    return {**result,'reason':'DISPATCH_RECONCILIATION_REQUIRED'}
   return {**result,'worked':worked is True}
 
+def initial_send_cycle(config,state,connection,store,mailbox_journal,verify):
+ if config.get('initialSendEnabled') is not True or config.get('mailboxEnabled') is not True:return None
+ from .sending.worker import run_send_once
+ from .sending.transport import send_once
+ journal=Journal(state/'initial-send-dispatch.json');envelope=Journal(state/'initial-send-envelope.json')
+ def cycle():
+  verify();status=connection.poll_status()
+  allowed=status.get('desiredState')=='running' and status.get('executionPaused') is False
+  return run_send_once(connection.initial_send_client(),journal,lambda:lambda snapshot,begin:send_once(snapshot,store,mailbox_journal,envelope,begin_dispatch=begin),can_dispatch=allowed,envelope_journal=envelope)
+ return cycle
+
 def main(project):
  config,state,verify,factory,store,connection=load_managed_connection(project)
- mailbox_cycle=None;inbox_cycle=None
+ mailbox_cycle=None;inbox_cycle=None;mailbox_journal=None
  if config.get('mailboxEnabled') is True:
   from .mailbox.crypto import MailboxCrypto
   from .mailbox.setup import process_mailbox_setup
@@ -153,6 +164,7 @@ def main(project):
    verify();status=connection.poll_status()
    allowed=status.get('desiredState')=='running' and status.get('executionPaused') is False
    return run_send_once(connection.send_client(),send_journal,lambda:lambda snapshot,begin:send_once(snapshot,store,mailbox_journal,envelope_journal,begin_dispatch=begin),can_dispatch=allowed,envelope_journal=envelope_journal)
+ initial_cycle=initial_send_cycle(config,state,connection,store,mailbox_journal,verify)
  stop=threading.Event()
  with SingleInstance(state/'host.lock'):
   def run_host():
@@ -160,4 +172,5 @@ def main(project):
   with ExitStack() as background:
    if inbox_cycle is not None:background.enter_context(inbox_background(inbox_cycle,stop))
    if send_cycle is not None:background.enter_context(send_background(send_cycle,stop))
+   if initial_cycle is not None:background.enter_context(send_background(initial_cycle,stop))
    run_host()

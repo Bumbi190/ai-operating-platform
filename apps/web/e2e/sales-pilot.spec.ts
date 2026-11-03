@@ -94,3 +94,28 @@ test('draft review shows the current saved audit and stale gaps instead of prese
  expect(writes).toEqual([])
  await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
 })
+
+test('first send requires its own gap decision, resets on changed history and queues once',async({page})=>{
+ const contact={id:'30000000-0000-4000-8000-000000000001',projectId,companyName:'Initial Test',branchName:'Nord',email:'initial@example.se',websiteUrl:null,version:1,pilotMonths:6,history:'not_contacted',historySource:'Synthetic bounded audit',confirmed:true,excluded:false,suppressed:false}
+ const rid='70000000-0000-4000-8000-000000000009',hid='80000000-0000-4000-8000-000000000001',rule='80000000-0000-4000-8000-000000000003'
+ const model:any={projectId,state:'ok',workerState:'not_connected',initialSendingEnabled:true,contacts:[contact],offers:[{id:offerId,projectId,senderEmail:'info@handlarborsen.se',offerText:'6 månader gratis',freeMonths:6,productFacts:['B2B'],confirmed:true,createdAt:'2026-11-03T07:00:00Z'}],jobs:[],drafts:[{preparationMode:'editorial_only',contactId:contact.id,contactVersion:1,offerRevisionId:offerId,senderEmail:'info@handlarborsen.se',toEmail:contact.email,subject:'Ett första pilotmejl',body:'Vill ni prova vår pilot?',evidenceIds:[],questions:[],id:rid,projectId,jobId:'60000000-0000-4000-8000-000000000009',sha256:'a'.repeat(64),approvalId:'90000000-0000-4000-8000-000000000009',runId:null,status:'approved',current:true,createdAt:'2026-11-03T07:00:00Z'}],evidence:[],workers:[],workspaceUrl:'/projects/handlarborsen/sales',sendingEnabled:false}
+ let history=hid,job:any=null;const posts:any[]=[]
+ const setDisplayedHistory=(id:string)=>{model.timing={projectId,evaluatedAt:'2026-11-03T07:00:00Z',rules:null,customerSendingEnabled:false,workspaceUrl:'/sales',contacts:[{contactId:contact.id,recipient:contact.email,contactVersion:1,historyRevisionId:id,ruleRevisionId:rule,blockers:['SOURCE_GAP'],initialPreparationAllowed:false}],historyRevisions:[{id,projectId,recipient:contact.email,version:id===hid?1:2,createdAt:'2026-11-03T07:00:00Z',reviewedBy:'20000000-0000-4000-8000-000000000001',previousId:null,data:{schemaVersion:1,contactVersions:[{id:contact.id,version:1}],history:'unknown',olderHistoryAttestation:null,events:[],sources:[],correctionOf:null,reviewNote:id===hid?'Synlig lucka version ett':'Synlig lucka version två'}}]}}
+ setDisplayedHistory(hid)
+ await page.route('**/api/sales?*',r=>r.fulfill({json:new URL(r.request().url()).searchParams.has('connection')?{connections:[],sendingEnabled:false}:model}))
+ await page.route('**/api/sales/mailbox?*',r=>r.fulfill({json:null}))
+ await page.route('**/api/sales/initial-sending*',async r=>{
+  if(r.request().method()==='POST'){posts.push(r.request().postDataJSON());job={id:'60000000-0000-4000-8000-000000000019',status:'queued',revisionId:rid,revisionHash:'a'.repeat(64),createdAt:'2026-11-03T07:00:00Z',acceptedAt:null,detail:null,serverAccepted:false,deliveryConfirmed:false};await r.fulfill({json:job})}
+  else await r.fulfill({json:{available:true,revisionId:rid,revisionHash:'a'.repeat(64),mailboxGeneration:6,policyVersion:1,historyRevisionId:history,ruleRevisionId:rule,requiresHistoryGapAcceptance:true,canConfirm:!job,blockedReason:null,job}})
+ })
+ await page.goto('/sales');await page.getByRole('heading',{name:'Mejlutkast att granska',exact:true}).click();await page.getByRole('button',{name:/Initial Test.*Nord/}).click()
+ const send=page.getByRole('region',{name:'Sändning av första mejlet'}),button=send.getByRole('button',{name:'Godkänn och skicka detta mejl',exact:true}),ack=send.getByRole('checkbox')
+ await expect(button).toBeDisabled();expect(posts).toHaveLength(0);await ack.check();await expect(button).toBeEnabled()
+ history='80000000-0000-4000-8000-000000000002';await send.getByRole('button',{name:'Uppdatera sändstatus'}).click();await expect(button).toBeDisabled();await expect(ack).not.toBeChecked()
+ await expect(ack).toBeDisabled();await expect(send).toContainText('Den visade kontaktkontrollen matchar inte sändningsbeslutet')
+ setDisplayedHistory(history);await page.getByRole('button',{name:'Uppdatera',exact:true}).click();await expect(send.getByText('Synlig lucka version två',{exact:true})).toBeVisible();await expect(ack).toBeEnabled()
+ await ack.check();await button.dblclick();await expect(send.getByRole('status')).toContainText('Köat för sändning');expect(posts).toHaveLength(1)
+ expect(posts[0]).toMatchObject({operation:'confirm',projectId,revisionId:rid,expectedHistoryRevisionId:history,expectedRuleRevisionId:rule,expectedPolicyVersion:1,expectedMailboxGeneration:6,acceptHistoryGap:true});expect(posts[0]).not.toHaveProperty('body');expect(posts[0]).not.toHaveProperty('toEmail')
+ job.status='delivery_unknown';await send.getByRole('button',{name:'Uppdatera sändstatus'}).click();await expect(send.getByRole('status')).toContainText('Leverans osäker');await expect(send.getByRole('button',{name:/Godkänn och skicka/})).toHaveCount(0)
+ await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
+})

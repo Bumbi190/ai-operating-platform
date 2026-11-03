@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import type { SalesWorkspace, SalesDraftRevision } from '@/lib/sales/types'
 import styles from './SalesWorkspace.module.css'
 import {SalesDraftHistory} from './SalesDraftHistory'
+import {SalesInitialSend} from './SalesInitialSend'
 
 type Props = {
   model: SalesWorkspace
@@ -162,6 +163,7 @@ export function SalesFirstDraftReviews({ model, openReviewKey, onOpenReviewKeyCh
                     <small>Kontrollsumma: {draft.sha256.slice(0, 12)}…</small>
                   </div>
                 </details>
+                {draft.current && draft.status === 'approved' && <SalesInitialSend model={model} draft={draft} onRefresh={onRefresh}/>}
                 {editing?.id === draft.id ? (
                   <form key={draft.id} className={styles.form} onSubmit={save}>
                     <h4>Redigera utkastet</h4>

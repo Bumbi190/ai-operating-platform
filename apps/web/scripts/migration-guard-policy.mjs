@@ -99,8 +99,9 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Nov 2 Harvey/Handlarbörsen live-SCB candidate provenance: 169/155 -> 170/156.
 // Forward-only constraint reconciliation only; no grandfathering or bypass.
 // Nov 2 explicit editorial-only drafts: one new enforced migration, no allowlist changes.
-export const EXPECTED_CANONICAL_SQL_COUNT = 171
-export const EXPECTED_ENFORCED_COUNT = 157
+// Controlled initial outreach: 172/158, enforced; pending reviewed live application.
+export const EXPECTED_CANONICAL_SQL_COUNT = 172
+export const EXPECTED_ENFORCED_COUNT = 158
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

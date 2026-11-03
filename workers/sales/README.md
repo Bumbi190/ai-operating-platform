@@ -93,6 +93,16 @@ EXAMINE, UIDVALIDITY/UID and BODY.PEEK preserve mailbox flags. Each batch covers
 
 Reply preparation uses the explicitly selected incoming message and current bound context. Private Nova reminders contain editorial metadata only. Text review, inbox selection and worker connection remain separate from exact-version send authorization. A qualified sender may act only through the separate send gate; this release work has issued no customer-send authorization and started no installed sender-capable host. Preview-origin changes must preserve and validate existing manager, active-mailbox and RSA-key references.
 
+## Controlled initial outreach (pending release)
+
+Initial outreach uses `/api/sales/initial-sending` and its separate worker endpoint, policy, queue and events. It references approved initial draft revisions, never reply revisions or a fabricated incoming message. The operator-installed policy binds one verified contact/branch, recipient, sender, offer, mailbox and worker with a version, expiry and optional history-gap permission. The migration seeds no policy.
+
+Both the allowlisted server flag `ATLAS_SALES_INITIAL_SEND_ENABLED=true` and local boolean `initialSendEnabled: true` are required; local `mailboxEnabled: true` is also required. All default off. This source change does not alter installed configuration, start a host, fetch a mailbox or send a customer email. Activating a policy/flag/host and applying the migration are separate release actions.
+
+Owner confirmation accepts only immutable version identities and an explicit per-message history-gap decision. Unknown history remains unknown. Current Strato sent/inbox and Resend evidence must pass all gates and be no older than 900 seconds. A changed source, new reply, stop, policy, contact, mailbox or approval fences dispatch. No Atlas tool confirms sends or creates policy.
+
+The version-2 envelope has no reply source or threading headers. The existing receipt-first worker uses `initial-send-dispatch.json` and `initial-send-envelope.json`, separate from replies. Repeated confirmation returns the original job. Active, accepted and uncertain recipient/verified-entity lineages stop a second send; cancelled or proven pre-send failures permit a separately reviewed new revision. A lost SMTP/HTTP receipt or restart after intent never automatically repeats DATA. SMTP acceptance does not prove inbox delivery. Uncertain delivery needs external reconciliation; no reset/retry UI is provided.
+
 ## Reproducible verification
 
 From the repository root: `python -m unittest discover -s workers/sales/tests -v`.

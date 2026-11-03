@@ -160,7 +160,8 @@ test('real GoTrue identities, addon entitlement and storage grants also hold for
 
 test('a dealer previews, publishes and restores site details independently of vehicle drafts and other dealers',async({browser,request})=>{
   const base=hall(slugA), editor=base+'/admin/sidan', preview=base+'/preview/sidan'
-  const page=await browser.newPage({baseURL:origin,javaScriptEnabled:false})
+  const owner=await browser.newContext({baseURL:origin,javaScriptEnabled:false})
+  const page=await owner.newPage()
   const visitor=await browser.newPage({baseURL:origin})
   const other=await browser.newPage({baseURL:origin})
   const site={heading:'Välkommen till Björkgläntan',description:'Här visas <em>våra bilar</em> i hallen.',
@@ -181,7 +182,7 @@ test('a dealer previews, publishes and restores site details independently of ve
     const publicPictures=await pictures(visitor)
     expect(publicPictures.length).toBeGreaterThan(0)
     const car=await visitor.locator('[data-vehicle-id]').first().getAttribute('data-vehicle-id')
-    const oldTab=await page.context().newPage()
+    const oldTab=await owner.newPage()
     await oldTab.goto(editor)
     for(const [name,value] of Object.entries(site))await form.locator('[name='+name+']').fill(value)
     await form.locator('button[type=submit]').click()
@@ -237,5 +238,5 @@ test('a dealer previews, publishes and restores site details independently of ve
     await visitor.reload();await expect(published).toHaveCount(0)
     expect(await pictures(visitor)).toEqual(publicPictures)
     await expect(form.locator('[name=heading]')).toHaveValue(site.heading)
-  } finally {await page.close();await visitor.close();await other.close()}
+  } finally {await owner.close();await visitor.close();await other.close()}
 })

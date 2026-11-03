@@ -8,6 +8,11 @@ test('opens chat and an empty preview immediately without creating a project',as
  await expect(page.getByRole('button',{name:'Starta Atlas-chatt'})).toHaveCount(0)
  await expect(page.getByText('Vad behöver min uppmärksamhet idag?')).toHaveCount(0)
  const before=await (await request.get('/__fixture/studio-metrics')).json()
+ const mutations:string[]=[]
+ page.on('request',r=>{if(r.method()==='POST')mutations.push(new URL(r.url()).pathname)})
+ await page.getByRole('button',{name:'Bilhandlarmall',exact:true}).click()
+ await expect(page.getByLabel('Meddelande till Atlas')).toHaveValue(/premium-dealer-showroom-v2/)
+ expect(mutations.filter(path=>path==='/api/chat'||path==='/api/website-build/studio')).toEqual([])
  await page.reload();await expect(page.getByLabel('Meddelande till Atlas')).toBeVisible()
  expect((await (await request.get('/__fixture/studio-metrics')).json()).projects).toBe(before.projects)
 })

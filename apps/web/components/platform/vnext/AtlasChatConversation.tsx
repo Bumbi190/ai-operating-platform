@@ -28,6 +28,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {STUDIO_ENTRY_PROMPTS} from '@/lib/website-build/studio/entry-prompts'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
@@ -235,10 +236,10 @@ export function AtlasChatConversation({ model, asking = false,plan=null,initialS
                 <h2 id="atlas-chat-intro" className={styles.introTitle}>{mode==='studio'?'Bygg vidare tillsammans med Atlas':INTRO_TITLE}</h2>
                 <p className={styles.introText}>{mode==='studio'?'Beskriv önskemålen och planera innan Atlas bygger.':EMPTY_CONVERSATION}</p>
                 <ul className={styles.starters} aria-label="Förslag">
-                  {(mode==='studio'?['Beskriv din hemsida','Förbättra en befintlig sida','Använd en referens']:CONVERSATION_STARTERS).map((starter) => (
-                    <li key={starter}>
-                      <button type="button" className={styles.starter} onClick={() => mode==='studio'?draft.setText(starter):void send(starter)}>
-                        {starter}
+                  {(mode==='studio'?STUDIO_ENTRY_PROMPTS:CONVERSATION_STARTERS.map(label=>({label,prompt:label}))).map(({label,prompt}) => (
+                    <li key={label}>
+                      <button type="button" className={styles.starter} onClick={() => mode==='studio'?draft.setText(prompt):void send(prompt)}>
+                        {label}
                       </button>
                     </li>
                   ))}

@@ -1,9 +1,10 @@
+import type {DEALER_SHOWROOM_STARTER,ShowroomOptions} from './dealer-showroom'
 import type {WebsiteVisualStyle} from './visual-style'
 export type IntegrationProvider = 'terminal' | 'vercel' | 'supabase' | 'strato' | 'form_delivery'
 export type PlanContent = {
  title:string; purpose:string; audience:string
  pages:{key:string;title:string;purpose:string}[]
- design:{style:string;reference:string|null;visual?:WebsiteVisualStyle;starter?:'premium-dealer-demo-v1'}
+ design:{style:string;reference:string|null;visual?:WebsiteVisualStyle;starter?:'premium-dealer-demo-v1'|typeof DEALER_SHOWROOM_STARTER;showroom?:ShowroomOptions}
  features:{name:string;mode:'preview_demo'|'live_required';provider:IntegrationProvider|null}[]
  architecture:string; steps:string[]
  domain:{registrar:'strato';requestedName:string|null}

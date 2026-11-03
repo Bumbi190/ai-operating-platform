@@ -72,6 +72,12 @@ on:
       - 'apps/web/lib/website-build/studio/cinematic-*'
       - 'apps/web/lib/website-build/studio/cinematic-assets/**'
       - 'apps/web/e2e/website-cinematic/**'
+      - 'apps/web/e2e/website-customer-admin/**'
+      - 'apps/web/lib/website-build/customer-admin/**'
+      - 'apps/web/lib/website-build/planning/*showroom*'
+      - 'apps/web/scripts/dealer-customer-*.mjs'
+      - 'docs/sql/web-studio-customer-admin-pilot.sql'
+      - 'docs/verification/web-studio/web-studio-customer-admin-pilot-proof.sql'
       - 'apps/web/playwright.website-cinematic.config.ts'
       - 'apps/web/components/website-build/AtlasBuilderStudio.tsx'
       - 'apps/web/components/website-build/StudioEmptyPreview.tsx'
@@ -222,11 +228,20 @@ jobs:
       - name: Run real browser login cookies middleware and references
         working-directory: apps/web
         run: node scripts/reference-browser-test.mjs
+      - name: Verify dealer template and customer admin boundaries
+        working-directory: apps/web
+        run: |
+          npx --no-install vitest run lib/website-build/customer-admin lib/website-build/planning/showroom-starter.test.ts
+          npx --no-install vitest run lib/qa/atlas-chat.test.ts -t 'offers the branded dealer template'
+      - name: Rehearse customer drafts, publication and restore with isolated dealer logins
+        run: node apps/web/scripts/dealer-customer-pilot.mjs --test
       - name: Verify no fixture resources remain
         if: always()
         run: |
           test -z "$(docker ps -aq --filter label=omnira.reference.auth.fixture)"
           test -z "$(docker network ls -q --filter label=omnira.reference.auth.fixture)"
+          test -z "$(docker ps -aq --filter label=omnira.customer.admin.fixture)"
+          test -z "$(docker network ls -q --filter label=omnira.customer.admin.fixture)"
 
   studio-journey:
     runs-on: ubuntu-latest

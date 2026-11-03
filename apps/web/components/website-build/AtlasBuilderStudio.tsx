@@ -1,12 +1,13 @@
 'use client'
 import {useEffect,useId,useRef,useState} from 'react'
-import {Sparkles,Globe2,PanelsTopLeft,ImagePlus,ArrowUpRight,ChevronDown} from 'lucide-react'
+import {Sparkles,Globe2,PanelsTopLeft,ImagePlus,CarFront,ArrowUpRight,ChevronDown} from 'lucide-react'
 import {useAtlasConversation} from '@/lib/atlas/conversation/provider'
 import {useComposerDraft} from '@/lib/atlas/conversation/use-composer-draft'
 import {useOptionalAtlas} from '@/lib/atlas/runtime'
 import {AtlasConversationComposer} from '@/components/platform/vnext/AtlasConversationComposer'
 import {AtlasBuildSurface} from '@/components/platform/vnext/AtlasBuildSurface'
 import type {EnsureStudioInput,StudioSelection,StudioView,StudioWorkspaceRef} from '@/lib/website-build/studio/types'
+import {STUDIO_ENTRY_PROMPTS} from '@/lib/website-build/studio/entry-prompts'
 import {StudioProjectPicker} from './StudioProjectPicker'
 import {StudioEmptyPreview} from './StudioEmptyPreview'
 import {StudioLayout} from './StudioLayout'
@@ -74,13 +75,13 @@ export function AtlasBuilderStudio({model}:{model:StudioView}){
   }catch(e){if(generation.current===token)setError((e as Error).message)}finally{if(generation.current===token)setBusy(false)}
  }
  const selected=view.selected,readOnly=!!selected&&(selected.lifecycle.state!=='active'||selected.lifecycle.executionPaused),canSend=!!selected&&selected.budget.state==='configured'&&!readOnly&&view.state==='ok'
- const starterIcons=[Globe2,PanelsTopLeft,ImagePlus]
+ const starterIcons=[Globe2,PanelsTopLeft,ImagePlus,CarFront]
  const draftChat=<div className={styles.draft}>
   <div className={styles.intro}>
    <div className={styles.introMark}><Sparkles size={23} aria-hidden/></div>
    <h2>{selected?'Förbättra '+selected.name:'Vad vill du bygga?'}</h2>
    <p>Beskriv din idé. Planera sidor, stil och funktioner tillsammans med Atlas och följ sedan bygget här.</p>
-   <ul className={styles.suggestions}>{['Beskriv din hemsida','Förbättra en befintlig sida','Använd en referens'].map((s,i)=>{const Icon=starterIcons[i];return <li key={s}><button type="button" onClick={()=>draft.setText(s)} disabled={busy||loading}><Icon size={17} aria-hidden/><span>{s}</span><ArrowUpRight size={15} aria-hidden/></button></li>})}</ul>
+   <ul className={styles.suggestions}>{STUDIO_ENTRY_PROMPTS.map(({label,prompt},i)=>{const Icon=starterIcons[i];return <li key={label}><button type="button" onClick={()=>draft.setText(prompt)} disabled={busy||loading}><Icon size={17} aria-hidden/><span>{label}</span><ArrowUpRight size={15} aria-hidden/></button></li>})}</ul>
    {!selected&&<label className={styles.projectName}>Projektnamn (valfritt)<input aria-label="Projektnamn (valfritt)" value={name} onChange={e=>setName(e.target.value)} maxLength={120} placeholder="Namn från din idé" disabled={busy}/></label>}
    {!view.canCreateProject&&!selected&&<p>Be projektägaren öppna byggstudion eller skapa ditt första projekt från projektöversikten.</p>}
   </div>

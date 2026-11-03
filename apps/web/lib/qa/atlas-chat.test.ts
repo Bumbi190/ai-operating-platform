@@ -733,6 +733,13 @@ describe('atlas chat · rendering', () => {
     expect(html).not.toMatch(/<ol[^>]*aria-label="Konversation"/)
   })
 
+  it('studio · offers the branded dealer template among the editable suggestions', () => {
+    const model=conversation({saved:[]})
+    const html=renderToStaticMarkup(React.createElement(AtlasChatConversation,{model,mode:'studio'}))
+    expect(textOf(html)).toContain('Bilhandlarmall')
+    expect(textOf(renderConversation(model))).not.toContain('Bilhandlarmall')
+  })
+
   it('conversation · a launcher’s question does not flash the empty state first', () => {
     expect(renderConversation(conversation({ saved: [] }), true)).not.toContain('data-intro')
   })

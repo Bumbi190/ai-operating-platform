@@ -5,6 +5,8 @@ import {escapeHtml} from '../preview-runtime'
 import type {WebsiteDraft} from '../types'
 import type {PlanContent} from './types'
 import {parseWebsiteVisualStyle} from './visual-style'
+import {DEALER_SHOWROOM_STARTER} from './dealer-showroom'
+import {dealerShowroomDraft} from '../templates/dealer-showroom-starter'
 import {premiumDealerStarterDraft} from '../templates/premium-dealer-starter'
 export type WebsiteMockupDraft={key:string;title:string;summary:string;draft:WebsiteDraft;canonicalDraft:string;sha256:string}
 export const MOCKUP_DRAFT_BYTES=48000
@@ -16,7 +18,8 @@ const directions=[
 const shorten=(s:string,n:number)=>s.length<=n?s:s.slice(0,n).replace(/\s+\S*$/,'')+'…'
 export function createWebsiteMockups(content:PlanContent):WebsiteMockupDraft[]{
  if(content.design.starter){return directions.map(direction=>{
-  const draft=premiumDealerStarterDraft(content,direction.key);compileWebsiteArtifact(draft)
+  const draft=content.design.starter===DEALER_SHOWROOM_STARTER?dealerShowroomDraft(content,direction.key):premiumDealerStarterDraft(content,direction.key)
+  compileWebsiteArtifact(draft)
   const canonicalDraft=JSON.stringify(draft)
   if(Buffer.byteLength(canonicalDraft,'utf8')>MOCKUP_DRAFT_BYTES)throw Error('MOCKUP_TOO_LARGE')
   return {...direction,draft,canonicalDraft,sha256:createHash('sha256').update(canonicalDraft).digest('hex')}

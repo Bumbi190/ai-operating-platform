@@ -22,7 +22,16 @@ export function canonicalCompanyEvents(events:HistoryEvent[]):CompanyEvent[]{
  const parents=new Map<string,string>()
  const root=(key:string):string=>{if(!parents.has(key))parents.set(key,key);const p=parents.get(key)!;if(p!==key)parents.set(key,root(p));return parents.get(key)!}
  const join=(a:string,b:string)=>{parents.set(root(b),root(a))}
- for(const e of events){const own='event:'+e.id;root(own);if(e.reviewedDuplicateOf)join(own,'event:'+e.reviewedDuplicateOf);for(const p of e.providerRefs)join(own,'provider:'+p.sourceKey+':'+p.id)}
+ for(const e of events){
+  const own='event:'+e.id;root(own);if(e.reviewedDuplicateOf)join(own,'event:'+e.reviewedDuplicateOf)
+  for(const p of e.providerRefs){
+   const id=p.id.trim()
+   // UUIDs and RFC Message-IDs survive a second observation/folder. Numeric
+   // IMAP UIDs are only meaningful inside their original source scope.
+   const alias=/^[a-f\d]{8}(-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(id)?'uuid:'+id.toLowerCase():/^<[^<>\s@]+@[^<>\s@]+>$/.test(id)?'message:'+id:p.sourceKey+':'+p.id
+   join(own,'provider:'+alias)
+  }
+ }
  const groups=new Map<string,HistoryEvent[]>()
  for(const e of events){const k=root('event:'+e.id);groups.set(k,[...(groups.get(k)??[]),e])}
  return [...groups.values()].map(group=>({id:group.map(e=>e.id).sort()[0],occurredAt:latest(group.map(e=>e.occurredAt))!,outboundAt:latest(group.filter(e=>e.direction==='outbound'&&['accepted','delivery_unknown'].includes(e.outcome)).map(e=>e.occurredAt)),inboundAt:latest(group.filter(e=>e.direction==='inbound'&&e.outcome==='received').map(e=>e.occurredAt)),outcomes:[...new Set(group.map(e=>e.outcome))],kinds:[...new Set(group.map(e=>e.kind))],outbound:group.some(e=>e.direction==='outbound'&&['accepted','delivery_unknown'].includes(e.outcome)),inbound:group.some(e=>e.direction==='inbound'&&e.outcome==='received')})).sort((a,b)=>Date.parse(b.occurredAt)-Date.parse(a.occurredAt))

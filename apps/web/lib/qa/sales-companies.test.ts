@@ -34,6 +34,12 @@ describe('read-only company projection',()=>{
  it('deduplicates connected provider aliases and explicit duplicate links transitively',()=>{
   const a=event(1),b=event(2),c=event(3,{providerRefs:[a.providerRefs[0],b.providerRefs[0]]}),d=event(4,{reviewedDuplicateOf:a.id});expect(canonicalCompanyEvents([a,b,c,d])).toHaveLength(1)
  })
+ it('counts the same global provider UUID or Message-ID once across source observations',()=>{
+  for(const providerId of [id(501),'<same-message@dealer.example.com>']){const a=event(1,{providerRefs:[{sourceKey:'sent-folder',id:providerId}]}),b=event(2,{providerRefs:[{sourceKey:'another-observation',id:providerId}]});expect(canonicalCompanyEvents([a,b])).toHaveLength(1)}
+ })
+ it('keeps folder-scoped numeric provider IDs separate',()=>{
+  expect(canonicalCompanyEvents([event(1,{providerRefs:[{sourceKey:'sent-folder',id:'32'}]}),event(2,{providerRefs:[{sourceKey:'inbox-folder',id:'32'}]})])).toHaveLength(2)
+ })
  it('keeps conflicting outcomes on one canonical message visible without duplicate message counts',()=>{
   const a=event(1),b=event(2,{direction:'inbound',outcome:'bounced',providerRefs:a.providerRefs});const events=canonicalCompanyEvents([a,b]);expect(events).toHaveLength(1);expect(events[0].outcomes).toEqual(expect.arrayContaining(['accepted','bounced']))
  })

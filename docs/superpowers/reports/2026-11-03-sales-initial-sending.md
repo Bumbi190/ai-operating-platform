@@ -1,3 +1,15 @@
+# Owner-approved initial-send schema applied — 3 November 2026
+
+The owner explicitly approved the exact schema proposal after reviewing the development result. The normal Supabase migration API applied `sales_initial_sending` once, ledger version **20261103082558**, using local 5-second lock and 60-second statement limits. Approved source SHA256 remains `9fc16dd5406ed097cd6bbcb2740c9a6eb235202a3aa5cb9433d45a436f32658c`; the canonical migration is unchanged. Session limits precede those exact bytes in the runner payload.
+
+Post-apply live verification: all **15 function bodies** match the source; invoker/empty search path and service-only EXECUTE; all three tables have RLS, zero client policies/grants; events sequence is client-revoked; immutable-authority trigger and recipient/entity duplicate indexes are present. The ledger-stored runner payload MD5 also matches the exact session-limit prefix plus approved source. After the catalog reconciliation, 272 schema/security/migration-inventory tests pass (exit0); no runtime source or migration SQL was edited. The table registry now records the three scoped live observations as SERVER_ONLY rather than created_not_live; other classifications are unchanged.
+
+All **25 existing Sales business-table fingerprints are byte-equivalent before/after**. New policies/jobs/events are **0/0/0**, enabled policies0. A read-only Carstore preview returns `canConfirm=false`, no policy and no job. Security advisor WARN findings are unchanged; only three expected INFO no-policy notices were added for these deliberately server-only tables. Exact evidence: [schema receipt](2026-11-03-sales-initial-schema-receipt.json).
+
+Production ledger grows194→195; source counts172/158 and frozen14/30 sets are unchanged. The development head's14 GitHub Actions had passed before application. Preview after registry reconciliation is recorded in the PR/Notion handoff. No initial flag/policy installation, host/package activation, new model call, customer email, main merge or production application release is included in this schema-only execution. The prior pending-schema description below is historical and superseded by this approved application.
+
+---
+
 # Controlled initial outreach — verified development, pending schema decision
 
 ## Result and scope

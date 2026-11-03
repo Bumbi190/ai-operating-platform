@@ -51,3 +51,5 @@ Whole-increment review: zero Critical, one Important (rendered history identity 
 Declined-to-judge rulings: live activation/provider delivery are outside development scope; real source completeness and trusted entity provenance need their own operational evidence; reviewer did source review, root executed remote checks.
 
 Release receipt is recorded in PR386/Notion after the ordinary guarded push. No schema application, activation or merge is authorized by this source checklist.
+
+Owner subsequently approved the exact schema-only proposal. Applied once as ledger20261103082558; all15 bodies/ACLs/RLS, immutable trigger and dedup indexes verified. All25 existing Sales-table fingerprints unchanged; new policy/job/event rows0. No new WARN advisor findings. Runtime activation remains outside this approval. See committed schema receipt and current report introduction.

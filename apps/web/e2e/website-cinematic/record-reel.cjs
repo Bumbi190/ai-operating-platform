@@ -85,7 +85,9 @@ async function take(browser, folder, viewport) {
         animation.currentTime = 0
       }
     }, {once: true}))
-    await open.click()
+    // The pointer is already over the button. A locator click can re-scroll the portrait viewport.
+    await page.mouse.down()
+    await page.mouse.up()
     const dialog = page.locator('#lot-dialog')
     await dialog.locator('#lot-film').waitFor({state: 'visible'})
     assert(Math.abs(await page.evaluate(() => scrollY) - end) <= 1, 'opening moved the page')

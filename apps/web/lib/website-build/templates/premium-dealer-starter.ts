@@ -16,14 +16,19 @@ const cars=[
  {id:'concept-08',name:'Aero Grand',fuel:'hybrid' as const,year:2025,km:2500,price:459000},
 ]
 /** Versioned, fictional built-in design; neither a model call nor an approval. */
-export function premiumDealerStarterDraft(content:PlanContent,direction:'editorial'|'visual'|'structured'){
+export function premiumDealerStarterDraft(content:PlanContent,direction:'editorial'|'visual'|'structured',edition:'starter'|'cinematic'='starter'){
  if(content.design.starter!==PREMIUM_DEALER_STARTER||content.pages.length!==1||!['home','index'].includes(content.pages[0].key)||content.features.some(f=>f.mode!=='preview_demo'))throw Error('INVALID_STARTER_PLAN')
  const hero=BUNDLED_DEMO_RASTERS.find(r=>r.name==='showroom-hero')!
  const photos=['concept-silver','concept-green','concept-blue','concept-black'].map(name=>BUNDLED_DEMO_RASTERS.find(r=>r.name===name)!)
  const spin=Array.from({length:12},(_,i)=>BUNDLED_DEMO_RASTERS.find(r=>r.name==='concept-spin-'+String(i).padStart(2,'0'))!)
  const model3dPoster=BUNDLED_DEMO_RASTERS.find(r=>r.name==='demo-motors-3d-poster')
  if(spin.some(frame=>!frame)||!model3dPoster)throw Error('MISSING_DEALER_3D_ASSET')
- const draft=createPremiumDealerDraft({brand:content.title,subtitle:'DEMO MOTORS',hero,cars:cars.map((car,i)=>({...car,image:i===0?model3dPoster:photos[i%photos.length],...(i===0?{spin,model3dAssetId:'vehicle3d:demo-motors-concept-v1'}:{})})),accent:content.design.visual?.palette.accent})
+ const inventory=cars.map((car,i)=>car.id==='concept-01'
+  ? {...car,image:model3dPoster,spin,model3dAssetId:'vehicle3d:demo-motors-concept-v1'}
+  : {...car,image:photos[i%photos.length]})
+ const draft=createPremiumDealerDraft({brand:content.title,subtitle:'DEMO MOTORS',hero,
+  cars:edition==='cinematic'?inventory.filter(car=>car.id!=='concept-01'):inventory,
+  accent:content.design.visual?.palette.accent})
  for(const page of draft.pages)page.bodyHtml=mapRasterSources(page.bodyHtml,src=>rasterHandle(src))
  if(direction==='editorial')draft.css+='\nh1,h2{font-family:Georgia,serif}.catalog{grid-template-columns:repeat(2,minmax(0,1fr))}@media(max-width:760px){.catalog{grid-template-columns:1fr}}'
  if(direction==='structured')draft.css+='\n@media(min-width:761px){.hero-inner{padding-top:48px;padding-bottom:48px}.hero{min-height:460px}.catalog{grid-template-columns:repeat(3,minmax(0,1fr))}}'

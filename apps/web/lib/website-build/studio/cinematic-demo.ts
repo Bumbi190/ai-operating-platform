@@ -1,6 +1,7 @@
 import {parse,parseFragment,serialize,type DefaultTreeAdapterMap} from 'parse5'
 import {cinematicAssetNames} from './cinematic-assets'
 import {listingCardContent,listingDialog} from './cinematic-listing'
+import {websiteCsp} from '../preview-runtime'
 import {listingStyles} from './cinematic-listing-styles'
 type Node=DefaultTreeAdapterMap['node']
 type Element=DefaultTreeAdapterMap['element']
@@ -82,7 +83,8 @@ export function createCinematicDemoHtml(baseHtml:string,root='/build/demo-motors
  const runtime=find(doc,e=>attr(e,'id')?.value==='__atlas_runtime')
  const body=find(doc,e=>e.tagName==='body'),head=find(doc,e=>e.tagName==='head')
  const meta=find(doc,e=>e.tagName==='meta'&&attr(e,'http-equiv')?.value==='Content-Security-Policy'),csp=meta&&attr(meta,'content')
- if(!hero?.parentNode||!runtime||!body||!head||!csp||!/script-src[^;]*'self'/.test(csp.value))throw Error('CINEMATIC_BASE')
+ const scriptHash=csp?.value.match(/(?:^|;\s*)script-src ('sha256-[A-Za-z0-9+/]{43}=');/)?.[1]
+ if(!hero?.parentNode||!runtime||!body||!head||!csp||!scriptHash||csp.value!==websiteCsp(scriptHash))throw Error('CINEMATIC_BASE')
  const names=cinematicAssetNames()
  const markup=`<section id="cinema-scene" class="cinema is-still" data-chapter-starts="0,5,9" aria-labelledby="cinema-title">
  <div class="cinema-stage">
@@ -132,7 +134,7 @@ export function createCinematicDemoHtml(baseHtml:string,root='/build/demo-motors
  heading.childNodes=[{nodeName:'#text',value:'Bilar i hallen',parentNode:heading}]
  const inventory=find(doc,e=>attr(e,'id')?.value==='lager')
  const intro=inventory&&find(inventory,e=>attr(e,'class')?.value==='description')
- if(intro)intro.childNodes=[{nodeName:'#text',value:'Öppna Nord R från rundturen eller filtrera bland hallens åtta konceptbilar. Alla priser och fordonsuppgifter är exempel.',parentNode:intro}]
+ if(intro)intro.childNodes=[{nodeName:'#text',value:'Öppna Nord R från rundturen eller filtrera bilarna efter drivlina. Alla priser och fordonsuppgifter är exempel.',parentNode:intro}]
  const about=find(doc,e=>attr(e,'id')?.value==='om')
  if(about){
   const paragraphs=about.childNodes.flatMap(n=>'childNodes' in n?n.childNodes:[]).filter(n=>'tagName' in n&&n.tagName==='p')
@@ -145,7 +147,8 @@ export function createCinematicDemoHtml(baseHtml:string,root='/build/demo-motors
  const modal=parseFragment(listingDialog(root)).childNodes[0];modal.parentNode=body;body.childNodes.push(modal)
  const style=parseFragment('<style>'+styles+listingStyles+'</style>').childNodes[0];style.parentNode=head;head.childNodes.push(style)
  const script=parseFragment('<script src="'+root+names.runtime+'" defer></script>').childNodes[0];script.parentNode=body;body.childNodes.push(script)
- if(!/(^|;)\s*media-src\s/.test(csp.value))csp.value+="; media-src 'self'"
- csp.value=csp.value.replace("frame-src 'none'","frame-src 'self'")
+ // The cinematic parent loads same-origin media and the dedicated viewer in its own frame.
+ csp.value=websiteCsp(scriptHash+" 'self'").replace("img-src data:","img-src data: 'self'")
+  .replace("frame-src 'none'","frame-src 'self'")+"; media-src 'self'"
  return serialize(doc)
 }

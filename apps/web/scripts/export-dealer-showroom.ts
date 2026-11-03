@@ -8,7 +8,6 @@ import {createHash} from 'node:crypto'
 import {mkdir, writeFile} from 'node:fs/promises'
 import path from 'node:path'
 import {GET} from '../app/bilhandlare/[[...path]]/route'
-import {vehicle3DAsset} from '../lib/website-build/assets/vehicle-3d'
 import {MODEL3D_RUNTIME_ASSET} from '../lib/website-build/model3d-runtime-asset'
 import {cinematicAssetNames} from '../lib/website-build/studio/cinematic-assets'
 import {nordFilmName} from '../lib/website-build/studio/cinematic-listing'
@@ -75,9 +74,7 @@ async function main() {
   for(const name of [...Object.values(cinematicAssetNames()),...reelFiles.keys(),nordFilmName(),...photos.map(p=>p.sha256+'.webp')]) {
     await capture('/bilhall/assets/'+name)
   }
-  const base = vehicle3DAsset('vehicle3d:demo-motors-concept-v1')
-  assert(base && base.truthClass==='fictional_concept')
-  for(const name of [base.glb.path,base.poster.path,MODEL3D_RUNTIME_ASSET.path,'assets/3d/'+listing.front.sha256+'.webp','assets/3d/'+listing.model.sha256+'.glb']) {
+  for(const name of [MODEL3D_RUNTIME_ASSET.path,'assets/3d/'+listing.front.sha256+'.webp','assets/3d/'+listing.model.sha256+'.glb']) {
     await capture('/'+name)
   }
   routes.push({src:'/.*',status:404})

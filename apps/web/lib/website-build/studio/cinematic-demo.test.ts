@@ -2,7 +2,7 @@ import {beforeEach,describe,it,expect,vi} from 'vitest'
 import {createHash} from 'node:crypto'
 const access=vi.hoisted(()=>vi.fn())
 vi.mock('@/lib/auth/project-access',()=>({resolveProjectAccess:access}))
-import {demoMotorsReadOnlyHtml} from './demo-motors-readonly'
+import {cinematicShowroomBaseHtml} from './demo-motors-readonly'
 import {createCinematicDemoHtml} from './cinematic-demo'
 import {cinematicAssetNames,cinematicAssetResponse,verifyCinematicBytes} from './cinematic-assets'
 import {GET as htmlGet} from '../../../app/(platform)/build/demo-motors/cinematic/route'
@@ -15,13 +15,16 @@ const request=(range?:string)=>new Request('https://example.test/build/demo-moto
 })
 describe('authored fictional cinematic variant',()=>{
  it('replaces the authored hero while preserving the working catalog and guarded CSP',()=>{
-  const original=demoMotorsReadOnlyHtml(),html=createCinematicDemoHtml(original)
+  const original=cinematicShowroomBaseHtml(),html=createCinematicDemoHtml(original)
   expect(html).toContain('id="cinema-scene"')
   expect(html).toContain('id="cinema-motion"')
   expect(html).toContain('FIKTIV DEMO')
   expect(html).toContain('id="fuel"')
   expect(html).toContain('id="concept-08"')
-  expect(html).toContain('id="concept-01-interest"')
+  expect(html).toContain('id="concept-02-interest"')
+  expect(html).toContain('7 av 7 visas')
+  expect(html).not.toMatch(/Nord GT|concept-01|vehicle3d:demo-motors-concept-v1/)
+  expect(html).toContain("connect-src 'none'")
   expect(html).toContain('id="__atlas_runtime"')
   expect(html).toContain("media-src 'self'")
   expect(html).toContain("form-action 'none'")

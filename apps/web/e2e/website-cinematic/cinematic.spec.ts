@@ -17,8 +17,8 @@ test('real video seeks forward and backward while catalog filtering stays functi
  await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeLessThan(.2)
  await expect.poll(async()=>{const f=await decodedFrame(page);return f!==''&&f!==forward}).toBe(true)
  await page.locator('#fuel').selectOption('el')
- await expect(page.locator('.car:visible')).toHaveCount(3)
- await expect(page.locator('#count')).toHaveText('3 av 8 visas')
+ await expect(page.locator('.car:visible')).toHaveCount(2)
+ await expect(page.locator('#count')).toHaveText('2 av 7 visas')
 })
 test('reduced motion makes no video request until explicit opt-in',async({page})=>{
  await page.emulateMedia({reducedMotion:'reduce'})
@@ -86,7 +86,8 @@ test('without JavaScript the real catalog and poster remain available',async({br
  await page.goto('/build/demo-motors/cinematic')
  await expect(page.locator('.cinema-poster')).toBeVisible()
  await expect(page.locator('#cinema-motion')).toBeHidden()
- await expect(page.locator('.car')).toHaveCount(8)
+ await expect(page.locator('.car')).toHaveCount(7)
+ await expect(page.locator('#count')).toHaveText('7 av 7 visas')
  await context.close()
 })
 
@@ -476,6 +477,15 @@ test('dealer landing reaches the tour, listing and 3D using only its own anonymo
  await expect.poll(()=>page.locator('#reel').evaluate((v:HTMLVideoElement)=>v.readyState)).toBeGreaterThanOrEqual(2)
  await page.getByRole('link',{name:'Prova Nord R själv'}).click()
  await expect(page).toHaveURL(/\/bilhandlare\/bilhall#lager$/)
+ const cards=page.locator('#lager article.car')
+ await expect(cards.first()).toHaveAttribute('id','concept-04')
+ await expect(cards.nth(1)).toHaveAttribute('id','concept-02')
+ await expect(page.getByText('Nord GT',{exact:true})).toHaveCount(0)
+ for(const [fuel,count] of [['*',7],['el',2],['hybrid',3],['bensin',2],['vatgas',0],['*',7]] as const){
+  await page.locator('#fuel').selectOption(fuel)
+  await expect(page.locator('#count')).toHaveText(count+' av 7 visas')
+  await expect(page.locator('#lager article.car:visible')).toHaveCount(count)
+ }
  await page.locator('#lot-open').click()
  await expect(page.locator('#lot-film')).toBeVisible()
  await page.locator('#lot-orbit').click()

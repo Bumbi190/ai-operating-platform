@@ -67,7 +67,7 @@ export function createPremiumDealerDraft(input:PremiumDealerInput):WebsiteDraft{
   if(c.model3dAssetId)behaviors.push({kind:'model3d',triggerId:c.id+'-model3d',targetIds:[c.id+'-model3d-fallback'],assetId:c.model3dAssetId})
  }
  const cards=input.cars.map((c,i)=>`<article class="car" id="${c.id}" data-fuel="${c.fuel}">
- <div class="card-top"><span>OMNIRA CONCEPT / ${String(i+1).padStart(2,'0')}</span><span class="badge ${c.fuel}">${labels[c.fuel]}</span></div>
+ <div class="card-top"><span>OMNIRA CONCEPT / ${c.id.match(/^concept-(\d{2})$/)?.[1]??String(i+1).padStart(2,'0')}</span><span class="badge ${c.fuel}">${labels[c.fuel]}</span></div>
  <div class="car-image">${imageHtml(c.image,true)}</div>
  <div class="car-body"><div class="car-heading"><h3>${e(c.name)}</h3><strong class="price">${amount(c.price)} kr</strong></div>
  <p class="spec-line">${c.year}<span>·</span>${amount(c.km)} km<span>·</span>${labels[c.fuel]}</p></div>
@@ -78,7 +78,7 @@ export function createPremiumDealerDraft(input:PremiumDealerInput):WebsiteDraft{
  <section id="${c.id}-form" hidden><h4>Testförfrågan för ${e(c.name)}</h4><p class="demo-note">Endast demonstration. Inget skickas och inga uppgifter sparas.</p>
  <form><label for="${c.id}-vehicle">Vald bil</label><input id="${c.id}-vehicle" name="vehicle" value="${e(c.name+' · '+c.id.toUpperCase())}" readonly>
  <label for="${c.id}-message">Ditt testmeddelande</label><textarea id="${c.id}-message" rows="3" placeholder="Skriv bara testtext, inga personuppgifter."></textarea><button type="submit" class="button outline">Testa knappen – inget skickas</button></form></section></div></details></article>`).join('')
- const count=input.cars.length,countWord=count===8?'åtta':String(count)
+ const count=input.cars.length,countWord=({7:'sju',8:'åtta'} as Record<number,string>)[count]??String(count)
  const bodyHtml=`<a class="skip" href="#lager">Hoppa till bilarna</a>
  <div class="notice"><span class="diamond" aria-hidden="true">✧</span><strong>FIKTIV DEMO</strong> – Ingen verklig försäljning. AI-illustrationer, inte riktiga lagerbilar.</div>
  <header class="site-header"><div class="nav shell"><a class="brand" href="#">${e(input.brand)}<small>${e(input.subtitle)}</small></a>

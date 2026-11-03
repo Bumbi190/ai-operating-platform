@@ -2,7 +2,7 @@ import {cinematicAssetNames, cinematicAssetResponse, isListingViewerAsset} from 
 import {createCinematicDemoHtml} from '@/lib/website-build/studio/cinematic-demo'
 import {listingViewerResponse} from '@/lib/website-build/studio/cinematic-listing'
 import {reelResponse} from '@/lib/website-build/studio/cinematic-reel'
-import {demoMotorsReadOnlyHtml} from '@/lib/website-build/studio/demo-motors-readonly'
+import {cinematicShowroomBaseHtml} from '@/lib/website-build/studio/demo-motors-readonly'
 import {readPublicWebsitePreviewAsset} from '@/lib/website-build/public-preview-assets'
 
 export const runtime = 'nodejs'
@@ -21,7 +21,7 @@ export async function GET(request: Request, {params}: {params: {path?: string[]}
     if (view === 'nord-r') return listingViewerResponse(mediaRoot)
     if (view === 'visning') return reelResponse(cinematicAssetNames().reelRuntime, showroom)
     if (view === null) {
-      return new Response(createCinematicDemoHtml(demoMotorsReadOnlyHtml(), mediaRoot), {
+      return new Response(createCinematicDemoHtml(cinematicShowroomBaseHtml(), mediaRoot), {
         headers: {
           'content-type': 'text/html; charset=utf-8',
           'cache-control': 'public, max-age=0, must-revalidate',
@@ -40,7 +40,7 @@ export async function GET(request: Request, {params}: {params: {path?: string[]}
     if ((group === 'bilhall' && directory === 'assets') ||
         (group === 'assets' && isListingViewerAsset([directory, name]))) {
       response = cinematicAssetResponse(request, name)
-    } else if (group === 'assets' && (directory === 'runtime' || directory === '3d')) {
+    } else if (group === 'assets' && directory === 'runtime') {
       const asset = readPublicWebsitePreviewAsset([directory, name])
       if (asset) response = new Response(Buffer.from(asset.bytes), {headers: {
         'content-type': asset.contentType,

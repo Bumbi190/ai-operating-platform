@@ -1,5 +1,6 @@
 // Local fictional-media harness. Real document compiler/runtime/assets; no accounts or external APIs.
 import {createServer} from 'node:http'
+import {GET as dealerPilot} from '../../app/bilhandlare/[[...path]]/route'
 import {compileWebsiteArtifact} from '../../lib/website-build/artifact'
 import {premiumDealerStarterDraft} from '../../lib/website-build/templates/premium-dealer-starter'
 import {createCinematicDemoHtml} from '../../lib/website-build/studio/cinematic-demo'
@@ -22,6 +23,11 @@ const html=createCinematicDemoHtml(base)
 const server=createServer(async(req,res)=>{
  const url=new URL(req.url??'/','http://127.0.0.1:'+port)
  res.setHeader('cache-control','no-store')
+ if(url.pathname==='/bilhandlare'||url.pathname.startsWith('/bilhandlare/')){
+  const path=url.pathname.split('/').slice(2)
+  const response=await dealerPilot(new Request(url,{headers:req.headers.range?{range:req.headers.range}:{}}),{params:{path}})
+  res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));return
+ }
  if(url.pathname==='/'||url.pathname==='/build/demo-motors/cinematic'){
   if(url.searchParams.get('view')==='visning'){
    const names=cinematicAssetNames(),reel=reelResponse(names.reelRuntime)

@@ -16,6 +16,12 @@ const nextConfig = {
         './lib/website-build/studio/cinematic-assets/nord-r-*.webp',
         './lib/website-build/studio/cinematic-assets/nord-r.glb',
       ],
+      '/bilhandlare/**': [
+        './lib/website-build/studio/cinematic-assets/*.mp4',
+        './lib/website-build/studio/cinematic-assets/*.webp',
+        './lib/website-build/studio/cinematic-assets/nord-r.glb',
+        './lib/website-build/runtime/model3d-v1.bin',
+      ],
       '/assets/*': ['./lib/website-build/runtime/model3d-v1.bin'],
       '/build/demo-motors/assets/*': [
         './lib/website-build/runtime/model3d-v1.bin',

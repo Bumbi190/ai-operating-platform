@@ -76,14 +76,14 @@ const styles=`
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.cinema-copy{animation:none}}
 `
 /** Transform only the trusted authored Demo Motors template. General compiler/sandbox unchanged. */
-export function createCinematicDemoHtml(baseHtml:string):string{
+export function createCinematicDemoHtml(baseHtml:string,root='/build/demo-motors/cinematic/assets/'):string{
  const doc=parse(baseHtml)
  const hero=find(doc,e=>e.tagName==='section'&&(attr(e,'class')?.value.split(/\s+/).includes('hero')??false))
  const runtime=find(doc,e=>attr(e,'id')?.value==='__atlas_runtime')
  const body=find(doc,e=>e.tagName==='body'),head=find(doc,e=>e.tagName==='head')
  const meta=find(doc,e=>e.tagName==='meta'&&attr(e,'http-equiv')?.value==='Content-Security-Policy'),csp=meta&&attr(meta,'content')
  if(!hero?.parentNode||!runtime||!body||!head||!csp||!/script-src[^;]*'self'/.test(csp.value))throw Error('CINEMATIC_BASE')
- const names=cinematicAssetNames(),root='/build/demo-motors/cinematic/assets/'
+ const names=cinematicAssetNames()
  const markup=`<section id="cinema-scene" class="cinema is-still" data-chapter-starts="0,5,9" aria-labelledby="cinema-title">
  <div class="cinema-stage">
  <img class="cinema-poster" src="${root+names.poster}" width="2048" height="1152" alt="Fiktiv svensk bilhall i kvällsljus med en blå konceptbil" fetchpriority="high">
@@ -124,7 +124,7 @@ export function createCinematicDemoHtml(baseHtml:string):string{
  const heading=find(doc,e=>attr(e,'id')?.value==='inventory-heading')
  if(!featured?.parentNode||!heading||!('childNodes' in featured.parentNode))throw Error('CINEMATIC_INVENTORY')
  const details=featured.childNodes.find(n=>'tagName' in n&&n.tagName==='details')
- featured.childNodes=[...parseFragment(listingCardContent()).childNodes,...(details?[details]:[])]
+ featured.childNodes=[...parseFragment(listingCardContent(root)).childNodes,...(details?[details]:[])]
  for(const child of featured.childNodes)child.parentNode=featured
  const catalog=featured.parentNode
  catalog.childNodes.splice(catalog.childNodes.indexOf(featured),1)
@@ -142,7 +142,7 @@ export function createCinematicDemoHtml(baseHtml:string):string{
   const link=parseFragment('<p class="reel-link"><a href="?view=visning">Se bilhallen på 18 sekunder ↗</a></p>').childNodes[0]
   link.parentNode=about;about.childNodes.push(link)
  }
- const modal=parseFragment(listingDialog()).childNodes[0];modal.parentNode=body;body.childNodes.push(modal)
+ const modal=parseFragment(listingDialog(root)).childNodes[0];modal.parentNode=body;body.childNodes.push(modal)
  const style=parseFragment('<style>'+styles+listingStyles+'</style>').childNodes[0];style.parentNode=head;head.childNodes.push(style)
  const script=parseFragment('<script src="'+root+names.runtime+'" defer></script>').childNodes[0];script.parentNode=body;body.childNodes.push(script)
  if(!/(^|;)\s*media-src\s/.test(csp.value))csp.value+="; media-src 'self'"

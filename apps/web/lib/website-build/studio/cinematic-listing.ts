@@ -2,26 +2,26 @@ import {MODEL3D_RUNTIME_ASSET} from '../model3d-runtime-asset'
 import media from './cinematic-assets/nord-r.json'
 
 export const listingImages={front:media.front,rear:media.rear,cabin:media.cabin}
-const assetRoot='/build/demo-motors/cinematic/assets/'
-const imageUrl=(key:keyof typeof listingImages)=>assetRoot+listingImages[key].sha256+'.webp'
+const ownerAssetRoot='/build/demo-motors/cinematic/assets/'
+const imageUrl=(key:keyof typeof listingImages,assetRoot:string)=>assetRoot+listingImages[key].sha256+'.webp'
 const views=[['front','Framifrån'],['rear','Bakifrån'],['cabin','Kupén']] as const
 
 export const nordFilmName=()=>'nord-r.'+media.film.sha256.slice(0,16)+'.mp4'
 
-export function listingCardContent(){
- return `<div class="lot-visual"><img loading="lazy" width="1440" height="810" src="${imageUrl('front')}" alt="Midnattsblå Nord R framför bilhallen"><span>UR RUNDTUREN</span></div>
+export function listingCardContent(assetRoot=ownerAssetRoot){
+ return `<div class="lot-visual"><img loading="lazy" width="1440" height="810" src="${imageUrl('front',assetRoot)}" alt="Midnattsblå Nord R framför bilhallen"><span>UR RUNDTUREN</span></div>
  <div class="lot-summary"><p class="lot-eyebrow">Demo Motors &nbsp; / &nbsp; Utvald bil</p><h3>Nord R</h3><p class="lot-subtitle">Midnattsblå · Elektrisk SUV</p>
  <p class="lot-meta">2025 &nbsp; / &nbsp; 480 mil &nbsp; / &nbsp; El</p>
  <div class="lot-sale"><span>Fast pris · Bud välkomnas</span><strong>549 000 kr</strong></div>
  <button type="button" id="lot-open" aria-haspopup="dialog" hidden>Öppna annonsen <span aria-hidden="true">↗</span></button></div>`
 }
 
-export function listingDialog(){
- const thumbs=views.map(([key,label])=>`<button type="button" data-lot-photo="${key}" aria-pressed="false"><img loading="lazy" src="${imageUrl(key)}" alt=""><span>${label}</span></button>`).join('')
+export function listingDialog(assetRoot=ownerAssetRoot){
+ const thumbs=views.map(([key,label])=>`<button type="button" data-lot-photo="${key}" aria-pressed="false"><img loading="lazy" src="${imageUrl(key,assetRoot)}" alt=""><span>${label}</span></button>`).join('')
  return `<dialog id="lot-dialog" aria-labelledby="lot-title"><div class="lot-sheet">
  <header class="lot-header"><div><p class="lot-eyebrow">Demo Motors &nbsp; / &nbsp; Konceptbil 04</p><h2 id="lot-title">Nord R <small>Midnattsblå</small></h2><p class="lot-keyfacts">549 000 kr <span>·</span> 2025 <span>·</span> 480 mil <span>·</span> El</p></div><button type="button" id="lot-close" aria-label="Stäng annonsen" autofocus>Stäng &nbsp; ×</button></header>
- <div class="lot-gallery"><div class="lot-stage" id="lot-stage"><img id="lot-photo" src="${imageUrl('front')}" alt="Nord R framifrån"><video id="lot-film" muted playsinline preload="none" data-src="${assetRoot+nordFilmName()}" hidden></video><span id="lot-load" role="status" hidden></span></div>
- <nav class="lot-views" aria-label="Välj fordonsvy"><button id="lot-tour" type="button" aria-pressed="true"><img loading="lazy" src="${imageUrl('rear')}" alt=""><span>Rundtur</span></button><button id="lot-orbit" type="button" aria-pressed="false"><img loading="lazy" src="${assetRoot+media.orbit.sha256}.webp" alt=""><b aria-hidden="true">⟲</b><span>3D-vy</span></button>${thumbs}</nav></div>
+ <div class="lot-gallery"><div class="lot-stage" id="lot-stage"><img id="lot-photo" src="${imageUrl('front',assetRoot)}" alt="Nord R framifrån"><video id="lot-film" muted playsinline preload="none" data-src="${assetRoot+nordFilmName()}" hidden></video><span id="lot-load" role="status" hidden></span></div>
+ <nav class="lot-views" aria-label="Välj fordonsvy"><button id="lot-tour" type="button" aria-pressed="true"><img loading="lazy" src="${imageUrl('rear',assetRoot)}" alt=""><span>Rundtur</span></button><button id="lot-orbit" type="button" aria-pressed="false"><img loading="lazy" src="${assetRoot+media.orbit.sha256}.webp" alt=""><b aria-hidden="true">⟲</b><span>3D-vy</span></button>${thumbs}</nav></div>
  <div id="lot-film-controls" hidden><label for="lot-timeline">Från utsidan till förarplatsen</label><input id="lot-timeline" type="range" min="0" max="1000" value="0" step="1" aria-label="Position i bilens rundtur"><small>Scrolla, svep i sidled eller dra i reglaget.</small></div>
  <div class="lot-info"><section aria-label="Fordonsinformation"><p class="lot-eyebrow">Fordonsinformation</p><dl>${[['Årsmodell','2025'],['Mätarställning','480 mil'],['Drivmedel','El'],['Kaross','SUV'],['Kulör','Midnattsblå'],['Säljare','Demo Motors']].map(([k,v])=>`<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl></section>
  <section class="lot-offer" aria-label="Affärsalternativ"><p class="lot-eyebrow">Fast pris · Bud välkomnas</p><strong>549 000 kr</strong><div class="lot-actions"><button type="button" data-deal="buy">Köp direkt</button><button type="button" data-deal="bid">Lägg bud</button><button type="button" data-deal="contact">Kontakta säljaren</button></div>
@@ -29,9 +29,8 @@ export function listingDialog(){
  <footer>3D-modellen är en tolkning av frontbilden. Fiktiv visningsannons. Pris och fordonsfakta är exempel. Inga köp, bud eller meddelanden skickas.</footer></div></dialog>`
 }
 
-// This isolated, owner-only frame reuses the pinned Studio viewer. Only the
-// two exact hashes below are mapped to private listing files by the media route.
-export function listingViewerResponse(){
+// This isolated frame reuses the pinned Studio viewer and fictional listing files.
+export function listingViewerResponse(assetRoot=ownerAssetRoot){
  const assets={glb:'assets/3d/'+media.model.sha256+'.glb',poster:'assets/3d/'+media.front.sha256+'.webp',truthClass:'fictional_concept'}
  const config={vehicle3dAssets:{nord:assets},behaviors:[{kind:'model3d',assetId:'nord',triggerId:'vehicle-stage',targetIds:['vehicle-fallback']}]}
  const html=`<!doctype html><html lang="sv"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Nord R · 3D</title><style>

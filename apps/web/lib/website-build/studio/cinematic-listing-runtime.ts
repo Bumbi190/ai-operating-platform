@@ -33,7 +33,7 @@ export const LISTING_RUNTIME=String.raw`(()=>{
    observer=new MutationObserver(check);observer.observe(root,{attributes:true,attributeFilter:['data-model3d-state']});check();
   },{once:true});
   deadline=setTimeout(()=>{if(frame===next)failed();},15000);
-  next.src='/build/demo-motors/cinematic?view=nord-r';stage.append(next);
+  next.src='?view=nord-r';stage.append(next);
  }
  const tour=dialog.querySelector('#lot-tour'),film=stage.querySelector('#lot-film');
  const filmControls=dialog.querySelector('#lot-film-controls'),timeline=dialog.querySelector('#lot-timeline');

@@ -33,6 +33,12 @@ function withUiGenerationCookie(
 
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
+  // Only the read-only dealer pilot and its bundled, hash-checked media are public.
+  if ((request.method === 'GET' || request.method === 'HEAD') &&
+      (path === '/bilhandlare' || path === '/bilhandlare/bilhall' ||
+       /^\/bilhandlare\/(?:bilhall\/assets|assets\/(?:3d|runtime))\/[a-z0-9.-]+$/.test(path))) {
+    return NextResponse.next({ request })
+  }
   // Diagnostics are preview-only, including when live streaming is enabled.
   if (process.env.VERCEL_ENV === 'production' &&
       (path === '/atlas-voice-provider-probe.html' || path === '/atlas-voice-connection-probe.html')) {

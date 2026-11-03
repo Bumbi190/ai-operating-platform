@@ -40,7 +40,7 @@ function readAsset(name:string):{bytes:Buffer;contentType:string}|null{
  verifyCinematicBytes(bytes,descriptor)
  return {bytes,contentType:descriptor.contentType}
 }
-/** Called only after the route's owner check. No URL fetch or arbitrary path. */
+/** Reads only pinned, bundled fictional media. Never resolve a request as a file path. */
 export function cinematicAssetResponse(request:Request,name:string):Response{
  let asset:ReturnType<typeof readAsset>
  try{asset=readAsset(name)}catch{return new Response(null,{status:503,headers:{'cache-control':'no-store'}})}

@@ -31,3 +31,9 @@ apps/web/supabase/migrations/20261103074241_sales_initial_sending.sql -text
 
 # Accepted Roadster v8 bundle: preserve source bytes and vendored GLSL formatting.
 apps/web/lib/website-build/studio/cinematic-assets/roadster-v1-viewerRuntime.bin -text whitespace=-trailing-space,-space-before-tab
+
+# Roadster v10 viewer is content-addressed; never normalize its bytes.
+apps/web/lib/website-build/studio/cinematic-assets/roadster-v2-viewerRuntime.bin -text whitespace=-trailing-space,-space-before-tab
+
+# Preserve the exact already-installed parallel PostHog statement.
+apps/web/supabase/migrations/20261104135920_posthog_approved_read.sql -text

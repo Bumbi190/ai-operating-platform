@@ -37,3 +37,10 @@ The manifest, template URLs, SRI and package digest follow the actual new bytes.
 No new media provider generation, API build, budget mutation, merge, external message or production release. The standalone omniraos.se release remains unchanged; the branch preview is the delivery surface.
 
 References consulted: [Three.js on-demand rendering](https://threejs.org/manual/pages/rendering-on-demand.html), [FFmpeg codec controls](https://www.ffmpeg.org/ffmpeg-codecs.html). No general hardware FPS guarantee is claimed; tests use Chromium/SwiftShader and cannot establish smoothness on every device.
+
+
+## Preview prerequisite discovered after push
+
+Deployment dpl_Az2s5y2ZEti8fwp87WjxAKaxarH5 stopped at the unchanged migration guard: the parallel PostHog work had already applied posthog_approved_read, absent from this branch. Read-only inspection observed ledger version 20261104135920 and one statement, SHA c40c2a05a06e09beea1667665d4b7aa43a4813bf1c4215a6d03354260d3d242b. The exact installed statement is now preserved as a canonical SQL file, with -text attributes. No migration was applied or edited in the database.
+
+The separately captured 197-name production ledger passes the unchanged set policy with canonical/enforced counts 174/160. Frozen grandfathered and legacy allowlists remain unchanged. Historical captures are preserved and still fail when incomplete. The new receipt test verifies exact statement bytes and rejects missing/duplicate PostHog entries. The Roadster bundle also gains -text attributes to preserve its immutable hash on Windows checkout.

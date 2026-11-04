@@ -33,6 +33,11 @@ export function HandlarborsenPosthogTraffic({
       text: "Datakällan är förberedd, men Omnira har ännu ingen godkänd, läsbehörig anslutning till Handlarbörsens PostHog-projekt.",
       status: "Ej ansluten",
     },
+    missing_permission: {
+      headline: "Läsbehörighet för trafik saknas",
+      text: "Kontrollera nyckelns projektåtkomst och läsbehörigheten query:read i PostHog. Dashboardanslutningen är separat.",
+      status: "Behörighet krävs",
+    },
     unavailable: {
       headline: "Trafikdata kunde inte hämtas",
       text: "PostHog svarade inte med verifierbar statistik. Inga gamla siffror eller gissningar visas som aktuella.",
@@ -86,11 +91,11 @@ export function HandlarborsenPosthogTraffic({
         </div>
         <div className={styles.metric}>
           <span className={styles.metricLabel}>
-            <Users size={16} aria-hidden="true" /> Unika besökare
+            <Users size={16} aria-hidden="true" /> Unika besökare idag
           </span>
-          <strong className={styles.metricValue}>—</strong>
+          <strong className={styles.metricValue}>{connected && traffic.visitorsToday !== undefined ? number(traffic.visitorsToday) : "—"}</strong>
           <span className={styles.metricNote}>
-            Inväntar verifierad identitetsmetod
+            {connected && traffic.visitorsToday !== undefined ? "PostHog dagliga unika · UTC · inte antal bilhandlare" : "Inväntar verifierad identitetsmetod"}
           </span>
         </div>
         <div className={styles.metric}>
@@ -158,6 +163,17 @@ export function HandlarborsenPosthogTraffic({
           </div>
         )}
       </div>
+
+      {connected && traffic.days.some(row => row.visitors !== undefined) && (
+        <div className={styles.chartSurface}>
+          <h3>Daglig trafik · UTC</h3>
+          <table style={{width:"100%",textAlign:"left"}}>
+            <thead><tr><th>Datum</th><th>Sidvisningar</th><th>Dagliga unika besökare</th></tr></thead>
+            <tbody>{traffic.days.map(row => <tr key={row.date}><td>{row.date}</td><td>{number(row.pageviews)}</td><td>{row.visitors === undefined ? "—" : number(row.visitors)}</td></tr>)}</tbody>
+          </table>
+          <p>Dagliga unika besökare summeras inte till ett unikt antal för hela veckan. Dagens siffror är ännu ofullständiga. Endast handlarborsen.se och www.handlarborsen.se ingår.</p>
+        </div>
+      )}
       <footer className={styles.footer}>
         <span>
           {connected

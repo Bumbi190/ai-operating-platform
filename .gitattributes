@@ -28,3 +28,6 @@ apps/web/supabase/migrations/20261102090200_sales_editorial_only_drafts.sql -tex
 
 # Already applied initial-send migration: preserve exact upstream source.
 apps/web/supabase/migrations/20261103074241_sales_initial_sending.sql -text
+
+# Accepted Roadster v8 bundle: preserve source bytes and vendored GLSL formatting.
+apps/web/lib/website-build/studio/cinematic-assets/roadster-v1-viewerRuntime.bin -text whitespace=-trailing-space,-space-before-tab

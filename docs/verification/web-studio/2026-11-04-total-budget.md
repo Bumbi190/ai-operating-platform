@@ -37,3 +37,13 @@ Studio's authenticated owner-scoped cost read exposes the non-renewing USD limit
 Rollback before activation: retain the previous app deployment; additive nullable columns do not enable spending. After activation: pause the dedicated project first, retain the counter/receipts and the legacy refusal wrapper. Do not roll back the database intent gate or erase the allowance. Old application code will fail closed for that project until fixed. No claim of live provider success or production readiness from fixture tests.
 
 Manual second-pass review, not an independent security review: checked atomicity, lock order, unknown results, data access, and old-host behavior. A nullable SQL CHECK loophole discovered during review was closed with an explicit IS NOT NULL predicate and regression. Added fault-injection rollback, cross-project independence and monthly-edit preservation tests.
+
+## Authorized production schema installation
+
+The user's continuation on 4 November authorized the concrete pending installation. Applied the unchanged reviewed SQL with the Supabase migration tool to AI Operating Platform. Production recorded project_total_allowance at version 20261104104329; statement SHA256 equals the canonical LF source: 3522149a5519af153655c1f7fbb5348063306af13311edfb344ac8db8ed979e2. This supersedes the pending-install status above.
+
+Separate observed receipt: 2026-11-04-total-budget-applied.json. The real ledger now has 196 names. Historical 190/195-name observations remain unchanged. Both constraints validated; all three budget RPC signatures are postgres-owned, security-definer and executable by service_role only (not anon/authenticated). The trigger function is not directly executable by those roles. Both intent overloads return false for a nonexistent reservation; an initial invalid ceiling-basis probe was rejected with 22023 as designed. This SQL check does not claim a hosted HTTP/provider transaction.
+
+No total allowance is activated (0 rows with limits). The dedicated Demo Motors project remains paused. No reservation, provider dispatch, invoice, resume or changed monthly limit was created by installation. Existing security advisory categories remain; this change is not a blanket clean-security claim.
+
+Next: deploy/review the preview, reconcile attributable prior costs against the existing nonrenewing USD10 approval, bind the actual approved plan, then activate only the dedicated project before an attended provider test. No allowance reset or assumed-zero history.

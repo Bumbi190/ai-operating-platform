@@ -4,7 +4,8 @@
   "approvedSource": "https://omniraos.se/bilhandlare/bilhall?view=roadster",
   "sourceVersion": {
     "film": "showroom-v7",
-    "viewer": "showroom-v8"
+    "viewer": "showroom-v8",
+    "model": "showroom-v9-four-thrusters"
   },
   "durationSeconds": 15.066667,
   "files": {
@@ -44,11 +45,11 @@
       "sha256": "b403e13ba6fb651ff1c3175c595b6406b3817f4f85bbd00898dbeaf5f171f3bc"
     },
     "model": {
-      "filename": "roadster-v1-model.glb",
-      "name": "41ea20c154977eeeb5fc3b8aca8e3548a7809b1ba961ba5c0663ae76f9e01b03.glb",
+      "filename": "roadster-v2-model.glb",
+      "name": "9f81d1357bf061968dab5b3f38957e11f51648751651e4e4b54d9d3cb0d1f77f.glb",
       "contentType": "model/gltf-binary",
-      "bytes": 4984164,
-      "sha256": "41ea20c154977eeeb5fc3b8aca8e3548a7809b1ba961ba5c0663ae76f9e01b03"
+      "bytes": 5077420,
+      "sha256": "9f81d1357bf061968dab5b3f38957e11f51648751651e4e4b54d9d3cb0d1f77f"
     },
     "viewerRuntime": {
       "filename": "roadster-v1-viewerRuntime.bin",

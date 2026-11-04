@@ -1,5 +1,7 @@
 import {beforeEach,describe,it,expect,vi} from 'vitest'
 import {createHash} from 'node:crypto'
+import {readFileSync} from 'node:fs'
+import {resolve} from 'node:path'
 import JSZip from 'jszip'
 import {parse} from 'parse5'
 const access=vi.hoisted(()=>vi.fn())
@@ -16,7 +18,7 @@ const digest=(bytes:Uint8Array)=>createHash('sha256').update(bytes).digest('hex'
 describe('approved portable Roadster preset',()=>{
  it('pins the complete approved film, fixed windshield model and darker viewer by actual bytes',()=>{
   expect(ROADSTER_PRESET.files.film.sha256).toBe('b403e13ba6fb651ff1c3175c595b6406b3817f4f85bbd00898dbeaf5f171f3bc')
-  expect(ROADSTER_PRESET.files.model.sha256).toBe('41ea20c154977eeeb5fc3b8aca8e3548a7809b1ba961ba5c0663ae76f9e01b03')
+  expect(ROADSTER_PRESET.files.model.sha256).toBe('9f81d1357bf061968dab5b3f38957e11f51648751651e4e4b54d9d3cb0d1f77f')
   expect(ROADSTER_PRESET.files.viewerRuntime.sha256).toBe('e84a430421555ea19ed69c3fc34258f6591c36012da03da20cdc297193e5dcf5')
   for(const file of Object.values(ROADSTER_PRESET.files)){
    const asset=readRoadsterAsset(file.name)!
@@ -27,6 +29,22 @@ describe('approved portable Roadster preset',()=>{
   const model=JSON.parse(glb.subarray(20,20+glb.readUInt32LE(12)).toString('utf8'))
   for(const resource of [...(model.buffers??[]),...(model.images??[])])expect(resource.uri).toBeUndefined()
   expect(model.extensionsRequired??[]).not.toContain('KHR_draco_mesh_compression')
+  const thrusters=model.nodes.filter((node:{name?:string})=>node.name?.startsWith('Roadster rear thruster '))
+  expect(thrusters).toHaveLength(4)
+  expect(new Set(thrusters.map((node:{translation:number[]})=>node.translation[2])).size).toBe(4)
+  expect(thrusters.every((node:{translation:number[]})=>node.translation[0]<-.45)).toBe(true)
+  expect(model.extras.roadsterThrusters.sourceModelSha256).toBe('41ea20c154977eeeb5fc3b8aca8e3548a7809b1ba961ba5c0663ae76f9e01b03')
+  const original=readFileSync(resolve(__dirname,'cinematic-assets/roadster-v1-model.glb'))
+  const originalJsonLength=original.readUInt32LE(12)
+  const originalModel=JSON.parse(original.subarray(20,20+originalJsonLength).toString('utf8'))
+  expect(model.meshes.slice(0,originalModel.meshes.length)).toEqual(originalModel.meshes)
+  expect(model.materials.slice(0,originalModel.materials.length)).toEqual(originalModel.materials)
+  const originalBinary=original.subarray(28+originalJsonLength,28+originalJsonLength+originalModel.buffers[0].byteLength)
+  expect(glb.subarray(28+glb.readUInt32LE(12),28+glb.readUInt32LE(12)+originalBinary.length).equals(originalBinary)).toBe(true)
+  // Keep recessed back walls outside the body's minimum X; no red body through the mouths.
+  expect(thrusters.every((node:{translation:number[];scale:number[]})=>node.translation[0]+.009*node.scale[0]<-.5)).toBe(true)
+
+
 
   expect(readRoadsterAsset('../roadster-v1.json')).toBeNull()
   expect(readRoadsterAsset('roadster-v1-film.mp4')).toBeNull()

@@ -55,7 +55,7 @@ export async function exportRoadsterPreset():Promise<Uint8Array>{
  }
  add('assets/'+ROADSTER_CONTROLS.name,readRoadsterAsset(ROADSTER_CONTROLS.name)!.bytes)
  add('manifest.json',JSON.stringify({...ROADSTER_PRESET,controls:ROADSTER_CONTROLS},null,2))
- add('README.txt','Roadster showcase v1 — fictional concept demonstration.\nServe this folder with a static HTTP server (for example: python -m http.server 8080), then open http://localhost:8080.\nAll media are bundled. No provider API, secrets, tracking, purchases or message sending.\nFilm: approved v7, 15.066667 seconds. 3D lighting: approved v8.\nThis is an artistic Tesla Roadster-inspired concept, not a verified vehicle or performance claim.\nChanging JavaScript requires updating its content hash and SRI in the HTML.\n')
+ add('README.txt','Roadster showcase v1 — fictional concept demonstration.\nServe this folder with a static HTTP server (for example: python -m http.server 8080), then open http://localhost:8080.\nAll media are bundled. No provider API, secrets, tracking, purchases or message sending.\nFilm: approved v7, 15.066667 seconds. 3D lighting: approved v8. Model: v9, four additive rear thrusters.\nThis is an artistic Tesla Roadster-inspired concept, not a verified vehicle or performance claim.\nChanging JavaScript requires updating its content hash and SRI in the HTML.\n')
  return zip.generateAsync({type:'uint8array',compression:'STORE'})
 }
 export async function roadsterDownloadResponse():Promise<Response>{

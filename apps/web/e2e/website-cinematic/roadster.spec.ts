@@ -114,3 +114,19 @@ test('exported preset resolves its own images, video and 3D from a different URL
  await page.getByRole('button',{name:'3D-vy',exact:true}).click()
  await expect(page.frameLocator('#screen iframe').locator('#vehicle-stage')).toHaveAttribute('data-model3d-state','ready',{timeout:30000})
 })
+
+test('Roadster rear exposes four modeled thrusters after rotation',async({page},info)=>{
+ await page.goto(view)
+ await page.getByRole('button',{name:'3D-vy',exact:true}).click()
+ const frame=page.frameLocator('#screen iframe')
+ await expect(frame.locator('#vehicle-stage')).toHaveAttribute('data-model3d-state','ready',{timeout:30000})
+ const canvas=frame.locator('canvas'),visible=(await page.locator('#screen').boundingBox())!
+ const height=(await canvas.boundingBox())!.height
+ const delta=(Math.atan2(1.55,-1.85)+Math.PI/2)/(2*Math.PI)*height
+ await page.mouse.move(visible.x+20,visible.y+visible.height*.5)
+ await page.mouse.down()
+ await page.mouse.move(visible.x+20+delta,visible.y+visible.height*.5,{steps:36})
+ await page.mouse.up()
+ await page.waitForTimeout(1100) // let OrbitControls damping settle before visual evidence
+ await page.locator('#screen').screenshot({path:info.outputPath('roadster-thrusters-rear.png')})
+})

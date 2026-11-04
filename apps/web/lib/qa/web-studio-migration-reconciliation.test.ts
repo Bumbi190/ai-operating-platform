@@ -35,3 +35,15 @@ it('validates the actual read-only ledger snapshot without weakening missing/unk
  expect(evaluateAppliedMigrationLedger([...current.migration_names,'project_total_allowance'],state)).toMatchObject({enforcedCount:159,appliedLedgerCount:196,unknownLedgerNames:[],duplicateLedgerNames:[]})
  for(const name of known)expect(()=>evaluateAppliedMigrationLedger(current.migration_names.filter((n:string)=>n!==name),state)).toThrow(new RegExp(name))
 })
+
+it('accepts the separately captured post-install ledger and exact reviewed allowance SQL',()=>{
+ const receipt=JSON.parse(readFileSync(resolve(root,'docs/verification/web-studio/2026-11-04-total-budget-applied.json'),'utf8'))
+ const state=inspectCanonicalMigrationFiles(readdirSync(directory))
+ expect(evaluateAppliedMigrationLedger(receipt.migration_names,state)).toMatchObject({enforcedCount:159,appliedLedgerCount:196,unknownLedgerNames:[],duplicateLedgerNames:[]})
+ const sql=readFileSync(resolve(directory,'20261104110000_project_total_allowance.sql'),'utf8').replaceAll('\r\n','\n')
+ expect(receipt.migration[0].statement_sha256).toBe(createHash('sha256').update(sql).digest('hex'))
+ expect(receipt.active_caps).toBe(0)
+ expect(receipt.project.paused).toBe(true)
+ expect(receipt.functions.every((fn:{anon:boolean;authenticated:boolean})=>!fn.anon&&!fn.authenticated)).toBe(true)
+ expect(receipt.constraints.every((constraint:{validated:boolean})=>constraint.validated)).toBe(true)
+})

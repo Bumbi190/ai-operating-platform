@@ -1,0 +1,99 @@
+{
+  "sourceMain": "e2316f1eb2a018ce968122eb4d6095b433c0e43c",
+  "migrations": [
+    {
+      "version": "20261017193411",
+      "name": "handlarborsen_test_data_reviews",
+      "sha256": "b71a8deed4b8467f2ee5b995dd6e4329f31ccf8b69dccf4f340c79910846806c",
+      "path": "apps/web/supabase/migrations/20261017193411_handlarborsen_test_data_reviews.sql",
+      "sourceSha256": "b71a8deed4b8467f2ee5b995dd6e4329f31ccf8b69dccf4f340c79910846806c",
+      "exactMatch": true,
+      "newTables": []
+    },
+    {
+      "version": "20261018085701",
+      "name": "social_publication_reconciliation",
+      "sha256": "6b3eb4f0289e73f0ca0087a32870dee6832be514f8eab4c7bc50d2ebaea18565",
+      "path": "apps/web/supabase/migrations/20261018070155_social_publication_reconciliation.sql",
+      "sourceSha256": "6b3eb4f0289e73f0ca0087a32870dee6832be514f8eab4c7bc50d2ebaea18565",
+      "exactMatch": true,
+      "newTables": [
+        "social_publication_reconciliation_proofs"
+      ]
+    },
+    {
+      "version": "20261018085707",
+      "name": "social_schedule_batches",
+      "sha256": "a399284f6c965a2688c32a2a82b793af7f016ba2ad2109f5e0859367875ee6c4",
+      "path": "apps/web/supabase/migrations/20261018071209_social_schedule_batches.sql",
+      "sourceSha256": "a399284f6c965a2688c32a2a82b793af7f016ba2ad2109f5e0859367875ee6c4",
+      "exactMatch": true,
+      "newTables": [
+        "social_schedule_batches",
+        "social_schedule_decisions",
+        "social_schedule_jobs",
+        "social_schedule_events",
+        "social_monthly_release_rules",
+        "social_monthly_release_evidence"
+      ]
+    },
+    {
+      "version": "20261018085708",
+      "name": "social_schedule_checkpoint_recovery",
+      "sha256": "3523565e72b42b0d654d47e480d73cc9e342d2329304f73b75bb097b6a23bac6",
+      "path": "apps/web/supabase/migrations/20261018073425_social_schedule_checkpoint_recovery.sql",
+      "sourceSha256": "3523565e72b42b0d654d47e480d73cc9e342d2329304f73b75bb097b6a23bac6",
+      "exactMatch": true,
+      "newTables": []
+    },
+    {
+      "version": "20261018085733",
+      "name": "social_schedule_review_snapshots",
+      "sha256": "281dc56f53fba4fdee10a1e8f73b8b6d9c8293b819f044f7fa878185769cf3e4",
+      "path": "apps/web/supabase/migrations/20261018074426_social_schedule_review_snapshots.sql",
+      "sourceSha256": "281dc56f53fba4fdee10a1e8f73b8b6d9c8293b819f044f7fa878185769cf3e4",
+      "exactMatch": true,
+      "newTables": []
+    },
+    {
+      "version": "20261018090826",
+      "name": "handlarborsen_metrics_definition",
+      "sha256": "1bf12413b39227d13f3a3088ce79411f204b69c8c82d5be6b456cdc7c95ad7fc",
+      "path": "apps/web/supabase/migrations/20261017184015_handlarborsen_metrics_definition.sql",
+      "sourceSha256": "1bf12413b39227d13f3a3088ce79411f204b69c8c82d5be6b456cdc7c95ad7fc",
+      "exactMatch": true,
+      "newTables": []
+    },
+    {
+      "version": "20261018090827",
+      "name": "handlarborsen_test_data_integration",
+      "sha256": "05ecd416f91ab653a044166e495d7f6bc5e001eac7faea3761a0558476656e2f",
+      "path": "apps/web/supabase/migrations/20261017192903_handlarborsen_test_data_integration.sql",
+      "sourceSha256": "05ecd416f91ab653a044166e495d7f6bc5e001eac7faea3761a0558476656e2f",
+      "exactMatch": true,
+      "newTables": [
+        "handlarborsen_test_data_operator_grants",
+        "handlarborsen_test_data_reviews",
+        "handlarborsen_test_data_executions"
+      ]
+    }
+  ],
+  "classificationTables": [
+    "social_publication_reconciliation_proofs",
+    "social_schedule_batches",
+    "social_schedule_decisions",
+    "social_schedule_jobs",
+    "social_schedule_events",
+    "social_monthly_release_rules",
+    "social_monthly_release_evidence",
+    "handlarborsen_test_data_operator_grants",
+    "handlarborsen_test_data_reviews",
+    "handlarborsen_test_data_executions"
+  ],
+  "exactAllowlistEntriesImported": 0,
+  "canonical": 146,
+  "enforced": 132,
+  "frozenGrandfathered": 14,
+  "frozenLegacyOnly": 30,
+  "reapplied": false
+}

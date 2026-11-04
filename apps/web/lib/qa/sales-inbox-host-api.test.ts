@@ -1,0 +1,15 @@
+import {describe,it,expect,vi} from 'vitest'
+import {createInboxHostApi} from '@/lib/sales/inbox/host-api'
+const projectId='10000000-0000-4000-8000-000000000001',mailboxId='70000000-0000-4000-8000-000000000001',claimId='90000000-0000-4000-8000-000000000001',batchId='80000000-0000-4000-8000-000000000001'
+const ref={projectId,mailboxId,claimId,batchId,configVersion:1,mailboxGeneration:6,hostGeneration:2}
+const cursor={uidValidity:'11',scannedThroughUid:20,epoch:1}
+const batch={ref,mode:'selected_text',expectedCursor:cursor,uidValidity:'11',throughUid:20,rangeEnd:20,records:[]}
+const req=(body:unknown,token='x'.repeat(43))=>new Request('https://omnira.example/api/sales/inbox/host',{method:'POST',headers:{authorization:'Bearer '+token},body:JSON.stringify(body)})
+function setup(enabled=true){const rpc=vi.fn(async(name:string,_args?:unknown)=>({data:name==='sales_host_identity'?{projectId,workerId:mailboxId,ownerId:claimId,generation:2}:name==='sales_inbox_claim_sync'?{sync:null}:name==='sales_inbox_read_batch_receipt'?{receipt:null,expired:false}:{accepted:true,batchId,cursor,records:0,inserted:0},error:null}));return {rpc,api:createInboxHostApi({db:()=>({rpc} as never),enabled:()=>enabled})}}
+describe('narrow inbox manager transport',()=>{
+ it.each(['claim_sync','read_batch_receipt','commit_batch','report_sync_failure'])('uses manager identity and fixed RPC for %s',async operation=>{const {api,rpc}=setup();const input=operation==='claim_sync'?{}:operation==='read_batch_receipt'?ref:operation==='commit_batch'?batch:{ref,reasonCode:'AUTH_FAILED'};expect((await api(req({operation,...input}))).status).toBe(200);expect(rpc.mock.calls.map(x=>x[0])).toEqual(['sales_host_identity','sales_inbox_'+operation])})
+ it.each([{operation:'claim_sync',projectId},{operation:'send'},{operation:'claim_sync',password:'CANARY'},{operation:'read_batch_receipt',...ref,raw:'ERROR'},{operation:'report_sync_failure',ref,reasonCode:'raw exception'},{operation:'commit_batch',...batch,records:[{uid:3,password:'CANARY'}]}])('rejects unscoped or secret payload %j before RPC',async body=>{const {api,rpc}=setup();expect((await api(req(body))).status).toBe(400);expect(rpc).not.toHaveBeenCalled()})
+ it('fails closed for revoked managers and wrong-purpose worker credentials',async()=>{const {api,rpc}=setup();rpc.mockResolvedValue({data:null as never,error:{code:'P0002'} as never});expect((await api(req({operation:'claim_sync'}))).status).toBe(404);expect(rpc).toHaveBeenCalledTimes(1)})
+ it('checks feature gate against authenticated project',async()=>{const {api,rpc}=setup(false);expect((await api(req({operation:'claim_sync'}))).status).toBe(404);expect(rpc).toHaveBeenCalledTimes(1)})
+ it('never exposes unrelated RPC fields',async()=>{const {api,rpc}=setup();rpc.mockResolvedValueOnce({data:{projectId,workerId:mailboxId,ownerId:claimId,generation:2},error:null});rpc.mockResolvedValueOnce({data:{sync:null,password:'CANARY'} as never,error:null});expect(await (await api(req({operation:'claim_sync'}))).json()).toEqual({sync:null})})
+})

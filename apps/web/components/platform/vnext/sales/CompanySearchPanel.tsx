@@ -1,0 +1,71 @@
+'use client'
+
+import React,{useRef,useState} from 'react'
+import {MapPin,Search} from 'lucide-react'
+import {DISCOVERY_CITIES,type DiscoveryCity} from '@/lib/sales/discovery/types'
+import type {CompanyDirectory,CompanyRow} from '@/lib/sales/companies/types'
+import {COMPANY_INDUSTRIES,type CompanyIndustry} from '@/lib/sales/companies/industries'
+import type {CompanySearchQuery} from '@/lib/sales/companies/query'
+import {SWEDISH_MUNICIPALITIES,municipalityByName} from '@/lib/sales/companies/municipalities'
+import styles from './CompanyDirectory.module.css'
+
+export function CompanySearchPanel({data,onResult,renderRows}:{data:CompanyDirectory;onResult:(value:CompanyDirectory)=>void;renderRows:(rows:CompanyRow[])=>React.ReactNode}){
+ const [category,setCategory]=useState<CompanyIndustry>('car_dealer')
+ const [city,setCity]=useState<DiscoveryCity>('malmo'),[municipalityName,setMunicipalityName]=useState('Malmö'),[radius,setRadius]=useState(5),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null),[hasSearched,setHasSearched]=useState(false),[lastQuery,setLastQuery]=useState<CompanySearchQuery|null>(null)
+ const pending=useRef(false),scb=data.searchProvider==='scb',fresh=data.rows.filter(r=>r.id.startsWith('public:')),meta=data.searchMeta,municipality=municipalityByName(municipalityName)
+ const industry=COMPANY_INDUSTRIES[category],buttonLabel='Sök '+industry.label.toLocaleLowerCase('sv-SE')
+ function resetSearch(){setHasSearched(false);setLastQuery(null);setError(null);onResult({...data,rows:data.rows.filter(r=>!r.id.startsWith('public:')),searchMeta:undefined})}
+ async function search(query:CompanySearchQuery,offset=0){
+  if(pending.current||!data.sourceConfigured)return
+  pending.current=true;setBusy(true);setError(null)
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),45000)
+  try{
+   const response=await fetch('/api/sales/companies',{method:'POST',headers:{'content-type':'application/json'},cache:'no-store',signal:controller.signal,body:JSON.stringify({projectId:data.projectId,query,...(offset?{offset}:{})})})
+   if(!response.ok)throw new Error('source_unavailable')
+   const next=await response.json() as CompanyDirectory
+   if(next.projectId!==data.projectId||next.readOnly!==true||!Array.isArray(next.rows)||!Array.isArray(next.sources))throw new Error('source_invalid')
+   onResult(next);setLastQuery(query);setHasSearched(true)
+  }catch{setError('Källan kunde inte läsas. Ingen automatisk omsökning görs; eventuell tidigare visning är äldre underlag.')}
+  finally{clearTimeout(timer);pending.current=false;setBusy(false)}
+ }
+ return <section id="sok-foretag" className={styles.publicSearch} aria-labelledby="public-heading">
+  <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>SÖK NYA FÖRETAG · {scb?'SCB':'PUBLIK KÄLLA'}</p><h2 id="public-heading">Hitta företag</h2></div><MapPin size={22} aria-hidden="true" /></div>
+  <p className={styles.note}>{scb?'Skriv eller välj bland Sveriges 290 kommuner. Välj bransch och sök registrerade arbetsställen i kommunen. Fem registerträffar granskas per sida; använd Nästa för fler. SCB:s branschkod bevisar inte aktuell verksamhet. Enskilda näringsidkare och andra identiteter utanför den granskade bolagsmodellen utelämnas.':'Ett begränsat uppslag i den konfigurerade kartkällan.'} Kontaktväg och mejlhistorik behöver granskas. Sökningen sparar inga kontakter.</p>
+  <form className={styles.publicForm} onSubmit={e=>{e.preventDefault();if(scb){if(municipality)void search({municipalityCode:municipality.code,category,limit:5})}else if(category!=='house_builder')void search({city,category,radiusKm:radius,limit:20})}}>
+   <label><span>Bransch</span><select aria-label="Bransch" value={category} disabled={busy} onChange={e=>{resetSearch();setCategory(e.target.value as CompanyIndustry)}}>{Object.entries(COMPANY_INDUSTRIES).filter(([key])=>scb||key!=='house_builder').map(([key,value])=><option key={key} value={key}>{value.label}</option>)}</select></label>
+   {scb?<label><span>Kommun</span><input aria-label="Kommun" aria-describedby="municipality-help" type="text" list="company-municipalities" maxLength={80} value={municipalityName} disabled={busy} onChange={e=>{resetSearch();setMunicipalityName(e.target.value)}} placeholder="Skriv t.ex. Hässleholm" autoComplete="off" required /><datalist id="company-municipalities">{[...SWEDISH_MUNICIPALITIES].sort((a,b)=>a.name.localeCompare(b.name,'sv-SE')).map(m=><option key={m.code} value={m.name} />)}</datalist></label>:<label><span>Ort för publik sökning</span><select aria-label="Ort för publik sökning" value={city} disabled={busy} onChange={e=>{resetSearch();setCity(e.target.value as DiscoveryCity)}}>{Object.entries(DISCOVERY_CITIES).map(([key,c])=><option key={key} value={key}>{c.label}</option>)}</select></label>}
+   {!scb&&<label><span>Radie från ortens centrum (km)</span><input type="number" min={1} max={25} value={radius} disabled={busy} onChange={e=>{resetSearch();setRadius(Number(e.target.value))}} required /></label>}
+   <button type="submit" disabled={busy||!data.sourceConfigured||(scb&&!municipality)}><Search size={16} aria-hidden="true" />{busy?'Läser källa…':scb?buttonLabel:'Sök i publik källa'}</button>
+  </form>
+  {scb&&<p id="municipality-help" className={styles.note}>{municipality?`${municipality.name} kommun är vald. Klicka ${buttonLabel} för nya registerträffar.`:'Skriv ett fullständigt kommunnamn och välj i listan, t.ex. Hässleholm eller Kristianstad.'}</p>}
+  {scb&&<p className={styles.note}>Registerurval: {industry.registeredLabel} · SNI {industry.sniCodes.join(', ')}.{category==='house_builder'?' För husbyggare ingår inte alla specialiserade hantverksföretag.':''}</p>}
+  {scb&&data.sourceConfigured&&!hasSearched&&!busy&&<p className={styles.note}>Ingen sökning har körts för de valda fälten. Klicka {buttonLabel}.</p>}
+  {!data.sourceConfigured&&<p className={styles.warning}>Sökkällan är inte tillgänglig i denna miljö. Det sparade underlaget kan fortfarande filtreras nedan.</p>}
+  {error&&<p className={styles.warning} role="alert">{error}</p>}
+  {hasSearched&&<div>
+   <p className={styles.note} role="status">{fresh.length} källposter i denna omgång.{meta?` ${meta.matchedWorkplaces} registerträffar i hämtat underlag för ${meta.areaLabel}.`:''}</p>
+   <p className={styles.note}>{meta?'SCB:s registrerade näringsgren är ett granskningsunderlag; detta är ingen komplett lista över alla företag i branschen.':category==='car_dealer'?'Urval ur kartkällan, inte alla bilhandlare.':'Urval ur kartkällan, inte alla företag i branschen.'}</p>
+   {meta?.sourceScope==='municipality'&&<p className={styles.note}>Kommunurval från SCB: {meta.areaLabel}. {meta.scannedRows} arbetsställen lästa före bransch- och identitetsgranskning. Urvalet gäller registrerad primär näringsgren.</p>}
+   {meta&&<p className={styles.note}>Olika arbetsställen kan tillhöra samma bolag. Jämför arbetsställets namn och CFAR-nummer på korten.</p>}
+   {meta?.truncated&&<p className={styles.warning}>Registerhämtningen nådde sin gräns. Även antalet registerträffar i kommunen kan vara ofullständigt.</p>}
+   {!!meta?.skippedInPage&&<p className={styles.note}>{meta.skippedInPage} poster i omgången behöver ytterligare identitetsgranskning och visas inte.</p>}
+   {meta?.diagnostics&&<details className={styles.note}>
+    <summary>Så räknades sökresultatet</summary>
+    <ul>
+     <li>{meta.diagnostics.municipalityRows} källposter i vald kommun</li>
+     <li>{meta.diagnostics.industryRows} poster med vald branschkod</li>
+     <li>{meta.diagnostics.identityExcludedRows} poster utanför den granskade bolagsmodellen</li>
+     <li>{meta.diagnostics.missingCfarRows} poster utan giltigt CFAR-nummer</li>
+     <li>{meta.diagnostics.duplicateRows} upprepade poster för samma bolag och arbetsställe</li>
+     <li>{meta.diagnostics.conflictingWorkplaces} arbetsställen med motstridig bolagsidentitet, utelämnade</li>
+     <li>{meta.diagnostics.eligibleWorkplaces} granskbara arbetsställen, varav {meta.diagnostics.unnamedWorkplaces} utan visningsbart arbetsställenamn</li>
+     <li>{meta.diagnostics.reviewedInPage} arbetsställen granskade på denna sida; {meta.diagnostics.returnedInPage} visas och {meta.diagnostics.legalReviewSkipped} utelämnas efter bolagskontroll</li>
+    </ul>
+    <p>Antalen avser hämtat underlag. Ett motstridigt arbetsställe kan omfatta flera källposter. Utelämnade identiteter visas inte.</p>
+   </details>}
+   {fresh.length===0&&<div><h3>Inga granskbara företag på denna sida</h3><p className={styles.note}>Inga poster i denna omgång kunde visas efter urval och bolagskontroll. Det säger inte att företag saknas i kommunen.{meta?.nextOffset!=null?' Använd Nästa för att granska fler registerträffar.':''}</p></div>}
+   <div className={styles.cards}>{renderRows(fresh)}</div>
+   {meta?.nextOffset!==null&&meta?.nextOffset!==undefined&&lastQuery&&<button type="button" disabled={busy} onClick={()=>void search(lastQuery,meta.nextOffset!)}>Nästa 5 registerträffar</button>}
+  </div>}
+ </section>
+}

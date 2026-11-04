@@ -97,6 +97,11 @@ export async function PATCH(
       const result=await resolveLocalTextApproval(db,{userId:access.userId,approvalId:params.id,decision:action==='approved'?'approve':'reject',expectedVersion:body.expectedVersion})
       return NextResponse.json(result,{status:result.kind==='refused'?409:result.kind==='unknown'?503:200,headers:{'Cache-Control':'private, no-store'}})
     }catch{return NextResponse.json({error:'LOCAL_TEXT_REVIEW_UNAVAILABLE'},{status:503})}
+}
+  // Selected private replies are reviewed against the displayed revision/hash.
+  // Keep them out of generic feedback/memory and article workflows.
+  if (existing.kind === 'sales_reply_review') {
+    return NextResponse.json({ code: 'PRIVATE_REPLY_REVIEW_REQUIRED', error: 'Granska svarsförslaget i projektets privata svarsvy.' }, { status: 409 })
   }
 
   // ── G3C-3B · RUN FIRST, THEN APPROVAL — ONE ATOMIC TRANSITION ────────────

@@ -1,0 +1,44 @@
+{
+  "state": "neutral_owner_draft_needs_review",
+  "provider": "existing first-party Claude CLI2.1.296",
+  "sourceMessageId": "846ed8ed-f3e5-4356-8608-8dafc9046f40",
+  "sourceMessageVersion": 3,
+  "sourceContentSha256": "c2542e00f4dd110b03fdd41efdb13406e2897ebd3d553b2845f822515cd2678a",
+  "sourceRecheckedAt": "2026-10-18T06:33Z",
+  "inputSha256": "3e3f1ac3a991f520f69b871b5c67b87041291e191aaa79dae1e9429897a0aeb4",
+  "attempts": [
+    {
+      "testId": "owner-reply-20261018-062612",
+      "attemptId": "0ada8581-decc-4507-af73-246d84e664df",
+      "attempts": 1,
+      "startedAt": "2026-10-18T06:30:49.876353+00:00",
+      "finishedAt": "2026-10-18T06:31:01.950339+00:00",
+      "draftSha256": "2fa2eaadf41e1af79790c89bc5eb7987eb6c81e017fde2a12e5f400240e6c32c",
+      "questionCount": 3
+    },
+    {
+      "testId": "owner-reply-20261018-062612-v2",
+      "attemptId": "c6706b40-31fa-4fdc-8138-97b3f5e9ad34",
+      "attempts": 1,
+      "startedAt": "2026-10-18T06:33:18.837654+00:00",
+      "finishedAt": "2026-10-18T06:33:26.114917+00:00",
+      "draftSha256": "6d88a9d5d0b80e0b815e6d70c39aabb2678a211eebfd0c23d300b55f7eea9c48",
+      "questionCount": 4
+    }
+  ],
+  "totalCliDispatches": 2,
+  "automaticRetry": false,
+  "uncertainDispatchRetried": false,
+  "offerProvided": false,
+  "customerContextUsed": false,
+  "draftSent": false,
+  "draftBodyInGit": false,
+  "persistentB3QueueExercised": false,
+  "liveB3Activated": false,
+  "providerBilling": "not independently metered",
+  "notes": [
+    "Neutral owner-only adapter/runtime qualification; does not qualify B3 durable queue rollout.",
+    "First completed output over-explained AI/review rules in recipient text. Prompt corrected; intentional second completed test keeps review questions separate.",
+    "Remaining questions concern owner sender/signature preferences and whether a reply is needed. No sender setting was changed from inbound instructions."
+  ]
+}

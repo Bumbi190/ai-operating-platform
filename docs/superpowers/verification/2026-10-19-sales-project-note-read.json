@@ -1,0 +1,141 @@
+{
+  "baseCommit": "0340f1b462dbd14536499980e9c4fb7727df4133",
+  "commits": [
+    "32e6440809f94c5822d6a05e40765ee3fd42f26b",
+    "44665a3c795c4cf4ce4900b4314edc978fff3eb7"
+  ],
+  "deploymentId": "dpl_28PRjkhP6JnR7o4SMqhMk6FJr9YF",
+  "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+  "conversationId": "e947e607-ca33-402d-a588-510d2d484531",
+  "baseline": {
+    "held": 139,
+    "jobs": 0,
+    "sendJobs": 1,
+    "contactsHash": "acffc19220c78f5467584b1d6cc16bba",
+    "copyRevisions": 2,
+    "historyRevisions": 6
+  },
+  "targetedTests": 39,
+  "typecheck": "exit 0",
+  "review": "Two fresh-context reviews; no concrete Critical/Important/Minor findings",
+  "status": "implemented_and_targeted_live_read_verified; compound_rehearsal_partial",
+  "deployment": {
+    "id": "dpl_28PRjkhP6JnR7o4SMqhMk6FJr9YF",
+    "commit": "44665a3c795c4cf4ce4900b4314edc978fff3eb7",
+    "state": "READY",
+    "target": "preview",
+    "url": "https://ai-operating-platform-5chjs2a6t-bumbi190s-projects.vercel.app",
+    "alias": "https://ai-operating-platform-web-git-codex-a-fa6a7c-bumbi190s-projects.vercel.app"
+  },
+  "scope": {
+    "newTool": "get_sales_project_note",
+    "index": "get_sales_workspace.salesNoteIndex",
+    "selectedColumns": [
+      "id",
+      "key",
+      "value",
+      "source",
+      "updated_at"
+    ],
+    "indexColumns": [
+      "key",
+      "updated_at"
+    ],
+    "noteNamespace": "lowercase project-prefix.sales.note-key",
+    "maxNoteValueUtf8Bytes": 65536,
+    "maxIndexRows": 25,
+    "hasMoreSentinelRows": 26,
+    "genericMemoryPreviewChars": 240,
+    "readOnly": true,
+    "newIngestion": false,
+    "schemaChanges": false,
+    "newSendingAuthority": false,
+    "ownerProjectConversationGateRetained": true
+  },
+  "validation": {
+    "firstRed": {
+      "passed": 12,
+      "failed": 11,
+      "reason": "Missing full-note tool"
+    },
+    "firstGreen": {
+      "passed": 36,
+      "failed": 0
+    },
+    "indexRed": {
+      "passed": 23,
+      "failed": 3,
+      "reason": "Missing discovery metadata"
+    },
+    "finalTargeted": {
+      "passed": 39,
+      "failed": 0
+    },
+    "typecheckExit": 0,
+    "independentReview": "Initial and metadata-index delta reviewed independently; zero concrete Critical/Important/Minor findings",
+    "finalFullSuite": {
+      "total": 15283,
+      "passed": 13545,
+      "failed": 401,
+      "pending": 1333,
+      "green": false,
+      "newFailedIdentitiesVsPriorProof": [],
+      "newLoadErrorFiles": [],
+      "failureNames": "2026-10-19-sales-project-note-test-failures.json"
+    },
+    "priorFullInvocation": {
+      "failed": 405,
+      "additional5000msTimeouts": 4,
+      "targetedRecheckPassed": 4,
+      "limits": "Original 405-error run and four exact timeout identities retained in failure proof; no timeouts/assertions changed."
+    }
+  },
+  "live": {
+    "conversationUrl": "https://ai-operating-platform-web-git-codex-a-fa6a7c-bumbi190s-projects.vercel.app/chat/e947e607-ca33-402d-a588-510d2d484531",
+    "unboundProbeConversationId": "7a371fe0-d846-495b-ae6c-5b4488415170",
+    "unboundProbeFinding": "New conversation button produced project_id=null; existing sales guard correctly refused. Test setup corrected by using existing bound conversation; no security gate relaxed.",
+    "compoundProbe": {
+      "workspaceRead": "success",
+      "contactCount": 139,
+      "held": 139,
+      "karebyFullNoteCharacters": 6215,
+      "karebyCorrectlySeparatedFromSixMonthTemplates": true,
+      "salesNoteIndex": "13 exact available keys, state ok, hasMore false, text-review key first",
+      "remainingFailure": "Despite available key and explicit guide, model read only Kareby note and omitted the separate full text-review note; it incorrectly described reviewed draft text as merely saved. Compound rehearsal is NOT accepted."
+    },
+    "focusedFollowup": {
+      "fullTextReviewNoteCharacters": 6640,
+      "readSucceeded": true,
+      "contentTruncated": false,
+      "exactCurrentRevisionIds": [
+        "ed85e7cc-8ba6-44cb-b8dc-0d5de7535d41",
+        "7ce4d966-620c-4db9-8511-711beadc7d0e"
+      ],
+      "versions": [
+        1,
+        1
+      ],
+      "correctlyRecognizedTextReview": true,
+      "correctlyDeniedSendAuthority": true,
+      "limit": "A narrowing followup was necessary; this does not establish autonomous completeness for multi-part summaries."
+    }
+  },
+  "invariantsAfter": {
+    "held": 139,
+    "jobs": 0,
+    "sendJobs": 1,
+    "contactsHash": "acffc19220c78f5467584b1d6cc16bba",
+    "copyRevisions": 2,
+    "historyRevisions": 6,
+    "checkedAt": "2026-10-19T11:59:29.480375Z",
+    "contactsHashUnchanged": true,
+    "noNewJobsOrSendJobs": true,
+    "copyAndHistoryRevisionsUnchanged": true
+  },
+  "release": {
+    "draftPR": 386,
+    "merged": false,
+    "productionFrontendPromoted": false
+  },
+  "remaining": "Reliable selection of every required evidence source in multi-part Atlas status answers; continue human review. Do not claim compound rehearsal or the full web suite is green."
+}

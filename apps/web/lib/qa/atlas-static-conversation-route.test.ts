@@ -457,3 +457,40 @@ it('binds OpenAI Studio spend and tools to the verified project while preserving
   expect(names).toContain('get_website_build_plan');expect(names).not.toContain('trigger_workflow')
  }finally{delete process.env.ATLAS_MODEL_PROFILE}
 })
+
+
+describe('stored-context summary requests retain project reads and tools', () => {
+  for (const content of [
+    'Sammanfatta Handlarbörsens sparade projektminne och Founding 5.',
+    'Använd get_records och sammanfatta de sparade minnesposterna.',
+    'Sammanfatta vad vi tidigare bestämde för pilotprogrammet.',
+    'Summera Resend-historiken och vad som saknas i Strato.',
+    'Summarize the saved project memory.',
+    'Skriv ett svar utifrån kontakthistoriken.',
+  ]) {
+    for (const mode of [undefined, 'content']) {
+      it('keeps stored context for '+content+' (mode='+String(mode)+')', async () => {
+        const {res}=await post({...userMsg(content),...(mode?{mode}:{})})
+        expect(res.status).toBe(200)
+        expect(contextTablesFrom(touchedTables)).toContain('memories')
+        expect(streamCalls).toHaveLength(1)
+        expect(streamCalls[0].tools).toEqual(expect.arrayContaining([
+          expect.objectContaining({name:'get_records'}),
+        ]))
+      })
+    }
+  }
+  for (const content of [
+    'Sammanfatta följande text: Solen gick upp. Barnen åt frukost.',
+    'Skriv en kort bildtext om minnesträning.',
+    'Skriv en Facebook-post om höstpromenader.',
+  ]) {
+    it('preserves inexpensive self-contained writing: '+content, async () => {
+      const {res}=await post(userMsg(content))
+      expect(res.status).toBe(200)
+      // The existing ownership lookup may read projects; it is not memory context.
+      expect(contextTablesFrom(touchedTables)).not.toContain('memories')
+      expect(streamCalls[0].tools).toEqual([])
+    })
+  }
+})

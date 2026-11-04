@@ -1,0 +1,102 @@
+{
+  "asOf": "2026-10-19T09:50:28.197Z",
+  "status": "awaiting_owner_review",
+  "scope": "Preparation only; no sends, schedules, unpause, history/rule application or credential changes.",
+  "reviewArtifact": {
+    "filename": "Handlarborsen-granskning-Founding5-20261019.html",
+    "libraryFileId": "libfile_31f5af6622cc81919154e80e136f76e8"
+  },
+  "sources": {
+    "stratoHeaders": 42,
+    "matched": 16,
+    "through": "2026-10-19T09:31:06.445424+00:00",
+    "resendRecentEmails": 71,
+    "broadcastRecipients": 25,
+    "exactFoundingMatches": 0
+  },
+  "sourceLimits": "Archive/Trash/older history/other channels incomplete; Sent copies are not SMTP acceptance/delivery proof.",
+  "validation": {
+    "parser": "parseTimingRules and parseHistoryRevision",
+    "candidates": 5,
+    "events": 14,
+    "passed": true,
+    "requestsRemainUnconfirmed": true,
+    "backendHistoryRuleWrites": 0
+  },
+  "finalState": {
+    "held": 139,
+    "rules": 0,
+    "offers": 2,
+    "contacts": 139,
+    "memories": [
+      {
+        "key": "handlarborsen.sales.preflight_requirement",
+        "value": "Före framtida sändningsbeslut: stäm av aktuell Strato Skickat/inkorg och Resend-logg; saknad historik blockerar första kontakt och datumförslag. Kontrollera samma mottagare över filialer/kanaler utan att slå ihop filialrader. Behåll studs-, avregistrerings-, nej- och avvaktaspärrar. Skickat synkas inte löpande; automatisk intervallkontroll är ännu inte implementerad."
+      }
+    ],
+    "sendJobs": 1,
+    "histories": 0,
+    "replyJobs": 1,
+    "memoryHash": "20374a2fa8c1fb2bd7fe5c638b6ec905",
+    "sendEvents": 4,
+    "contactHash": "51499a0a02f8258d7c8a2a7824423f58",
+    "initialJobs": 0,
+    "memoryCount": 17
+  },
+  "atlasMemoryUpdate": {
+    "applied": false,
+    "readVerifiedUnchanged": true,
+    "error": "McpServerError: Invalid or expired requestState",
+    "retry": false,
+    "pending": {
+      "asOf": "2026-10-19T09:33:44.599Z",
+      "status": "awaiting_owner_review",
+      "scope": "Founding5 only; partial history metadata; no activation",
+      "rulesProposal": {
+        "minWaitSeconds": 1209600,
+        "maxReminders": 1,
+        "maxSourceAgeSeconds": 900
+      },
+      "observations": [
+        {
+          "company": "GP Motor",
+          "reminderObserved": "2026-10-15T08:00:02+02:00",
+          "decision": "pause_no_second_unanswered_reminder"
+        },
+        {
+          "company": "Autolane",
+          "reminderObserved": "2026-10-15T08:00:45+02:00",
+          "decision": "pause_no_second_unanswered_reminder"
+        },
+        {
+          "company": "Tjänstebils Experten",
+          "reminderObserved": "2026-10-15T08:01:08+02:00",
+          "decision": "pause_no_second_unanswered_reminder"
+        },
+        {
+          "company": "Moberg Bil",
+          "decision": "wait; November is unscheduled suggestion only"
+        },
+        {
+          "company": "Newman Bil Hässleholm",
+          "decision": "wait; original thread matches separate reply address; no recipient replacement"
+        }
+      ],
+      "sourceCheck": {
+        "stratoHeaders": 42,
+        "matched": 16,
+        "through": "2026-10-19T09:31:06.445424+00:00",
+        "resendRecentEmails": 71,
+        "broadcastRecipients": 25,
+        "exactFoundingMatches": 0
+      },
+      "limits": "Archive/Trash/older history/other channels incomplete; Sent copies are not SMTP acceptance/delivery proof.",
+      "all139Held": true,
+      "ownerReviewedHistorySaved": false,
+      "ownerReviewedRulesSaved": false,
+      "customerSendingEnabled": false
+    },
+    "preflightProposed": "Aktuell förberedelsekontroll finns nu via get_sales_contact_timing och granskningsvyn. Historik och regler är ännu inte ägargranskade; saknade eller gamla källor blockerar. Inför framtida sändningsbeslut krävs aktuell Strato Skickat/inkorg, Resend och kontroll av samma mottagare över filialer. Alla spärrar gäller. Skickat har ingen löpande synk; kundtransport och schemaläggning är inte aktiverade."
+  },
+  "nextAction": "Owner reviews HTML and explicitly approves one rule and five partial history revisions. Fresh CAS/source checks required before application. All contact suppression remains."
+}

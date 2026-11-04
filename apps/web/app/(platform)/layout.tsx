@@ -17,10 +17,12 @@ import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { resolveOrganizationReadScope } from '@/lib/auth/organization-project-read'
 import { OPERATOR_DISPLAY_NAME } from '@/lib/atlas/identity'
 import { AtlasProjectReturnShortcut } from '@/components/platform/vnext/AtlasProjectReturnShortcut'
+import { NovaReplyReviewReminder } from '@/components/platform/vnext/NovaReplyReviewReminder'
+import { salesEnabled } from '@/lib/sales/feature'
+import { HANDLARBORSEN_PROJECT_ID } from '@/lib/atlas/collectors/handlarborsen-marketplace'
 import { AtlasMobileNav } from '@/components/platform/vnext/AtlasMobileNav'
 import { AtlasInboxProvider } from '@/components/platform/vnext/AtlasInboxProvider'
 import { competitorInboxEnabled } from '@/lib/atlas/project-analytics/handlarborsen-candidate-inbox-service'
-import { HANDLARBORSEN_PROJECT_ID } from '@/lib/atlas/collectors/handlarborsen-marketplace'
 import { ShellTopBar } from '@/components/platform/vnext/ShellTopBar'
 import { OMNIRA_UI_COOKIE, resolveUiGeneration, isVNext } from '@/lib/ui/generation'
 import {
@@ -70,6 +72,9 @@ export default async function PlatformLayout({
     : null
   const isCollaborator = organizationScope?.role.active
     && organizationScope.role.role === 'collaborator'
+  const novaReplyReminderEnabled = !isCollaborator
+    && ownedProjectIds.includes(HANDLARBORSEN_PROJECT_ID)
+    && salesEnabled(HANDLARBORSEN_PROJECT_ID)
   const displayProjectIds = isCollaborator ? [...organizationScope.projectIds] : ownedProjectIds
   const scopedProjectIds = scopeProjectFilter(displayProjectIds)
   const allowedProjects = new Set(displayProjectIds)
@@ -96,7 +101,7 @@ export default async function PlatformLayout({
       .order('created_at', { ascending: false })
       .limit(12),
     (db.from('approvals') as any)
-      .select('id, project_id, status, output_key, created_at, reviewed_at')
+      .select('id, project_id, kind, status, output_key, created_at, reviewed_at')
       .in('project_id', scopedProjectIds)
       .order('created_at', { ascending: false })
       .limit(8),
@@ -177,8 +182,12 @@ export default async function PlatformLayout({
       events.push({
         id: `appr-${a.id}-pending`,
         type: 'approval',
-        title: 'Innehåll väntar på ditt godkännande',
-        detail: 'Granska så går det vidare till publicering',
+        title: a.kind === 'sales_reply_review'
+          ? 'Nova · Ett mejlsvar behöver din granskning'
+          : 'Innehåll väntar på ditt godkännande',
+        detail: a.kind === 'sales_reply_review'
+          ? 'Öppna ett förslag i taget. Textgodkännande skickar inget mejl.'
+          : 'Granska så går det vidare till publicering',
         project: p?.name,
         projectSlug: p?.slug,
         projectColor: p?.color,
@@ -265,6 +274,7 @@ export default async function PlatformLayout({
         }}
       />
       <AtlasProjectReturnShortcut />
+      {novaReplyReminderEnabled && <NovaReplyReviewReminder />}
       <PlatformWorkspace
         uiGeneration={uiGeneration}
         className={`

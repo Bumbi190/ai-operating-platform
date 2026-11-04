@@ -1,3 +1,4 @@
+import {SalesSummaryCard} from './sales/SalesSummaryCard'
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -79,6 +80,7 @@ export function ProjectCommandCenter({
     <div className={styles.field} data-owner-brief={briefing ? 'true' : undefined}>
       <div className={styles.ambient} aria-hidden />
       <Header model={model} />
+      <SalesSummaryCard projectId={model.project.id} slug={model.project.slug} />
       {overview ?? null}
       {briefing ?? null}
       {foldEmptyWorkspace ? (

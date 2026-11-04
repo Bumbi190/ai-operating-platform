@@ -1,0 +1,14 @@
+import {describe,it,expect,vi} from 'vitest'
+import {createSalesApi} from '@/lib/sales/api'
+const projectId='10000000-0000-4000-8000-000000000001',userId='20000000-0000-4000-8000-000000000001'
+const input={operation:'save_email_copy',projectId,templateKey:'pilot-six-months-initial-v1',expectedPreviousId:'30000000-0000-4000-8000-000000000001',idempotencyKey:'40000000-0000-4000-8000-000000000001',subject:'En ny svensk rubrik',body:'Hej!\n\nEtt ändrat textförslag.\n\nAndre\nHandlarbörsen'}
+function setup(){const saved={id:'50000000-0000-4000-8000-000000000001',version:2,status:'draft',recipient:null,scheduledAt:null};const rpc=vi.fn().mockResolvedValue({data:saved,error:null});const api=createSalesApi({access:async()=>({ok:true as const,userId,allowedProjectIds:[projectId]}),db:()=>({rpc} as never),enabled:p=>p===projectId});return {api,rpc,saved}}
+const request=(value:unknown,origin='https://omnira.example')=>new Request('https://omnira.example/api/sales',{method:'POST',headers:{origin,'content-type':'application/json'},body:JSON.stringify(value)})
+describe('recipient-free email copy editing',()=>{
+ it('saves edited copy as a draft revision without a recipient or schedule',async()=>{const {api,saved}=setup();const response=await api(request(input));expect(response.status).toBe(200);expect(await response.json()).toEqual(saved);expect(response.headers.get('cache-control')).toContain('no-store')})
+ it('keeps the compare-and-set and retry key for the database boundary',async()=>{const {api,rpc}=setup();await api(request(input));expect(rpc).toHaveBeenCalledWith('sales_email_copy_save',{p_principal:{ok:true,userId,allowedProjectIds:[projectId]},p_input:(({operation,...v})=>v)(input)})})
+ it('requires same-origin owner access',async()=>{const {api,rpc}=setup();expect((await api(request(input,'https://evil.example'))).status).toBe(403);expect((await api(request({...input,projectId:'10000000-0000-4000-8000-000000000002'}))).status).toBe(404);expect(rpc).not.toHaveBeenCalled()})
+ it.each(['recipient','toEmail','senderEmail','scheduledAt','approved','contactIds'])('rejects injected %s rather than changing transport or identity',async key=>{const {api,rpc}=setup();expect((await api(request({...input,[key]:key==='contactIds'?[]:'changed'}))).status).toBe(400);expect(rpc).not.toHaveBeenCalled()})
+ it.each([{subject:''},{subject:'a'.repeat(91)},{subject:'Injected\r\nBcc: private@example.com'},{body:''},{body:'a'.repeat(2001)},{body:'bad\u0000text'},{expectedPreviousId:'bad'},{templateKey:'../other'},{idempotencyKey:'bad'}])('rejects malformed edits %j',async bad=>{const {api,rpc}=setup();expect((await api(request({...input,...bad}))).status).toBe(400);expect(rpc).not.toHaveBeenCalled()})
+ it('returns a conflict instead of reporting stale edits saved',async()=>{const {api,rpc}=setup();rpc.mockResolvedValue({data:null,error:{code:'23505'}});expect((await api(request(input))).status).toBe(409)})
+})

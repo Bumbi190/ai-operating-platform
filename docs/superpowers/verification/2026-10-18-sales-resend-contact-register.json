@@ -1,0 +1,146 @@
+{
+  "date": "2026-10-18",
+  "scope": "Handlarbörsen data-only Resend contact reconciliation",
+  "sourceHead": "e71d15e27840a9fae3922ce4434cc1e0a02ceb41",
+  "sources": [
+    {
+      "name": "handlarborsen_pilot_wave2_50_audit.csv",
+      "libraryFileId": "libfile_22c75d75470c819185f2f4cf5b702adc",
+      "createdAt": "2026-10-13T06:32:13.783046Z",
+      "readComplete": true,
+      "lines": 51,
+      "renderedContentSha256": "439bd23c545cb0b49d675093b8e7b1ac7b8ec332ebe9e6b12eff2a97e3345c75"
+    },
+    {
+      "name": "handlarborsen_pilot_wave2_batch2_25.csv",
+      "libraryFileId": "libfile_7f8146f51d70819198ef8d43ef2e17f4",
+      "createdAt": "2026-10-13T06:32:06.698571Z",
+      "readComplete": true,
+      "lines": 26,
+      "renderedContentSha256": "7e70e1b26e68bb34d476ec06ce16dce5a89c7b1f0eb7354bbba500f836db1f14"
+    },
+    {
+      "name": "handlarborsen_pilot_wave2_batch1_25.csv",
+      "libraryFileId": "libfile_2ac1311c4af88191abe96ad4fab303de",
+      "createdAt": "2026-10-13T06:31:59.209439Z",
+      "readComplete": true,
+      "lines": 26,
+      "renderedContentSha256": "90c0219f081f9dd6fa5c6dc1725905dfe004bb8236ca0f46a1791b71d04ed2f3"
+    }
+  ],
+  "original139File": {
+    "name": "Handlarborsen_handlarlista_uppdaterad.csv",
+    "readable": false,
+    "usedForMapping": false
+  },
+  "matching": {
+    "originalAuditRows": 50,
+    "originalBatchRows": [
+      25,
+      25
+    ],
+    "currentResendMembers": [
+      25,
+      25
+    ],
+    "exactEmailAndCompanyAgreement": true,
+    "domainInferences": 0,
+    "mergedBranches": 0,
+    "originalCompanyLabelPreserved": true,
+    "missingSourceCityNotInvented": true
+  },
+  "import": {
+    "existingOwnerScopedRPC": "sales_save_contact",
+    "singleTransaction": true,
+    "guards": [
+      "same project owner",
+      "project advisory lock",
+      "exact 7 prior versions and JSON payloads",
+      "50 new IDs absent globally",
+      "expectedVersion=0 for every new contact"
+    ],
+    "inserted": 50,
+    "priorSevenUnchanged": true,
+    "totalReadback": 57,
+    "exactNewPayloadReadback": true,
+    "pilotMonths": {
+      "6": 50,
+      "12": 7
+    },
+    "history": {
+      "contacted": 32,
+      "unknown": 25
+    },
+    "allSuppressed": true,
+    "eligibleForInitialOutreach": 0
+  },
+  "resend": {
+    "listEmailsReturned": 71,
+    "matchingBatch1SubjectLogs": 25,
+    "delivered": 23,
+    "bounced": 2,
+    "unsubscribedContacts": 1,
+    "batch2State": "draft",
+    "matchingBatch2Sends": 0,
+    "absenceDoesNotProveNeverContacted": true,
+    "replacementsFromOriginalAudit": [
+      "Magnusson Bil AB replaces Ericssons Bilhandel",
+      "Odelius Bil Kungälv replaces Kareby Bil"
+    ],
+    "bouncesAndUnsubscribePreservedInHistory": true
+  },
+  "sideEffects": {
+    "offers": [
+      0,
+      0
+    ],
+    "initialJobs": [
+      0,
+      0
+    ],
+    "replyJobs": [
+      1,
+      1
+    ],
+    "sendJobs": [
+      1,
+      1
+    ],
+    "allSendEvents": [
+      4,
+      4
+    ],
+    "newEmails": 0,
+    "newSendPolicy": false,
+    "workerChanged": false,
+    "schemaChanged": false,
+    "runtimeCodeChanged": false,
+    "resendChanged": false,
+    "merged": false,
+    "productionPromoted": false
+  },
+  "verification": {
+    "ownerReadRPC": "ok; all57 records;50 exact new payloads;7 unchanged",
+    "ui": "57 saved;32 prior-contact labels;25 history-review labels;all contact stops",
+    "atlasConversationId": "cb0dd526-8f89-4a38-88a6-174ada5d0644",
+    "atlasReadTool": "get_sales_workspace",
+    "atlasCorrect": [
+      "total57",
+      "pilot levels7/50",
+      "no eligible initial outreach",
+      "two original-source replacements"
+    ],
+    "atlasObservedLimitations": [
+      "initial prose swapped history subgroup counts25/32 instead of32/25",
+      "initial prose called25 delivered instead of23 delivered and2 bounced"
+    ],
+    "correction": "Explicit factual correction sent in the same conversation; this is not counted as an independent unprompted aggregation pass.",
+    "notClaimed": [
+      "full139-row import",
+      "complete reply-history audit for these50",
+      "live Atlas Resend integration",
+      "reliable arbitrary model aggregation"
+    ],
+    "correctedAtlasSummary": "Acknowledged32 contacted/25 unknown and23 delivered/2 bounced after explicit correction; not an unprompted pass."
+  }
+}

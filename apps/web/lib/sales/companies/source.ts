@@ -1,17 +1,14 @@
 import 'server-only'
 import {SalesError} from '../types'
-import {parseDiscoveryQuery} from '../discovery/validate'
+import {parseCompanySearchQuery,companyQueryMunicipality,type CompanySearchQuery} from './query'
 import {discoverySourceConfigured,discoverPublicBusinesses} from '../discovery/provider'
 import {getReadiness,scbPreviewSearchApproved} from '../../handlarborsen/lead-finder/readiness'
 import {assertScbLiveBaseUrl,createScbPageFetcher,fetchScbLegalEntityByOrgnr,SCB_LIVE_HOST} from '../../handlarborsen/lead-finder/scb-client'
 import {paginateScb} from '../../handlarborsen/lead-finder/scb-source'
 import {evaluateScbCompany,parseLegalOrgnr,type ScbStatusResult} from '../../handlarborsen/lead-finder/scb-status-policy'
-import {DISCOVERY_CITIES,type DiscoveryQuery} from '../discovery/types'
 import type {ScbRegisterRecord} from '../../handlarborsen/lead-finder/types'
 import type {CompanySearchProvider,CompanySearchResult,CompanyPublicBusiness} from './types'
 
-// SCB's 2026 municipality code list; these are municipalities, not circle radii.
-export const COMPANY_MUNICIPALITIES={stockholm:'0180',goteborg:'1480',malmo:'1280',uppsala:'0380',orebro:'1880',jonkoping:'0680'} as const
 export const SCB_COMPANY_PAGE_SIZE=5
 const SCB_SNI='47.811',SCB_SOURCE_URL='https://www.scb.se/vara-tjanster/bestall-data-och-statistik/foretagsregistret/'
 const plain=(v:unknown,max=200):v is string=>typeof v==='string'&&v.trim().length>0&&v.length<=max&&!/[\u0000-\u001f\u007f<>@]/.test(v)
@@ -25,9 +22,9 @@ export function companySearchProvider(env:Record<string,string|undefined>=proces
 export type ScbCompanySearchDeps={env?:Record<string,string|undefined>;search?:()=>Promise<{rows:ScbRegisterRecord[];pages:number;truncated:boolean}>;review?:(orgnr:string)=>Promise<ScbStatusResult>;sleep?:(ms:number)=>Promise<void>;now?:()=>Date}
 
 /** Ephemeral search only. No candidate/contact writer, queue or job is used. */
-export async function searchScbCompanies(value:DiscoveryQuery,offset=0,deps:ScbCompanySearchDeps={}):Promise<CompanySearchResult>{
- const query=parseDiscoveryQuery(value),env=deps.env??process.env
- if(query.category!=='car_dealer'||!Number.isInteger(offset)||offset<0||offset>995||offset%SCB_COMPANY_PAGE_SIZE!==0)throw new SalesError('INVALID_BODY')
+export async function searchScbCompanies(value:CompanySearchQuery,offset=0,deps:ScbCompanySearchDeps={}):Promise<CompanySearchResult>{
+ const query=parseCompanySearchQuery(value),municipality=companyQueryMunicipality(query),env=deps.env??process.env
+ if(!municipality||!Number.isInteger(offset)||offset<0||offset>995||offset%SCB_COMPANY_PAGE_SIZE!==0)throw new SalesError('INVALID_BODY')
  if(!scbPreviewSearchApproved(env)||!getReadiness(env).liveSearchAvailable)throw new SalesError('DISCOVERY_SOURCE_NOT_CONFIGURED',503)
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),35000)
  const baseUrl=`https://${SCB_LIVE_HOST}`
@@ -43,7 +40,7 @@ export async function searchScbCompanies(value:DiscoveryQuery,offset=0,deps:ScbC
   const unique=new Map<string,ScbRegisterRecord>(),ambiguous=new Set<string>()
   for(const row of result.rows){
    const identity=parseLegalOrgnr(row.orgnr)
-   if(!identity.ok||row.municipalityCode!==COMPANY_MUNICIPALITIES[query.city]||!row.sniCodes.includes(SCB_SNI)||!row.cfar||!/^\d{1,20}$/.test(row.cfar)||!plain(row.name))continue
+   if(!identity.ok||row.municipalityCode!==municipality.code||!row.sniCodes.includes(SCB_SNI)||!row.cfar||!/^\d{1,20}$/.test(row.cfar)||!plain(row.name))continue
    const old=unique.get(row.cfar)
    if(old&&parseLegalOrgnr(old.orgnr).ok&&old.orgnr!==identity.orgnr)ambiguous.add(row.cfar)
    else unique.set(row.cfar,{...row,orgnr:identity.orgnr})
@@ -59,14 +56,14 @@ export async function searchScbCompanies(value:DiscoveryQuery,offset=0,deps:ScbC
    candidates.push({sourceId:`scb/${row.cfar}`,sourceUrl:SCB_SOURCE_URL,name:verified.legalName.trim(),branchName:row.name.trim(),orgnr:verified.orgnr,cfar:row.cfar!,city:plain(row.city,120)?row.city.trim():null,email:null,websiteUrl:null,restricted,inactive:verified.status.class==='NOT_ACTIVE_PER_SCB'})
   }
   if(controller.signal.aborted)throw new Error('deadline')
-  return {source:'scb',candidates,retrievedAt:(deps.now??(()=>new Date()))().toISOString(),meta:{provider:'scb',areaLabel:`${DISCOVERY_CITIES[query.city].label} kommun`,offset,pageSize:SCB_COMPANY_PAGE_SIZE,nextOffset:offset+SCB_COMPANY_PAGE_SIZE<matches.length&&offset<995?offset+SCB_COMPANY_PAGE_SIZE:null,matchedWorkplaces:matches.length,scannedRows:result.rows.length,pages:result.pages,truncated:result.truncated||matches.length>1000,skippedInPage:page.length-candidates.length}}
+  return {source:'scb',candidates,retrievedAt:(deps.now??(()=>new Date()))().toISOString(),meta:{provider:'scb',areaLabel:`${municipality.name} kommun`,offset,pageSize:SCB_COMPANY_PAGE_SIZE,nextOffset:offset+SCB_COMPANY_PAGE_SIZE<matches.length&&offset<995?offset+SCB_COMPANY_PAGE_SIZE:null,matchedWorkplaces:matches.length,scannedRows:result.rows.length,pages:result.pages,truncated:result.truncated||matches.length>1000,skippedInPage:page.length-candidates.length}}
  }catch(e){if(e instanceof SalesError)throw e;throw new SalesError('DISCOVERY_PROVIDER_UNAVAILABLE',503)}
  finally{clearTimeout(timer);controller.abort()}
 }
-export async function discoverCompanyBusinesses(query:DiscoveryQuery,offset=0):Promise<CompanySearchResult>{
+export async function discoverCompanyBusinesses(query:CompanySearchQuery,offset=0):Promise<CompanySearchResult>{
  const provider=companySearchProvider()
  if(provider==='scb')return searchScbCompanies(query,offset)
  if(!provider)throw new SalesError('DISCOVERY_SOURCE_NOT_CONFIGURED',503)
- if(offset!==0)throw new SalesError('INVALID_BODY')
+ if(offset!==0||'municipalityCode' in query)throw new SalesError('INVALID_BODY')
  return {...await discoverPublicBusinesses(query),source:'overpass'}
 }

@@ -25,4 +25,11 @@ describe('company view uses the qualified SCB preview source',()=>{
   try{const r=await searchScbCompanies(query,0,{env,sleep:async()=>{}});expect(r.candidates).toHaveLength(1);expect(r.candidates[0]).toMatchObject({name:'Raw JE Dealer AB',branchName:'Raw AE branch',orgnr,cfar:'10000001',city:'Malmö',restricted:true});expect(calls).toEqual(['/v1/arbetsstallen/naringsgren/47811?limit=5000','/v1/arbetsstallen/naringsgren/47811?limit=5000&cursorId=99','/v1/juridiskaenheter/16'+orgnr]);expect(JSON.stringify(r)).not.toContain('synthetic-test-key')}finally{vi.unstubAllGlobals()}
  })
 
+ it('accepts Hässleholm and Kristianstad municipality codes without the six-city discovery restriction',async()=>{
+  for(const [municipalityCode,name] of [['1293','Hässleholm'],['1290','Kristianstad']]){const d=deps([row(1,{municipalityCode,city:name}),row(2,{municipalityCode:'1280'})]);const r=await searchScbCompanies({municipalityCode,category:'car_dealer',limit:5} as never,0,d);expect(r.candidates).toHaveLength(1);expect(r.meta?.areaLabel).toBe(name+' kommun');expect(d.review).toHaveBeenCalledOnce()}
+ })
+ it('rejects invented municipalities and mixed geographic query fields before any source access',async()=>{
+  for(const query of [{municipalityCode:'9999',category:'car_dealer',limit:5},{municipalityCode:'1293',city:'malmo',category:'car_dealer',limit:5}]){const d=deps([]);await expect(searchScbCompanies(query as never,0,d)).rejects.toMatchObject({code:'INVALID_BODY'});expect(d.search).not.toHaveBeenCalled()}
+ })
+
 })

@@ -7,6 +7,7 @@ import {filterCompanies} from '@/lib/sales/companies/filter'
 import type {CompanyDirectory as Directory,CompanyRow} from '@/lib/sales/companies/types'
 import styles from './CompanyDirectory.module.css'
 import {CompanySearchPanel} from './CompanySearchPanel'
+import {municipalityByName} from '@/lib/sales/companies/municipalities'
 
 const sourceStates={ready:'Läst',disabled:'Inte aktiverad',unavailable:'Otillgänglig',incomplete:'Ofullständig',empty:'Tom'}
 const statusText={contacted:'Tidigare kontakt',unknown:'Historik okänd',no_match:'Ingen träff i tillgängligt underlag'}
@@ -35,6 +36,7 @@ function CompanyCard({row}:{row:CompanyRow}){
 
 export function CompanyDirectory({initial}:{initial:Directory}){
  const [data,setData]=useState(initial),[query,setQuery]=useState(''),[area,setArea]=useState(''),[status,setStatus]=useState('all')
+ const typedMunicipality=municipalityByName(query)
  const saved=data.rows.filter(r=>!r.id.startsWith('public:'))
  const filtered=useMemo(()=>filterCompanies(saved,{query,area,status}),[data,query,area,status])
  return <main className={styles.page}>
@@ -47,6 +49,7 @@ export function CompanyDirectory({initial}:{initial:Directory}){
   <section className={styles.saved} aria-labelledby="saved-heading"><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>KONTAKTJOURNAL & SPARAD RESEARCH</p><h2 id="saved-heading">Ditt företagsunderlag</h2></div><span>{filtered.length} av {saved.length} poster</span></div>
    <div className={styles.filters}><label><span>Filtrera sparade företag</span><div className={styles.inputIcon}><Search size={16} aria-hidden="true" /><input type="search" maxLength={100} value={query} onChange={e=>setQuery(e.target.value)} placeholder="Företagsnamn, org.nr eller mejladress" /></div></label><label><span>Område i sparat underlag</span><input type="search" maxLength={80} value={area} onChange={e=>setArea(e.target.value)} placeholder="Ort eller verifierat filialnamn" /></label><label><span>Kontaktstatus</span><select value={status} onChange={e=>setStatus(e.target.value)}><option value="all">Alla statusar</option><option value="contacted">Tidigare kontakt</option><option value="unknown">Historik okänd</option><option value="no_match">Ingen träff i granskat underlag</option><option value="blocked">Spärrad / exkluderad</option></select></label></div>
    <p className={styles.note}>Filtrerar företagsnamn och kontaktuppgifter i sparade poster. Använd sökningen ovan för att hitta nya bilhandlare. Saknad ort innebär okänt område. Flera källor kan beskriva samma företag; namn och domän slås inte ihop automatiskt.</p>
+   {typedMunicipality&&<p className={styles.warning}><span>Detta är bara sparade poster, inte alla bilhandlare i {typedMunicipality.name}.</span> <a href="#sok-bilhandlare">Sök fler i kommunen ovan</a></p>}
    <div className={styles.cards}>{filtered.map(r=><CompanyCard key={r.id} row={r} />)}</div>{!filtered.length&&<div className={styles.empty}><Building2 size={28} aria-hidden="true" /><h3>Inga företag matchar filtren.</h3><p>Här filtreras endast sparade namn och kontaktuppgifter.</p><a href="#sok-bilhandlare">Sök nya bilhandlare ovan</a></div>}
   </section>
   <footer className={styles.footer}><Mail size={15} aria-hidden="true" /><p>Inga mejl skickas, schemaläggs eller godkänns här. Aktuella svar, spärrar, registreringar och den faktiska senaste tråden måste granskas före en kontaktåtgärd.</p><a href="/projects/handlarborsen/lead-finder">Öppna befintlig Lead Finder<ArrowUpRight size={13} aria-hidden="true" /></a></footer>

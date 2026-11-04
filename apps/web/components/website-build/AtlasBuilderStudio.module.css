@@ -123,3 +123,9 @@
  .header>label select{flex:1;width:100%;min-width:0;max-width:100%}
  .headerActions{width:100%;justify-self:end}
 }
+
+/* A one-off allowance needs a full row beside the always-available stop control. */
+@media(max-width:1000px){
+ .header[data-controls-open=false] .costControl[data-has-total=true]{grid-column:1/-1;grid-row:2}
+ .header[data-controls-open=false] .costFigure strong[data-total-allowance]{white-space:normal;text-align:left}
+}

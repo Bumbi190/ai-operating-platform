@@ -133,5 +133,8 @@ for(const width of [390,1440])test('one-off USD allowance is distinct from month
  await expect(meter).toContainText('Månadsbudgeten övervakas utan hård spärr')
  await expect(meter.getByRole('button',{name:'Stoppa projektet',exact:true})).toBeVisible()
  await expect(page.getByLabel('Meddelande till Atlas',{exact:true})).toBeEnabled()
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+ await expect(meter.getByRole('button',{name:'Stoppa projektet',exact:true})).toBeInViewport()
+ await expect(page.getByLabel('Meddelande till Atlas',{exact:true})).toBeInViewport()
  await page.screenshot({path:info.outputPath('total-budget-'+width+'.png'),fullPage:true})
 })

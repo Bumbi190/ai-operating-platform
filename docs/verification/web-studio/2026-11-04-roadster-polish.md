@@ -44,3 +44,11 @@ References consulted: [Three.js on-demand rendering](https://threejs.org/manual/
 Deployment dpl_Az2s5y2ZEti8fwp87WjxAKaxarH5 stopped at the unchanged migration guard: the parallel PostHog work had already applied posthog_approved_read, absent from this branch. Read-only inspection observed ledger version 20261104135920 and one statement, SHA c40c2a05a06e09beea1667665d4b7aa43a4813bf1c4215a6d03354260d3d242b. The exact installed statement is now preserved as a canonical SQL file, with -text attributes. No migration was applied or edited in the database.
 
 The separately captured 197-name production ledger passes the unchanged set policy with canonical/enforced counts 174/160. Frozen grandfathered and legacy allowlists remain unchanged. Historical captures are preserved and still fail when incomplete. The new receipt test verifies exact statement bytes and rejects missing/duplicate PostHog entries. The Roadster bundle also gains -text attributes to preserve its immutable hash on Windows checkout.
+
+### Final source reconciliation checks
+
+The complete migration integrity command passed 83/83 tests. Historical 190–196-name receipts remain immutable and correctly incomplete; the separately observed 197-name receipt passes. Source classification for atlas_posthog_read_events was verified using a read-only catalog SELECT: RLS on, zero policies, no client grants, service-role SELECT only. No database mutation or external analytics call was made.
+
+Hosted deployment dpl_46QhDhFND2GiQtiBgCnonkh5A338 reached READY; the authenticated Roadster 3D page loaded and its screenshot was inspected. The stable branch preview points to this reviewed Roadster implementation; the subsequent follow-up only reconciles source classifications and historical tests.
+
+Schema-security invariant and migration-security replay passed 217/217 tests locally. Registry additions describe the observed server-only table; evaluator rules and exception lists are unchanged.

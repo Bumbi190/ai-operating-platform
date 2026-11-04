@@ -4,6 +4,7 @@ import {resolve} from 'node:path'
 import {createHash} from 'node:crypto'
 import {inspectCanonicalMigrationFiles,evaluateAppliedMigrationLedger,GRANDFATHERED_MIGRATION_NAMES,LEGACY_ONLY_PRODUCTION_LEDGER_NAMES} from '../../scripts/migration-guard-policy.mjs'
 const root=resolve(__dirname,'../../../..'),dir=resolve(root,'apps/web/supabase/migrations')
+const observedPosthog=JSON.parse(readFileSync(resolve(root,'docs/verification/web-studio/2026-11-04-posthog-ledger-observation.json'),'utf8')).migrationNames as string[]
 const observation=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-02-web-studio-harvey-observation.json'),'utf8'))
 const state=()=>inspectCanonicalMigrationFiles(readdirSync(dir))
 const latest=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-04-web-studio-initial-send-observation.json'),'utf8'))
@@ -18,7 +19,7 @@ describe('Studio source-only reconciliation of already applied Harvey migrations
  it('preserves the real195-name observation and enforces the pending allowance',()=>{
   const current=state()
   expect(names).toHaveLength(195);expect(new Set(names).size).toBe(195)
-  expect(current.sqlFiles).toHaveLength(173);expect(current.enforcedNames).toHaveLength(159)
+  expect(current.sqlFiles).toHaveLength(174);expect(current.enforcedNames).toHaveLength(160)
   for(const name of targets){
    expect(current.enforcedNames).toContain(name)
    expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain(name)
@@ -26,8 +27,9 @@ describe('Studio source-only reconciliation of already applied Harvey migrations
   }
   // The immutable real195-name capture predates the proposed allowance.
  expect(()=>evaluateAppliedMigrationLedger(names,current)).toThrow(/project_total_allowance/)
- // Only this synthetic post-apply extension may pass; this is not a live-ledger claim.
- expect(evaluateAppliedMigrationLedger([...names,'project_total_allowance'],current)).toMatchObject({enforcedCount:159,appliedLedgerCount:196,unknownLedgerNames:[],duplicateLedgerNames:[]})
+ // The historical allowance extension is still incomplete; the separately observed PostHog ledger passes.
+ expect(()=>evaluateAppliedMigrationLedger([...names,'project_total_allowance'],current)).toThrow(/posthog_approved_read/)
+ expect(evaluateAppliedMigrationLedger(observedPosthog,current)).toMatchObject({enforcedCount:160,appliedLedgerCount:197,unknownLedgerNames:[],duplicateLedgerNames:[]})
  })
  it.each(targets)('rejects a ledger missing the enforced migration %s',name=>{
   expect(()=>evaluateAppliedMigrationLedger(names.filter(n=>n!==name),state())).toThrow(/not applied/)
@@ -36,7 +38,7 @@ describe('Studio source-only reconciliation of already applied Harvey migrations
   expect(()=>evaluateAppliedMigrationLedger([...names,name],state())).toThrow(/duplicate/)
  })
  it('still rejects an unrelated unknown migration',()=>{
-  expect(()=>evaluateAppliedMigrationLedger([...names,'project_total_allowance','unreviewed_future_schema'],state())).toThrow(/unknown/)
+  expect(()=>evaluateAppliedMigrationLedger([...observedPosthog,'unreviewed_future_schema'],state())).toThrow(/unknown/)
  })
  it('preserves the historical192-name snapshot and reports its missing Harvey migrations',()=>{
   const prior=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-01-web-studio-campaign-observation.json'),'utf8')).migration_names

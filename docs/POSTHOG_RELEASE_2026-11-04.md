@@ -31,3 +31,5 @@ Source comparison against actual schema_migrations.statements passed for all fou
 Only POSTHOG_* server environment settings are added. Private key is sensitive, never public or committed. Old production code is unchanged until release.
 Disable POSTHOG_APPROVED_READ_ENABLED and redeploy to stop future reads; every read still needs a current exact grant.
 Rollback candidate: dpl_CDyRm9XbMH8LBu8jJBrUfB89nfmV.
+
+CI additionally identified missing classifications for the newly reconciled public tables. Added four SERVER_ONLY entries from scoped live catalog observation (RLS on, zero policies, no anon/authenticated privileges, service_role reachable). No policy or privilege change. Both schema-security suites pass: 210/210 tests.

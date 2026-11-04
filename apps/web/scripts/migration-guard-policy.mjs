@@ -89,8 +89,8 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Owner cross-chat context APPLIED 20261031145817. Source-only reconciliation of
 // two parallel Harvey migrations already APPLIED 20261031120736 / 20261031120804.
 // Their exact SQL body hashes were matched to the production ledger before inclusion.
-export const EXPECTED_CANONICAL_SQL_COUNT = 171
-export const EXPECTED_ENFORCED_COUNT = 157
+export const EXPECTED_CANONICAL_SQL_COUNT = 172
+export const EXPECTED_ENFORCED_COUNT = 158
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([
@@ -332,3 +332,6 @@ export function evaluateAppliedMigrationLedger(appliedNames, repositoryState) {
 
 // Exact source-only reconciliation: owner-applied Harvey SCB/editorial migrations.
 // 171 canonical /157 enforced; frozen14/30 histories and policy logic unchanged.
+
+// Nov4 source parity: sales_initial_sending already applied as20261103082558.
+// 172 canonical /158 enforced; frozen14/30 histories and policy logic unchanged.

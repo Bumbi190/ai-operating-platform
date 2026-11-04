@@ -13,7 +13,7 @@ describe('exact canonical cross-track migration reconciliation',()=>{
  })
  it('recognizes the three canonical names but still rejects a genuinely unknown ledger name',()=>{
   const state=inspectCanonicalMigrationFiles(readdirSync(directory))
-  expect(state.sqlFiles).toHaveLength(171);expect(state.enforcedNames).toHaveLength(157)
+  expect(state.sqlFiles).toHaveLength(172);expect(state.enforcedNames).toHaveLength(158)
   for(const name of known)expect(state.enforcedNames).toContain(name)
   const ledger=[...state.enforcedNames,...GRANDFATHERED_MIGRATION_NAMES,...LEGACY_ONLY_PRODUCTION_LEDGER_NAMES]
   expect(()=>evaluateAppliedMigrationLedger(ledger,state)).not.toThrow()
@@ -28,7 +28,7 @@ it('validates the actual read-only ledger snapshot without weakening missing/unk
  expect(captured.migration_names).toHaveLength(190)
  // Preserve the historical190-name capture; the later exact-claim migration now makes it incomplete.
  expect(()=>evaluateAppliedMigrationLedger(captured.migration_names,state)).toThrow(/human_story_exact_claim/)
- const current=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-02-web-studio-harvey-observation.json'),'utf8'))
- expect(evaluateAppliedMigrationLedger(current.migration_names,state)).toMatchObject({enforcedCount:157,appliedLedgerCount:194,unknownLedgerNames:[],duplicateLedgerNames:[]})
+ const current=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-04-web-studio-initial-send-observation.json'),'utf8'))
+ expect(evaluateAppliedMigrationLedger(current.migration_names,state)).toMatchObject({enforcedCount:158,appliedLedgerCount:195,unknownLedgerNames:[],duplicateLedgerNames:[]})
  for(const name of known)expect(()=>evaluateAppliedMigrationLedger(current.migration_names.filter((n:string)=>n!==name),state)).toThrow(new RegExp(name))
 })

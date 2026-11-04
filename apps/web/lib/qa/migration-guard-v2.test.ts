@@ -50,7 +50,7 @@ const HB_ARCHIVE_MIGRATION = 'handlarborsen_owner_review_archive_20261029'
 const CROSSCHAT_MIGRATION = 'social_owner_crosschat_context' // Applied 20261031145817 after owner approval.
 const APPLIED_PARALLEL_SALES = ['sales_b2b_offers','sales_discovery_candidates']
 const NOVA_ACTIVATION_MIGRATIONS = ['human_story_exact_claim','social_campaign_preparation']
-const APPLIED_HARVEY_MIGRATIONS = ['handlarborsen_scb_live_preview_candidates','sales_editorial_only_drafts']
+const APPLIED_HARVEY_MIGRATIONS = ['handlarborsen_scb_live_preview_candidates','sales_editorial_only_drafts','sales_initial_sending']
 
 // The verified production history once P1E is applied: 135 rows = every enforced migration (all
 // applied) plus the grandfathered and legacy-only names. Perturbation tests start from it.
@@ -107,14 +107,14 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
   // NOTE ON 3B1A: these two counts describe the CANONICAL CORPUS, so they move as soon
   // as the file exists. The production APPLY is a separate fact, and it has NOT happened
   // for 3B1A — see the ledger assertion below, which is deliberately left RED.
-  it('pins policy v2 and the current 171/157/14/30 counts', () => {
+  it('pins policy v2 and the current 172/158/14/30 counts', () => {
     expect(MIGRATION_GUARD_POLICY_VERSION).toBe(2)
-    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(171)
-    expect(EXPECTED_ENFORCED_COUNT).toBe(157)
+    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(172)
+    expect(EXPECTED_ENFORCED_COUNT).toBe(158)
     expect(GRANDFATHERED_MIGRATION_NAMES).toHaveLength(14)
     expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).toHaveLength(30)
-    expect(repositoryState.sqlFiles).toHaveLength(171)
-    expect(repositoryState.enforcedNames).toHaveLength(157)
+    expect(repositoryState.sqlFiles).toHaveLength(172)
+    expect(repositoryState.enforcedNames).toHaveLength(158)
   })
 
   it('proves the Higgsfield code and database change require one coordinated release', () => {
@@ -126,12 +126,12 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
       repositoryNames: repositoryState.repositoryNames.filter(name => name !== migration),
       enforcedNames: repositoryState.enforcedNames.filter(name => name !== migration),
     }
-    expect(previous.sqlFiles).toHaveLength(170)
-    expect(previous.enforcedNames).toHaveLength(156)
+    expect(previous.sqlFiles).toHaveLength(171)
+    expect(previous.enforcedNames).toHaveLength(157)
     const beforeApply = [...previous.enforcedNames, ...GRANDFATHERED_PRESENT_IN_VERIFIED_LEDGER, ...LEGACY_ONLY_PRODUCTION_LEDGER_NAMES]
     const afterApply = [...beforeApply, migration]
-    expect(beforeApply).toHaveLength(193)
-    expect(afterApply).toHaveLength(194)
+    expect(beforeApply).toHaveLength(194)
+    expect(afterApply).toHaveLength(195)
     expect(() => evaluateAppliedMigrationLedger(beforeApply, previous)).not.toThrow()
     expect(() => evaluateAppliedMigrationLedger(beforeApply, repositoryState)).toThrow(/higgsfield_mcp_readonly/)
     expect(() => evaluateAppliedMigrationLedger(afterApply, previous)).toThrow(/unknown migration name/)
@@ -296,7 +296,7 @@ describe('Migration Guard v2 — production ledger set integrity', () => {
     // P1E (`handlarborsen_guarded_snapshot_store`, file 20261010130000) takes the enforced set
     // from 97 to 98 and this fixture from 134 to 135. Not applied yet: this line records the
     // post-apply state and is true only after the operator-approved apply.
-    expect(result.appliedLedgerCount).toBe(194)
+    expect(result.appliedLedgerCount).toBe(195)
     expect(result.unknownLedgerNames).toEqual([])
     expect(result.duplicateLedgerNames).toEqual([])
   })
@@ -434,9 +434,9 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
     expect(result).toMatchObject({
       skipped: false,
       policyVersion: 2,
-      canonicalSqlCount: 171,
-      enforcedCount: 157,
-      appliedLedgerCount: 194,
+      canonicalSqlCount: 172,
+      enforcedCount: 158,
+      appliedLedgerCount: 195,
     })
   })
 })
@@ -473,7 +473,7 @@ it("rejects a synthetic ledger missing the reconciled sales migration",()=>{expe
 
 it('refuses the pre-apply ledger while Atlas metrics definition migration is pending',()=>{
   const preApply=hypotheticalPostApplyLedger.filter(n=>!TEST_DATA_RELEASE_MIGRATIONS.includes(n))
-  expect(preApply).toHaveLength(191)
+  expect(preApply).toHaveLength(hypotheticalPostApplyLedger.length - TEST_DATA_RELEASE_MIGRATIONS.length)
   expect(()=>evaluateAppliedMigrationLedger(preApply,repositoryState)).toThrow(/handlarborsen_metrics_definition/)
 })
 

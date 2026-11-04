@@ -14,16 +14,16 @@ describe('Studio integration preserves campaign source and fail-closed history',
   const source=readFileSync(path,'utf8').replaceAll('\r\n','\n')
   expect(createHash('sha256').update(source).digest('hex')).toBe(observation.sourceSqlSha256)
  })
- it('preserves the192-name observation and accepts the current194-name ledger',()=>{
+ it('preserves the192-name observation and accepts the current195-name ledger',()=>{
   const names=observation.migration_names as string[]
   expect(names).toHaveLength(192);expect(new Set(names).size).toBe(192)
   expect(createHash('md5').update([...names].sort().join('\n')).digest('hex')).toBe(observation.orderedNameMd5)
   expect(()=>evaluateAppliedMigrationLedger(names,state())).toThrow(/handlarborsen_scb_live_preview_candidates|sales_editorial_only_drafts/)
-  const current=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-02-web-studio-harvey-observation.json'),'utf8'))
-  expect(evaluateAppliedMigrationLedger(current.migration_names,state())).toMatchObject({canonicalSqlCount:171,enforcedCount:157,appliedLedgerCount:194,unknownLedgerNames:[],duplicateLedgerNames:[]})
+  const current=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-04-web-studio-initial-send-observation.json'),'utf8'))
+  expect(evaluateAppliedMigrationLedger(current.migration_names,state())).toMatchObject({canonicalSqlCount:172,enforcedCount:158,appliedLedgerCount:195,unknownLedgerNames:[],duplicateLedgerNames:[]})
  })
  it('does not grandfather the campaign or permit missing, duplicated or unknown names',()=>{
-  const names=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-02-web-studio-harvey-observation.json'),'utf8')).migration_names as string[],current=state()
+  const names=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-04-web-studio-initial-send-observation.json'),'utf8')).migration_names as string[],current=state()
   expect(GRANDFATHERED_MIGRATION_NAMES).toHaveLength(14);expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).toHaveLength(30)
   expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain(name);expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).not.toContain(name)
   expect(()=>evaluateAppliedMigrationLedger(names.filter(n=>n!==name),current)).toThrow(/social_campaign_preparation/)

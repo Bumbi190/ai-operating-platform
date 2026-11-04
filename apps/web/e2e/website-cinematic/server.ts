@@ -9,19 +9,49 @@ import {listingViewerResponse} from '../../lib/website-build/studio/cinematic-li
 import {cinematicAssetNames,cinematicAssetResponse,isListingViewerAsset} from '../../lib/website-build/studio/cinematic-assets'
 import {readPublicWebsitePreviewAsset} from '../../lib/website-build/public-preview-assets'
 import {roadsterResponse,roadsterDownloadResponse,exportRoadsterPreset} from '../../lib/website-build/studio/roadster-preset'
+import {exportCinematicPackage,cinematicPackageManifest,CINEMATIC_PRESET_ID,cinematicPackageReviewResponse} from '../../lib/website-build/studio/cinematic-package'
+let showroomExport:Promise<JSZip>|undefined
 let exported:Promise<JSZip>|undefined
 const port=Number(process.env.CINEMATIC_TEST_PORT??19993)
 const html=createCinematicDemoHtml(cinematicShowroomBaseHtml())
 const server=createServer(async(req,res)=>{
  const url=new URL(req.url??'/','http://127.0.0.1:'+port)
  res.setHeader('cache-control','no-store')
+ if(url.pathname==='/__build-review'){
+  const response=await cinematicPackageReviewResponse()
+  res.writeHead(response.status,Object.fromEntries(response.headers));res.end(await response.text());return
+ }
+ if(url.pathname.startsWith('/__showroom-export/')){
+  showroomExport??=cinematicPackageManifest().then(m=>exportCinematicPackage({id:CINEMATIC_PRESET_ID,sha256:m.sha256})).then(bytes=>JSZip.loadAsync(bytes))
+  const file=(await showroomExport).file(url.pathname.slice('/__showroom-export/'.length))
+  if(!file){res.writeHead(404);res.end();return}
+  const ext=file.name.split('.').pop()!
+  const mime:Record<string,string>={html:'text/html; charset=utf-8',js:'text/javascript',jpg:'image/jpeg',webp:'image/webp',glb:'model/gltf-binary',mp4:'video/mp4',json:'application/json'}
+  const bytes=await file.async('nodebuffer')
+  const headers={'content-type':mime[ext]??'application/octet-stream','accept-ranges':'bytes'}
+  const range=/^bytes=(\d+)-(\d*)$/.exec(req.headers.range??'')
+  if(range){
+   const start=Number(range[1]),end=Math.min(range[2]?Number(range[2]):bytes.length-1,bytes.length-1)
+   if(start>=bytes.length||end<start){res.writeHead(416,{'content-range':'bytes */'+bytes.length});res.end();return}
+   res.writeHead(206,{...headers,'content-range':'bytes '+start+'-'+end+'/'+bytes.length,'content-length':String(end-start+1)});res.end(bytes.subarray(start,end+1));return
+  }
+  res.writeHead(200,{...headers,'content-length':String(bytes.length)});res.end(bytes);return
+ }
  if(url.pathname.startsWith('/__roadster-export/')){
   exported??=exportRoadsterPreset().then(bytes=>JSZip.loadAsync(bytes))
   const file=(await exported).file(url.pathname.slice('/__roadster-export/'.length))
   if(!file){res.writeHead(404);res.end();return}
   const ext=file.name.split('.').pop()!
   const mime:Record<string,string>={html:'text/html; charset=utf-8',js:'text/javascript',jpg:'image/jpeg',webp:'image/webp',glb:'model/gltf-binary',mp4:'video/mp4'}
-  res.writeHead(200,{'content-type':mime[ext]??'application/octet-stream'});res.end(await file.async('nodebuffer'));return
+  const bytes=await file.async('nodebuffer')
+  const headers={'content-type':mime[ext]??'application/octet-stream','accept-ranges':'bytes'}
+  const range=/^bytes=(\d+)-(\d*)$/.exec(req.headers.range??'')
+  if(range){
+   const start=Number(range[1]),end=Math.min(range[2]?Number(range[2]):bytes.length-1,bytes.length-1)
+   if(start>=bytes.length||end<start){res.writeHead(416,{'content-range':'bytes */'+bytes.length});res.end();return}
+   res.writeHead(206,{...headers,'content-range':'bytes '+start+'-'+end+'/'+bytes.length,'content-length':String(end-start+1)});res.end(bytes.subarray(start,end+1));return
+  }
+  res.writeHead(200,{...headers,'content-length':String(bytes.length)});res.end(bytes);return
  }
  if(url.pathname==='/bilhandlare'||url.pathname.startsWith('/bilhandlare/')){
   const path=url.pathname.split('/').slice(2)

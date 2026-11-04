@@ -1,5 +1,7 @@
 # Demo Motors: kostnadsavstämning och nästa byggprov
 
+> Senare beslut och genomförd budgetinitiering: se [byggpaket och budgetbeslut](2026-11-04-cinematic-build-package.md). Nedanstående avstämning är historisk och bevarad.
+
 Datum: 2026-11-04. Work ID WEB-STUDIO-RECONCILE-20261104. Fortsättning i befintlig Draft PR368. Verifierad körbar bas: 08e20f512a9ea4d9f9478c0c81e256867dedc14f. Denna avstämning ändrar inga budgetar, projektstopp, byggbeslut eller medier.
 
 ## Resultat

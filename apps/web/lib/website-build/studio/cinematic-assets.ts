@@ -5,7 +5,7 @@ import manifest from './cinematic-assets/manifest.json'
 import {CINEMATIC_RUNTIME} from './cinematic-runtime'
 
 import {REEL_RUNTIME,reelFiles} from './cinematic-reel'
-import {ROADSTER_PRESET,readRoadsterAsset,isRoadsterViewerAsset} from './roadster-assets'
+import {ROADSTER_PRESET,ROADSTER_CONTROLS,readRoadsterAsset,isRoadsterViewerAsset} from './roadster-assets'
 import listing from './cinematic-assets/nord-r.json'
 import {nordFilmName} from './cinematic-listing'
 import {LISTING_RUNTIME} from './cinematic-listing-runtime'
@@ -33,7 +33,7 @@ export function verifyCinematicBytes(bytes:Uint8Array,expected:Integrity){
  if(bytes.length!==expected.bytes||bytes.length>16*1024*1024||sha(bytes)!==expected.sha256)
   throw Error('CINEMATIC_INTEGRITY')
 }
-function readAsset(name:string):{bytes:Buffer;contentType:string}|null{
+export function readCinematicAsset(name:string):{bytes:Buffer;contentType:string}|null{
  const roadsterAsset=readRoadsterAsset(name)
  if(roadsterAsset)return roadsterAsset
  if(name===names.reelRuntime)return {bytes:reelRuntime,contentType:'text/javascript; charset=utf-8'}
@@ -48,8 +48,8 @@ function readAsset(name:string):{bytes:Buffer;contentType:string}|null{
 }
 /** Reads only pinned, bundled fictional media. Never resolve a request as a file path. */
 export function cinematicAssetResponse(request:Request,name:string):Response{
- let asset:ReturnType<typeof readAsset>
- try{asset=readAsset(name)}catch{return new Response(null,{status:503,headers:{'cache-control':'no-store'}})}
+ let asset:ReturnType<typeof readCinematicAsset>
+ try{asset=readCinematicAsset(name)}catch{return new Response(null,{status:503,headers:{'cache-control':'no-store'}})}
  if(!asset)return new Response(null,{status:404,headers:{'cache-control':'no-store'}})
  const {bytes,contentType}=asset,size=bytes.length
  const headers:Record<string,string>={
@@ -78,4 +78,20 @@ export function cinematicAssetResponse(request:Request,name:string):Response{
  headers['content-range']='bytes '+start+'-'+end+'/'+size
  headers['content-length']=String(end-start+1)
  return new Response(Buffer.from(bytes.subarray(start,end+1)),{status:206,headers})
+}
+
+/** Complete current registry, excluding historical/rejected generations. */
+export function cinematicAssetEntries(){
+ const media:[string,Integrity&{contentType:string}][]=[
+  [names.poster,manifest.poster],[names.video,manifest.video],[nordFilmName(),listing.film],
+  ...listingFiles,...reelFiles
+ ]
+ const entries=[
+  ...Object.values(ROADSTER_PRESET.files).map(f=>({name:f.name,sha256:f.sha256,bytes:f.bytes,contentType:f.contentType})),
+  {...ROADSTER_CONTROLS,contentType:'text/javascript; charset=utf-8'},
+  {name:names.runtime,sha256:sha(runtime),bytes:runtime.length,contentType:'text/javascript; charset=utf-8'},
+  {name:names.reelRuntime,sha256:sha(reelRuntime),bytes:reelRuntime.length,contentType:'text/javascript; charset=utf-8'},
+  ...media.map(([name,file])=>({name,sha256:file.sha256,bytes:file.bytes,contentType:file.contentType}))
+ ]
+ return entries.sort((a,b)=>a.name.localeCompare(b.name,'en'))
 }

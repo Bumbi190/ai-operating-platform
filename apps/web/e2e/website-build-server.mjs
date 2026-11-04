@@ -54,7 +54,7 @@ const server = httpServer(async (req, res) => {
     }
     if(url.pathname.startsWith('/api/website-build/studio')){
       const api=await vite.ssrLoadModule('/lib/website-build/studio/api.ts');const chunks=[];for await(const chunk of req){chunks.push(chunk);if(chunks.reduce((n,c)=>n+c.length,0)>70000)throw Error('Fixture body too large')}
-      const action=url.pathname.endsWith('/budget')?'budget':url.pathname.endsWith('/workspace-request')?'workspace-request':req.method==='POST'?'ensure':'get';
+      const action=url.pathname.endsWith('/costs')?'costs':url.pathname.endsWith('/stop')?'stop':url.pathname.endsWith('/budget')?'budget':url.pathname.endsWith('/workspace-request')?'workspace-request':req.method==='POST'?'ensure':'get';
       const response=await api.studioApi(action,new Request(url,{method:req.method,headers:req.headers,body:req.method==='POST'?Buffer.concat(chunks):undefined}));res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));return;
     }
     const lifecycle=url.pathname.match(/^\/api\/projects\/by-id\/([0-9a-f-]{36})\/lifecycle$/)
@@ -93,6 +93,9 @@ const server = httpServer(async (req, res) => {
 // Prepare the real SQL fixture before the readiness URL reports success.
 // Cold module compilation/database bootstrap is server startup, not UI latency.
 await vite.ssrLoadModule('/e2e/website-build-fixture.ts')
+// Blocking local PostgreSQL fixture calls must not expire idle Playwright HTTP connections.
+server.keepAliveTimeout=120_000
+server.headersTimeout=121_000
 server.listen(port, '127.0.0.1')
 async function close() { server.close(); await vite.close(); process.exit(0) }
 process.on('SIGTERM', close); process.on('SIGINT', close)

@@ -57,3 +57,11 @@ it('keeps the194-name historical capture immutable and identifies only the newer
  expect(prior.filter(n=>!names.includes(n))).toEqual([])
  expect(()=>evaluateAppliedMigrationLedger(prior,state())).toThrow(/sales_initial_sending/)
 })
+
+it('classifies all three applied initial-send tables using the observed server-only grants',()=>{
+ const registry=JSON.parse(readFileSync(resolve(root,'apps/web/tests/isolation/schema-security.json'),'utf8'))
+ for(const name of ['sales_initial_send_policies','sales_initial_send_jobs','sales_initial_send_events']){
+  expect(registry.tables[name]).toEqual({class:'SERVER_ONLY',rls:true,policies:0,anon_grants:false,authenticated_grants:false,service_role:true})
+  expect(registry._meta.created_not_live.tables).not.toContain(name)
+ }
+})

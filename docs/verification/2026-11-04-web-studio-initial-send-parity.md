@@ -11,3 +11,9 @@ Canonical/enforced inventory moves171/157 to172/158. Frozen14grandfathered/30leg
 Local required guard command passes79/79 across7files (0skipped). First run exposed stale hypothetical count/list assertions; those were corrected while preserving historical160/170/190/191/192/194-name evidence and its rejection by the current inventory. CodeQL policy and analysis passed on629c87a. Final preview readiness requires inspection of the deployment for the subsequent source-parity commit.
 
 Author second-pass review verified the exact upstream blob/hash, timeout representation, original filename, unchanged historical JSON, unchanged frozen policy lists and negative cases. No independent reviewer was used.
+
+## Registry follow-up
+
+On4cfbbeb, the hosted preview became Ready and its guard verified158/158 enforced migrations and195 unique known ledger names. Project Isolation correctly failed three assertions because the initial source synchronization omitted the three table classifications. A scoped read-only production catalog query found RLS=true, zero policies, no anon/authenticated privileges and service_role SELECT=true for sales_initial_send_policies, sales_initial_send_jobs and sales_initial_send_events. Their existing Harvey SERVER_ONLY registry entries match exactly and were added with a new scoped observation note; the table count is192. They are live and were NOT added to created_not_live. No grant, policy, SQL or gate algorithm changed. The new regression requires those exact entries and rejects a not-live classification.
+
+Registry follow-up validation: 276/276 across migration security (141), schema invariant (76), guard v2 (45) and exact Harvey source/registry (14). No skipped cases. Git diff whitespace check passes. The CI anti-skip floor now requires all14 Harvey cases.

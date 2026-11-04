@@ -107,8 +107,8 @@ jobs:
 
           const harvey = files.find(file => String(file.name).endsWith('/web-studio-harvey-reconciliation.test.ts'))
           const harveyAssertions = harvey?.assertionResults ?? []
-          if (harveyAssertions.length < 13 || harveyAssertions.some(assertion => assertion.status !== 'passed')) {
-            console.error('::error::all thirteen exact applied Harvey source/ledger checks must pass')
+          if (harveyAssertions.length < 14 || harveyAssertions.some(assertion => assertion.status !== 'passed')) {
+            console.error('::error::all fourteen exact applied Harvey source/ledger checks must pass')
             process.exit(1)
           }
 

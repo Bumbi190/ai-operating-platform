@@ -113,4 +113,6 @@ jobs:
 
       - name: Typecheck complete web workspace without production credentials
         working-directory: apps/web
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: npx --no tsc --noEmit --pretty false

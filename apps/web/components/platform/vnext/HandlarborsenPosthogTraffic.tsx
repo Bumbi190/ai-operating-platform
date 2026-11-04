@@ -108,6 +108,13 @@ export function HandlarborsenPosthogTraffic({
           </span>
         </div>
       </div>
+      {connected && traffic.registrationPageviews !== undefined && (
+        <div className={styles.chartSurface}>
+          <h3>Intresse för registrering</h3>
+          <p><strong>{number(traffic.registrationPageviews)}</strong> sidvisningar på /registrera under de senaste sju UTC-dagarna.</p>
+          <p>Detta är visningar av registreringssidan, inte påbörjade eller slutförda registreringar. En besökare kan öppna sidan flera gånger.</p>
+        </div>
+      )}
       <div className={styles.chartSurface}>
         <div className={styles.chartHeading}>
           <div>
@@ -168,8 +175,8 @@ export function HandlarborsenPosthogTraffic({
         <div className={styles.chartSurface}>
           <h3>Daglig trafik · UTC</h3>
           <table style={{width:"100%",textAlign:"left"}}>
-            <thead><tr><th>Datum</th><th>Sidvisningar</th><th>Dagliga unika besökare</th></tr></thead>
-            <tbody>{traffic.days.map(row => <tr key={row.date}><td>{row.date}</td><td>{number(row.pageviews)}</td><td>{row.visitors === undefined ? "—" : number(row.visitors)}</td></tr>)}</tbody>
+            <thead><tr><th>Datum</th><th>Sidvisningar</th><th>Dagliga unika besökare</th><th>Visningar /registrera</th></tr></thead>
+            <tbody>{traffic.days.map(row => <tr key={row.date}><td>{row.date}</td><td>{number(row.pageviews)}</td><td>{row.visitors === undefined ? "—" : number(row.visitors)}</td><td>{row.registrationPageviews === undefined ? "—" : number(row.registrationPageviews)}</td></tr>)}</tbody>
           </table>
           <p>Dagliga unika besökare summeras inte till ett unikt antal för hela veckan. Dagens siffror är ännu ofullständiga. Endast handlarborsen.se och www.handlarborsen.se ingår.</p>
         </div>

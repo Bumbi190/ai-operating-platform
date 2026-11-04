@@ -14,6 +14,17 @@ export default class FixtureAnthropic {
    const studio=system.match(/ACTIVE WEBSITE STUDIO PROJECT: (\{[^\n]*?\});/)?.[1]
    const projectId=studio?JSON.parse(studio).projectId:TEST_PROJECT
    // Explicit authored provider fixture only; actual plan tool and approvals remain unchanged.
+   if(text.includes('premium-dealer-showroom-v2'))return {stop_reason:'tool_use',content:[{type:'tool_use',id:'fixture-'+crypto.randomUUID(),name:'draft_website_build_plan',input:{projectId,...(current?{planId:current.planId}:{}),expectedRevisionId:current?.revisionId??null,idempotencyKey:crypto.randomUUID(),content:{
+    title:'Strandvik Motor',purpose:'Visa två fiktiva bilar med handlarens färger',audience:'Bilintresserade',
+    pages:[{key:'home',title:'Bilhall',purpose:'Visa aktuellt lager'}],
+    design:{style:'Mörk bilhall',reference:null,starter:'premium-dealer-showroom-v2',visual:{palette:{background:'#10231b',foreground:'#f4f4ef',accent:'#a9e4bf'},font:'sans'},showroom:{vehicles:[
+      {name:'Kust Touring',year:2024,mileage:1850,price:369000,fuel:'Hybrid',photo:'concept-silver',sold:true},
+      {name:'Skog E',year:2025,mileage:360,price:429000,fuel:'El',photo:'concept-green'}
+    ]}},
+    features:[{name:'Visa fordonsuppgifter',mode:'preview_demo',provider:null}],
+    architecture:'Statisk fiktiv bilhall',steps:['Granska','Bygg'],domain:{registrar:'strato',requestedName:null}
+   }}}]}
+
    if(text.includes('premium-dealer-demo-v1'))return {stop_reason:'tool_use',content:[{type:'tool_use',id:'fixture-'+crypto.randomUUID(),name:'draft_website_build_plan',input:{projectId,...(current?{planId:current.planId}:{}),expectedRevisionId:current?.revisionId??null,idempotencyKey:crypto.randomUUID(),content:{title:'Handlarbörsen',purpose:'Fiktiv ensidesdemo för en bilhandlare',audience:'Bilhandlare',pages:[{key:'index',title:'Hem',purpose:'Showroom och åtta exempelbilar'}],design:{style:'Mörkt showroom med varm amberaccent',reference:null,starter:'premium-dealer-demo-v1'},features:[{name:'Filter och testförfrågan',mode:'preview_demo',provider:null}],architecture:'Statisk fiktiv demo, inga riktiga kunder eller utskick',steps:['Granska','Bygg'],domain:{registrar:'strato',requestedName:null}}}}]}
 
    return {stop_reason:'tool_use',content:[{type:'tool_use',id:'fixture-'+crypto.randomUUID(),name:'draft_website_build_plan',input:{projectId,...(current?{planId:current.planId}:{}),expectedRevisionId:current?.revisionId??null,idempotencyKey:crypto.randomUUID(),content:{title:'Caféets hemsida',purpose:text,audience:'Gäster',pages:[{key:'index',title:'Hem',purpose:'Visa caféet'},{key:'contact',title:'Kontakt',purpose:'Hitta oss'}],design:{style:'Omniras färger',reference:null},features:[],architecture:'Statisk hemsida med två sidor',steps:['Bygg','Kontrollera'],domain:{registrar:'strato',requestedName:'cafe-exempel.se'}}}}]}

@@ -8,12 +8,13 @@ export async function runStep(input: { runId: string; cost: { operation: string 
   const writer = JSON.parse(testSql(`select jsonb_build_object('projectId',s.project_id,'sessionId',s.id,'runId',r.id,'claimId',r.claim_id,'generation',s.generation) from website_build_sessions s join runs r on r.id=s.current_run_id where r.id='${input.runId}';`))
   const snapshot = await loadBuildSnapshot(createAdminClient(), writer)
   const text = snapshot.feedback.at(-1)?.text || 'Välkommen till vårt café'
-  if(snapshot.brief.includes('premium-dealer-demo-v1')&&snapshot.designReference){
+  const customShowroom=snapshot.brief.includes('premium-dealer-showroom-v2')
+  if((customShowroom||snapshot.brief.includes('premium-dealer-demo-v1'))&&snapshot.designReference){
     // Exercise the actual worker's compact request and output resolver, not a bypass commit.
     const request=JSON.parse(input.userMessage??'{}')
-    // 18 approved references include the same-source poster for the fictional GLB viewer.
+    // The original demo has 18 references; the v2 fixture explicitly supplies two cars.
     // Never accept raw raster bytes or silently weaken the pinned media contract.
-    if(input.userMessage?.includes('base64,')||request.assets?.length!==18)throw Error('Invalid showroom fixture media input')
+    if(input.userMessage?.includes('base64,')||request.assets?.length!==(customShowroom?2:18))throw Error('Invalid showroom fixture media input')
     let output:unknown
     if(input.cost.operation.includes('interpret'))output={items:snapshot.feedback.map(item=>({feedbackId:item.id,summary:'Ändrar endast accentfärgen och bevarar bilderna.',disposition:'apply',changeKey:'theme.accent',supersedesFeedbackIds:[]}))}
     else{
@@ -21,7 +22,7 @@ export async function runStep(input: { runId: string; cost: { operation: string 
       const source=structuredClone(request.designReference.draft)
       if(snapshot.feedback.length){
         if(!snapshot.feedback.every(item=>item.text.includes('#71d7ba')))throw Error('Unsupported authored fixture edit')
-        source.css=source.css.replaceAll('#efb563','#71d7ba')
+        source.css=source.css.replaceAll(customShowroom?'#a9e4bf':'#efb563','#71d7ba')
       }
       output=source
     }

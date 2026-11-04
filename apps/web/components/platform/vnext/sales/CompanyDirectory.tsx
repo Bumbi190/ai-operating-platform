@@ -18,6 +18,8 @@ function CompanyCard({row}:{row:CompanyRow}){
  const [expanded,setExpanded]=useState(false)
  return <article className={styles.card}>
   <div className={styles.cardTop}><span className={styles.companyIcon}><Building2 size={20} aria-hidden="true" /></span><div className={styles.identity}><h3>{row.name}</h3><p><MapPin size={12} aria-hidden="true" />{row.city||row.branch||(row.searchArea?'Sökområde: '+row.searchArea:'Ort saknas i underlaget')}{row.orgnr?` · ${row.orgnr}`:''}</p></div><span className={styles.status} data-tone={row.status==='contacted'?'cyan':'muted'}>{statusText[row.status]}</span></div>
+  {row.workplaceRef&&<p className={styles.note}>Arbetsställe: {row.branch||'Namn saknas i källan'}</p>}
+  {row.workplaceRef&&<p className={styles.note}>CFAR {row.workplaceRef}</p>}
   <div className={styles.badges}>{row.badges.map(b=><span key={b}>{b}</span>)}</div>
   {row.matches.length>0&&<p className={styles.warning}>{row.matches.join(' · ')}</p>}
   {row.dialogContext&&<p className={styles.warning}>{row.dialogContext}<small>Namnkopplat överlämningsunderlag; läs aktuell tråd före åtgärd.</small></p>}

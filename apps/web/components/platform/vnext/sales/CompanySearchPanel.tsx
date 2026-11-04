@@ -38,13 +38,15 @@ export function CompanySearchPanel({data,onResult,renderRows}:{data:CompanyDirec
    <button type="submit" disabled={busy||!data.sourceConfigured||(scb&&!municipality)}><Search size={16} aria-hidden="true" />{busy?'Läser källa…':scb?buttonLabel:'Sök i publik källa'}</button>
   </form>
   {scb&&<p id="municipality-help" className={styles.note}>{municipality?`${municipality.name} kommun är vald. Klicka ${buttonLabel} för nya registerträffar.`:'Skriv ett fullständigt kommunnamn och välj i listan, t.ex. Hässleholm eller Kristianstad.'}</p>}
-  {scb&&<p className={styles.note}>Registerurval: {industry.registeredLabel} · SNI {industry.sni}. För husbyggare ingår inte alla specialiserade hantverksföretag.</p>}
+  {scb&&<p className={styles.note}>Registerurval: {industry.registeredLabel} · SNI {industry.sni}.{category==='house_builder'?' För husbyggare ingår inte alla specialiserade hantverksföretag.':''}</p>}
   {!data.sourceConfigured&&<p className={styles.warning}>Sökkällan är inte tillgänglig i denna miljö. Det sparade underlaget kan fortfarande filtreras nedan.</p>}
   {error&&<p className={styles.warning} role="alert">{error}</p>}
   {hasSearched&&<div>
    <p className={styles.note} role="status">{fresh.length} källposter i denna omgång.{meta?` ${meta.matchedWorkplaces} registerträffar i hämtat underlag för ${meta.areaLabel}.`:''}</p>
    <p className={styles.note}>{meta?'SCB:s registrerade näringsgren är ett granskningsunderlag; detta är ingen komplett lista över alla företag i branschen.':category==='car_dealer'?'Urval ur kartkällan, inte alla bilhandlare.':'Urval ur kartkällan, inte alla företag i branschen.'}</p>
-   {meta?.truncated&&<p className={styles.warning}>Registerhämtningen nådde sin gräns. Även antalet registerträffar kan vara ofullständigt.</p>}
+   {meta?.sourceScope==='municipality'&&<p className={styles.note}>Kommunurval från SCB: {meta.areaLabel}. {meta.scannedRows} arbetsställen lästa före bransch- och identitetsgranskning. Urvalet gäller registrerad primär näringsgren.</p>}
+   {meta&&<p className={styles.note}>Olika arbetsställen kan tillhöra samma bolag. Jämför arbetsställets namn och CFAR-nummer på korten.</p>}
+   {meta?.truncated&&<p className={styles.warning}>Registerhämtningen nådde sin gräns. Även antalet registerträffar i kommunen kan vara ofullständigt.</p>}
    {!!meta?.skippedInPage&&<p className={styles.note}>{meta.skippedInPage} poster i omgången behöver ytterligare identitetsgranskning och visas inte.</p>}
    <div className={styles.cards}>{renderRows(fresh)}</div>
    {meta?.nextOffset!==null&&meta?.nextOffset!==undefined&&lastQuery&&<button type="button" disabled={busy} onClick={()=>void search(lastQuery,meta.nextOffset!)}>Nästa 5 registerträffar</button>}

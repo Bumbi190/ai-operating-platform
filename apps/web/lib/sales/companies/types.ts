@@ -16,5 +16,5 @@ export type CompanyInput={projectId:string;project?:CompanyProject;projectOption
 export type CompanyFilters={query:string;area:string;status:string}
 export type CompanySearchProvider='scb'|'overpass'|null
 export type CompanyPublicBusiness=PublicBusiness&{orgnr?:string;cfar?:string;branchName?:string;city?:string|null;restricted?:boolean;inactive?:boolean}
-export type ScbCompanySearchMeta={provider:'scb';category?:CompanyIndustry;industryLabel?:string;sniCode?:string;areaLabel:string;offset:number;pageSize:number;nextOffset:number|null;matchedWorkplaces:number;scannedRows:number;pages:number;truncated:boolean;skippedInPage:number}
+export type ScbCompanySearchMeta={provider:'scb';sourceScope?:'municipality';municipalityCode?:string;category?:CompanyIndustry;industryLabel?:string;sniCode?:string;areaLabel:string;offset:number;pageSize:number;nextOffset:number|null;matchedWorkplaces:number;scannedRows:number;pages:number;truncated:boolean;skippedInPage:number}
 export type CompanySearchResult={candidates:CompanyPublicBusiness[];retrievedAt:string;source?:'scb'|'overpass';meta?:ScbCompanySearchMeta}

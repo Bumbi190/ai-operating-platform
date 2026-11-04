@@ -70,3 +70,12 @@ test('a successful response for another project never renders its companies',asy
  await page.route('**/api/sales/companies',r=>{attempts++;return r.fulfill({json:{...initial(),projectId:'10000000-0000-4000-8000-000000000099',rows:[row('public:scb/foreign','Foreign private company','')]}})})
  await page.goto('/companies');await page.getByRole('button',{name:'Sök bilhandlare',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Källan kunde inte läsas');await expect(page.getByText('Foreign private company',{exact:true})).toHaveCount(0);expect(attempts).toBe(1)
 })
+
+
+test('same-company workplaces remain visibly distinct and municipal source coverage is explicit',async({page})=>{
+ const branches=[{...row('public:scb/10000001','Synthetic Chain AB','Centrum'),city:'Hässleholm',workplaceRef:'10000001'},{...row('public:scb/10000002','Synthetic Chain AB','Stationen'),city:'Hässleholm',workplaceRef:'10000002'}]
+ await page.route('**/fixture-companies',r=>r.fulfill({json:{...initial(),searchProvider:'scb'}}));await page.route('**/api/sales/companies',r=>r.fulfill({json:{...initial(),rows:branches,searchProvider:'scb',searchMeta:{provider:'scb',sourceScope:'municipality',municipalityCode:'1293',category:'restaurant',industryLabel:'Restauranger',sniCode:'56.110',areaLabel:'Hässleholm kommun',offset:0,pageSize:5,nextOffset:null,matchedWorkplaces:2,scannedRows:3200,pages:1,truncated:false,skippedInPage:0}}}))
+ await page.goto('/companies');await page.getByLabel('Kommun',{exact:true}).fill('Hässleholm');await page.getByLabel('Bransch',{exact:true}).selectOption('restaurant');await page.getByRole('button',{name:'Sök restauranger',exact:true}).click()
+ await expect(page.getByText('Arbetsställe: Centrum',{exact:true})).toBeVisible();await expect(page.getByText('Arbetsställe: Stationen',{exact:true})).toBeVisible();await expect(page.getByText('CFAR 10000001',{exact:true})).toBeVisible();await expect(page.getByText('CFAR 10000002',{exact:true})).toBeVisible()
+ await expect(page.getByText(/Kommunurval från SCB: Hässleholm kommun/)).toBeVisible();await expect(page.getByText(/Olika arbetsställen kan tillhöra samma bolag/)).toBeVisible();await expect(page.getByText('Registerhämtningen nådde sin gräns.',{exact:false})).toHaveCount(0);await page.screenshot({path:test.info().outputPath('local-workplaces.png'),fullPage:true})
+})

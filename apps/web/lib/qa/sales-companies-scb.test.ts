@@ -22,7 +22,7 @@ describe('company view uses the qualified SCB preview source',()=>{
  it('does not silently fall back to another provider after SCB fails',async()=>{const d=deps([row(1)]);d.search=vi.fn(async()=>{throw new Error('private upstream detail')});await expect(searchScbCompanies(query,0,d)).rejects.toMatchObject({code:'DISCOVERY_PROVIDER_UNAVAILABLE'})})
  it('integrates the real SCB page mapper, cursor and legal-entity verifier with raw HTTP fixtures',async()=>{
   const calls:string[]=[];const mock=vi.fn(async(url:unknown)=>{const u=new URL(String(url));calls.push(u.pathname+u.search);if(u.pathname.includes('/arbetsstallen/'))return Response.json({pagination:{hasMore:!u.searchParams.has('cursorId'),nextCursorId:99},arbetsstallen:u.searchParams.has('cursorId')?[]:[{peOrgNr:'16'+orgnr,ben:'Raw AE branch',cfarNr:10000001,primarNaringsgren:{naringsgren:'47811'},belagenhetsadress:{kommun:'1280',bPostOrt:'Malmö'}}]});return Response.json({peOrgNr:'16'+orgnr,namn:'Raw JE Dealer AB',jurform:'49',ftgStat:'1',epostSparrTyp:2})});vi.stubGlobal('fetch',mock)
-  try{const r=await searchScbCompanies(query,0,{env,sleep:async()=>{}});expect(r.candidates).toHaveLength(1);expect(r.candidates[0]).toMatchObject({name:'Raw JE Dealer AB',branchName:'Raw AE branch',orgnr,cfar:'10000001',city:'Malmö',restricted:true});expect(calls).toEqual(['/v1/arbetsstallen/naringsgren/47811?limit=5000','/v1/arbetsstallen/naringsgren/47811?limit=5000&cursorId=99','/v1/juridiskaenheter/16'+orgnr]);expect(JSON.stringify(r)).not.toContain('synthetic-test-key')}finally{vi.unstubAllGlobals()}
+  try{const r=await searchScbCompanies(query,0,{env,sleep:async()=>{}});expect(r.candidates).toHaveLength(1);expect(r.candidates[0]).toMatchObject({name:'Raw JE Dealer AB',branchName:'Raw AE branch',orgnr,cfar:'10000001',city:'Malmö',restricted:true});expect(calls).toEqual(['/v1/arbetsstallen/kommun/1280?limit=5000','/v1/arbetsstallen/kommun/1280?limit=5000&cursorId=99','/v1/juridiskaenheter/16'+orgnr]);expect(JSON.stringify(r)).not.toContain('synthetic-test-key')}finally{vi.unstubAllGlobals()}
  })
 
  it('accepts Hässleholm and Kristianstad municipality codes without the six-city discovery restriction',async()=>{
@@ -36,10 +36,23 @@ describe('company view uses the qualified SCB preview source',()=>{
 
 
 describe('registered industries use their real SCB codes',()=>{
- it.each([['restaurant','56.110','56110'],['hairdresser','96.210','96210'],['house_builder','41.000','41000']] as const)('maps %s into the real fixed-origin raw request path and exact row filter',async(category,sni,code)=>{
+ it.each([['restaurant','56.110','56110'],['hairdresser','96.210','96210'],['house_builder','41.000','41000']] as const)('filters %s within the selected municipality through the real SCB client',async(category,sni,code)=>{
   const paths:string[]=[]
   const mock=vi.fn(async(url:unknown)=>{const u=new URL(String(url));paths.push(u.pathname);if(u.pathname.includes('/arbetsstallen/'))return Response.json({pagination:{hasMore:false},arbetsstallen:[{peOrgNr:'16'+orgnr,ben:'Synthetic branch',cfarNr:10000001,primarNaringsgren:{naringsgren:code},belagenhetsadress:{kommun:'1293',bPostOrt:'Hässleholm'}},{peOrgNr:'16'+orgnr,ben:'Wrong industry',cfarNr:10000002,primarNaringsgren:{naringsgren:'47811'},belagenhetsadress:{kommun:'1293'}}]});return Response.json({peOrgNr:'16'+orgnr,namn:'Synthetic Industry AB',jurform:'49',ftgStat:'1'})})
   vi.stubGlobal('fetch',mock)
-  try{const result=await searchScbCompanies({municipalityCode:'1293',category,limit:5} as never,0,{env,sleep:async()=>{}});expect(result.candidates).toHaveLength(1);expect(result.meta).toMatchObject({category,industryLabel:expect.any(String),sniCode:sni,matchedWorkplaces:1});expect(paths[0]).toBe('/v1/arbetsstallen/naringsgren/'+code);expect(result.candidates[0].sourceId).toBe('scb/10000001')}finally{vi.unstubAllGlobals()}
+  try{const result=await searchScbCompanies({municipalityCode:'1293',category,limit:5} as never,0,{env,sleep:async()=>{}});expect(result.candidates).toHaveLength(1);expect(result.meta).toMatchObject({category,industryLabel:expect.any(String),sniCode:sni,matchedWorkplaces:1});expect(paths[0]).toBe('/v1/arbetsstallen/kommun/1293');expect(result.candidates[0].sourceId).toBe('scb/10000001')}finally{vi.unstubAllGlobals()}
+ })
+})
+
+
+describe('municipal lookup avoids national branch truncation',()=>{
+ it('finds the local restaurant on the second municipal page without scanning the nationwide industry',async()=>{
+  const paths:string[]=[],raw=(id:number,code='56110',kommun='1293')=>({peOrgNr:'16'+orgnr,ben:'Branch '+id,cfarNr:id,primarNaringsgren:{naringsgren:code},belagenhetsadress:{kommun,bPostOrt:'Hässleholm'}})
+  vi.stubGlobal('fetch',vi.fn(async(url:unknown)=>{const u=new URL(String(url));paths.push(u.pathname+u.search);if(u.pathname==='/v1/arbetsstallen/kommun/1293')return Response.json({pagination:{hasMore:!u.searchParams.has('cursorId'),nextCursorId:99},arbetsstallen:u.searchParams.has('cursorId')?[raw(10000002),raw(10000003,'47811'),raw(10000004,'56110','1280')]:[raw(10000001,'47811')]});if(u.pathname.includes('/juridiskaenheter/'))return Response.json({peOrgNr:'16'+orgnr,namn:'Local Restaurant AB',jurform:'49',ftgStat:'1'});return Response.json({pagination:{hasMore:true,nextCursorId:99},arbetsstallen:[]})}))
+  try{const result=await searchScbCompanies({municipalityCode:'1293',category:'restaurant',limit:5},0,{env,sleep:async()=>{}});expect(result.candidates.map(x=>x.sourceId)).toEqual(['scb/10000002']);expect(result.meta).toMatchObject({truncated:false,sourceScope:'municipality',municipalityCode:'1293',matchedWorkplaces:1,pages:2});expect(paths).toEqual(['/v1/arbetsstallen/kommun/1293?limit=5000','/v1/arbetsstallen/kommun/1293?limit=5000&cursorId=99','/v1/juridiskaenheter/16'+orgnr])}finally{vi.unstubAllGlobals()}
+ })
+ it('keeps the two-source-page limit visible for a municipality with more remaining pages',async()=>{
+  const paths:string[]=[];vi.stubGlobal('fetch',vi.fn(async(url:unknown)=>{const u=new URL(String(url));paths.push(u.pathname+u.search);return Response.json({pagination:{hasMore:true,nextCursorId:u.searchParams.has('cursorId')?100:99},arbetsstallen:[]})}))
+  try{const result=await searchScbCompanies({municipalityCode:'0180',category:'restaurant',limit:5},0,{env,sleep:async()=>{}});expect(paths).toHaveLength(2);expect(result.meta).toMatchObject({truncated:true,sourceScope:'municipality',pages:2,municipalityCode:'0180'})}finally{vi.unstubAllGlobals()}
  })
 })

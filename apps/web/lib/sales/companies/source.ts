@@ -4,7 +4,7 @@ import {COMPANY_INDUSTRIES,isCompanyIndustry} from './industries'
 import {parseCompanySearchQuery,companyQueryMunicipality,type CompanySearchQuery} from './query'
 import {discoverySourceConfigured,discoverPublicBusinesses} from '../discovery/provider'
 import {getReadiness,scbPreviewSearchApproved} from '../../handlarborsen/lead-finder/readiness'
-import {assertScbLiveBaseUrl,createScbPageFetcher,fetchScbLegalEntityByOrgnr,SCB_LIVE_HOST} from '../../handlarborsen/lead-finder/scb-client'
+import {assertScbLiveBaseUrl,createScbWorkplaceMunicipalityFetcher,fetchScbLegalEntityByOrgnr,SCB_LIVE_HOST} from '../../handlarborsen/lead-finder/scb-client'
 import {paginateScb} from '../../handlarborsen/lead-finder/scb-source'
 import {evaluateScbCompany,parseLegalOrgnr,type ScbStatusResult} from '../../handlarborsen/lead-finder/scb-status-policy'
 import type {ScbRegisterRecord} from '../../handlarborsen/lead-finder/types'
@@ -34,7 +34,7 @@ export async function searchScbCompanies(value:CompanySearchQuery,offset=0,deps:
  // whole-search budget. The fixed credential destination is asserted here.
  assertScbLiveBaseUrl(baseUrl)
  const boundedFetch:typeof fetch=(url,init)=>fetch(url,{...init,signal:init?.signal?AbortSignal.any([controller.signal,init.signal]):controller.signal})
- const search=deps.search??(()=>paginateScb(createScbPageFetcher({source:'arbetsstallen',sni,baseUrl,apiKey:env.SCB_API_KEY,liveApproved:true,fetchImpl:boundedFetch}),{pageSize:5000,maxPages:2,maxRows:10000,maxRetries:0,requestsPerSecond:2}))
+ const search=deps.search??(()=>paginateScb(createScbWorkplaceMunicipalityFetcher({municipalityCode:municipality.code,baseUrl,apiKey:env.SCB_API_KEY,liveApproved:true,fetchImpl:boundedFetch}),{pageSize:5000,maxPages:2,maxRows:10000,maxRetries:0,requestsPerSecond:2}))
  const review=deps.review??(async(orgnr:string)=>evaluateScbCompany({expectedOrgnr:orgnr,je:await fetchScbLegalEntityByOrgnr({orgnr,baseUrl,apiKey:env.SCB_API_KEY,liveApproved:true,fetchImpl:boundedFetch})}))
  try{
   const result=await search()
@@ -58,7 +58,7 @@ export async function searchScbCompanies(value:CompanySearchQuery,offset=0,deps:
    candidates.push({sourceId:`scb/${row.cfar}`,sourceUrl:SCB_SOURCE_URL,name:verified.legalName.trim(),branchName:row.name.trim(),orgnr:verified.orgnr,cfar:row.cfar!,city:plain(row.city,120)?row.city.trim():null,email:null,websiteUrl:null,restricted,inactive:verified.status.class==='NOT_ACTIVE_PER_SCB'})
   }
   if(controller.signal.aborted)throw new Error('deadline')
-  return {source:'scb',candidates,retrievedAt:(deps.now??(()=>new Date()))().toISOString(),meta:{provider:'scb',category:query.category as keyof typeof COMPANY_INDUSTRIES,industryLabel:industry.label,sniCode:sni,areaLabel:`${municipality.name} kommun`,offset,pageSize:SCB_COMPANY_PAGE_SIZE,nextOffset:offset+SCB_COMPANY_PAGE_SIZE<matches.length&&offset<995?offset+SCB_COMPANY_PAGE_SIZE:null,matchedWorkplaces:matches.length,scannedRows:result.rows.length,pages:result.pages,truncated:result.truncated||matches.length>1000,skippedInPage:page.length-candidates.length}}
+  return {source:'scb',candidates,retrievedAt:(deps.now??(()=>new Date()))().toISOString(),meta:{provider:'scb',sourceScope:'municipality',municipalityCode:municipality.code,category:query.category as keyof typeof COMPANY_INDUSTRIES,industryLabel:industry.label,sniCode:sni,areaLabel:`${municipality.name} kommun`,offset,pageSize:SCB_COMPANY_PAGE_SIZE,nextOffset:offset+SCB_COMPANY_PAGE_SIZE<matches.length&&offset<995?offset+SCB_COMPANY_PAGE_SIZE:null,matchedWorkplaces:matches.length,scannedRows:result.rows.length,pages:result.pages,truncated:result.truncated||matches.length>1000,skippedInPage:page.length-candidates.length}}
  }catch(e){if(e instanceof SalesError)throw e;throw new SalesError('DISCOVERY_PROVIDER_UNAVAILABLE',503)}
  finally{clearTimeout(timer);controller.abort()}
 }

@@ -237,12 +237,24 @@ export async function fetchScbLegalEntityByOrgnr(config: ScbLegalEntityLookupCon
 }
 
 export function createScbPageFetcher(config: ScbClientConfig): ScbPageFetcher {
+  const code = sniToScbCode(config.sni)
+  if (!code) throw new RangeError('sni must be 2-5 digits')
+  return createScbCollectionPageFetcher(config, 'naringsgren', code)
+}
+
+export type ScbMunicipalityConfig = Omit<ScbClientConfig, 'source' | 'sni'> & { municipalityCode: string }
+
+/** Official SCB AFR v1 municipality endpoint; same AE response and transport guards. */
+export function createScbWorkplaceMunicipalityFetcher(config: ScbMunicipalityConfig): ScbPageFetcher {
+  if (typeof config.municipalityCode !== 'string' || !/^\d{4}$/.test(config.municipalityCode)) throw new RangeError('municipalityCode must be four digits')
+  return createScbCollectionPageFetcher({ ...config, source: 'arbetsstallen' }, 'kommun', config.municipalityCode)
+}
+
+function createScbCollectionPageFetcher(config: Omit<ScbClientConfig, 'sni'>, filter: 'naringsgren' | 'kommun', code: string): ScbPageFetcher {
   if (!config.fetchImpl && !SCB_LIVE_SEARCH_APPROVED && config.liveApproved !== true) throw new ScbLiveSearchDisabledError()
   if (!config.fetchImpl) assertScbLiveBaseUrl(config.baseUrl)
   const apiKey = config.apiKey === undefined ? requireScbApiKey() : config.apiKey.trim()
   if (!apiKey) throw new ScbKeyMissingError()
-  const code = sniToScbCode(config.sni)
-  if (!code) throw new RangeError('sni must be 2–5 digits')
   const version = config.version ?? '1'
   if (!/^\d+$/.test(version)) throw new RangeError('version must be numeric')
   let origin: URL
@@ -259,7 +271,7 @@ export function createScbPageFetcher(config: ScbClientConfig): ScbPageFetcher {
       throw new RangeError(`pageSize must be an integer 1–${SCB_LIMITS.maxPageSize}`)
     }
     const cursorId = parseCursor(cursor)
-    const url = new URL(`/v${version}/${config.source}/naringsgren/${code}`, origin)
+    const url = new URL(`/v${version}/${config.source}/${filter}/${code}`, origin)
     url.searchParams.set('limit', String(pageSize))
     if (cursorId !== null) url.searchParams.set('cursorId', String(cursorId))
 

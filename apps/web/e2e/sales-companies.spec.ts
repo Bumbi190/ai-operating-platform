@@ -79,3 +79,16 @@ test('same-company workplaces remain visibly distinct and municipal source cover
  await expect(page.getByText('Arbetsställe: Centrum',{exact:true})).toBeVisible();await expect(page.getByText('Arbetsställe: Stationen',{exact:true})).toBeVisible();await expect(page.getByText('CFAR 10000001',{exact:true})).toBeVisible();await expect(page.getByText('CFAR 10000002',{exact:true})).toBeVisible()
  await expect(page.getByText(/Kommunurval från SCB: Hässleholm kommun/)).toBeVisible();await expect(page.getByText(/Olika arbetsställen kan tillhöra samma bolag/)).toBeVisible();await expect(page.getByText('Registerhämtningen nådde sin gräns.',{exact:false})).toHaveCount(0);await page.screenshot({path:test.info().outputPath('local-workplaces.png'),fullPage:true})
 })
+
+
+test('query state, missing branch names, diagnostics and empty reviewed pages are explicit',async({page})=>{
+ let calls=0
+ const unnamed={...row('public:scb/10000001','Synthetic Verified Legal AB',''),city:'Hässleholm',workplaceRef:'10000001'}
+ const meta={provider:'scb',sourceScope:'municipality',municipalityCode:'1293',category:'car_dealer',industryLabel:'Bilhandlare',sniCodes:['47.811','46.711'],areaLabel:'Hässleholm kommun',offset:0,pageSize:5,nextOffset:5,matchedWorkplaces:15,scannedRows:8849,pages:2,truncated:false,skippedInPage:0,diagnostics:{municipalityRows:8849,industryRows:17,identityExcludedRows:2,missingCfarRows:0,duplicateRows:0,conflictingWorkplaces:0,unnamedWorkplaces:15,eligibleWorkplaces:15,reviewedInPage:1,legalReviewSkipped:0,returnedInPage:1}}
+ await page.route('**/fixture-companies',r=>r.fulfill({json:{...initial(),searchProvider:'scb'}}))
+ await page.route('**/api/sales/companies',r=>{calls++;return r.fulfill({json:{...initial(),searchProvider:'scb',rows:calls===1?[unnamed]:[],searchMeta:calls===1?meta:{...meta,skippedInPage:1,diagnostics:{...meta.diagnostics,legalReviewSkipped:1,returnedInPage:0}}}})})
+ await page.goto('/companies');await page.getByLabel('Kommun',{exact:true}).fill('Hässleholm');await expect(page.getByText(/Ingen sökning har körts för de valda fälten/)).toBeVisible();expect(calls).toBe(0)
+ await page.getByRole('button',{name:'Sök bilhandlare',exact:true}).click();await expect(page.getByText('Synthetic Verified Legal AB',{exact:true})).toBeVisible();await expect(page.getByText(/Arbetsställe: Namn saknas eller har utelämnats/)).toBeVisible();await expect(page.getByText('CFAR 10000001',{exact:true})).toBeVisible();await expect(page.getByText(/46.711/).first()).toBeVisible()
+ await page.getByText('Så räknades sökresultatet',{exact:true}).click();await expect(page.getByText('17 poster med vald branschkod',{exact:true})).toBeVisible();await expect(page.getByText(/15 granskbara arbetsställen/)).toBeVisible()
+ await page.getByRole('button',{name:'Sök bilhandlare',exact:true}).click();await expect(page.getByRole('heading',{name:'Inga granskbara företag på denna sida'})).toBeVisible();await expect(page.getByText('Synthetic Verified Legal AB',{exact:true})).toHaveCount(0);await page.screenshot({path:test.info().outputPath('search-diagnostics.png'),fullPage:true})
+})

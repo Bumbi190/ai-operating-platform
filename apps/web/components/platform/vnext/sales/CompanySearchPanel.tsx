@@ -38,7 +38,8 @@ export function CompanySearchPanel({data,onResult,renderRows}:{data:CompanyDirec
    <button type="submit" disabled={busy||!data.sourceConfigured||(scb&&!municipality)}><Search size={16} aria-hidden="true" />{busy?'Läser källa…':scb?buttonLabel:'Sök i publik källa'}</button>
   </form>
   {scb&&<p id="municipality-help" className={styles.note}>{municipality?`${municipality.name} kommun är vald. Klicka ${buttonLabel} för nya registerträffar.`:'Skriv ett fullständigt kommunnamn och välj i listan, t.ex. Hässleholm eller Kristianstad.'}</p>}
-  {scb&&<p className={styles.note}>Registerurval: {industry.registeredLabel} · SNI {industry.sni}.{category==='house_builder'?' För husbyggare ingår inte alla specialiserade hantverksföretag.':''}</p>}
+  {scb&&<p className={styles.note}>Registerurval: {industry.registeredLabel} · SNI {industry.sniCodes.join(', ')}.{category==='house_builder'?' För husbyggare ingår inte alla specialiserade hantverksföretag.':''}</p>}
+  {scb&&data.sourceConfigured&&!hasSearched&&!busy&&<p className={styles.note}>Ingen sökning har körts för de valda fälten. Klicka {buttonLabel}.</p>}
   {!data.sourceConfigured&&<p className={styles.warning}>Sökkällan är inte tillgänglig i denna miljö. Det sparade underlaget kan fortfarande filtreras nedan.</p>}
   {error&&<p className={styles.warning} role="alert">{error}</p>}
   {hasSearched&&<div>
@@ -48,6 +49,21 @@ export function CompanySearchPanel({data,onResult,renderRows}:{data:CompanyDirec
    {meta&&<p className={styles.note}>Olika arbetsställen kan tillhöra samma bolag. Jämför arbetsställets namn och CFAR-nummer på korten.</p>}
    {meta?.truncated&&<p className={styles.warning}>Registerhämtningen nådde sin gräns. Även antalet registerträffar i kommunen kan vara ofullständigt.</p>}
    {!!meta?.skippedInPage&&<p className={styles.note}>{meta.skippedInPage} poster i omgången behöver ytterligare identitetsgranskning och visas inte.</p>}
+   {meta?.diagnostics&&<details className={styles.note}>
+    <summary>Så räknades sökresultatet</summary>
+    <ul>
+     <li>{meta.diagnostics.municipalityRows} källposter i vald kommun</li>
+     <li>{meta.diagnostics.industryRows} poster med vald branschkod</li>
+     <li>{meta.diagnostics.identityExcludedRows} poster utanför den granskade bolagsmodellen</li>
+     <li>{meta.diagnostics.missingCfarRows} poster utan giltigt CFAR-nummer</li>
+     <li>{meta.diagnostics.duplicateRows} upprepade poster för samma bolag och arbetsställe</li>
+     <li>{meta.diagnostics.conflictingWorkplaces} arbetsställen med motstridig bolagsidentitet, utelämnade</li>
+     <li>{meta.diagnostics.eligibleWorkplaces} granskbara arbetsställen, varav {meta.diagnostics.unnamedWorkplaces} utan visningsbart arbetsställenamn</li>
+     <li>{meta.diagnostics.reviewedInPage} arbetsställen granskade på denna sida; {meta.diagnostics.returnedInPage} visas och {meta.diagnostics.legalReviewSkipped} utelämnas efter bolagskontroll</li>
+    </ul>
+    <p>Antalen avser hämtat underlag. Ett motstridigt arbetsställe kan omfatta flera källposter. Utelämnade identiteter visas inte.</p>
+   </details>}
+   {fresh.length===0&&<div><h3>Inga granskbara företag på denna sida</h3><p className={styles.note}>Inga poster i denna omgång kunde visas efter urval och bolagskontroll. Det säger inte att företag saknas i kommunen.{meta?.nextOffset!=null?' Använd Nästa för att granska fler registerträffar.':''}</p></div>}
    <div className={styles.cards}>{renderRows(fresh)}</div>
    {meta?.nextOffset!==null&&meta?.nextOffset!==undefined&&lastQuery&&<button type="button" disabled={busy} onClick={()=>void search(lastQuery,meta.nextOffset!)}>Nästa 5 registerträffar</button>}
   </div>}

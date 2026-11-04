@@ -8,7 +8,7 @@ import {assertScbLiveBaseUrl,createScbWorkplaceMunicipalityFetcher,fetchScbLegal
 import {paginateScb} from '../../handlarborsen/lead-finder/scb-source'
 import {evaluateScbCompany,parseLegalOrgnr,type ScbStatusResult} from '../../handlarborsen/lead-finder/scb-status-policy'
 import type {ScbRegisterRecord} from '../../handlarborsen/lead-finder/types'
-import type {CompanySearchProvider,CompanySearchResult,CompanyPublicBusiness} from './types'
+import type {CompanySearchProvider,CompanySearchResult,CompanyPublicBusiness,CompanySearchDiagnostics} from './types'
 
 export const SCB_COMPANY_PAGE_SIZE=5
 const SCB_SOURCE_URL='https://www.scb.se/vara-tjanster/bestall-data-och-statistik/foretagsregistret/'
@@ -27,7 +27,7 @@ export async function searchScbCompanies(value:CompanySearchQuery,offset=0,deps:
  const query=parseCompanySearchQuery(value),municipality=companyQueryMunicipality(query),env=deps.env??process.env
  if(!municipality||!Number.isInteger(offset)||offset<0||offset>995||offset%SCB_COMPANY_PAGE_SIZE!==0)throw new SalesError('INVALID_BODY')
  if(!scbPreviewSearchApproved(env)||!getReadiness(env).liveSearchAvailable)throw new SalesError('DISCOVERY_SOURCE_NOT_CONFIGURED',503)
- const industry=COMPANY_INDUSTRIES[query.category as keyof typeof COMPANY_INDUSTRIES],sni=industry.sni
+ const industry=COMPANY_INDUSTRIES[query.category as keyof typeof COMPANY_INDUSTRIES],sniCodes:readonly string[]=industry.sniCodes
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),35000)
  const baseUrl=`https://${SCB_LIVE_HOST}`
  // A wrapped fetch preserves both the existing per-request timeout and the
@@ -40,25 +40,39 @@ export async function searchScbCompanies(value:CompanySearchQuery,offset=0,deps:
   const result=await search()
   if(controller.signal.aborted)throw new Error('deadline')
   const unique=new Map<string,ScbRegisterRecord>(),ambiguous=new Set<string>()
+  const diagnostics:CompanySearchDiagnostics={municipalityRows:0,industryRows:0,identityExcludedRows:0,missingCfarRows:0,duplicateRows:0,conflictingWorkplaces:0,unnamedWorkplaces:0,eligibleWorkplaces:0,reviewedInPage:0,legalReviewSkipped:0,returnedInPage:0}
   for(const row of result.rows){
+   if(row.municipalityCode!==municipality.code)continue
+   diagnostics.municipalityRows++
+   if(!row.sniCodes.some(code=>sniCodes.includes(code)))continue
+   diagnostics.industryRows++
    const identity=parseLegalOrgnr(row.orgnr)
-   if(!identity.ok||row.municipalityCode!==municipality.code||!row.sniCodes.includes(sni)||!row.cfar||!/^\d{1,20}$/.test(row.cfar)||!plain(row.name))continue
+   if(!identity.ok){diagnostics.identityExcludedRows++;continue}
+   if(!row.cfar||!/^\d{1,20}$/.test(row.cfar)){diagnostics.missingCfarRows++;continue}
    const old=unique.get(row.cfar)
-   if(old&&parseLegalOrgnr(old.orgnr).ok&&old.orgnr!==identity.orgnr)ambiguous.add(row.cfar)
-   else unique.set(row.cfar,{...row,orgnr:identity.orgnr})
+   if(old){
+    if(old.orgnr!==identity.orgnr)ambiguous.add(row.cfar)
+    else diagnostics.duplicateRows++
+   }else unique.set(row.cfar,{...row,orgnr:identity.orgnr})
   }
   const matches=[...unique.values()].filter(r=>!ambiguous.has(r.cfar!)).sort((a,b)=>a.cfar!.localeCompare(b.cfar!))
+  diagnostics.conflictingWorkplaces=ambiguous.size
+  diagnostics.unnamedWorkplaces=matches.filter(row=>!plain(row.name)).length
+  diagnostics.eligibleWorkplaces=matches.length
   const page=matches.slice(offset,offset+SCB_COMPANY_PAGE_SIZE),cache=new Map<string,ScbStatusResult>(),candidates:CompanyPublicBusiness[]=[]
+  diagnostics.reviewedInPage=page.length
   for(const row of page){
    if(controller.signal.aborted)throw new Error('deadline')
    let verified=cache.get(row.orgnr)
    if(!verified){await(deps.sleep??sleep)(500);if(controller.signal.aborted)throw new Error('deadline');verified=await review(row.orgnr);cache.set(row.orgnr,verified)}
    if(!verified.ok||verified.orgnr!==row.orgnr||!plain(verified.legalName)||!['49','31','96'].includes(verified.legalForm.code??''))continue
    const restricted=verified.marketing.post.code===2||verified.marketing.email.code===2||verified.marketing.phone.code===2||verified.marketing.phone.code===3
-   candidates.push({sourceId:`scb/${row.cfar}`,sourceUrl:SCB_SOURCE_URL,name:verified.legalName.trim(),branchName:row.name.trim(),orgnr:verified.orgnr,cfar:row.cfar!,city:plain(row.city,120)?row.city.trim():null,email:null,websiteUrl:null,restricted,inactive:verified.status.class==='NOT_ACTIVE_PER_SCB'})
+   candidates.push({sourceId:`scb/${row.cfar}`,sourceUrl:SCB_SOURCE_URL,name:verified.legalName.trim(),branchName:plain(row.name)?row.name.trim():'',orgnr:verified.orgnr,cfar:row.cfar!,city:plain(row.city,120)?row.city.trim():null,email:null,websiteUrl:null,restricted,inactive:verified.status.class==='NOT_ACTIVE_PER_SCB'})
   }
   if(controller.signal.aborted)throw new Error('deadline')
-  return {source:'scb',candidates,retrievedAt:(deps.now??(()=>new Date()))().toISOString(),meta:{provider:'scb',sourceScope:'municipality',municipalityCode:municipality.code,category:query.category as keyof typeof COMPANY_INDUSTRIES,industryLabel:industry.label,sniCode:sni,areaLabel:`${municipality.name} kommun`,offset,pageSize:SCB_COMPANY_PAGE_SIZE,nextOffset:offset+SCB_COMPANY_PAGE_SIZE<matches.length&&offset<995?offset+SCB_COMPANY_PAGE_SIZE:null,matchedWorkplaces:matches.length,scannedRows:result.rows.length,pages:result.pages,truncated:result.truncated||matches.length>1000,skippedInPage:page.length-candidates.length}}
+  diagnostics.returnedInPage=candidates.length
+  diagnostics.legalReviewSkipped=page.length-candidates.length
+  return {source:'scb',candidates,retrievedAt:(deps.now??(()=>new Date()))().toISOString(),meta:{provider:'scb',sourceScope:'municipality',municipalityCode:municipality.code,category:query.category as keyof typeof COMPANY_INDUSTRIES,industryLabel:industry.label,...(sniCodes.length===1?{sniCode:sniCodes[0]}:{}),sniCodes:[...sniCodes],areaLabel:`${municipality.name} kommun`,offset,pageSize:SCB_COMPANY_PAGE_SIZE,nextOffset:offset+SCB_COMPANY_PAGE_SIZE<matches.length&&offset<995?offset+SCB_COMPANY_PAGE_SIZE:null,matchedWorkplaces:matches.length,scannedRows:result.rows.length,pages:result.pages,truncated:result.truncated||matches.length>1000,skippedInPage:page.length-candidates.length,diagnostics}}
  }catch(e){if(e instanceof SalesError)throw e;throw new SalesError('DISCOVERY_PROVIDER_UNAVAILABLE',503)}
  finally{clearTimeout(timer);controller.abort()}
 }

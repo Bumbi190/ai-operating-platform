@@ -56,3 +56,23 @@ describe('municipal lookup avoids national branch truncation',()=>{
   try{const result=await searchScbCompanies({municipalityCode:'0180',category:'restaurant',limit:5},0,{env,sleep:async()=>{}});expect(paths).toHaveLength(2);expect(result.meta).toMatchObject({truncated:true,sourceScope:'municipality',pages:2,municipalityCode:'0180'})}finally{vi.unstubAllGlobals()}
  })
 })
+
+
+describe('missing workplace names, dealer coverage and source accounting',()=>{
+ it.each([undefined,null,'','   ','<script>private invalid branch</script>'])('retains a legal company when its optional workplace name is %s',async ben=>{
+  vi.stubGlobal('fetch',vi.fn(async(url:unknown)=>{const u=new URL(String(url));if(u.pathname.includes('/arbetsstallen/'))return Response.json({pagination:{hasMore:false},arbetsstallen:[{peOrgNr:'16'+orgnr,ben,cfarNr:10000001,primarNaringsgren:{naringsgren:'47811'},belagenhetsadress:{kommun:'1293',bPostOrt:'Hässleholm'}}]});return Response.json({peOrgNr:'16'+orgnr,namn:'Verified Legal AB',jurform:'49',ftgStat:'1'})}))
+  try{const result=await searchScbCompanies({municipalityCode:'1293',category:'car_dealer',limit:5},0,{env,sleep:async()=>{}});expect(result.candidates).toHaveLength(1);expect(result.candidates[0]).toMatchObject({name:'Verified Legal AB',orgnr,cfar:'10000001',branchName:''});expect(result.meta?.diagnostics).toMatchObject({industryRows:1,unnamedWorkplaces:1,eligibleWorkplaces:1,reviewedInPage:1,returnedInPage:1});expect(JSON.stringify(result)).not.toContain('private invalid branch')}finally{vi.unstubAllGlobals()}
+ })
+ it('includes registered retail and wholesale car dealers while keeping repair and unrelated businesses out',async()=>{
+  const d=deps([row(1,{sniCodes:['47.811']}),row(2,{sniCodes:['46.711']}),row(3,{sniCodes:['95.311']}),row(4,{sniCodes:['56.110']})]);const result=await searchScbCompanies(query,0,d);expect(result.candidates.map(x=>x.sourceId)).toEqual(['scb/10000001','scb/10000002']);expect(result.meta).toMatchObject({sniCodes:['47.811','46.711'],matchedWorkplaces:2});expect(result.meta?.diagnostics).toMatchObject({municipalityRows:4,industryRows:2,eligibleWorkplaces:2,returnedInPage:2})
+ })
+ it('does not invent a legal company name from the optional workplace name',async()=>{
+  const d=deps([row(1,{name:''})]);d.review=vi.fn(async()=>({...review,legalName:null}));const result=await searchScbCompanies(query,0,d);expect(result.candidates).toEqual([]);expect(result.meta?.diagnostics).toMatchObject({eligibleWorkplaces:1,reviewedInPage:1,legalReviewSkipped:1,returnedInPage:0})
+ })
+ it('accounts for relevant exclusions, duplicates and identity conflicts without serializing discarded identifiers',async()=>{
+  const d=deps([row(1),row(1),row(2,{orgnr:'199001011234'}),row(3,{cfar:null}),row(4,{sniCodes:['56.110']}),row(5,{municipalityCode:'1293'}),row(6,{name:''}),row(7),row(7,{orgnr:'5595433995'})]);const result=await searchScbCompanies(query,0,d);expect(result.meta?.diagnostics).toEqual({municipalityRows:8,industryRows:7,identityExcludedRows:1,missingCfarRows:1,duplicateRows:1,conflictingWorkplaces:1,unnamedWorkplaces:1,eligibleWorkplaces:2,reviewedInPage:2,legalReviewSkipped:0,returnedInPage:2});expect(result.meta?.matchedWorkplaces).toBe(2);expect(JSON.stringify(result)).not.toContain('199001011234');expect(result.candidates).toHaveLength(2)
+ })
+ it('keeps unknown, unsupported and mismatched legal identities out even after an unnamed workplace passes filtering',async()=>{
+  for(const reviewResult of [{...review,orgnr:'5595433995'},{...review,legalForm:{code:'10',class:'OTHER_NEEDS_REVIEW',label:null}},{ok:false,reason:'identifier_missing'}]){const d=deps([row(1,{name:''})]);d.review=vi.fn(async()=>reviewResult as ScbStatusResult);const result=await searchScbCompanies(query,0,d);expect(result.candidates).toEqual([]);expect(result.meta?.diagnostics?.legalReviewSkipped).toBe(1)}
+ })
+})

@@ -60,6 +60,7 @@ export function initializeWorkerDb(): ReturnType<typeof createAdminClient> {
   testSql(`alter table conversations add column if not exists project_id uuid references projects(id);
     update conversations set project_id='${TEST_PROJECT}' where id='${TEST_CONVERSATION}' and project_id is null;
     create table if not exists project_budgets(project_id uuid primary key references projects(id),monthly_sek numeric,daily_sek numeric,weekly_sek numeric,updated_at timestamptz default now());
+    alter table project_budgets add column if not exists total_usd_limit_micros bigint,add column if not exists total_usd_committed_micros bigint not null default 0;
     insert into project_budgets(project_id,monthly_sek) values('${TEST_PROJECT}',100) on conflict do nothing;
     grant select on project_budgets to service_role;
     revoke select on auth.users from service_role;`)

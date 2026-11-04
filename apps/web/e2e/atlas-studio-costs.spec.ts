@@ -122,3 +122,16 @@ test('mobile showroom link remains reachable without crowding the chat controls'
  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
  await expect(page.getByLabel('Meddelande till Atlas')).toBeVisible()
 })
+
+for(const width of [390,1440])test('one-off USD allowance is distinct from monthly SEK at '+width,async({page},info)=>{
+ await page.setViewportSize({width,height:900})
+ await page.route('**/api/website-build/studio/costs?*',route=>route.fulfill({json:{...costs(),enforced:false,total:{currency:'USD',limitMicros:10000000,committedMicros:3500000,remainingMicros:6500000}}}))
+ await page.goto('/build?costs=1')
+ const meter=page.getByRole('region',{name:'Projektets kostnad'})
+ await expect(meter).toContainText('6,50 USD kvar av 10,00')
+ await expect(meter).toContainText('inte fakturerad kostnad')
+ await expect(meter).toContainText('Månadsbudgeten övervakas utan hård spärr')
+ await expect(meter.getByRole('button',{name:'Stoppa projektet',exact:true})).toBeVisible()
+ await expect(page.getByLabel('Meddelande till Atlas',{exact:true})).toBeEnabled()
+ await page.screenshot({path:info.outputPath('total-budget-'+width+'.png'),fullPage:true})
+})

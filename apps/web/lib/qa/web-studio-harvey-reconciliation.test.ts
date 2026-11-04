@@ -15,16 +15,19 @@ describe('Studio source-only reconciliation of already applied Harvey migrations
   expect(bytes.byteLength).toBe(entry.bytes)
   expect(createHash('sha256').update(bytes).digest('hex')).toBe(entry.sha256)
  })
- it('accepts the real195-name observation with both migrations enforced',()=>{
+ it('preserves the real195-name observation and enforces the pending allowance',()=>{
   const current=state()
   expect(names).toHaveLength(195);expect(new Set(names).size).toBe(195)
-  expect(current.sqlFiles).toHaveLength(172);expect(current.enforcedNames).toHaveLength(158)
+  expect(current.sqlFiles).toHaveLength(173);expect(current.enforcedNames).toHaveLength(159)
   for(const name of targets){
    expect(current.enforcedNames).toContain(name)
    expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain(name)
    expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).not.toContain(name)
   }
-  expect(evaluateAppliedMigrationLedger(names,current)).toMatchObject({enforcedCount:158,appliedLedgerCount:195,unknownLedgerNames:[],duplicateLedgerNames:[]})
+  // The immutable real195-name capture predates the proposed allowance.
+ expect(()=>evaluateAppliedMigrationLedger(names,current)).toThrow(/project_total_allowance/)
+ // Only this synthetic post-apply extension may pass; this is not a live-ledger claim.
+ expect(evaluateAppliedMigrationLedger([...names,'project_total_allowance'],current)).toMatchObject({enforcedCount:159,appliedLedgerCount:196,unknownLedgerNames:[],duplicateLedgerNames:[]})
  })
  it.each(targets)('rejects a ledger missing the enforced migration %s',name=>{
   expect(()=>evaluateAppliedMigrationLedger(names.filter(n=>n!==name),state())).toThrow(/not applied/)
@@ -33,7 +36,7 @@ describe('Studio source-only reconciliation of already applied Harvey migrations
   expect(()=>evaluateAppliedMigrationLedger([...names,name],state())).toThrow(/duplicate/)
  })
  it('still rejects an unrelated unknown migration',()=>{
-  expect(()=>evaluateAppliedMigrationLedger([...names,'unreviewed_future_schema'],state())).toThrow(/unknown/)
+  expect(()=>evaluateAppliedMigrationLedger([...names,'project_total_allowance','unreviewed_future_schema'],state())).toThrow(/unknown/)
  })
  it('preserves the historical192-name snapshot and reports its missing Harvey migrations',()=>{
   const prior=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-01-web-studio-campaign-observation.json'),'utf8')).migration_names

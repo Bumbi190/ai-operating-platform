@@ -14,13 +14,16 @@ describe('Studio integration preserves campaign source and fail-closed history',
   const source=readFileSync(path,'utf8').replaceAll('\r\n','\n')
   expect(createHash('sha256').update(source).digest('hex')).toBe(observation.sourceSqlSha256)
  })
- it('preserves the192-name observation and accepts the current195-name ledger',()=>{
+ it('preserves the192-name observation and rejects the195-name ledger pending the total allowance',()=>{
   const names=observation.migration_names as string[]
   expect(names).toHaveLength(192);expect(new Set(names).size).toBe(192)
   expect(createHash('md5').update([...names].sort().join('\n')).digest('hex')).toBe(observation.orderedNameMd5)
   expect(()=>evaluateAppliedMigrationLedger(names,state())).toThrow(/handlarborsen_scb_live_preview_candidates|sales_editorial_only_drafts/)
   const current=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-04-web-studio-initial-send-observation.json'),'utf8'))
-  expect(evaluateAppliedMigrationLedger(current.migration_names,state())).toMatchObject({canonicalSqlCount:172,enforcedCount:158,appliedLedgerCount:195,unknownLedgerNames:[],duplicateLedgerNames:[]})
+  // The immutable real195-name capture predates the proposed allowance.
+ expect(()=>evaluateAppliedMigrationLedger(current.migration_names,state())).toThrow(/project_total_allowance/)
+ // Only this synthetic post-apply extension may pass; this is not a live-ledger claim.
+ expect(evaluateAppliedMigrationLedger([...current.migration_names,'project_total_allowance'],state())).toMatchObject({enforcedCount:159,appliedLedgerCount:196,unknownLedgerNames:[],duplicateLedgerNames:[]})
  })
  it('does not grandfather the campaign or permit missing, duplicated or unknown names',()=>{
   const names=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-04-web-studio-initial-send-observation.json'),'utf8')).migration_names as string[],current=state()
@@ -28,7 +31,7 @@ describe('Studio integration preserves campaign source and fail-closed history',
   expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain(name);expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).not.toContain(name)
   expect(()=>evaluateAppliedMigrationLedger(names.filter(n=>n!==name),current)).toThrow(/social_campaign_preparation/)
   expect(()=>evaluateAppliedMigrationLedger([...names,name],current)).toThrow(/duplicate/)
-  expect(()=>evaluateAppliedMigrationLedger([...names,'unapproved_future_schema'],current)).toThrow(/unknown/)
+  expect(()=>evaluateAppliedMigrationLedger([...names,'project_total_allowance','unapproved_future_schema'],current)).toThrow(/unknown/)
  })
  it('keeps the prior191-name snapshot immutable and correctly incomplete',()=>{
   const prior=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-01-web-studio-exact-claim-observation.json'),'utf8'))

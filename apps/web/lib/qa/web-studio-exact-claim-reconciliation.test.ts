@@ -27,7 +27,10 @@ describe('exact-claim source history, not migration execution',()=>{
   expect(createHash('md5').update([...names].sort().join('\n')).digest('hex')).toBe(observation.orderedNameMd5)
   expect(()=>evaluateAppliedMigrationLedger(names,state())).toThrow(/social_campaign_preparation/)
   const current=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-04-web-studio-initial-send-observation.json'),'utf8'))
-  expect(evaluateAppliedMigrationLedger(current.migration_names,state())).toMatchObject({canonicalSqlCount:172,enforcedCount:158,appliedLedgerCount:195,unknownLedgerNames:[],duplicateLedgerNames:[]})
+  // The immutable real195-name capture predates the proposed allowance.
+ expect(()=>evaluateAppliedMigrationLedger(current.migration_names,state())).toThrow(/project_total_allowance/)
+ // Only this synthetic post-apply extension may pass; this is not a live-ledger claim.
+ expect(evaluateAppliedMigrationLedger([...current.migration_names,'project_total_allowance'],state())).toMatchObject({enforcedCount:159,appliedLedgerCount:196,unknownLedgerNames:[],duplicateLedgerNames:[]})
   expect(GRANDFATHERED_MIGRATION_NAMES).toHaveLength(14);expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).toHaveLength(30)
   expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain(name);expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).not.toContain(name)
  })
@@ -35,7 +38,7 @@ describe('exact-claim source history, not migration execution',()=>{
   const names=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-04-web-studio-initial-send-observation.json'),'utf8')).migration_names as string[],current=state()
   expect(()=>evaluateAppliedMigrationLedger(names.filter(n=>n!==name),current)).toThrow(/human_story_exact_claim/)
   expect(()=>evaluateAppliedMigrationLedger([...names,name],current)).toThrow(/duplicate/)
-  expect(()=>evaluateAppliedMigrationLedger([...names,'unreviewed_future_change'],current)).toThrow(/unknown/)
+  expect(()=>evaluateAppliedMigrationLedger([...names,'project_total_allowance','unreviewed_future_change'],current)).toThrow(/unknown/)
  })
  it('retains ordinary worker routing, exact lane permission and predecessor guards',()=>{
   const source=sql()

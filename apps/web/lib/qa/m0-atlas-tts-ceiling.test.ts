@@ -108,7 +108,7 @@ describe('Atlas TTS under the M0 production price book', () => {
     // the ceiling. The reservation is the smallest 4-decimal amount ≥ it.
     expect(reserved.estimatedSek).toBe(0.0029)
     expect(reserved.estimatedSek).toBeGreaterThanOrEqual(sek(text.length))
-    expect(markSpendDispatchIntent).toHaveBeenCalledWith('res-tts', expect.any(String), 'fixed_units')
+    expect(markSpendDispatchIntent).toHaveBeenCalledWith('res-tts', expect.any(String), 'fixed_units', M0_PRODUCTION_RATES)
   })
 
   it('the MAXIMUM Atlas reservation is the 600-character cap: 600/1000 × 0.015 × 10.5 = 0.0945 SEK', async () => {

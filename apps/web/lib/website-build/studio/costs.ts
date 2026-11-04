@@ -8,6 +8,7 @@ import type {Db,Principal} from './types'
 
 export type StudioCostSnapshot={
  projectId:string;paused:boolean;enforced:boolean;observedAt:string
+ total?:{currency:'USD';limitMicros:number;committedMicros:number;remainingMicros:number}|null
  modelPolicy?:AtlasModelPolicy
  monthly:{spentSek:number;heldSek:number;limitSek:number;remainingSek:number}|null
 }
@@ -29,6 +30,19 @@ function amount(value:unknown):number{
 }
 export async function readStudioCosts(db:Db,p:Principal,projectId:string):Promise<StudioCostSnapshot>{
  const project=await ownedProject(db,p,projectId)
+ const {data:budget,error:budgetError}=await db.from('project_budgets').select('total_usd_limit_micros,total_usd_committed_micros').eq('project_id',projectId).maybeSingle()
+ if(budgetError)throw new WebsiteBuildError('BUILD_UNAVAILABLE',503)
+ let total:StudioCostSnapshot['total']=null
+ if(budget){
+  const committedMicros=amount(budget.total_usd_committed_micros)
+  if(!Number.isSafeInteger(committedMicros)||committedMicros<0)throw new WebsiteBuildError('BUILD_UNAVAILABLE',503)
+  if(budget.total_usd_limit_micros===null){if(committedMicros!==0)throw new WebsiteBuildError('BUILD_UNAVAILABLE',503)}
+  else{
+   const limitMicros=amount(budget.total_usd_limit_micros)
+   if(!Number.isSafeInteger(limitMicros)||limitMicros<=0||limitMicros>100000000000||committedMicros>limitMicros)throw new WebsiteBuildError('BUILD_UNAVAILABLE',503)
+   total={currency:'USD',limitMicros,committedMicros,remainingMicros:limitMicros-committedMicros}
+  }
+ }
  // The gate's own calendar window and durable reservations. Filter at the
  // PostgREST boundary and again below; global and other-project totals never leave.
  const {data,error}=await db.rpc('budget_headroom',{p_stale_minutes:30}).eq('project_id',projectId).eq('scope','project_monthly')
@@ -37,7 +51,7 @@ export async function readStudioCosts(db:Db,p:Principal,projectId:string):Promis
  if(rows.length>1)throw new WebsiteBuildError('BUILD_UNAVAILABLE',503)
  const row=rows[0],monthly=row?{spentSek:amount(row.spent_sek),heldSek:amount(row.held_sek),limitSek:amount(row.limit_sek),remainingSek:amount(row.remaining_sek)}:null
  if(monthly&&[monthly.spentSek,monthly.heldSek,monthly.limitSek].some(n=>n<0))throw new WebsiteBuildError('BUILD_UNAVAILABLE',503)
- return {projectId,paused:project.execution_paused,enforced:isSpendGateEnforced(),observedAt:new Date().toISOString(),monthly,modelPolicy:atlasModelPolicy()}
+ return {projectId,paused:project.execution_paused,enforced:isSpendGateEnforced(),observedAt:new Date().toISOString(),monthly,total,modelPolicy:atlasModelPolicy()}
 }
 export async function stopStudioProject(db:Db,p:Principal,value:unknown):Promise<{projectId:string;paused:true}>{
  const input=studioObject(value,['projectId']),project=await ownedProject(db,p,input.projectId)

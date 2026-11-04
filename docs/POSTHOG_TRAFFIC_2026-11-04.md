@@ -22,3 +22,5 @@ Reuses the existing project overview traffic module and card, which were already
 10/10 traffic Vitest tests pass; focused TypeScript graph passed; diff check clean.
 NOT deployed. Await same-key permission update: retain project restriction to Handlarbörsen and dashboard:read, add query:read only. No replacement key is needed. Verify a real bounded query before merging/deploying this phase under the user's existing production approval.
 Later registration funnel work requires inspecting/adding the actual Handlarbörsen signup instrumentation and verifying events; this patch does not claim a funnel.
+
+Activation check 2026-11-04: user updated the existing key. Real fixed seven-day production-host query now returns HTTP200 with the exact two expected series and seven zero counts each. Runtime permission blocker resolved. Zero received events is not proof that site capture works for actual visits.

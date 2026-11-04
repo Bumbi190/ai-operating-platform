@@ -14,6 +14,8 @@ import {companySearchProvider,discoverCompanyBusinesses} from './source'
 import {readCompanyContacts,readCompanyTiming} from './read'
 import {buildCompanyDirectory} from './model'
 import {createCompaniesApi} from './api'
+import {createCompanyWebsiteApi} from './website-api'
+import {companyWebsiteResearchConfigured,researchCompanyWebsite} from './website'
 import {projectDirectoryContext} from './projects'
 import type {CompanyInput,ContactsRead} from './types'
 
@@ -24,7 +26,7 @@ export function companyDirectoryEnabled(projectId:string){return salesEnabled(pr
 export async function readCompanyInput(projectId:string,p:SalesPrincipal):Promise<CompanyInput>{
  scoped(p,projectId);if(!companyDirectoryEnabled(projectId))throw new SalesError('NOT_FOUND',404)
  const db=await createClient()
- const {data:projects,error:projectError}=await db.from('projects').select('id,name,slug,owner_id').eq('owner_id',p.userId).order('id',{ascending:true}).limit(101)
+ const {data:projects,error:projectError}=await db.from('projects').select('id,name,slug,owner_id,execution_paused').eq('owner_id',p.userId).order('id',{ascending:true}).limit(101)
  if(projectError)throw new SalesError('COMPANY_PROJECTS_UNAVAILABLE',503)
  const context=projectDirectoryContext(projects,p,projectId,companyDirectoryEnabled)
  const hb=projectId===HANDLARBORSEN_PROJECT_ID
@@ -40,10 +42,17 @@ export async function readCompanyInput(projectId:string,p:SalesPrincipal):Promis
   contacts.status==='ready'?readCompanyTiming(projectId,contacts.contacts,ids=>readContactTiming(createAdminClient(),p,{projectId,contactIds:ids})):Promise.resolve(null),
   hb?loadArchivedLeadResearchForOwner(projectId,known):Promise.resolve({status:'disabled' as const}),hb?loadSavedCandidatesForOwner(projectId):Promise.resolve({status:'disabled' as const,candidates:[],outreachReady:false as const}),
  ])
- return {...context,projectId,evaluatedAt:new Date().toISOString(),contacts,timing,archive,saved,sourceConfigured:companySearchProvider()!==null,searchProvider:companySearchProvider()}
+ return {...context,projectId,evaluatedAt:new Date().toISOString(),contacts,timing,archive,saved,sourceConfigured:companySearchProvider()!==null,websiteResearchConfigured:companyWebsiteResearchConfigured(process.env,p.userId)&&projects?.some(row=>row.id===projectId&&row.execution_paused===false)===true,searchProvider:companySearchProvider()}
 }
 export async function companyDirectoryForOwner(projectId:string){
  const p=await resolveProjectAccess();if(!p.ok||!p.allowedProjectIds.includes(projectId)||!companyDirectoryEnabled(projectId))return null
  return buildCompanyDirectory(await readCompanyInput(projectId,p))
 }
 export const companiesApi=createCompaniesApi({access:resolveProjectAccess,enabled:companyDirectoryEnabled,read:readCompanyInput,sourceConfigured:()=>companySearchProvider()!==null,discover:discoverCompanyBusinesses})
+
+export const companyWebsiteApi=createCompanyWebsiteApi({access:resolveProjectAccess,enabled:companyDirectoryEnabled,configured:p=>companyWebsiteResearchConfigured(process.env,p.userId),research:researchCompanyWebsite,projectReady:async(projectId,p)=>{
+ const db=await createClient()
+ const {data,error}=await db.from('projects').select('id,owner_id,execution_paused').eq('id',projectId).eq('owner_id',p.userId).maybeSingle()
+ if(error)throw new SalesError('COMPANY_PROJECTS_UNAVAILABLE',503)
+ return data?.id===projectId&&data.owner_id===p.userId&&data.execution_paused===false
+}})

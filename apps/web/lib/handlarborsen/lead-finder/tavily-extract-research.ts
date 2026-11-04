@@ -175,6 +175,8 @@ function officialObservation(page:unknown,selected:string,job:ResearchJob,now:Da
 export interface TavilyVerifiedAdapterOptions extends TavilyAdapterOptions {
   /** Must only be created when a distinct, explicit preview feature flag is enabled. */
   extractApproved:true
+  /** Sanitized stage signal for consumers that distinguish source failure from no evidence. */
+  onExtractFailure?:()=>void
 }
 
 export function makeTavilyVerifiedResearchAdapter(options:TavilyVerifiedAdapterOptions):SearchAdapter{
@@ -190,6 +192,7 @@ export function makeTavilyVerifiedResearchAdapter(options:TavilyVerifiedAdapterO
     },
   })
   const extractSeen=new Set<string>()
+  const failed=()=>{try{options.onExtractFailure?.()}catch{/* optional observer cannot affect old callers */}}
   return {
     name:'tavily-basic-search-with-explicit-extract',
     async collect(job:ResearchJob,signal:AbortSignal):Promise<unknown>{
@@ -201,6 +204,7 @@ export function makeTavilyVerifiedResearchAdapter(options:TavilyVerifiedAdapterO
       // Only a plausible URL candidate: its search snippet can be unlinked.
       // The extract response must independently prove legal identity and
       // vehicle sales before any official evidence or contact is displayed.
+      if(signal.aborted){failed();return result}
       const candidate=proposedUrls.map(parseSafePublicUrl)
         .find(x=>x&&isPlausibleOwnHost(x.host,job.legalName))
       if(!candidate||extractSeen.has(job.id)||extractSeen.size>=MAX_EXTRACTS_PER_BATCH)return result
@@ -224,13 +228,15 @@ export function makeTavilyVerifiedResearchAdapter(options:TavilyVerifiedAdapterO
       }catch{
         // A failed optional extraction MUST NOT erase already accepted
         // search snippets or leak private provider error details.
-        return result
+        failed();return result
       }
-      if(!response.ok)return result
+      if(!response.ok){failed();return result}
       let extracted:unknown
-      try{extracted=JSON.parse(await boundedResponse(response))}catch{return result}
-      if(!own(extracted)||!Array.isArray(extracted.results))return result
+      try{extracted=JSON.parse(await boundedResponse(response))}catch{failed();return result}
+      if(!own(extracted)||!Array.isArray(extracted.results)){failed();return result}
+      if(extracted.results.length===0&&Array.isArray(extracted.failed_results)&&extracted.failed_results.length){failed();return result}
       for(const page of extracted.results.slice(0,1)){
+        if(!own(page)||typeof page.raw_content!=='string'||page.raw_content.length>MAX_EXTRACT_TEXT_CHARS){failed();return result}
         const obs=officialObservation(page,candidate.href,job,options.now?.()??new Date())
         if(obs){result.push(obs);break}
       }

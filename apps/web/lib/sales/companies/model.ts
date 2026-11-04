@@ -99,7 +99,7 @@ export function buildCompanyDirectory(input:CompanyInput):CompanyDirectory{
   rows.push(attachHints(r))
  }
  if(!hb)for(const row of rows)row.dialogContext=null
- return {project:input.project,projectOptions:input.projectOptions,projectId:input.projectId,evaluatedAt:input.evaluatedAt,rows,uniqueRecipients:input.contacts.status==='ready'?emailCounts.size:null,readOnly:true,sourceConfigured:input.sourceConfigured,searchProvider:input.searchProvider??null,...(input.publicResults?.meta?{searchMeta:input.publicResults.meta}:{}),sources:[
+ return {project:input.project,projectOptions:input.projectOptions,projectId:input.projectId,evaluatedAt:input.evaluatedAt,rows,uniqueRecipients:input.contacts.status==='ready'?emailCounts.size:null,readOnly:true,sourceConfigured:input.sourceConfigured,websiteResearchConfigured:input.websiteResearchConfigured===true,searchProvider:input.searchProvider??null,...(input.publicResults?.meta?{searchMeta:input.publicResults.meta}:{}),sources:[
   {key:'contacts',label:'Omnira kontakter',state:input.contacts.status,observedAt:input.contacts.status==='ready'?input.evaluatedAt:null,note:'Kontaktposter; inte bevis för komplett mejlhistorik.'},
   {key:'timing',label:'Granskad mejlhistorik',state:input.timing?'ready':'unavailable',observedAt:input.timing?.evaluatedAt??null,note:'Senast sparade revisioner. Ingen livekontroll av Strato eller Resend i denna vy.'},
   {key:'archive',label:'Sparad research',state:input.archive.status,observedAt:input.archive.status==='ready'?input.archive.createdAt:null,note:'Ofullständigt historiskt underlag; ingen ny webbresearch.'},

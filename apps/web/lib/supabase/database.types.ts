@@ -3997,6 +3997,9 @@ isOneToOne: false
       }
       project_budgets: {
         Row: {
+          total_usd_limit_micros: number | null
+          total_usd_committed_micros: number
+          total_approval_sha256: string | null
           daily_sek: number | null
           monthly_sek: number
           project_id: string
@@ -4004,6 +4007,9 @@ isOneToOne: false
           weekly_sek: number | null
         }
         Insert: {
+          total_usd_limit_micros?: number | null
+          total_usd_committed_micros?: number
+          total_approval_sha256?: string | null
           daily_sek?: number | null
           monthly_sek?: number
           project_id: string
@@ -4011,6 +4017,9 @@ isOneToOne: false
           weekly_sek?: number | null
         }
         Update: {
+          total_usd_limit_micros?: number | null
+          total_usd_committed_micros?: number
+          total_approval_sha256?: string | null
           daily_sek?: number | null
           monthly_sek?: number
           project_id?: string
@@ -4626,6 +4635,8 @@ isOneToOne: false
       }
       spend_reservations: {
         Row: {
+          total_allowance_micros: number | null
+          total_allowance_usd_sek: number | null
           actual_sek: number | null
           created_at: string
           estimated_sek: number
@@ -4638,6 +4649,8 @@ isOneToOne: false
           status: string
         }
         Insert: {
+          total_allowance_micros?: number | null
+          total_allowance_usd_sek?: number | null
           actual_sek?: number | null
           created_at?: string
           estimated_sek: number
@@ -4650,6 +4663,8 @@ isOneToOne: false
           status?: string
         }
         Update: {
+          total_allowance_micros?: number | null
+          total_allowance_usd_sek?: number | null
           actual_sek?: number | null
           created_at?: string
           estimated_sek?: number

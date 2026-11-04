@@ -23,7 +23,8 @@ Studio's authenticated owner-scoped cost read exposes the non-renewing USD limit
 - Final focused regression: 120/120 tests across eight files passed (pinned FX, display, owner-scoped read, durable spend, budget gate, replay/advisory, run-bound provider and TTS ceiling).
 - Final real PostgreSQL integration: 16 cases plus parent = 17/17 passed, zero skips; owned disposable container removed.
 - Migration Guard Integrity: 81/81 passed. Updated corpus counts and explicitly hypothetical post-apply fixtures; real captured195-name evidence remains immutable and correctly fails on the pending project_total_allowance. Missing, duplicate and unknown rejection remain tested.
-- Browser/typecheck results are pending CI. No live build has been attempted.
+- First hosted CI found the new budget columns missing from the checked-in TypeScript database contract. Added the exact additive column types for budgets and reservation receipts; no type assertion bypass. Browser/typecheck rerun pending.
+- Vercel deployment dpl_DmumppVoqWQkuycju5jWvRyAMuLL on 9a5a269 stopped exactly at the unapplied project_total_allowance migration guard. No live build has been attempted.
 
 ## Rollout gate and rollback
 

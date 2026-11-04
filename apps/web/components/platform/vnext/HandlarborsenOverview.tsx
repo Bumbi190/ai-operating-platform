@@ -8,6 +8,7 @@ import { HandlarborsenInsights } from './HandlarborsenInsights'
 import { HandlarborsenWorkflowDrafts } from './HandlarborsenWorkflowDrafts'
 import { HandlarborsenTrends } from './HandlarborsenTrends'
 import { HandlarborsenPosthogTraffic } from './HandlarborsenPosthogTraffic'
+import { HandlarborsenRegistrationJourney } from './HandlarborsenRegistrationJourney'
 import { HandlarborsenExecutiveSummary } from './HandlarborsenExecutiveSummary'
 import styles from './HandlarborsenExecutiveSummary.module.css'
 import { AnalysisDraftHistoryLink } from './AnalysisDraftHistoryLink'
@@ -73,6 +74,7 @@ export function HandlarborsenOverview({
         <HandlarborsenCandidateReviewNotice memory={candidateMemory} enabled={candidateMemoryEnabled} audience={candidateAudience} reviews={candidateReviews} reviewEnabled={candidateReviewEnabled} />
         <KpiOverviewNote {...common} title={model.title} text={model.text} tone={model.tone} />
         {traffic && <HandlarborsenPosthogTraffic traffic={traffic} />}
+        <HandlarborsenRegistrationJourney report={report} traffic={traffic} />
         {projectSlug && <AnalysisDraftHistoryLink projectSlug={projectSlug} />}
         <HandlarborsenWorkflowDrafts report={report} now={now} />
       </>
@@ -85,6 +87,7 @@ export function HandlarborsenOverview({
       <HandlarborsenExecutiveSummary report={report} model={model} traffic={traffic} now={now} />
       <HandlarborsenTrends report={report} />
       {traffic && <HandlarborsenPosthogTraffic traffic={traffic} />}
+      <HandlarborsenRegistrationJourney report={report} traffic={traffic} />
       <details className={styles.deepDive}>
         <summary>
           <span>Fördjupning · alla nyckeltal, aktivitet och analysunderlag</span>

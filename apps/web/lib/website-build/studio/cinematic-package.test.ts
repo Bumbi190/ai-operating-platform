@@ -78,6 +78,26 @@ describe('owner review and download',()=>{
   expect((await GET(request('?view=build-review'))).status).toBe(status)
   expect((await GET(request('?download=showroom&sha256='+('0'.repeat(64))))).status).toBe(status)
  })
+ it('streams the complete authorized archive in bounded chunks',async()=>{
+  access.mockResolvedValue({ok:true,allowedProjectIds:['owned-project']})
+  const manifest=await cinematicPackageManifest()
+  const response=await GET(request('?download=showroom&sha256='+manifest.sha256))
+  expect(response.status).toBe(200)
+  expect(response.headers.get('content-type')).toBe('application/zip')
+  expect(response.headers.has('content-length')).toBe(false)
+  const reader=response.body!.getReader()
+  let total=0,chunks=0
+  for(;;){
+   const {done,value}=await reader.read()
+   if(done)break
+   expect(value.length).toBeLessThanOrEqual(64*1024)
+   if(chunks===0)expect([...value.subarray(0,4)]).toEqual([80,75,3,4])
+   total+=value.length;chunks++
+  }
+  expect(total).toBeGreaterThan(manifest.assets.reduce((sum,a)=>sum+a.bytes,0))
+  expect(total).toBeGreaterThan(4.5*1024*1024)
+  expect(chunks).toBeGreaterThan(1)
+ },30000)
  it('shows the actual scope and requires a current binding to download',async()=>{
   access.mockResolvedValue({ok:true,allowedProjectIds:['owned-project']})
   const response=await GET(request('?view=build-review')),html=await response.text()

@@ -37,11 +37,13 @@ Ingen generell HTML-kompilator eller iframe-sandbox har öppnats för modellgene
 
 ## Verifiering
 
-- 35 fokuserade Vitest-fall passerade: komplett hash-/filgraf, giltigt planförslag, inaktuell/manipulerad bindning, ägargräns och oförändrat generiskt script-/video-/iframe-förbud.
+- 36 fokuserade Vitest-fall passerade: komplett hash-/filgraf, giltigt planförslag, inaktuell/manipulerad bindning, ägargräns och oförändrat generiskt script-/video-/iframe-förbud.
 - Samtliga 43 Playwright-fall passerade lokalt, inklusive full fristående export: båda modellerna, Roadster-filmens slut, återlänk till katalog, separat film och ingen extern nättrafik. Mobil/dator granskningssida ingår.
 - Testservern behövde Content-Length och byte-range-svar för att modellera riktig statisk videohosting. Detta ändrar inte film eller produktens scrollkod.
 - Lokal full typkontroll slog i den uttryckliga 1536 MB-minnesgränsen; inget typkontrollresultat hävdas från den körningen. Full typkontroll inväntas i CI.
 - Författarens andra genomgång: originalbudget och tidigare planbeslut orörda, exakt projekt vid budget-RPC, ingen generisk scriptmöjlighet, ingen förväxling mellan granskningsförslag och godkänt bygge. Ingen oberoende granskning hävdas.
+
+Den kompletta nedladdningen skickas som en explicit ReadableStream i högst 64 KiB-stycken efter integritetskontroll. Det undviker en enda buffrad funktionsrespons för det stora mediepaketet; streamingvägen har ett separat test. Se [Vercels dokumenterade skillnad mellan buffrad och strömmad respons](https://vercel.com/kb/guide/how-to-bypass-vercel-body-size-limit-serverless-functions). Inloggad verifiering av den hostade nedladdningen återstår.
 
 ## Kvarstående koppling — inte ett genomfört AI-bygge
 

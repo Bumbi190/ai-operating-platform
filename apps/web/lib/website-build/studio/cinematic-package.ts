@@ -127,7 +127,18 @@ export async function cinematicPackageDownloadResponse(expectedHash:string|null)
  try{
   const binding={id:CINEMATIC_PRESET_ID,sha256:expectedHash}
   const bytes=await exportCinematicPackage(binding)
-  return new Response(Buffer.from(bytes),{headers:{...headers,'content-type':'application/zip','content-disposition':'attachment; filename="demo-motors-showcase.zip"','content-length':String(bytes.length)}})
+  // Explicit bounded streaming: the complete archive is larger than a buffered function response.
+  // All input bytes have passed integrity checks before any response bytes leave the server.
+  let archive:Uint8Array|null=bytes,offset=0
+  const stream=new ReadableStream<Uint8Array>({
+   pull(controller){
+    if(!archive||offset>=archive.length){archive=null;controller.close();return}
+    const end=Math.min(offset+64*1024,archive.length)
+    controller.enqueue(archive.subarray(offset,end));offset=end
+   },
+   cancel(){archive=null}
+  })
+  return new Response(stream,{headers:{...headers,'content-type':'application/zip','content-disposition':'attachment; filename="demo-motors-showcase.zip"'}})
  }catch(error){
   if(error instanceof Error&&['CINEMATIC_BINDING_INVALID','CINEMATIC_BINDING_STALE'].includes(error.message))return new Response('Visningspaketet har ändrats. Öppna granskningssidan igen.',{status:409,headers})
   throw error

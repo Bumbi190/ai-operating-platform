@@ -49,6 +49,7 @@ const SCB_LEAD_MIGRATION = 'handlarborsen_scb_review_only_candidates'
 const HB_ARCHIVE_MIGRATION = 'handlarborsen_owner_review_archive_20261029'
 const CROSSCHAT_MIGRATION = 'social_owner_crosschat_context' // Applied 20261031145817 after owner approval.
 const APPLIED_PARALLEL_SALES = ['sales_b2b_offers','sales_discovery_candidates']
+const POSTHOG_RELEASE_MIGRATIONS = ['posthog_approved_read','handlarborsen_scb_live_preview_candidates','project_total_allowance','sales_editorial_only_drafts','sales_initial_sending']
 const NOVA_ACTIVATION_MIGRATIONS = ['human_story_exact_claim','social_campaign_preparation']
 const APPLIED_HARVEY_MIGRATIONS = ['handlarborsen_scb_live_preview_candidates','sales_editorial_only_drafts','sales_initial_sending']
 
@@ -641,4 +642,13 @@ it('matches the independently observed PostHog statement and enforces its actual
  expect(evaluateAppliedMigrationLedger(evidence.migrationNames,repositoryState)).toMatchObject({canonicalSqlCount:174,enforcedCount:160,appliedLedgerCount:197})
  expect(()=>evaluateAppliedMigrationLedger(evidence.migrationNames.filter((n:string)=>n!==name),repositoryState)).toThrow(/posthog_approved_read/)
  expect(()=>evaluateAppliedMigrationLedger([...evidence.migrationNames,name],repositoryState)).toThrow(/duplicate/)
+})
+
+
+it('enforces PostHog and the four source-reconciled applied migrations',()=>{
+ for(const name of ['posthog_approved_read','handlarborsen_scb_live_preview_candidates','project_total_allowance','sales_editorial_only_drafts','sales_initial_sending']){
+  expect(repositoryState.enforcedNames).toContain(name)
+  expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain(name)
+  expect(()=>evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger.filter(n=>n!==name),repositoryState)).toThrow(new RegExp(name))
+ }
 })

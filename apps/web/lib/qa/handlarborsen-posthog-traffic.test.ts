@@ -12,6 +12,7 @@ import {
 import {
   lastSevenUtcDates,
   parsePageviewRows,
+  parseTrafficSeries,
   loadHandlarborsenTraffic,
 } from "@/lib/atlas/project-analytics/handlarborsen-posthog-traffic";
 import { HandlarborsenPosthogTraffic } from "@/components/platform/vnext/HandlarborsenPosthogTraffic";
@@ -35,8 +36,10 @@ const dates = [
   "2026-10-11",
   "2026-10-12",
 ];
-const response = (obj: unknown, ok = true) =>
-  ({ ok, text: async () => JSON.stringify(obj) }) as unknown as Response;
+const response = (obj: unknown, ok = true) => Response.json(obj,{status:ok?200:500});
+const series = (views: number[], visitors: number[]) => ({results:[
+ {order:0,days:dates,data:views},{order:1,days:dates,data:visitors},
+]});
 
 describe("Omnira project-scoped PostHog traffic", () => {
   it("builds exactly seven real UTC calendar dates, including across months", () => {
@@ -96,14 +99,9 @@ describe("Omnira project-scoped PostHog traffic", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it("requests only fixed EU PostHog query with a server-only bearer and bounded UTC SQL", async () => {
+  it("requests only fixed EU PostHog query with a server-only bearer and bounded native trends", async () => {
     const fetcher = vi.fn().mockResolvedValue(
-      response({
-        results: [
-          ["2026-10-12", 4],
-          ["2026-10-10", 6],
-        ],
-      }),
+      response(series([0,0,0,0,6,0,4],[0,0,0,0,3,0,2])),
     );
     const traffic = await loadHandlarborsenTraffic(project, scope, {
       env,
@@ -130,11 +128,11 @@ describe("Omnira project-scoped PostHog traffic", () => {
       Authorization: "Bearer " + env.HANDLARBORSEN_POSTHOG_READ_TOKEN,
     });
     const query = JSON.parse(options.body as string).query;
-    expect(query.kind).toBe("HogQLQuery");
-    expect(query.query).toContain("event = '$pageview'");
-    expect(query.query).toContain("2026-10-06 00:00:00");
-    expect(query.query).toContain("2026-10-13 00:00:00");
-    expect(query.query).not.toMatch(/people|sessions|email|org_id/);
+    expect(query.kind).toBe("TrendsQuery");
+    expect(query.dateRange).toEqual({date_from:"2026-10-06",date_to:"2026-10-12"});
+    expect(query.series).toEqual([{kind:"EventsNode",event:"$pageview",math:"total"},{kind:"EventsNode",event:"$pageview",math:"dau"}]);
+    expect(query.properties).toEqual([{key:"$host",type:"event",operator:"exact",value:["handlarborsen.se","www.handlarborsen.se"]}]);
+    expect(traffic).toMatchObject({visitorsToday:2});
   });
 
   it("does not treat no events, server errors or malformed data as fabricated zero values", async () => {
@@ -144,9 +142,9 @@ describe("Omnira project-scoped PostHog traffic", () => {
         now,
         fetcher: vi.fn().mockResolvedValue(x),
       });
-    expect(await read(response({ results: [] }))).toMatchObject({
-      status: "waiting_for_events",
-      days: [],
+    expect(await read(response(series([0,0,0,0,0,0,0],[0,0,0,0,0,0,0])))).toMatchObject({
+      status: "available",
+      totalPageviews: 0,
     });
     expect(await read(response({}, false))).toMatchObject({
       status: "unavailable",
@@ -210,4 +208,27 @@ describe("Omnira project-scoped PostHog traffic", () => {
     expect(real).toContain("Inväntar verifierad identitetsmetod");
     expect(real).not.toContain("Antal online");
   });
+});
+
+it("distinguishes denied query scope and rejects partial, oversized and async results",async()=>{
+ const read=(r:Response)=>loadHandlarborsenTraffic(project,scope,{env,now,fetcher:vi.fn().mockResolvedValue(r)});
+ expect(await read(Response.json({}, {status:403}))).toMatchObject({status:"missing_permission",days:[]});
+ expect(await read(Response.json({results:[]},{status:202}))).toMatchObject({status:"unavailable"});
+ expect(await read(new Response("x".repeat(32769)))).toMatchObject({status:"unavailable"});
+ expect(parseTrafficSeries([{order:0,days:dates,data:[1]}],dates)).toBeNull();
+ expect(parseTrafficSeries(series([1,1,1,1,1,1,1],[1,1,1,1,1,1,-1]).results,dates)).toBeNull();
+});
+it("reuses only an explicitly mapped EU Handlarbörsen server credential",async()=>{
+ const mapped={POSTHOG_OMNIRA_PROJECT_ID:project.id,POSTHOG_PROJECT_ID:"245437",POSTHOG_APP_HOST:"https://eu.posthog.com",POSTHOG_PERSONAL_API_KEY:env.HANDLARBORSEN_POSTHOG_READ_TOKEN};
+ const fetcher=vi.fn().mockResolvedValue(response(series([1,1,1,1,1,1,1],[1,1,1,1,1,1,1])));
+ expect(await loadHandlarborsenTraffic(project,scope,{env:mapped,now,fetcher})).toMatchObject({status:"available",totalPageviews:7,visitorsToday:1});
+ fetcher.mockClear();
+ expect(await loadHandlarborsenTraffic(project,scope,{env:{...mapped,POSTHOG_OMNIRA_PROJECT_ID:"foreign"},now,fetcher})).toMatchObject({status:"not_connected"});
+ expect(fetcher).not.toHaveBeenCalled();
+});
+it("renders verified daily uniques without inventing a period total",()=>{
+ const html=renderToStaticMarkup(createElement(HandlarborsenPosthogTraffic,{traffic:{status:"available",days:dates.map(date=>({date,pageviews:4,visitors:2})),totalPageviews:28,visitorsToday:2,checkedAt:now.toISOString(),firstDate:dates[0],lastDate:dates[6]}}));
+ expect(html).toContain("Daglig trafik");
+ expect(html).toContain("Unika besökare idag");
+ expect(html).toContain("summeras inte");
 });

@@ -133,8 +133,8 @@ export function createCinematicDemoHtml(baseHtml:string,root='/build/demo-motors
  const roadsterCard=parseFragment(`<div class="card-top"><span>DEMO MOTORS / KONCEPTVISNING</span><span class="badge el">El</span></div>
  <div class="car-image"><img loading="lazy" src="${root}${names.roadsterCover}" alt="Röd Roadster-inspirerad konceptbil framför kvällshallen"></div>
  <div class="car-body"><div class="car-heading"><h3>Roadster-koncept</h3></div><p class="spec-line">Tesla-inspirerad elbil · Visningsbil</p></div>
- <details><summary>Se Roadster-filmen</summary><div class="detail-body">
- <video controls playsinline preload="none" style="width:100%;height:auto" poster="${root}${names.roadsterCover}" aria-label="Fem sekunders visning av den röda konceptbilen" src="${root}${names.roadsterFilm}"></video>
+ <p><a class="button" href="?view=roadster">Utforska Roadster — film och 3D</a></p><details><summary>Om Roadster-visningen</summary><div class="detail-body">
+
  <h4>Om visningen</h4><p>En AI-illustrerad tolkning av Tesla Roadster i Demo Motors kvällshall. Konceptvisning utan försäljningspris.</p>
  <button class="button" id="concept-07-interest" aria-expanded="false" aria-controls="concept-07-form">Kontakta säljaren</button>
  <section id="concept-07-form" hidden><h4>Fråga om Roadster-konceptet</h4><p>Demoförfrågan. Inget skickas.</p><form><label for="concept-07-vehicle">Vald bil</label><input id="concept-07-vehicle" name="vehicle" value="Roadster-koncept" readonly><label for="concept-07-message">Ditt testmeddelande</label><textarea id="concept-07-message" rows="3"></textarea><button type="submit" class="button outline">Förhandsvisa testförfrågan</button></form></section></div></details>`)

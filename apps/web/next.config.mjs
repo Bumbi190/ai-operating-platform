@@ -7,7 +7,9 @@ const nextConfig = {
     // These private media files use manifest-selected fs paths. Ship both even
     // when Next's static tracer cannot resolve the selected descriptor.
     outputFileTracingIncludes: {
+      '/build/demo-motors/cinematic': ['./lib/website-build/studio/cinematic-assets/roadster-v1-*'],
       '/build/demo-motors/cinematic/assets/*': [
+        './lib/website-build/studio/cinematic-assets/roadster-v1-*',
         './lib/website-build/studio/cinematic-assets/hero.webp',
         './lib/website-build/studio/cinematic-assets/showroom.mp4',
         './lib/website-build/studio/cinematic-assets/nord-r.mp4',
@@ -17,6 +19,7 @@ const nextConfig = {
         './lib/website-build/studio/cinematic-assets/nord-r.glb',
       ],
       '/bilhandlare/**': [
+        './lib/website-build/studio/cinematic-assets/roadster-v1-*',
         './lib/website-build/studio/cinematic-assets/*.mp4',
         './lib/website-build/studio/cinematic-assets/*.webp',
         './lib/website-build/studio/cinematic-assets/nord-r.glb',
@@ -24,6 +27,7 @@ const nextConfig = {
       ],
       '/assets/*': ['./lib/website-build/runtime/model3d-v1.bin'],
       '/build/demo-motors/assets/*': [
+        './lib/website-build/studio/cinematic-assets/roadster-v1-*',
         './lib/website-build/runtime/model3d-v1.bin',
         './lib/website-build/studio/cinematic-assets/nord-r-front.webp',
         './lib/website-build/studio/cinematic-assets/nord-r.glb',

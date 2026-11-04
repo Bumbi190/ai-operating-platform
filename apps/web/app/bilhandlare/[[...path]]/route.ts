@@ -5,6 +5,8 @@ import {reelResponse} from '@/lib/website-build/studio/cinematic-reel'
 import {cinematicShowroomBaseHtml} from '@/lib/website-build/studio/demo-motors-readonly'
 import {readPublicWebsitePreviewAsset} from '@/lib/website-build/public-preview-assets'
 
+import {roadsterResponse} from '@/lib/website-build/studio/roadster-preset'
+
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
@@ -18,6 +20,8 @@ export async function GET(request: Request, {params}: {params: {path?: string[]}
   if (!path.length) return reelResponse(cinematicAssetNames().reelRuntime, showroom)
   if (path.length === 1 && path[0] === 'bilhall') {
     const view = new URL(request.url).searchParams.get('view')
+    if (view === 'roadster') return roadsterResponse(false,'pilot')
+    if (view === 'roadster-3d') return roadsterResponse(true,'pilot')
     if (view === 'nord-r') return listingViewerResponse(mediaRoot)
     if (view === 'visning') return reelResponse(cinematicAssetNames().reelRuntime, showroom)
     if (view === null) {

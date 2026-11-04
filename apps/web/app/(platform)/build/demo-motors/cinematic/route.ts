@@ -4,6 +4,7 @@ import {createCinematicDemoHtml} from '@/lib/website-build/studio/cinematic-demo
 import {listingViewerResponse} from '@/lib/website-build/studio/cinematic-listing'
 import {reelResponse} from '@/lib/website-build/studio/cinematic-reel'
 import {cinematicAssetNames} from '@/lib/website-build/studio/cinematic-assets'
+import {roadsterResponse,roadsterDownloadResponse} from '@/lib/website-build/studio/roadster-preset'
 export const runtime='nodejs'
 export const dynamic='force-dynamic'
 /** Fixed fictional owner-only sales preview, no project/customer writes. */
@@ -11,6 +12,12 @@ export async function GET(request?:Request):Promise<Response>{
  const access=await resolveProjectAccess()
  if(!access.ok)return access.response
  if(!access.allowedProjectIds.length)return new Response('Forbidden',{status:403})
+ if(request){
+  const query=new URL(request.url).searchParams
+  if(query.get('download')==='roadster')return roadsterDownloadResponse()
+  if(query.get('view')==='roadster')return roadsterResponse()
+  if(query.get('view')==='roadster-3d')return roadsterResponse(true)
+ }
  if(request&&new URL(request.url).searchParams.get('view')==='visning'){
   const names=cinematicAssetNames()
   return reelResponse(names.reelRuntime)

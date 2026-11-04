@@ -2,11 +2,11 @@ import "server-only";
 import { assertProjectAllowed } from "@/lib/atlas/isolation";
 import { HANDLARBORSEN_PROJECT_ID, HANDLARBORSEN_PROJECT_SLUG } from "@/lib/atlas/collectors/handlarborsen-marketplace";
 
-export type TrafficDay = { date: string; pageviews: number; visitors?: number };
+export type TrafficDay = { date: string; pageviews: number; visitors?: number; registrationPageviews?: number };
 export type HandlarborsenTraffic =
   | { status: "not_connected" | "unavailable" | "missing_permission"; days: []; checkedAt: null }
   | { status: "waiting_for_events"; days: []; checkedAt: string }
-  | { status: "available"; days: TrafficDay[]; totalPageviews: number; visitorsToday?: number;
+  | { status: "available"; days: TrafficDay[]; totalPageviews: number; visitorsToday?: number; registrationPageviews?: number;
       checkedAt: string; firstDate: string; lastDate: string };
 type TrafficEnv = {
   HANDLARBORSEN_POSTHOG_PROJECT_ID?: string; HANDLARBORSEN_POSTHOG_READ_TOKEN?: string;
@@ -42,16 +42,17 @@ export function parsePageviewRows(input: unknown, dates: string[]): TrafficDay[]
 }
 /** Never sum daily uniques into a claimed unique visitor total for the period. */
 export function parseTrafficSeries(input: unknown, dates: string[]): TrafficDay[] | null {
-  if (!Array.isArray(input) || input.length !== 2) return null;
-  const series = [0,1].map(order => input.find(row => row && typeof row === "object" && row.order === order));
+  if (!Array.isArray(input) || input.length !== 3) return null;
+  const series = [0,1,2].map(order => input.find(row => row && typeof row === "object" && row.order === order));
   for (const row of series) {
     if (!row || !Array.isArray(row.days) || !Array.isArray(row.data) ||
       row.days.length !== 7 || row.data.length !== 7 ||
       row.days.some((date: unknown,i: number) => date !== dates[i]) ||
       row.data.some((n: unknown) => typeof n !== "number" || !Number.isSafeInteger(n) || n < 0)) return null;
   }
-  if (series[1].data.some((n: number,i: number) => n > series[0].data[i])) return null;
-  return dates.map((date,i) => ({date,pageviews:series[0].data[i],visitors:series[1].data[i]}));
+  if (series[1].data.some((n: number,i: number) => n > series[0].data[i]) ||
+      series[2].data.some((n: number,i: number) => n > series[0].data[i])) return null;
+  return dates.map((date,i) => ({date,pageviews:series[0].data[i],visitors:series[1].data[i],registrationPageviews:series[2].data[i]}));
 }
 async function boundedJson(response: Response, signal: AbortSignal): Promise<unknown> {
   if (Number(response.headers.get("content-length")) > 32768) { void response.body?.cancel().catch(()=>{}); throw Error(); }
@@ -106,6 +107,7 @@ export async function loadHandlarborsenTraffic(
         query:{kind:"TrendsQuery",series:[
           {kind:"EventsNode",event:"$pageview",math:"total"},
           {kind:"EventsNode",event:"$pageview",math:"dau"},
+          {kind:"EventsNode",event:"$pageview",math:"total",properties:[{key:"$pathname",type:"event",operator:"exact",value:["/registrera"]}]},
         ],dateRange:{date_from:dates[0],date_to:dates[6]},interval:"day",
         properties:[{key:"$host",type:"event",operator:"exact",value:["handlarborsen.se","www.handlarborsen.se"]}]},
         name:"omnira_handlarborsen_pageviews_daily_visitors_7_utc_days",
@@ -119,7 +121,9 @@ export async function loadHandlarborsenTraffic(
     if (!days) return {status:"unavailable",days:[],checkedAt:null};
     const totalPageviews = days.reduce((sum,row) => sum + row.pageviews,0);
     if (!Number.isSafeInteger(totalPageviews)) return {status:"unavailable",days:[],checkedAt:null};
-    return {status:"available",days,totalPageviews,visitorsToday:days[6].visitors,
+    const registrationPageviews = days.reduce((sum,row) => sum + (row.registrationPageviews ?? 0),0);
+    if (!Number.isSafeInteger(registrationPageviews)) return {status:"unavailable",days:[],checkedAt:null};
+    return {status:"available",days,totalPageviews,registrationPageviews,visitorsToday:days[6].visitors,
       checkedAt:now.toISOString(),firstDate:dates[0],lastDate:dates[6]};
   } catch { return {status:"unavailable",days:[],checkedAt:null}; }
 }

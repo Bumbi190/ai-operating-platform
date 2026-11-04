@@ -12,6 +12,7 @@ import {MODEL3D_RUNTIME_ASSET} from '../lib/website-build/model3d-runtime-asset'
 import {cinematicAssetNames} from '../lib/website-build/studio/cinematic-assets'
 import {nordFilmName} from '../lib/website-build/studio/cinematic-listing'
 import {reelFiles} from '../lib/website-build/studio/cinematic-reel'
+import {ROADSTER_PRESET,ROADSTER_CONTROLS} from '../lib/website-build/studio/roadster-assets'
 import listing from '../lib/website-build/studio/cinematic-assets/nord-r.json'
 
 type Match = {type:'query'; key:string; value?:string}
@@ -67,14 +68,16 @@ async function main() {
   }
 
   await capture('')
+  await capture('/bilhall?view=roadster',{has:[{type:'query',key:'view',value:'roadster'}]})
+  await capture('/bilhall?view=roadster-3d',{has:[{type:'query',key:'view',value:'roadster-3d'}]})
   await capture('/bilhall?view=nord-r',{has:[{type:'query',key:'view',value:'nord-r'}]})
   await capture('/bilhall?view=visning',{has:[{type:'query',key:'view',value:'visning'}]})
   await capture('/bilhall',{missing:[{type:'query',key:'view'}]})
   const photos = [listing.front,listing.rear,listing.cabin,listing.studio,listing.orbit]
-  for(const name of [...Object.values(cinematicAssetNames()),...reelFiles.keys(),nordFilmName(),...photos.map(p=>p.sha256+'.webp')]) {
+  for(const name of new Set([...Object.values(cinematicAssetNames()),...reelFiles.keys(),nordFilmName(),...photos.map(p=>p.sha256+'.webp'),ROADSTER_CONTROLS.name,...Object.values(ROADSTER_PRESET.files).map(file=>file.name)])) {
     await capture('/bilhall/assets/'+name)
   }
-  for(const name of [MODEL3D_RUNTIME_ASSET.path,'assets/3d/'+listing.front.sha256+'.webp','assets/3d/'+listing.model.sha256+'.glb']) {
+  for(const name of [MODEL3D_RUNTIME_ASSET.path,'assets/3d/'+listing.front.sha256+'.webp','assets/3d/'+listing.model.sha256+'.glb','assets/3d/'+ROADSTER_PRESET.files.cover.name,'assets/3d/'+ROADSTER_PRESET.files.model.name]) {
     await capture('/'+name)
   }
   routes.push({src:'/.*',status:404})

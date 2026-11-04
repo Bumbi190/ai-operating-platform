@@ -84,7 +84,7 @@ test('Roadster 3D loads approved model, renders and rotates; no console errors',
 test('Roadster remains usable when WebGL or the film is unavailable',async({page})=>{
  await page.addInitScript(()=>{
   const original=HTMLCanvasElement.prototype.getContext
-  HTMLCanvasElement.prototype.getContext=function(kind:string,...args:unknown[]){
+  HTMLCanvasElement.prototype.getContext=function(this:HTMLCanvasElement,kind:string,...args:unknown[]){
    if(kind==='webgl'||kind==='webgl2')return null
    return original.apply(this,[kind,...args] as never)
   } as typeof original

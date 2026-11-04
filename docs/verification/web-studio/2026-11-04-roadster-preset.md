@@ -50,3 +50,9 @@ Use a signed-in Studio session for one attended Nova build and a narrow edit wit
 - Full cinematic Chromium run: **39/39**, 2.4 minutes, one worker. Eight Roadster cases and all 31 existing tour/listing/reel cases passed.
 - Screenshots inspected: the actual rotated darker 3D view and 390 px film controls. The mobile header was subsequently tightened to keep the brand on one line; hosted CI will rerun the same browser suite on that final code.
 - `git diff --check` passes. No unrelated listener or process was stopped.
+
+## Static release exporter and first hosted check
+
+The existing `export-dealer-showroom.ts` now includes both Roadster documents, all seven pinned media assets, controls and the two model/poster aliases. A fresh export produced **31 unique files / 35 captured URLs**. Each captured payload matched its SHA; references in both Roadster documents resolved inside the exported route map. This exporter is also exercised in Studio CI. No static production release was performed.
+
+The first hosted head `88b6175` reached Vercel Ready, but Studio typecheck caught an implicit `this` type in the test-only WebGL fallback shim. The shim now explicitly declares `this: HTMLCanvasElement`. This was a test typing repair, not a skipped check. Final exact-head results are recorded in the PR and project journal after rerun.

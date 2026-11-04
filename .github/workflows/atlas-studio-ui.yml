@@ -76,6 +76,7 @@ on:
       - 'apps/web/lib/website-build/studio/roadster-*'
       - 'apps/web/lib/website-build/studio/cinematic-assets/**'
       - 'apps/web/e2e/website-cinematic/**'
+      - 'apps/web/scripts/export-dealer-showroom.ts'
       - 'apps/web/e2e/website-customer-admin/**'
       - 'apps/web/lib/website-build/customer-admin/**'
       - 'apps/web/lib/website-build/planning/*showroom*'
@@ -162,6 +163,8 @@ jobs:
       - run: npx playwright test --config=playwright.website-starter.config.ts
         working-directory: apps/web
       - run: npx playwright test --config=playwright.website-model3d.config.ts
+        working-directory: apps/web
+      - run: npx --no-install tsx --tsconfig e2e/website-cinematic/tsconfig.json scripts/export-dealer-showroom.ts ../../.superpowers/roadster-cinematic-export
         working-directory: apps/web
       - run: npx playwright test --config=playwright.website-cinematic.config.ts
         working-directory: apps/web

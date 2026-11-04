@@ -1,3 +1,4 @@
+import {HANDLARBORSEN_PROJECT_ID} from '../../atlas/handlarborsen-test-data/contracts'
 import {publicWebsite} from '../discovery/validate'
 import {registeredAccountExclusions} from '../../handlarborsen/lead-finder/registered-accounts-snapshot'
 import {normalizeCompanyName} from '../../handlarborsen/lead-finder/identity'
@@ -40,6 +41,7 @@ export function canonicalCompanyEvents(events:HistoryEvent[]):CompanyEvent[]{
 
 const base=(id:string,name:string):CompanyRow=>({id,name,branch:'',city:null,orgnr:null,email:null,websiteUrl:null,sourceUrl:null,sourceLabel:'',sourceObservedAt:null,contactId:null,blocked:false,searchArea:null,status:'unknown',badges:[],matches:[],gaps:['Historiken är ofullständig; utebliven träff ger ingen kontaktbehörighet.'],events:[],lastOutboundAt:null,lastInboundAt:null,earliestReviewAt:null,reviewNote:null,offerLabel:null,dialogContext:context(name)})
 export function buildCompanyDirectory(input:CompanyInput):CompanyDirectory{
+ const hb=input.projectId===HANDLARBORSEN_PROJECT_ID
  const contacts=input.contacts.status==='ready'?input.contacts.contacts:[]
  const emailCounts=new Map<string,number>();for(const c of contacts)emailCounts.set(emailKey(c.email),(emailCounts.get(emailKey(c.email))??0)+1)
  const rows:CompanyRow[]=contacts.map(c=>{
@@ -73,10 +75,10 @@ export function buildCompanyDirectory(input:CompanyInput):CompanyDirectory{
   if(r.matches.length)r.badges.push('Möjlig tidigare kontakt')
   return r
  }
- if(input.archive.status==='ready')for(const a of input.archive.report.result){
+ if(hb&&input.archive.status==='ready')for(const a of input.archive.report.result){
   const r=base('archive:'+a.orgnr,a.name);Object.assign(r,{city:a.city,orgnr:a.orgnr,websiteUrl:publicWebsite(a.ownDomain),sourceUrl:publicWebsite(a.source),sourceLabel:'SCB / sparad webbresearch',sourceObservedAt:input.archive.createdAt});r.badges.push('Webbplats/verksamhet ej slutverifierad');if(a.registeredAccount==='matched_registered_account')r.badges.push('Registrerad i daterad ögonblicksbild');if(a.crmReasons.length)r.badges.push('Historisk spärrindikation – granska källan');r.blocked=a.crmReasons.some(reason=>['suppressed','excluded','declined','existing_account'].includes(reason))||a.registeredAccount==='matched_registered_account';rows.push(attachHints(r))
  }
- if(input.saved.status==='ready')for(const a of input.saved.candidates){
+ if(hb&&input.saved.status==='ready')for(const a of input.saved.candidates){
   const r=base('scb:'+a.id,a.name);Object.assign(r,{city:a.city,orgnr:a.orgnr,sourceLabel:'SCB / sparad kandidat',sourceObservedAt:a.retrievedAt});if(a.restricted||a.status==='suppressed'){r.badges.push('Kontaktspärr');r.blocked=true;}if(a.priorContact)r.badges.push('Tidigare kontakt i SCB-underlaget');rows.push(attachHints(r))
  }
  if(input.publicResults)for(const p of input.publicResults.candidates){
@@ -85,22 +87,24 @@ export function buildCompanyDirectory(input:CompanyInput):CompanyDirectory{
   Object.assign(r,{searchArea:scb?input.publicResults.meta?.areaLabel??input.publicResults.city:input.publicResults.city+(input.publicResults.radiusKm?' · radie '+input.publicResults.radiusKm+' km':''),email:p.email,websiteUrl:publicWebsite(p.websiteUrl),sourceUrl:publicWebsite(p.sourceUrl),sourceLabel:scb?'SCB:s företagsregister / aktuell sökning':'Publik kartkälla / ej verifierad',sourceObservedAt:input.publicResults.retrievedAt})
   if(scb){
    Object.assign(r,{city:p.city??null,orgnr:p.orgnr??null,branch:p.branchName??'',workplaceRef:p.cfar??null})
-   r.badges.push('Registrerad bilhandel – verksamhet behöver granskas')
+   r.badges.push((input.publicResults.meta?.industryLabel??'Registrerad näringsgren')+' – verksamhet behöver granskas')
    if(p.restricted){r.blocked=true;r.badges.push('Kontaktspärr i SCB')}
    if(p.inactive){r.blocked=true;r.badges.push('Ej verksam enligt SCB')}
-   if(p.orgnr&&registeredAccountExclusions().some(e=>e.orgnr===p.orgnr)){r.blocked=true;r.badges.push('Registrerad i daterad ögonblicksbild')}
-   const savedMatch=p.orgnr&&input.saved.status==='ready'?input.saved.candidates.filter(c=>c.orgnr===p.orgnr):[]
-   const archiveMatch=p.orgnr&&input.archive.status==='ready'?input.archive.report.result.filter(c=>c.orgnr===p.orgnr):[]
+   if(hb&&p.orgnr&&registeredAccountExclusions().some(e=>e.orgnr===p.orgnr)){r.blocked=true;r.badges.push('Registrerad i daterad ögonblicksbild')}
+   const savedMatch=hb&&p.orgnr&&input.saved.status==='ready'?input.saved.candidates.filter(c=>c.orgnr===p.orgnr):[]
+   const archiveMatch=hb&&p.orgnr&&input.archive.status==='ready'?input.archive.report.result.filter(c=>c.orgnr===p.orgnr):[]
    if(savedMatch.length||archiveMatch.length)r.matches.push('Samma organisationsnummer i sparat underlag')
    if(savedMatch.some(c=>c.restricted||c.status==='suppressed')||archiveMatch.some(c=>c.registeredAccount==='matched_registered_account'||c.crmReasons.some(reason=>['suppressed','excluded','declined','existing_account'].includes(reason)))){r.blocked=true;r.badges.push('Spärr / exkludering i sparat bolagsunderlag')}
   }else r.badges.push('Bolag, filial och kontaktväg ej verifierade')
   rows.push(attachHints(r))
  }
- return {projectId:input.projectId,evaluatedAt:input.evaluatedAt,rows,uniqueRecipients:input.contacts.status==='ready'?emailCounts.size:null,readOnly:true,sourceConfigured:input.sourceConfigured,searchProvider:input.searchProvider??null,...(input.publicResults?.meta?{searchMeta:input.publicResults.meta}:{}),sources:[
+ if(!hb)for(const row of rows)row.dialogContext=null
+ return {project:input.project,projectOptions:input.projectOptions,projectId:input.projectId,evaluatedAt:input.evaluatedAt,rows,uniqueRecipients:input.contacts.status==='ready'?emailCounts.size:null,readOnly:true,sourceConfigured:input.sourceConfigured,searchProvider:input.searchProvider??null,...(input.publicResults?.meta?{searchMeta:input.publicResults.meta}:{}),sources:[
   {key:'contacts',label:'Omnira kontakter',state:input.contacts.status,observedAt:input.contacts.status==='ready'?input.evaluatedAt:null,note:'Kontaktposter; inte bevis för komplett mejlhistorik.'},
   {key:'timing',label:'Granskad mejlhistorik',state:input.timing?'ready':'unavailable',observedAt:input.timing?.evaluatedAt??null,note:'Senast sparade revisioner. Ingen livekontroll av Strato eller Resend i denna vy.'},
   {key:'archive',label:'Sparad research',state:input.archive.status,observedAt:input.archive.status==='ready'?input.archive.createdAt:null,note:'Ofullständigt historiskt underlag; ingen ny webbresearch.'},
   {key:'scb',label:'Sparade SCB-kandidater',state:input.saved.status==='forbidden'?'unavailable':input.saved.status,observedAt:null,note:'Befintlig begränsad kandidatvy; inte hela SCB-registret.'},
-  {key:'registration',label:'Registrerade handlare',state:'incomplete',observedAt:'2026-10-29',note:'Daterad ögonblicksbild, ingen livekoppling. Kontroll krävs före kontakt.'},
+  ...(hb?[{key:'registration',label:'Registrerade handlare',state:'incomplete' as const,observedAt:'2026-10-29',note:'Daterad ögonblicksbild, ingen livekoppling. Kontroll krävs före kontakt.'}]:[]),
+  {key:'other_projects',label:'Historik i andra projekt',state:'unavailable',observedAt:null,note:'Den här vyn läser bara valt projekts historik. Gemensam spärravstämning återstår; ingen träff här bevisar inte att andra projekt saknar kontakt.'},
  ]}
 }

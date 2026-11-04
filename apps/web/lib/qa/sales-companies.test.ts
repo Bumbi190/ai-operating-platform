@@ -98,3 +98,9 @@ describe('paginated, strictly read-only contact reader',()=>{
   const r=await readCompanyTiming(projectId,[contact()],async()=>{throw new Error('unavailable')});expect(r).toBeNull()
  })
 })
+
+it('never projects Handlarbörsen pilot context or registration exclusions into other projects',()=>{
+ const other='10000000-0000-4000-8000-000000000099'
+ const d=buildCompanyDirectory(input({projectId:other,contacts:{status:'ready',contacts:[{...contact(1,{companyName:'Kareby Bil'}),projectId:other}]},timing:null,publicResults:{source:'scb',candidates:[{sourceId:'scb/123',sourceUrl:'https://www.scb.se/',name:'Tiltiana Holdings AB',orgnr:'5569622110',email:null,websiteUrl:null}],retrievedAt:at,city:'Malmö',meta:{provider:'scb',category:'hairdresser',industryLabel:'Frisörer och barberare',sniCode:'96.210',areaLabel:'Malmö kommun',offset:0,pageSize:5,nextOffset:null,matchedWorkplaces:1,scannedRows:1,pages:1,truncated:false,skippedInPage:0}}}));
+ expect(d.rows[0].dialogContext).toBeNull();expect(d.rows[1].blocked).toBe(false);expect(d.rows[1].badges.join(' ')).not.toContain('bilhandel');expect(d.sources.some(s=>s.key==='registration')).toBe(false);expect(d.rows[1].status).toBe('unknown')
+})

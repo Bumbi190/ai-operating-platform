@@ -33,3 +33,13 @@ describe('company view uses the qualified SCB preview source',()=>{
  })
 
 })
+
+
+describe('registered industries use their real SCB codes',()=>{
+ it.each([['restaurant','56.110','56110'],['hairdresser','96.210','96210'],['house_builder','41.000','41000']] as const)('maps %s into the real fixed-origin raw request path and exact row filter',async(category,sni,code)=>{
+  const paths:string[]=[]
+  const mock=vi.fn(async(url:unknown)=>{const u=new URL(String(url));paths.push(u.pathname);if(u.pathname.includes('/arbetsstallen/'))return Response.json({pagination:{hasMore:false},arbetsstallen:[{peOrgNr:'16'+orgnr,ben:'Synthetic branch',cfarNr:10000001,primarNaringsgren:{naringsgren:code},belagenhetsadress:{kommun:'1293',bPostOrt:'Hässleholm'}},{peOrgNr:'16'+orgnr,ben:'Wrong industry',cfarNr:10000002,primarNaringsgren:{naringsgren:'47811'},belagenhetsadress:{kommun:'1293'}}]});return Response.json({peOrgNr:'16'+orgnr,namn:'Synthetic Industry AB',jurform:'49',ftgStat:'1'})})
+  vi.stubGlobal('fetch',mock)
+  try{const result=await searchScbCompanies({municipalityCode:'1293',category,limit:5} as never,0,{env,sleep:async()=>{}});expect(result.candidates).toHaveLength(1);expect(result.meta).toMatchObject({category,industryLabel:expect.any(String),sniCode:sni,matchedWorkplaces:1});expect(paths[0]).toBe('/v1/arbetsstallen/naringsgren/'+code);expect(result.candidates[0].sourceId).toBe('scb/10000001')}finally{vi.unstubAllGlobals()}
+ })
+})

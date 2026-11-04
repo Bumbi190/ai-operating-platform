@@ -1,4 +1,5 @@
 import {publicWebsite} from '../discovery/validate'
+import {registeredAccountExclusions} from '../../handlarborsen/lead-finder/registered-accounts-snapshot'
 import {normalizeCompanyName} from '../../handlarborsen/lead-finder/identity'
 import type {HistoryEvent} from '../timing/types'
 import type {CompanyDirectory,CompanyEvent,CompanyInput,CompanyRow} from './types'
@@ -79,9 +80,23 @@ export function buildCompanyDirectory(input:CompanyInput):CompanyDirectory{
   const r=base('scb:'+a.id,a.name);Object.assign(r,{city:a.city,orgnr:a.orgnr,sourceLabel:'SCB / sparad kandidat',sourceObservedAt:a.retrievedAt});if(a.restricted||a.status==='suppressed'){r.badges.push('Kontaktspärr');r.blocked=true;}if(a.priorContact)r.badges.push('Tidigare kontakt i SCB-underlaget');rows.push(attachHints(r))
  }
  if(input.publicResults)for(const p of input.publicResults.candidates){
-  const r=base('public:'+p.sourceId,p.name);Object.assign(r,{searchArea:input.publicResults.city+(input.publicResults.radiusKm?' · radie '+input.publicResults.radiusKm+' km':''),email:p.email,websiteUrl:publicWebsite(p.websiteUrl),sourceUrl:publicWebsite(p.sourceUrl),sourceLabel:'Publik kartkälla / ej verifierad',sourceObservedAt:input.publicResults.retrievedAt});r.badges.push('Bolag, filial och kontaktväg ej verifierade');rows.push(attachHints(r))
+  const scb=input.publicResults.source==='scb'
+  const r=base('public:'+p.sourceId,p.name)
+  Object.assign(r,{searchArea:scb?input.publicResults.meta?.areaLabel??input.publicResults.city:input.publicResults.city+(input.publicResults.radiusKm?' · radie '+input.publicResults.radiusKm+' km':''),email:p.email,websiteUrl:publicWebsite(p.websiteUrl),sourceUrl:publicWebsite(p.sourceUrl),sourceLabel:scb?'SCB:s företagsregister / aktuell sökning':'Publik kartkälla / ej verifierad',sourceObservedAt:input.publicResults.retrievedAt})
+  if(scb){
+   Object.assign(r,{city:p.city??null,orgnr:p.orgnr??null,branch:p.branchName??'',workplaceRef:p.cfar??null})
+   r.badges.push('Registrerad bilhandel – verksamhet behöver granskas')
+   if(p.restricted){r.blocked=true;r.badges.push('Kontaktspärr i SCB')}
+   if(p.inactive){r.blocked=true;r.badges.push('Ej verksam enligt SCB')}
+   if(p.orgnr&&registeredAccountExclusions().some(e=>e.orgnr===p.orgnr)){r.blocked=true;r.badges.push('Registrerad i daterad ögonblicksbild')}
+   const savedMatch=p.orgnr&&input.saved.status==='ready'?input.saved.candidates.filter(c=>c.orgnr===p.orgnr):[]
+   const archiveMatch=p.orgnr&&input.archive.status==='ready'?input.archive.report.result.filter(c=>c.orgnr===p.orgnr):[]
+   if(savedMatch.length||archiveMatch.length)r.matches.push('Samma organisationsnummer i sparat underlag')
+   if(savedMatch.some(c=>c.restricted||c.status==='suppressed')||archiveMatch.some(c=>c.registeredAccount==='matched_registered_account'||c.crmReasons.some(reason=>['suppressed','excluded','declined','existing_account'].includes(reason)))){r.blocked=true;r.badges.push('Spärr / exkludering i sparat bolagsunderlag')}
+  }else r.badges.push('Bolag, filial och kontaktväg ej verifierade')
+  rows.push(attachHints(r))
  }
- return {projectId:input.projectId,evaluatedAt:input.evaluatedAt,rows,uniqueRecipients:input.contacts.status==='ready'?emailCounts.size:null,readOnly:true,sourceConfigured:input.sourceConfigured,sources:[
+ return {projectId:input.projectId,evaluatedAt:input.evaluatedAt,rows,uniqueRecipients:input.contacts.status==='ready'?emailCounts.size:null,readOnly:true,sourceConfigured:input.sourceConfigured,searchProvider:input.searchProvider??null,...(input.publicResults?.meta?{searchMeta:input.publicResults.meta}:{}),sources:[
   {key:'contacts',label:'Omnira kontakter',state:input.contacts.status,observedAt:input.contacts.status==='ready'?input.evaluatedAt:null,note:'Kontaktposter; inte bevis för komplett mejlhistorik.'},
   {key:'timing',label:'Granskad mejlhistorik',state:input.timing?'ready':'unavailable',observedAt:input.timing?.evaluatedAt??null,note:'Senast sparade revisioner. Ingen livekontroll av Strato eller Resend i denna vy.'},
   {key:'archive',label:'Sparad research',state:input.archive.status,observedAt:input.archive.status==='ready'?input.archive.createdAt:null,note:'Ofullständigt historiskt underlag; ingen ny webbresearch.'},

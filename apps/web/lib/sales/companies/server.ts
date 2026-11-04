@@ -10,7 +10,7 @@ import {scoped} from '../store'
 import {readContactTiming} from '../timing/store'
 import {salesEnabled} from '../feature'
 import {SalesError,type SalesPrincipal} from '../types'
-import {discoverySourceConfigured,discoverPublicBusinesses} from '../discovery/provider'
+import {companySearchProvider,discoverCompanyBusinesses} from './source'
 import {readCompanyContacts,readCompanyTiming} from './read'
 import {buildCompanyDirectory} from './model'
 import {createCompaniesApi} from './api'
@@ -32,10 +32,10 @@ export async function readCompanyInput(projectId:string,p:SalesPrincipal):Promis
   contacts.status==='ready'?readCompanyTiming(projectId,contacts.contacts,ids=>readContactTiming(createAdminClient(),p,{projectId,contactIds:ids})):Promise.resolve(null),
   loadArchivedLeadResearchForOwner(projectId,known),loadSavedCandidatesForOwner(projectId),
  ])
- return {projectId,evaluatedAt:new Date().toISOString(),contacts,timing,archive,saved,sourceConfigured:discoverySourceConfigured()}
+ return {projectId,evaluatedAt:new Date().toISOString(),contacts,timing,archive,saved,sourceConfigured:companySearchProvider()!==null,searchProvider:companySearchProvider()}
 }
 export async function companyDirectoryForOwner(projectId:string){
  const p=await resolveProjectAccess();if(!p.ok||!p.allowedProjectIds.includes(projectId)||projectId!==HANDLARBORSEN_PROJECT_ID||!salesEnabled(projectId))return null
  return buildCompanyDirectory(await readCompanyInput(projectId,p))
 }
-export const companiesApi=createCompaniesApi({access:resolveProjectAccess,enabled:salesEnabled,read:readCompanyInput,sourceConfigured:discoverySourceConfigured,discover:discoverPublicBusinesses})
+export const companiesApi=createCompaniesApi({access:resolveProjectAccess,enabled:salesEnabled,read:readCompanyInput,sourceConfigured:()=>companySearchProvider()!==null,discover:discoverCompanyBusinesses})

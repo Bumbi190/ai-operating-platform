@@ -70,6 +70,14 @@ describe('read-only company projection',()=>{
  it('labels a public query centre as search area, never as a verified company city',()=>{
   const d=buildCompanyDirectory(input({publicResults:{candidates:[{sourceId:'node/2',sourceUrl:'https://www.openstreetmap.org/node/2',name:'Unverified Dealer',email:null,websiteUrl:null}],retrievedAt:at,city:'Malmö',radiusKm:25}}));const r=d.rows.find(r=>r.id==='public:node/2')!;expect(r.city).toBeNull();expect(r.searchArea).toBe('Malmö · radie 25 km')
  })
+ it('keeps SCB branch identity and registered-account stops without inventing contact history',()=>{
+  const d=buildCompanyDirectory(input({searchProvider:'scb',publicResults:{source:'scb',candidates:[{sourceId:'scb/123',sourceUrl:'https://www.scb.se/',name:'Tiltiana Holdings AB',orgnr:'5569622110',cfar:'123',branchName:'Separate branch',city:'Malmö',email:null,websiteUrl:null}],retrievedAt:at,city:'Malmö'}}));const r=d.rows.find(r=>r.id==='public:scb/123')!;expect(r).toMatchObject({blocked:true,workplaceRef:'123',branch:'Separate branch',city:'Malmö',status:'unknown',lastOutboundAt:null});expect(r.badges).toContain('Registrerad i daterad ögonblicksbild');expect(d.searchProvider).toBe('scb')
+ })
+
+ it('retains a saved same-company stop on a fresh SCB branch without merging its history',()=>{
+  const d=buildCompanyDirectory(input({saved:{status:'ready',outreachReady:false,candidates:[{id:'saved1',name:'Saved Legal Dealer',orgnr:'5568357585',city:'Malmö',restricted:true,status:'suppressed',priorContact:false,retrievedAt:at}]},publicResults:{source:'scb',candidates:[{sourceId:'scb/456',sourceUrl:'https://www.scb.se/',name:'Fresh Branch',orgnr:'5568357585',cfar:'456',email:null,websiteUrl:null}],retrievedAt:at,city:'Malmö'}}));const r=d.rows.find(r=>r.id==='public:scb/456')!;expect(r.blocked).toBe(true);expect(r.matches).toContain('Samma organisationsnummer i sparat underlag');expect(r.events).toEqual([])
+ })
+
 })
 
 describe('paginated, strictly read-only contact reader',()=>{

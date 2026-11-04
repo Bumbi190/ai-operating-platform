@@ -16,7 +16,7 @@ describe('immutable full showroom review package',()=>{
   expect(a).toEqual(b)
   expect(a.catalogIds).toEqual(['concept-04','concept-02','concept-03','concept-05','concept-06','concept-07','concept-08'])
   expect(a.pages.map(p=>p.path)).toEqual(['index.html','roadster.html','viewer.html','nord-r.html','visning.html'])
-  expect(a.roadster.modelSha256).toBe('9f81d1357bf061968dab5b3f38957e11f51648751651e4e4b54d9d3cb0d1f77f')
+  expect(a.roadster.modelSha256).toBe('578a550161f3cdbcd517b14b91051ac30bf00a66a8445ae8b9b0eff6747073ca')
   expect(a.roadster.filmSha256).toBe('b403e13ba6fb651ff1c3175c595b6406b3817f4f85bbd00898dbeaf5f171f3bc')
   const binding={id:CINEMATIC_PRESET_ID,sha256:a.sha256}
   expect(await assertCinematicPresetBinding(binding)).toEqual(a)

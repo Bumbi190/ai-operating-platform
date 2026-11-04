@@ -33,3 +33,15 @@ describe('public immutable Studio assets route',()=>{
   }
  })
 })
+
+it('streams exact film ranges, including suffix requests, and rejects invalid ranges',async()=>{
+ const {default:registry}=await import('./studio/cinematic-registry.json')
+ const film=registry.manifest.assets.find(a=>a.path.endsWith('.mp4'))!,params={path:film.path.split('/').slice(1)}
+ for(const [range,length,status] of [['bytes=0-99',100,206],['bytes=-50',50,206],['bytes=999999999-',0,416],['bytes=-0',0,416],['bytes=-',0,416]] as const){
+  const res=await GET(new Request('http://localhost/'+film.path,{headers:{range}}),{params})
+  expect(res.status).toBe(status);expect((await res.arrayBuffer()).byteLength).toBe(length)
+ }
+ const response=await GET(new Request('http://localhost/'+film.path),{params}),reader=response.body!.getReader()
+ let total=0;for(;;){const {value,done}=await reader.read();if(done)break;expect(value.length).toBeLessThanOrEqual(65536);total+=value.length}
+ expect(total).toBe(film.bytes)
+})

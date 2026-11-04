@@ -64,10 +64,14 @@ try{
   const reportData=JSON.parse(readFileSync(report,'utf8')),stats=reportData.stats
   Object.assign(result,{passed:stats.expected>0&&stats.unexpected===0&&stats.skipped===0&&stats.flaky===0&&(reportData.errors??[]).length===0,tests:stats.expected+stats.unexpected+stats.skipped+stats.flaky,passedTests:stats.expected,failedTests:stats.unexpected})
  }else{
+  const cinematicReport=resolve(out,'cinematic.json')
+  runNode([resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/website-build/planning/cinematic-roundtrip.test.ts','--maxWorkers=1','--minWorkers=1','--reporter=default','--reporter=json','--outputFile',cinematicReport],'cinematic',180000)
+  const cinematicTests=JSON.parse(readFileSync(cinematicReport,'utf8'))
+  assert.equal(cinematicTests.success,true)
   const report=resolve(out,'integration.json')
   runNode([resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/website-build/planning/visual-roundtrip.test.ts','lib/website-build/planning/starter-roundtrip.test.ts','lib/website-build/planning/mockup-store.test.ts','lib/website-build/test-db-bootstrap.test.ts','lib/website-build/worker.test.ts','--maxWorkers=1','--minWorkers=1','--reporter=json','--outputFile',report],'integration',240000)
   const tests=JSON.parse(readFileSync(report,'utf8'))
-  Object.assign(result,{passed:tests.success,tests:tests.numTotalTests,passedTests:tests.numPassedTests,failedTests:tests.numFailedTests})
+  Object.assign(result,{passed:tests.success,tests:tests.numTotalTests+cinematicTests.numTotalTests,passedTests:tests.numPassedTests+cinematicTests.numPassedTests,failedTests:tests.numFailedTests+cinematicTests.numFailedTests})
  }
  assert.equal(result.passed,true)
  console.log(JSON.stringify({tests:result.tests,passed:result.passedTests,scope:result.scope}))

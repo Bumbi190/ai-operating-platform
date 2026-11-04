@@ -97,7 +97,7 @@ export function cinematicPlanProposal(binding:CinematicPresetBinding):PlanConten
    {key:'nord-r',title:'Nord R 3D',purpose:'Inbäddad fiktiv 3D-modell för Nord R-annonsen.'},
    {key:'visning',title:'Filmvisning',purpose:'Bilhallens befintliga film med scroll och mobiluppspelning.'}],
   design:{style:'Bevara det granskade paketets form, färger, belysning och kamerarörelser.',
-   reference:binding.id+':'+binding.sha256},
+   reference:binding.id+':'+binding.sha256,cinematic:binding},
   features:[{name:'Sju fiktiva konceptbilar med filter',mode:'preview_demo',provider:null},
    {name:'Befintliga scrollfilmer och två 3D-visningar',mode:'preview_demo',provider:null},
    {name:'Testförfrågningar utan utskick',mode:'preview_demo',provider:null}],

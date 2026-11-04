@@ -1,4 +1,5 @@
 import 'server-only'
+import {assertCinematicPlan,cinematicReviewDraft,cinematicReference} from '../studio/cinematic-binding'
 import {createHash} from 'node:crypto'
 import {compileWebsiteArtifact} from '../artifact'
 import {escapeHtml} from '../preview-runtime'
@@ -17,6 +18,7 @@ const directions=[
 ] as const
 const shorten=(s:string,n:number)=>s.length<=n?s:s.slice(0,n).replace(/\s+\S*$/,'')+'…'
 export function createWebsiteMockups(content:PlanContent):WebsiteMockupDraft[]{
+ if(content.design.cinematic){const binding=assertCinematicPlan(content);return directions.map((direction,index)=>{const draft=cinematicReviewDraft(binding,direction.key),canonicalDraft=JSON.stringify(draft);return {...direction,title:['Bilhallen','Roadster','Filmvisningen'][index],summary:'Samma versionslåsta paket, visat från olika ingångar.',draft,canonicalDraft,sha256:createHash('sha256').update(canonicalDraft).digest('hex')}})}
  if(content.design.starter){return directions.map(direction=>{
   const draft=content.design.starter===DEALER_SHOWROOM_STARTER?dealerShowroomDraft(content,direction.key):premiumDealerStarterDraft(content,direction.key)
   compileWebsiteArtifact(draft)
@@ -47,6 +49,6 @@ export function validateMockupReference(value:unknown):WebsiteDraft{
  const v=value as Record<string,unknown>
  if(typeof v.canonicalDraft!=='string'||Buffer.byteLength(v.canonicalDraft,'utf8')>MOCKUP_DRAFT_BYTES||typeof v.sha256!=='string'||!/^[a-f0-9]{64}$/.test(v.sha256)||createHash('sha256').update(v.canonicalDraft).digest('hex')!==v.sha256)throw new Error('INVALID_DESIGN_REFERENCE')
  let draft:WebsiteDraft
- try{draft=JSON.parse(v.canonicalDraft);compileWebsiteArtifact(draft)}catch{throw new Error('INVALID_DESIGN_REFERENCE')}
+ try{draft=JSON.parse(v.canonicalDraft);if(!cinematicReference(v))compileWebsiteArtifact(draft)}catch{throw new Error('INVALID_DESIGN_REFERENCE')}
  return draft
 }

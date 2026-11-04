@@ -1,4 +1,8 @@
 // Local fictional-media harness. Real document compiler/runtime/assets; no accounts or external APIs.
+import {compileCinematicArtifact,CINEMATIC_BINDING} from '../../lib/website-build/studio/cinematic-binding'
+import {renderCinematicPreview} from '../../lib/website-build/studio/cinematic-preview'
+import {scriptJson} from '../../lib/website-build/preview-runtime'
+import {GET as publicAsset} from '../../app/assets/[...path]/route'
 import JSZip from 'jszip'
 import {createServer} from 'node:http'
 import {GET as dealerPilot} from '../../app/bilhandlare/[[...path]]/route'
@@ -17,6 +21,16 @@ const html=createCinematicDemoHtml(cinematicShowroomBaseHtml())
 const server=createServer(async(req,res)=>{
  const url=new URL(req.url??'/','http://127.0.0.1:'+port)
  res.setHeader('cache-control','no-store')
+ if(url.pathname.startsWith('/assets/')){
+  const response=await publicAsset(new Request(url,{headers:req.headers.range?{range:req.headers.range}:{}}),{params:{path:url.pathname.slice('/assets/'.length).split('/')}})
+  res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));return
+ }
+ if(url.pathname==='/__studio-preview'){
+  const artifact=compileCinematicArtifact(CINEMATIC_BINDING)
+  const documents=Object.fromEntries(artifact.pages.map(p=>[p.key,renderCinematicPreview(artifact,p.key,'test-preview',url.origin)]))
+  res.writeHead(200,{'content-type':'text/html; charset=utf-8'})
+  res.end('<!doctype html><html><style>body{margin:0}iframe{width:100vw;height:100vh;border:0}</style><iframe title="Studio preview" sandbox="allow-scripts"></iframe><script>const docs='+scriptJson(documents)+';const frame=document.querySelector("iframe");frame.srcdoc=docs['+scriptJson(url.searchParams.get('page')??'index')+'];addEventListener("message",e=>{if(e.source!==frame.contentWindow||e.data?.token!=="test-preview")return;if(e.data.type==="atlas-preview-ready")document.body.dataset.ready=e.data.pageKey;if(e.data.type==="atlas-preview-page"&&docs[e.data.pageKey])frame.srcdoc=docs[e.data.pageKey]});</script></html>');return
+ }
  if(url.pathname==='/__build-review'){
   const response=await cinematicPackageReviewResponse()
   res.writeHead(response.status,Object.fromEntries(response.headers));res.end(await response.text());return

@@ -1,4 +1,5 @@
 import 'server-only'
+import {cinematicReference,compileCinematicArtifact,parseCinematicCopy,DEFAULT_CINEMATIC_COPY} from './studio/cinematic-binding'
 import type { createAdminClient } from '@/lib/supabase/admin'
 import type { Run } from '@/lib/supabase/types'
 import { runStep } from '@/lib/ai/runner'
@@ -53,6 +54,9 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
     await gate('website:entry')
     if ((run.context as Record<string, unknown> | null)?.websiteBuildCompleted === true) return
     let snapshot = await loadBuildSnapshot(db, writer)
+    let cinematic:ReturnType<typeof cinematicReference>
+    try{cinematic=cinematicReference(snapshot.designReference)}catch{throw new WebsiteBuildPermanentError('INVALID_DESIGN_REFERENCE')}
+    if(cinematic&&Object.hasOwn(input,'recovery'))throw new WebsiteBuildPermanentError('INVALID_RECOVERY')
     const recovering = Object.hasOwn(input, 'recovery')
     const noPaid = recovering || Object.hasOwn(input, 'recoveryNoPaid')
     if (noPaid && (snapshot.feedback.length || snapshot.previousArtifact)) throw new WebsiteBuildPermanentError('INVALID_RECOVERY')
@@ -97,9 +101,10 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
     let interpretation = snapshot.interpretation
     if (snapshot.feedback.length && !interpretation) {
       await setBuildStage(db, writer, 'interpreting')
-      const result = await paid(FEEDBACK_CONTRACT, websiteUserMessage(snapshot, null, false), 2000, 'website.feedback.interpret')
+      const result = await paid(FEEDBACK_CONTRACT, cinematic?JSON.stringify({allowedChange:'Only Roadster contact button text with changeKey roadster.cta; any other request requires a decision',feedback:snapshot.feedback}):websiteUserMessage(snapshot, null, false), 2000, 'website.feedback.interpret')
       if (!result) return
       interpretation = interpretBuildFeedback(parseWebsiteModelJson(result.content), snapshot.feedback)
+      if(cinematic)interpretation={...interpretation,items:interpretation.items.map(item=>item.disposition==='apply'&&item.changeKey!=='roadster.cta'?{...item,disposition:'decision' as const,summary:'Den här visningen stöder just nu endast ändring av Roadsterns knapptext. Övriga ändringar behöver planeras separat.'}:item)}
       await recordBuildInterpretation(db, writer, interpretation)
       snapshot = await loadBuildSnapshot(db, writer)
     }
@@ -112,7 +117,18 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
     if (!artifact) {
       await setBuildStage(db, writer, 'building')
       if (recovering) artifact = await recoverWebsiteArtifact(db, writer, input.recovery)
-      else {
+      else if(cinematic){
+       const prior=snapshot.previousArtifact
+       if(prior)assertApprovedWebsiteScope(prior,snapshot.designReference)
+       if(prior&&(!prior.cinematicPreset||prior.cinematicPreset.binding.sha256!==cinematic.sha256))throw new WebsiteBuildPermanentError('CINEMATIC_BINDING_STALE')
+       let copy=prior?.cinematicPreset?.copy??DEFAULT_CINEMATIC_COPY
+       if(effectiveItems?.some(item=>item.disposition==='apply')){
+        const result=await paid('Return JSON only: {"roadsterCta":"plain text, 1–80 characters"}. Only change the Roadster contact button label as requested. No HTML, scripts, media changes or new fields.',JSON.stringify({current:copy,requests:snapshot.feedback.filter(f=>effectiveItems?.some(i=>i.feedbackId===f.id&&i.disposition==='apply')).map(f=>f.text)}),300,'website.cinematic.copy')
+        if(!result)return
+        try{copy=parseCinematicCopy(parseWebsiteModelJson(result.content))}catch{throw new WebsiteBuildPermanentError('CINEMATIC_COPY_INVALID')}
+       }
+       artifact=compileCinematicArtifact(cinematic,copy)
+      }else {
       const result = await paid(knowledge.systemPrompt + '\n\n' + WEBSITE_OUTPUT_CONTRACT, websiteUserMessage(snapshot, interpretation), config?.max_tokens ?? 12000, 'website.artifact.generate')
       if (!result) return
       try { artifact = compileWebsiteArtifact(resolveWebsiteModelRasters(parseWebsiteModelJson(result.content),snapshot));assertApprovedWebsiteScope(artifact,snapshot.designReference) }

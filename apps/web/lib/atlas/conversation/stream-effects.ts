@@ -157,6 +157,8 @@ export function decodeWebsiteEffect(
       !record(p.budget)
     )
       return null;
+    const cinematic=c.design.cinematic;
+    if(cinematic!==undefined&&(!record(cinematic)||Object.keys(cinematic).length!==2||cinematic.id!=='demo-motors-cinematic-v1'||typeof cinematic.sha256!=='string'||!/^[a-f0-9]{64}$/.test(cinematic.sha256)))return null;
     const designReview=p.designReview===undefined?undefined:decodeDesignReview(p.designReview);
     if(p.designReview!==undefined&&!designReview)return null;
     const decision =
@@ -188,7 +190,7 @@ export function decodeWebsiteEffect(
             features: c.features
               .filter(record)
               .map((a: any) => fields(a, ["name", "mode", "provider"])),
-            design: fields(c.design, ["style", "reference"]),
+            design: {...fields(c.design, ["style", "reference"]),...(cinematic?{cinematic:fields(cinematic,["id","sha256"])}:{})},
             domain: fields(c.domain, ["registrar", "requestedName"]),
             steps: c.steps.filter((a: any) => typeof a === "string"),
           },

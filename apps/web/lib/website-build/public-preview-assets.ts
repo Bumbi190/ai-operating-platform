@@ -1,11 +1,14 @@
 // Public immutable bundles ONLY: never place uploaded or customer-owned media here.
 // This allowlist exists for opaque-origin Studio preview modules and assets.
+import registry from './studio/cinematic-registry.json'
+import {readCinematicBinary} from './studio/cinematic-binary'
 import {createHash} from 'node:crypto'
 import {BUNDLED_VEHICLE_3D_ASSETS,readBundledVehicle3DAssetBytes} from './assets/vehicle-3d'
 import {MODEL3D_RUNTIME_ASSET,readModel3DRuntimeBytes} from './model3d-runtime-asset'
 
 type Asset={path:string;sha256:string;bytes:number;contentType:string;read:()=>Uint8Array}
 const sources:Asset[]=[
+ ...registry.manifest.assets.map(a=>({...a,read:()=>readCinematicBinary({...a,id:a.path,kind:'cinematic-bundle'})})),
  {path:MODEL3D_RUNTIME_ASSET.path,sha256:MODEL3D_RUNTIME_ASSET.sha256,
   bytes:MODEL3D_RUNTIME_ASSET.bytes,contentType:'text/javascript; charset=utf-8',
   read:readModel3DRuntimeBytes},
@@ -19,7 +22,7 @@ const sources:Asset[]=[
 const allowlist=new Map(sources.map(asset=>[asset.path,asset]))
 export function readPublicWebsitePreviewAsset(parts:unknown):
  {bytes:Uint8Array;contentType:string}|null{
- if(!Array.isArray(parts)||parts.length!==2||
+ if(!Array.isArray(parts)||![1,2].includes(parts.length)||
     !parts.every(p=>typeof p==='string'&&/^[a-z0-9.-]+$/.test(p)))return null
  const path='assets/'+parts.join('/')
  const asset=allowlist.get(path)

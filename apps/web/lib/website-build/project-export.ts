@@ -113,6 +113,12 @@ export async function assembleProjectExport(
       type,
     );
   }
+  for(const asset of data.artifact.assets??[]){
+    const bytes=asset.kind==='cinematic-bundle'?(await import('./studio/cinematic-binary')).readCinematicBinary(asset):asset.kind==='model3d-runtime'?(await import('./model3d-runtime-asset')).readModel3DRuntimeBytes():(await import('./assets/vehicle-3d')).readBundledVehicle3DAssetBytes(asset.id,asset.kind==='vehicle3d-glb'?'glb':'poster')
+    if(bytes.length!==asset.bytes||createHash('sha256').update(bytes).digest('hex')!==asset.sha256)throw new WebsiteBuildError('INVALID_ARTIFACT_ASSET')
+    add('dist/'+asset.path,bytes,'application/octet-stream')
+    add('previews/v'+data.revisionNumber+'/'+asset.path,bytes,'application/octet-stream')
+  }
   for (const [hash, image] of images) {
     const name = hash + "." + image.extension;
     add("assets/images/" + name, image.bytes, "image/" + image.extension);

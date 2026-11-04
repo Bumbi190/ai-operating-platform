@@ -1,4 +1,5 @@
 import 'server-only'
+import {cinematicReference,compileCinematicArtifact} from '../studio/cinematic-binding'
 import type { createAdminClient } from '@/lib/supabase/admin'
 import { WebsiteBuildError, validateBuildUuid } from '../store'
 import type { BuildPrincipal, BuildSessionView } from '../types'
@@ -73,5 +74,5 @@ export async function readWebsiteMockupArtifact(db:Db,p:BuildPrincipal,i:Omit<Mo
  allowed(p,i.projectId);revision(i);validateBuildUuid(i.mockupId)
  if(typeof i.mockupSha256!=='string'||!hash.test(i.mockupSha256))throw new WebsiteBuildError('INVALID_MOCKUP')
  const reference=await call<{canonicalDraft:string;sha256:string}>(db,'website_build_mockup_read',p,i)
- try{return compileWebsiteArtifact(validateMockupReference(reference))}catch{throw new WebsiteBuildError('INVALID_MOCKUP',409)}
+ try{const binding=cinematicReference(reference);return binding?compileCinematicArtifact(binding):compileWebsiteArtifact(validateMockupReference(reference))}catch{throw new WebsiteBuildError('INVALID_MOCKUP',409)}
 }

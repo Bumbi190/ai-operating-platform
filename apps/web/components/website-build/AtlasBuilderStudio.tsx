@@ -15,6 +15,7 @@ import {StudioLifecycleActions} from './StudioLifecycleActions'
 import {StudioBudgetForm} from './StudioBudgetForm'
 import {StudioCostControl} from './StudioCostControl'
 import {StudioSettings} from './StudioSettings'
+import {StudioCinematicImport} from './StudioCinematicImport'
 import styles from './AtlasBuilderStudio.module.css'
 type Filter='active'|'archived'|'trashed'
 type InitialTurn={token:string;text:string;inputSource:'text'|'voice'}
@@ -98,6 +99,7 @@ export function AtlasBuilderStudio({model}:{model:StudioView}){
       <p><a href="/build/demo-motors" target="_blank" rel="noopener noreferrer">Visa Demo Motors i 3D ↗</a></p>
       <label>Visa <select aria-label="Projektlista" value={view.include??'active'} onChange={e=>void open({},e.target.value as Filter)}><option value="active">Aktiva projekt</option><option value="archived">Arkiverade projekt</option><option value="trashed">Papperskorgen</option></select></label>
       {selected&&<div className={styles.setup}>
+       {selected.lifecycle.state==='active'&&view.conversation&&<StudioCinematicImport key={selected.id+view.conversation.id} projectId={selected.id} conversationId={view.conversation.id} plan={view.plan} onSaved={()=>{if(current.current.selected?.id===selected.id)reload()}}/>}
        <StudioLifecycleActions key={selected.id} project={selected} onChanged={state=>{if(current.current.selected?.id===selected.id)void open({projectSlug:selected.slug,conversationId:current.current.conversation?.id},state)}}/>
        {selected.lifecycle.state==='active'?(selected.budget.state==='configured'&&<StudioBudgetForm key={selected.id} project={selected} onSaved={()=>{if(current.current.selected?.id===selected.id)reload()}}/>):<p>Projektet är {selected.lifecycle.state==='archived'?'arkiverat':'i papperskorgen'}. Historiken finns kvar.</p>}
        {selected.lifecycle.executionPaused&&<p>Projektet är pausat. <a href={'/projects/'+encodeURIComponent(selected.slug)}>Öppna projektets kontroller</a>.</p>}

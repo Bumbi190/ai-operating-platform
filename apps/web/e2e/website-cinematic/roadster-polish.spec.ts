@@ -13,8 +13,9 @@ test('3D stops drawing at rest and keeps the render buffer bounded',async({page}
  const frame=page.frameLocator('#screen iframe')
  await expect(frame.locator('#vehicle-stage')).toHaveAttribute('data-model3d-state','ready',{timeout:30000})
  const canvas=frame.locator('canvas')
- await page.waitForTimeout(1400)
  const draws=()=>canvas.evaluate(()=> (window as unknown as {roadsterDraws:{draws:number}}).roadsterDraws.draws)
+ const settle=async()=>{let previous=-1,stable=0;await expect.poll(async()=>{const next=await draws();stable=next===previous?stable+1:0;previous=next;return stable},{timeout:15000,intervals:[250]}).toBeGreaterThanOrEqual(3)}
+ await settle()
  const idle=await draws();expect(idle).toBeGreaterThan(0)
  await page.waitForTimeout(500);expect(await draws()).toBe(idle)
  expect(await canvas.evaluate((c:HTMLCanvasElement)=>c.width*c.height)).toBeLessThanOrEqual(1810000)
@@ -30,6 +31,7 @@ test('3D stops drawing at rest and keeps the render buffer bounded',async({page}
  await page.waitForTimeout(1400)
  expect(await draws()).toBeGreaterThan(idle)
  await page.locator('#screen').screenshot({path:info.outputPath('roadster-side.png')})
+ await settle()
  const settled=await draws()
  await page.waitForTimeout(500);expect(await draws()).toBe(settled)
 })

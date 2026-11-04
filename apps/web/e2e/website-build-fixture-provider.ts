@@ -8,6 +8,11 @@ export async function runStep(input: { runId: string; cost: { operation: string 
   const writer = JSON.parse(testSql(`select jsonb_build_object('projectId',s.project_id,'sessionId',s.id,'runId',r.id,'claimId',r.claim_id,'generation',s.generation) from website_build_sessions s join runs r on r.id=s.current_run_id where r.id='${input.runId}';`))
   const snapshot = await loadBuildSnapshot(createAdminClient(), writer)
   const text = snapshot.feedback.at(-1)?.text || 'Välkommen till vårt café'
+  if(snapshot.designReference?.canonicalDraft.includes('"cinematicPreset"')){
+    if(!snapshot.feedback.every(item=>item.text.includes('Boka en visning')))throw Error('Unsupported cinematic fixture edit')
+    const content=input.cost.operation.includes('interpret')?{items:snapshot.feedback.map(item=>({feedbackId:item.id,summary:'Ändrar knapptexten.',disposition:'apply',changeKey:'roadster.cta',supersedesFeedbackIds:[]}))}:{roadsterCta:'Boka en visning'}
+    return {content:JSON.stringify(content),tokensIn:0,tokensOut:0,durationMs:1,authorityRefreshRequired:false}
+  }
   const customShowroom=snapshot.brief.includes('premium-dealer-showroom-v2')
   if((customShowroom||snapshot.brief.includes('premium-dealer-demo-v1'))&&snapshot.designReference){
     // Exercise the actual worker's compact request and output resolver, not a bypass commit.

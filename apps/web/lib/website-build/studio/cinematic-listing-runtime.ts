@@ -6,8 +6,8 @@ export const LISTING_RUNTIME=String.raw`(()=>{
  const form=dialog.querySelector('#lot-form'),amount=form.elements.amount,message=form.elements.message;
  const result=dialog.querySelector('#lot-result'),close=dialog.querySelector('#lot-close');
  const loadStatus=dialog.querySelector('#lot-load');
- let action='',frame=null,observer=null,deadline=0;
- function stopWatching(){clearTimeout(deadline);if(observer)observer.disconnect();observer=null;}
+ let action='',frame=null,observer=null,deadline=0,receiveModel=null;
+ function stopWatching(){clearTimeout(deadline);if(observer)observer.disconnect();observer=null;if(receiveModel)removeEventListener('message',receiveModel);receiveModel=null;}
  function removeFrame(){stopWatching();if(frame)frame.remove();frame=null;}
  function failed(){
   removeFrame();photo.hidden=false;loadStatus.hidden=false;
@@ -19,8 +19,16 @@ export const LISTING_RUNTIME=String.raw`(()=>{
   loadStatus.textContent='Laddar 3D-modellen…';loadStatus.hidden=false;
   const next=document.createElement('iframe');frame=next;next.style.visibility='hidden';
   next.title='Fri 3D-vy av Nord R';
+  // An opaque Studio child reports readiness; ordinary standalone pages keep DOM observation.
+  const opaque=stage.dataset.viewer?.startsWith('data:text/html');
+  if(opaque){receiveModel=e=>{
+   if(frame!==next||e.source!==next.contentWindow||e.data?.type!=='atlas-cinematic-model-state')return;
+   if(e.data.state==='fallback'){failed();return;}
+   if(e.data.state==='ready'){stopWatching();photo.hidden=true;loadStatus.hidden=true;next.style.visibility='visible';}
+  };addEventListener('message',receiveModel);}
+
   next.addEventListener('load',()=>{
-   if(frame!==next)return;
+   if(frame!==next||opaque)return;
    const root=next.contentDocument?.getElementById('vehicle-stage');
    if(!root||!root.dataset.model3dState){failed();return;}
    function check(){

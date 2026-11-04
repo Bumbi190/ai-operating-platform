@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto'
 import { parseFragment, serialize, type DefaultTreeAdapterMap } from 'parse5'
 import JSZip from 'jszip'
+import {canonical,artifactHash} from './artifact-hash'
+import {assertCinematicArtifact} from './studio/cinematic-binding'
 import {bundledRaster} from './assets/bundled-rasters'
 import {readBundledVehicle3DAssetBytes,vehicle3DAsset} from './assets/vehicle-3d'
 import { escapeHtml, scriptJson, websiteCsp, WEBSITE_RUNTIME, renderPreviewDocument } from './preview-runtime'
@@ -186,12 +188,6 @@ function validateBehaviors(value: unknown, ids: Set<string>,elements:Map<string,
   }
   return behaviors
 }
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']'
-  if (value && typeof value === 'object') return '{' + Object.entries(value).sort(([a], [b]) => a.localeCompare(b, 'en')).map(([k, v]) => JSON.stringify(k) + ':' + canonical(v)).join(',') + '}'
-  return JSON.stringify(value)
-}
-function artifactHash(artifact: Omit<WebsiteArtifact, 'sha256'>): string { return createHash('sha256').update(canonical(artifact), 'utf8').digest('hex') }
 function validateArtifactAssets(artifact:WebsiteArtifact):void{
   const assets=artifact.assets??[]
   if(!Array.isArray(assets)||assets.length>32)fail('INVALID_ARTIFACT_ASSET')
@@ -231,11 +227,13 @@ export function assertWebsiteArtifact(artifact: WebsiteArtifact): void {
   if (Buffer.byteLength(canonical(artifact), 'utf8') > WEBSITE_BUILD_LIMITS.artifactBytes) fail('ARTIFACT_TOO_LARGE')
   if (artifact.format !== 'static-website.v1' || sha256 !== artifactHash(payload)) fail('ARTIFACT_HASH_MISMATCH')
   if (!artifact.files.length || artifact.files.some(f => !(SAFE_KEY.test(f.path.replace(/\.html$/, '')) && f.path.endsWith('.html')) && f.path !== 'website.js')) fail('INVALID_ARTIFACT_FILE')
+  if(Object.hasOwn(artifact,'cinematicPreset')){try{assertCinematicArtifact(artifact)}catch{fail('CINEMATIC_ARTIFACT_MISMATCH')}return}
   validateArtifactAssets(artifact)
 }
 export function compileWebsiteArtifact(input: unknown): WebsiteArtifact {
   if (Buffer.byteLength(JSON.stringify(input) ?? '', 'utf8') > WEBSITE_BUILD_LIMITS.artifactBytes) fail('ARTIFACT_TOO_LARGE')
   const draft = record(input)
+  if(Object.hasOwn(draft,'cinematicPreset'))fail('TRUSTED_PRESET_REQUIRES_APPROVED_CONSTRUCTOR')
   if (draft.format !== 'static-website.v1') fail('INVALID_FORMAT')
   const title = text(draft.title, 200)
   if (!title.trim() || !Array.isArray(draft.pages) || !draft.pages.length || draft.pages.length > WEBSITE_BUILD_LIMITS.pages) fail('INVALID_PAGES')
@@ -294,7 +292,7 @@ export async function exportWebsiteZip(artifact: WebsiteArtifact): Promise<Uint8
   const zip = new JSZip()
   for (const file of artifact.files) zip.file(file.path, file.content, { date: new Date('2000-01-01T00:00:00Z') })
   for(const asset of artifact.assets??[]){
-    const bytes=asset.kind==='model3d-runtime'
+    const bytes=asset.kind==='cinematic-bundle'?(await import('./studio/cinematic-binary')).readCinematicBinary(asset):asset.kind==='model3d-runtime'
       ?readModel3DRuntimeBytes()
       :readBundledVehicle3DAssetBytes(asset.id,asset.kind==='vehicle3d-glb'?'glb':'poster')
     if(bytes.byteLength!==asset.bytes||createHash('sha256').update(bytes).digest('hex')!==asset.sha256)fail('BUNDLED_VEHICLE_3D_HASH_MISMATCH')

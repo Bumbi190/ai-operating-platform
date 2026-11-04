@@ -1,4 +1,5 @@
 import type { WebsiteArtifact } from './types'
+import {renderCinematicPreview} from './studio/cinematic-preview'
 
 // All executable code is owned here. Model output is only inert markup/style and
 // a validated behavior graph. No eval, model JavaScript, or network capability.
@@ -94,6 +95,7 @@ export function websiteCsp(scriptSource: string,capabilities:{model3d?:boolean}=
 
 /** Client-safe renderer; callers receive artifacts only through the authorized API. */
 export function renderPreviewDocument(artifact: WebsiteArtifact, pageKey: string, channelToken: string): string {
+  if(artifact.cinematicPreset)return renderCinematicPreview(artifact,pageKey,channelToken)
   const page = artifact.pages.find(p => p.key === pageKey)
   if (!page) throw new Error('PREVIEW_PAGE_NOT_FOUND')
   const match = page.html.match(/<script type="application\/json" id="__atlas_config">([\s\S]*?)<\/script>/)

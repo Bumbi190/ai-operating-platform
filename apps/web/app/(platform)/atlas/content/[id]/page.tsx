@@ -14,6 +14,7 @@ import { OSPage, ViewSelectionSync } from '@/components/platform/os'
 import { ArrowLeft, CheckCircle2, XCircle } from 'lucide-react'
 import { ReviewActions } from './ReviewActions'
 import { HeroImageActions } from './HeroImageActions'
+import { FactCheckReport } from './FactCheckReport'
 
 export const dynamic = 'force-dynamic'
 
@@ -151,6 +152,8 @@ export default async function ContentDetail({ params }: { params: { id: string }
           <Stat label="Destination" value={row.destination_url ?? '— (not published)'} />
         </section>
       </div>
+
+      <FactCheckReport row={row} />
 
       {/* Article body */}
       <section className="rounded-lg border border-border bg-card/40 p-5">

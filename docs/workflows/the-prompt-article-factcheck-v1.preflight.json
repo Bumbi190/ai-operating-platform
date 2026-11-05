@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-10-28T14:21:14.836Z",
+  "repository": "Bumbi190/ai-operating-platform",
+  "project": "Omnira",
+  "task": "The Prompt parallel fact-checked website article workflow from social news item",
+  "workId": "THEPROMPT-ARTICLE-FACTCHECK-20261028",
+  "proposedBranch": "claude/theprompt-article-factcheck-20261028",
+  "mainSha": "bdf1943b07681befdacf9e48b458bc303a4002b1",
+  "openPrCount": 122,
+  "worktreeCount": 217,
+  "decision": "new_branch_approved",
+  "code": "no_matching_work",
+  "candidates": [],
+  "branchMatches": [],
+  "worktreeMatches": [],
+  "reason": "No open PR covers the parallel website article job; #585 covers social script QA and #558 video rendering, both distinct scopes",
+  "limitations": "Metadata/local-name similarity is a hint; review actual file scope and agent ownership before new work.",
+  "sideEffects": "None. No branch, worktree, PR, commit, deployment or API mutation is performed."
+}

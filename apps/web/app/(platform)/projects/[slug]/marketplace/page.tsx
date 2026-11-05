@@ -22,6 +22,8 @@ export default async function MarketplaceReportPage({ params }: { params: { slug
   const result = await loadHandlarborsenMarketplaceReport(project, { allowedProjectIds: [project.id] })
   if (result.status === 'not_permitted') notFound()
 
-  const realDealerMetrics = await readRealDealerMetricsV3([project.id])
+  const realDealerMetrics = result.report.state === 'not_enabled'
+    ? { status: 'unavailable' as const, reason: 'not_permitted' as const }
+    : await readRealDealerMetricsV3([project.id])
   return <HandlarborsenMarketplaceReport slug={project.slug} name={project.name} report={result.report} realDealerMetrics={realDealerMetrics} />
 }

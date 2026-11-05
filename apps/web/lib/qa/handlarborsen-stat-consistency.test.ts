@@ -15,13 +15,13 @@ import type { HandlarborsenTraffic } from '@/lib/atlas/project-analytics/handlar
 const now = new Date('2026-11-05T12:00:00Z')
 const real: RealDealerMetricsV3 = { status: 'available', observedAt: '2026-11-05T11:59:00Z', registered: 1, verified: 1, testOrganisations: 8, internalOrganisations: 2, unclassifiedOrganisations: 0 }
 const traffic: HandlarborsenTraffic = { status: 'available', days: [], totalPageviews: 2, registrationPageviews: 0, visitorsToday: 0, checkedAt: now.toISOString(), firstDate: '2026-10-30', lastDate: '2026-11-05' }
-function report(production = false) {
+function report(production = false, previous = false) {
   const row: Record<string, unknown> = { project_id: HANDLARBORSEN_PROJECT_ID, snapshot_date: '2026-11-05', observed_at: '2026-11-05T06:55:00Z', captured_at: '2026-11-05T06:55:01Z', schema_version: production ? 2 : 1, window_hours: 24, completeness: 'complete', unavailable: {} }
   if (production) Object.assign(row, { definition_id: 'handlarborsen-production-v2', data_scope: 'production_excluding_quarantined_test', excluded_test_organisations: 8 })
   for (const key of MARKETPLACE_METRIC_KEYS) row[key] = 0
   row.companies_registered_total = 11
   row.companies_verified_total = 3
-  return buildMarketplaceReport([row], now)
+  return buildMarketplaceReport(previous ? [row, { ...row, snapshot_date: '2026-11-04', observed_at: '2026-11-04T06:55:00Z', captured_at: '2026-11-04T06:55:01Z' }] : [row], now)
 }
 
 describe('classified v3 population is consistent across statistics views', () => {
@@ -80,4 +80,11 @@ describe('statistics composition', () => {
     expect(html).toContain('>1</strong>')
     expect(html).not.toContain('>11<')
   })
+})
+
+it('separates a real zero delta from its historical total in accessible text', () => {
+  const html = renderToStaticMarkup(createElement(HandlarborsenMarketplaceReport, { slug: 'handlarborsen', name: 'Handlarbörsen', report: report(false, true), realDealerMetrics: real }))
+  const text = html.replace(/<[^>]*>/g, '')
+  expect(text).toContain('Registrerade företag11 · oförändrat')
+  expect(text).not.toContain('Registrerade företag110')
 })

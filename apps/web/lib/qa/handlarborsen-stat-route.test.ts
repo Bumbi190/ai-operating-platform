@@ -9,7 +9,7 @@ vi.mock('@/lib/project/get-project', () => ({ getProjectBySlug: resolveProject }
 vi.mock('@/lib/atlas/project-analytics/handlarborsen-marketplace-read', () => ({ loadHandlarborsenMarketplaceReport: readReport }))
 vi.mock('@/lib/atlas/project-analytics/handlarborsen-real-dealer-v3', () => ({ readRealDealerMetricsV3: readV3 }))
 import MarketplaceReportPage from '@/app/(platform)/projects/[slug]/marketplace/page'
-import { buildMarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-report'
+import { buildMarketplaceReport, emptyReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-report'
 
 ;(globalThis as unknown as { React: typeof React }).React = React
 beforeEach(() => vi.resetAllMocks())
@@ -24,6 +24,12 @@ describe('marketplace page v3 authorization boundary', () => {
     resolveProject.mockResolvedValue({ id: 'another-project', slug: 'other', name: 'Other' })
     readReport.mockResolvedValue({ status: 'not_permitted' })
     await expect(MarketplaceReportPage({ params: { slug: 'other' } })).rejects.toThrow('NEXT_NOT_FOUND')
+    expect(readV3).not.toHaveBeenCalled()
+  })
+  it('does not read v3 when the project integration mode is disabled', async () => {
+    resolveProject.mockResolvedValue({ id: 'authorized-project', slug: 'handlarborsen', name: 'Handlarbörsen' })
+    readReport.mockResolvedValue({ status: 'ok', report: emptyReport('not_enabled') })
+    await MarketplaceReportPage({ params: { slug: 'handlarborsen' } })
     expect(readV3).not.toHaveBeenCalled()
   })
   it('shows an unavailable v3 source without inventing counts or dropping the page', async () => {

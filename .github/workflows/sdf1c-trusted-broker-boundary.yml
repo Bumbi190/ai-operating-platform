@@ -97,6 +97,71 @@ jobs:
           }
           console.log('SDF-1C Trusted Broker Boundary satisfied with 0 failed / 0 pending')
           NODE
+      # V1B is synthetic, offline and fail-closed. This is NOT Windows signing
+      # or permission to enroll a broker. Keep these tests in the existing
+      # required SDF-1C workflow instead of creating a new PR/CI chain.
+      - name: Prime Agent V1B offline review - eight test files
+        working-directory: apps/web
+        run: >-
+          ../../node_modules/.bin/vitest run
+          lib/qa/atlas-model-router-ecdsa-p256-format.test.ts
+          lib/qa/atlas-model-router-owner-consent-issuer-offline.test.ts
+          lib/qa/atlas-model-router-owner-issuer-keyring-offline.test.ts
+          lib/qa/atlas-model-router-proof-crypto.test.ts
+          lib/qa/atlas-model-router-signed-desktop-evidence.test.ts
+          lib/qa/atlas-model-router-windows-issued-package.test.ts
+          lib/qa/atlas-model-router-windows-ksp.test.ts
+          lib/qa/atlas-model-router-windows-owner-consent.test.ts
+          --maxWorkers=1 --no-file-parallelism
+          --reporter=default --reporter=json
+          --outputFile.json="$RUNNER_TEMP/atlas-prime-v1b.json"
+      - name: Prime Agent V1B - enforce exact pass and zero skip
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs')
+          const path = require('node:path')
+          const root = process.env.RUNNER_TEMP
+          if (!root) throw new Error('Prime V1B runner temp is missing')
+          const reportPath = path.join(root, 'atlas-prime-v1b.json')
+          if (!fs.existsSync(reportPath)) throw new Error('Prime V1B test report missing')
+          const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'))
+          const required = new Map([
+            ['atlas-model-router-ecdsa-p256-format.test.ts', 4],
+            ['atlas-model-router-owner-consent-issuer-offline.test.ts', 16],
+            ['atlas-model-router-owner-issuer-keyring-offline.test.ts', 15],
+            ['atlas-model-router-proof-crypto.test.ts', 1],
+            ['atlas-model-router-signed-desktop-evidence.test.ts', 6],
+            ['atlas-model-router-windows-issued-package.test.ts', 8],
+            ['atlas-model-router-windows-ksp.test.ts', 7],
+            ['atlas-model-router-windows-owner-consent.test.ts', 16],
+          ])
+          const results = report.testResults
+          if (!Array.isArray(results) || results.length !== required.size) {
+            throw new Error('Prime V1B requires exactly eight reported suites')
+          }
+          const seen = new Set()
+          for (const suite of results) {
+            const name = path.basename(suite.name || '')
+            if (!required.has(name) || seen.has(name)) {
+              throw new Error('Prime V1B unknown or duplicate test file: ' + name)
+            }
+            seen.add(name)
+            const assertions = suite.assertionResults ?? []
+            const passed = assertions.filter(a => a.status === 'passed').length
+            const failed = assertions.filter(a => a.status === 'failed').length
+            const skipped = assertions.filter(a => a.status !== 'passed' && a.status !== 'failed').length
+            if (suite.status !== 'passed' || passed !== required.get(name)
+                || failed !== 0 || skipped !== 0) {
+              throw new Error('Prime V1B failed anti-skip: ' + name
+                + ' passed=' + passed + ' failed=' + failed + ' skipped=' + skipped)
+            }
+          }
+          if (report.numPassedTests !== 73 || report.numFailedTests !== 0
+              || report.numPendingTests !== 0 || report.numTodoTests !== 0) {
+            throw new Error('Prime V1B must pass exactly 73 tests, 0 failed/skip/todo')
+          }
+          console.log('Prime V1B offline boundary: 8 files, 73/73 pass, 0 skip')
+          NODE
       - name: Typecheck web and broker identity library
         run: |
           npm run typecheck --workspace=apps/web

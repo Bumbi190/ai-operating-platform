@@ -1,4 +1,5 @@
 // Test-only acceptance: real HTTP approvals, queue admission and zero-provider preset worker.
+import {runFeedbackAcceptance} from './website-auth-feedback-local'
 import {createAdminClient} from '../lib/supabase/admin'
 import {executeWebsiteBuildRun} from '../lib/website-build/worker'
 import {CINEMATIC_BINDING} from '../lib/website-build/studio/cinematic-binding'
@@ -57,6 +58,7 @@ export async function runWorkerAcceptance({base,jarA,jarB,f,check}:any){
  check('worker_preview_preserves_reviewed_binding',artifact.data.cinematicPreset?.binding.sha256===CINEMATIC_BINDING.sha256)
  const hidden=await http('/api/website-builds/'+first.data.sessionId+'?projectId='+projectId,jarB)
  check('worker_preview_hidden_from_other_user',hidden.status===404)
- return {projectSlug:created.data.projectSlug,conversationId,sessionId:first.data.sessionId}
+ const revisions=f.feedback?await runFeedbackAcceptance({db,http,jarA,jarB,projectId,sessionId:first.data.sessionId,initialView:session.data,initialArtifact:artifact.data,check}):null
+ return {projectSlug:created.data.projectSlug,conversationId,sessionId:first.data.sessionId,revisions}
  // Drain terminalization, provider-backed generation and media/export are separate acceptance.
 }

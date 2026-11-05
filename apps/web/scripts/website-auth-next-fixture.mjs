@@ -21,6 +21,7 @@ export function buildNextFixture(browser=null){
  ['website-build/studio',['GET','POST']],
  ['website-build/studio/budget',['POST']],
  ['website-builds/[sessionId]',['GET']],
+ ['website-builds/[sessionId]/feedback',['POST']],
  ['website-builds/[sessionId]/revisions/[revisionId]',['GET']]
  ];
  for(const [path,verbs] of routes)write('app/api/'+path+'/route.ts',"export const dynamic='force-dynamic';export {"+verbs.join(',')+"} from '@/app/api/"+path+"/route';");

@@ -36,6 +36,18 @@ export async function runBrowserAcceptance({password,a,b,ready}){
    check(stage,true);
   }
   await page.setViewportSize({width:1440,height:900});
+  if(ready.revisions){
+   stage='browser_revision_history';
+   const version=page.getByLabel('Version',{exact:true}),side=page.getByLabel('Sida',{exact:true});
+   if(!await version.isVisible())await page.getByRole('button',{name:'Verktyg',exact:true}).click();
+   await expect(version).toBeVisible();
+   await version.selectOption(ready.revisions.oldRevisionId);await side.selectOption('roadster');
+   await expect(page.frameLocator('iframe').first().getByRole('link',{name:ready.revisions.oldCopy,exact:true})).toBeVisible();
+   check('browser_historical_copy_readable',true);
+   await version.selectOption(ready.revisions.newRevisionId);
+   await expect(page.frameLocator('iframe').first().getByRole('link',{name:ready.revisions.newCopy,exact:true})).toBeVisible();
+   check('browser_new_revision_copy_readable',true);
+  }
   stage='browser_refresh';
   const cookies=(await owner.cookies()).filter(c=>c.name.startsWith('sb-')),name=cookies[0].name.replace(/\.\d+$/,'');
   const old=cookies.sort((a,b)=>a.name.localeCompare(b.name)).map(c=>c.value).join('');

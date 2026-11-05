@@ -326,6 +326,17 @@ VIKTIGT — DETTA ÄR ETT RÖSTSAMTAL (som ChatGPT Voice):
 Dåligt: "Familje-Stunden genererade 17 aktiviteter och slutförde julipaketet samt..."
 Bra: "Familje-Stunden ser fin ut idag. Julipaketet är klart — vill du ha en snabb sammanfattning?"`
 
+const GROWTH_EVIDENCE_DIRECTIVE = [
+  'Du är Nova. Använd endast den aktuella frågan och resultatet från handlarborsen_growth_brief.',
+  'Anropa det skrivskyddade tillväxtverktyget före ditt svar.',
+  'När readiness är insufficient_data får endast observations och provenance beskrivas som verifierade fakta.',
+  'Ingen annan chattkontext, tidigare snapshot eller företagsstatistik får användas.',
+  'Om företagsantal saknas i observations ska inga företagstal eller verifieringsandelar rapporteras.',
+  'Noll samtyckesbaserade sidvisningar betyder inte att ingen besökt registreringssidan.',
+  'Skilj osäkerhet från manuell kontroll; ge inga påhittade måltal eller autonoma åtgärder.',
+  'Svara på svenska med tydliga källor.',
+].join('\n')
+
 // Verktygsvägledning — hur Atlas använder sina verktyg.
 const TOOL_GUIDE = `Verktyg du har:
 - handlarborsen_growth_brief — vid frågor om Handlarbörsens tillväxt, registreringsintresse, fler registrerade handlare eller prioriteringar: använd detta projektägargrindade, skrivskyddade granskningsunderlag. Redovisa PostHog och företagssnapshot separat, källor, mätperioder och datakvalitet. Om en källa saknas, säg det. Registrerade minus verifierade är INTE ett verifierat antal väntande ansökningar. Inga konverteringsgrader eller automatiska kontakter får antas.
@@ -1073,6 +1084,8 @@ export async function POST(request: Request) {
     const operator = await resolvePlatformOperator()
     sourceReadTurn = operator.ok && operator.userId === userId
   }
+  const growthReadTurn = hbReadIntent === 'handlarborsen_growth_brief' && !sourceReadTurn
+    && activeTools.some(tool => tool.name === 'handlarborsen_growth_brief')
   const offeredTools: Anthropic.Tool[] = sourceReadTurn ? [NOVA_SOURCE_TOOL] : activeTools
   if (sourceReadTurn) {
     // SECURITY: the normal Atlas system prompt contains global LIVE CONTEXT,
@@ -1093,6 +1106,7 @@ export async function POST(request: Request) {
   // Buffer before discovering the model's actual tool calls, so an inline
   // claim cannot reach speech before a social write has even run. Isolated
   // read-only turns have no social tools and retain their existing stream.
+  if (growthReadTurn) systemPrompt = GROWTH_EVIDENCE_DIRECTIVE
   const bufferSocialProse = offeredTools.some(tool => isSocialReceiptTool(tool.name))
   const socialPreparationTurn = bufferSocialProse && isSocialPreparationTurn(messages)
   if (socialPreparationTurn && voice) systemPrompt += '\nThe short speech limit applies only to the spoken answer, never to complete social tool arguments. Prepare each requested item in full.\n'
@@ -1495,7 +1509,7 @@ export async function POST(request: Request) {
         // Untrusted repo content may not co-reside in the model request with
         // earlier conversation turns (possibly about other projects or secrets).
         // The user must make an explicit named request for every source turn.
-        const conversationMessages: Anthropic.MessageParam[] = sourceReadTurn
+        const conversationMessages: Anthropic.MessageParam[] = sourceReadTurn || growthReadTurn
           ? [{ role: 'user', content: lastUserText }]
           : image
             ? messages.map((msg,index)=>index===messages.length-1&&msg.role==="user"?{...msg,content:[{type:"image" as const,source:{type:"base64" as const,media_type:image.mediaType as 'image/png'|'image/jpeg'|'image/webp',data:image.data as string}},{type:"text" as const,text:lastUserText||"Beskriv bilden."}]}:msg)

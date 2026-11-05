@@ -50,6 +50,15 @@ describe('Handlarbörsen read-only intent classification', () => {
     expect(route).toContain('tillväxtfrågor ska gå till growth_brief')
     expect(route).not.toContain('Använd vid frågor om registreringar, verifierade företag, aktivitet och hur vi ska nå fler handlare.')
   })
+  it('isolates the growth tool response from legacy snapshots and prior conversation context', () => {
+    const route = readFileSync(fileURLToPath(new URL('../../app/api/chat/route.ts', import.meta.url)), 'utf8')
+    expect(route).toContain("const growthReadTurn = hbReadIntent === 'handlarborsen_growth_brief'")
+    expect(route).toContain('if (growthReadTurn) systemPrompt = GROWTH_EVIDENCE_DIRECTIVE')
+    expect(route).toContain('sourceReadTurn || growthReadTurn')
+    expect(route).toContain('Om företagsantal saknas i observations')
+    expect(route).toContain('När readiness är insufficient_data')
+    expect(route).toContain("name === 'handlarborsen_growth_brief'")
+  })
   it('does not open unrelated project mail or status and never turns generic speech into a request', () => {
     expect(read('Vad säger de senaste mejlen i Familje-Stunden?')).toBeNull()
     expect(read('Vad är statistiken i The Prompt?')).toBeNull()

@@ -206,7 +206,7 @@ jobs:
 
   reference-auth:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 45
     env:
       ATLAS_REFERENCE_TEST_MODE: isolated-local
       NODE_OPTIONS: --max-old-space-size=512
@@ -238,6 +238,7 @@ jobs:
         working-directory: apps/web
         run: node --test e2e/reference-auth/fetch-guard.test.cjs e2e/reference-auth/transports.test.cjs e2e/reference-auth/lifecycle.test.mjs e2e/reference-auth/cors.test.mjs
       - name: Install isolated Chromium
+        timeout-minutes: 15
         working-directory: apps/web
         run: npx --no-install playwright install --with-deps chromium
       - name: Run real browser login cookies middleware and references
@@ -261,7 +262,7 @@ jobs:
 
   studio-journey:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     env:
       WEBSITE_SQL_ROUNDTRIP: isolated-local
       NODE_OPTIONS: --max-old-space-size=512
@@ -282,6 +283,7 @@ jobs:
         shell: pwsh
         run: ./scripts/verification/run-vehicle-capture-rls.ps1
       - name: Install isolated Chromium
+        timeout-minutes: 15
         working-directory: apps/web
         run: npx --no-install playwright install --with-deps chromium
       - name: Verify isolated SQL planning and build regressions

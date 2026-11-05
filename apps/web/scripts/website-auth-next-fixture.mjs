@@ -16,7 +16,12 @@ export function buildNextFixture(){
  ['website-build-plans',['POST']],
  ['website-build-plans/[planId]',['GET']],
  ['website-build-plans/[planId]/approve',['POST']],
- ['website-build-plans/[planId]/mockups/approve',['POST']]
+ ['website-build-plans/[planId]/mockups/approve',['POST']],
+ ['website-build-plans/[planId]/start',['POST']],
+ ['website-build/studio',['POST']],
+ ['website-build/studio/budget',['POST']],
+ ['website-builds/[sessionId]',['GET']],
+ ['website-builds/[sessionId]/revisions/[revisionId]',['GET']]
  ];
  for(const [path,verbs] of routes)write('app/api/'+path+'/route.ts',"export const dynamic='force-dynamic';export {"+verbs.join(',')+"} from '@/app/api/"+path+"/route';");
  // Copy exact middleware bytes: no relaxation of membership/ownership checks.

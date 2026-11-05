@@ -19,7 +19,7 @@ async function call<T>(db:Db,name:string,p:BuildPrincipal,input:unknown,allowNul
  const invoke=db as unknown as {rpc(n:string,args:Record<string,unknown>):Promise<{data:unknown;error:{code?:string;message?:string}|null}>}
  const {data,error}=await invoke.rpc(name,{p_principal:p,p_input:input})
  if(error){
-  const known=['MOCKUP_REVIEW_REQUIRED','MOCKUP_STALE','MOCKUP_LOCKED','INVALID_MOCKUP','PLAN_REVIEW_REQUIRED','PLAN_STALE','BUILD_AGENT_REQUIRED','PROJECT_LOCATION_LOCKED','PLAN_REVISION_IMMUTABLE','PLAN_DECISION_IMMUTABLE','INVALID_PLAN','INVALID_PROJECT_ROOT','INVALID_IDEMPOTENCY_KEY'].find(c=>error.message?.includes(c))
+  const known=['PROJECT_BUDGET_REQUIRED','MOCKUP_REVIEW_REQUIRED','MOCKUP_STALE','MOCKUP_LOCKED','INVALID_MOCKUP','PLAN_REVIEW_REQUIRED','PLAN_STALE','BUILD_AGENT_REQUIRED','PROJECT_LOCATION_LOCKED','PLAN_REVISION_IMMUTABLE','PLAN_DECISION_IMMUTABLE','INVALID_PLAN','INVALID_PROJECT_ROOT','INVALID_IDEMPOTENCY_KEY'].find(c=>error.message?.includes(c))
   const code=known??(error.code==='23505'?'CONFLICT':error.code==='P0002'||error.code==='42501'?'NOT_FOUND':'BUILD_UNAVAILABLE')
   throw new WebsiteBuildError(code,code==='NOT_FOUND'?404:code.startsWith('INVALID_')?400:code==='BUILD_UNAVAILABLE'?503:409)
  }

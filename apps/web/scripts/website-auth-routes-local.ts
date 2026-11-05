@@ -12,6 +12,7 @@ import * as plans from '../app/api/website-build-plans/route'
 import * as planRead from '../app/api/website-build-plans/[planId]/route'
 import * as planApprove from '../app/api/website-build-plans/[planId]/approve/route'
 import * as mockupApprove from '../app/api/website-build-plans/[planId]/mockups/approve/route'
+import {runWorkerAcceptance} from './website-auth-worker-local'
 import {resolveProjectAccess} from '../lib/auth/project-access'
 const checks:{name:string;passed:boolean}[]=[]
 function check(name:string,ok:unknown){checks.push({name,passed:Boolean(ok)});if(!ok)throw Error(name)}
@@ -112,6 +113,7 @@ async function main(){
   check('route_mockup_approved',mockup.status===200&&mockup.data.designReview.approved.mockupId===option.id)
   const approved=await route(planApprove.POST,jarA,{...approval,mockupDecisionId:mockup.data.designReview.approved.id},'',params)
   check('route_plan_approved_by_session_user',approved.status===200&&approved.data.approvedBy===f.a.id&&approved.data.sessionId===null)
+  if(f.worker)await runWorkerAcceptance({base:appBase,jarA,jarB,f,check})
   if(f.nextServer){
    // Only local expiry metadata is aged; real GoTrue JWT/refresh tokens are preserved.
    const name=jarA[0].name.replace(/\.\d+$/,'')

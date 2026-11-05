@@ -16,6 +16,8 @@ const routeModule=withRoutes?await import('./website-auth-routes-bundle.mjs'):nu
 const routeBundle=routeModule?.buildRouteRunner();
 const withHttp=process.argv.includes('--next-http');
 if(withHttp&&!withRoutes)throw Error('--next-http requires --routes');
+const withWorker=process.argv.includes('--worker');
+if(withWorker&&!withHttp)throw Error('--worker requires --next-http');
 const nextFixture=withHttp?(await import('./website-auth-next-fixture.mjs')).buildNextFixture():null;
 const IMAGES={
  db:'public.ecr.aws/supabase/postgres@sha256:06ddc7962e11ab0f4f0334fd05671e97c30ea202f6e6a7113800bd3d6e416108',
@@ -125,7 +127,7 @@ try{
  const anon=await request(rest,'/webbuilder_auth_probe');check('anonymous_denied',anon.status===401||anon.status===403);
  const admin=await request(rest,'/webbuilder_auth_probe?select=id',{token:service});check('service_sees_two_fictional_rows',admin.status===200&&admin.data?.length===2);
  if(applicationModule)await applicationModule.testApplicationHTTP({sql,check,request,rest,auth,service,a,b,token:renewed.data.access_token,context:applicationContext});
- if(routeModule)routeModule.runRouteChecks({bundle:routeBundle,nextFixture,docker,sql,check,receipt,client:names.client,service,anon:serviceJWT('anon'),a:{...a,access_token:renewed.data.access_token,refresh_token:renewed.data.refresh_token},b,context:applicationContext});
+ if(routeModule)routeModule.runRouteChecks({bundle:routeBundle,nextFixture,withWorker,docker,sql,check,receipt,client:names.client,service,anon:serviceJWT('anon'),a:{...a,access_token:renewed.data.access_token,refresh_token:renewed.data.refresh_token},b,context:applicationContext});
  const signedOut=await request(auth,'/logout',{token:renewed.data.access_token,method:'POST'});
  check('signout',signedOut.status===204);
  const revoked=await request(auth,'/token?grant_type=refresh_token',{method:'POST',body:{refresh_token:renewed.data.refresh_token}});
@@ -145,11 +147,12 @@ try{
  receipt.finishedAt=new Date().toISOString();
  routeBundle?.cleanup();
  nextFixture?.cleanup();
- receipt.mode=withHttp?'next-http':withRoutes?'application-route-cookies':withApplication?'canonical-application':'auth-probe';
+ receipt.mode=withWorker?'preset-worker':withHttp?'next-http':withRoutes?'application-route-cookies':withApplication?'canonical-application':'auth-probe';
  if(withApplication)receipt.limitations=['Real local Auth and canonical application SQL through PostgREST only; no Next.js UI/cookies, application route/context resolver, worker, hosted acceptance, Storage HTTP or paid model calls.'];
  if(withRoutes)receipt.limitations=['Real route exports invoked in-process with Next request storage and real SSR cookies, GoTrue and PostgREST. No Next HTTP server, middleware, browser UI, worker, hosted acceptance, Storage HTTP or paid models.'];
  if(withHttp)receipt.limitations=['Actual standalone Next HTTP routes and production middleware against real local Auth/canonical SQL. Minimal test app, not full WebBuilder browser UI; no worker, hosted acceptance, Storage HTTP or paid models.'];
- const path=fileURLToPath(new URL('../../../docs/validation/'+(withHttp?'website-real-auth-next-http-20261105.json':withRoutes?'website-real-auth-routes-local-20261105.json':withApplication?'website-real-auth-application-local-20261105.json':'website-real-auth-local-20261105.json'),import.meta.url));
+ if(withWorker)receipt.limitations=['Real Next approvals/budget/queue and canonical preset worker with zero provider steps. No browser UI, drain terminalization, paid generation, media/export or hosted acceptance.'];
+ const path=fileURLToPath(new URL('../../../docs/validation/'+(withWorker?'website-real-auth-worker-20261105.json':withHttp?'website-real-auth-next-http-20261105.json':withRoutes?'website-real-auth-routes-local-20261105.json':withApplication?'website-real-auth-application-local-20261105.json':'website-real-auth-local-20261105.json'),import.meta.url));
  writeFileSync(path,JSON.stringify(receipt,null,2)+'\n');
  console.log(JSON.stringify(receipt,null,2));process.exitCode=receipt.completed?0:1;
 }

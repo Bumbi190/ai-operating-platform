@@ -39,7 +39,7 @@ import { runNewsHunter } from '@/lib/media/news-hunter'
 import { generateVoiceover } from '@/lib/media/elevenlabs'
 import { uploadAudio, uploadTimingData, uploadSceneImage } from '@/lib/media/storage'
 import { generateNewsImages } from '@/lib/media/ideogram'
-import { scoreScript, shouldRegenerate } from '@/lib/media/quality'
+import { scoreScript, shouldRegenerate, assertPassingScriptQuality } from '@/lib/media/quality'
 import { getBackgroundMusicUrl } from '@/lib/media/music'
 import { buildVideoInputProps } from '@/lib/media/video-props'
 import { startLambdaRender, getLambdaRenderProgress } from '@/lib/media/lambda-render'
@@ -335,7 +335,7 @@ Angle: ${news.content_angle}`,
   // ── 6. Quality gate ───────────────────────────────────────────────────────────
   log('quality', 'Scoring script...')
   const sourceContext = `${news.title}\n${news.summary}\n${news.key_insight}`
-  const qualityScore  = await scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope({ projectId: project.id }) }, script.hook, script.script, sourceContext)
+  let qualityScore  = await scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope({ projectId: project.id }) }, script.hook, script.script, sourceContext)
 
   if (shouldRegenerate(qualityScore)) {
     log('quality', `Weak hook (${qualityScore.hook_strength}/10) — regenerating...`)
@@ -362,7 +362,10 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
     const rewriteRaw   = rewriteRes.content[0].type === 'text' ? rewriteRes.content[0].text : ''
     const rewriteClean = rewriteRaw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
     script = JSON.parse(rewriteClean) as ScriptWriterOutput
+    qualityScore = await scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope({ projectId: project.id }) }, script.hook, script.script, sourceContext)
   }
+
+  assertPassingScriptQuality(qualityScore)
 
   log('quality', `Quality: ${qualityScore.overall.toFixed(1)}/10 — "${script.hook}"`)
 

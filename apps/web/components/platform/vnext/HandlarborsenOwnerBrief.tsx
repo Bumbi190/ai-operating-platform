@@ -16,6 +16,11 @@ function sectionCount(section: Pick<CommandCenterSection<unknown>, 'state' | 'to
 function reportStatus(report: MarketplaceReport): { headline: string; detail: string; tone: 'ok' | 'warning' | 'neutral' } {
   if (report.state === 'ok' && report.latest) {
     const latest = report.latest
+    if (latest.dataScope !== 'production_excluding_quarantined_test') return {
+      headline: 'Historisk statistik inkluderar testdata',
+      detail: 'Rapporten kan inte verifiera antal riktiga bilhandlare. Öppna revisionsunderlaget för råvärden.',
+      tone: 'warning',
+    }
     return {
       headline: latest.freshness === 'stale' ? `Rapporten är äldre än ${STALE_AFTER_HOURS} timmar` : 'Senaste rapporten är sparad',
       detail: `${formatStockholm(latest.observedAt)} · ${COMPLETENESS_LABELS[latest.completeness].toLowerCase()} datakvalitet`,

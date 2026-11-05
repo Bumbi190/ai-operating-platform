@@ -31,7 +31,10 @@ export function HandlarborsenExecutiveSummary({
   const verified = byKey.get('companies_verified_total')?.value ?? null
   const trustworthyRatio = registered !== null && verified !== null
     && registered > 0 && verified <= registered
-  const verifiedPercent = trustworthyRatio ? Math.round((verified! / registered!) * 100) : null
+  // Even v2 excludes only quarantined rows, not every classified test or protected
+  // company. The current dataset cannot certify a percentage of real dealers.
+  const verifiedPercent = trustworthyRatio && report.latest.dataScope === 'certified_marketplace_dealers_v3'
+    ? Math.round((verified! / registered!) * 100) : null
   const actualTraffic = traffic?.status === 'available' ? traffic.totalPageviews : null
   const insights = deriveHandlarborsenInsights(report, now)
   const mainInsight = insights.insights.find((insight) => insight.kind === 'proposal')
@@ -40,7 +43,7 @@ export function HandlarborsenExecutiveSummary({
   const chatHref = resolveDestination('chat')?.href
 
   const metrics = [
-    { label: 'Verifierade handlare', value: verified, note: 'Totalt · Handlarbörsen' },
+    { label: 'Verifierade organisationer', value: verified, note: 'Inte verifierat antal verkliga bilhandlare' },
     { label: 'Publicerade fordon', value: byKey.get('vehicles_published_active')?.value ?? null, note: 'Aktuellt antal' },
     { label: 'Bud totalt', value: byKey.get('bids_total')?.value ?? null, note: 'Ackumulerat' },
     { label: 'Sidvisningar', value: actualTraffic, note: 'Senaste 7 UTC-dagarna · PostHog' },
@@ -78,14 +81,14 @@ export function HandlarborsenExecutiveSummary({
           <div className={styles.rowTitle}><BarChart3 size={17} aria-hidden="true" /><h3>Handlare · verifiering</h3></div>
           <div className={styles.progressNumbers}>
             <strong>{verifiedPercent === null ? 'Ej beräkningsbart' : verifiedPercent + ' %'}</strong>
-            <span>{number(verified)} verifierade av {number(registered)} registrerade</span>
+            <span>Organisationstal kan innehålla test- och skyddade företag</span>
           </div>
           {verifiedPercent !== null ? (
             <div className={styles.track} role="progressbar" aria-label="Andel verifierade registrerade företag" aria-valuemin={0} aria-valuemax={100} aria-valuenow={verifiedPercent}>
               <span style={{ width: verifiedPercent + '%' }} />
             </div>
           ) : <p className={styles.missing}>Visas när båda källvärdena finns och kan jämföras.</p>}
-          <p className={styles.explain}>En andel av registrerade företag, inte kundkonvertering eller antal aktiva köpare.</p>
+          <p className={styles.explain}>Andel verkliga bilhandlare kan inte beräknas innan en separat, granskad handlarpopulation finns.</p>
         </article>
 
         <article className={styles.atlas}>

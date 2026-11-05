@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-11-05T12:33:41.936Z",
+  "repository": "Bumbi190/ai-operating-platform",
+  "project": "Omnira",
+  "task": "marketplace registration journey v3 population consistency",
+  "workId": "HB-STAT-CONSISTENCY-20261105",
+  "proposedBranch": "codex/hb-stat-consistency-20261105",
+  "mainSha": "e5099d2ff77b38ad5a3d758bb3a0e1352bef495d",
+  "openPrCount": 123,
+  "worktreeCount": 249,
+  "decision": "review_required",
+  "code": "matching_local_branch",
+  "candidates": [],
+  "branchMatches": [
+    "feat/hb-registration-journey-overview-20261104"
+  ],
+  "worktreeMatches": [
+    {
+      "branch": "feat/hb-registration-journey-overview-20261104",
+      "path": "C:/Users/Andre/Projects/Omnira/.worktrees/hb-registration-journey-overview-20261104",
+      "locked": false
+    }
+  ],
+  "reason": "PR 626 is merged; align marketplace and registration panels with its classified v3 source in an isolated follow-up",
+  "limitations": "Metadata/local-name similarity is a hint; review actual file scope and agent ownership before new work.",
+  "sideEffects": "None. No branch, worktree, PR, commit, deployment or API mutation is performed."
+}

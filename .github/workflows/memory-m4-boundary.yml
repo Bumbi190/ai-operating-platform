@@ -168,8 +168,7 @@ jobs:
 
       - name: Typecheck
         working-directory: apps/web
+        # Full web TS graph exceeds Node's default heap on CI runners.
         env:
-          # The full app type graph exceeds Node 20's default 2 GiB heap.
-          # Preserve the complete nonincremental check; only raise its CI heap.
           NODE_OPTIONS: --max-old-space-size=4096
         run: npx --no tsc --noEmit --incremental false

@@ -253,6 +253,8 @@ test("repository: canonical bootstrap needs an interleaved legacy fixture, so no
     "supabase/migrations/20260603_durable_runs.sql",
     "supabase/migrations/20260609_dream_issues_ledger.sql",
     "supabase/migrations/20260609_manager_task_dream_link.sql",
+    "synthetic/20260605071529_media_insights_multiplatform",
+    "synthetic/20260605213648_media_insights_retention",
     "synthetic/cron_heartbeat_security_only",
     "synthetic/platform_config_security_only",
     "synthetic/platform_config_table_only",
@@ -320,7 +322,7 @@ test("repository: canonical bootstrap needs an interleaved legacy fixture, so no
   assert.deepEqual(codes(plan), [
     "execution_not_run",
     "fixture_interleaved",
-    ...Array(13).fill("fixture_untracked"),
+    ...Array(15).fill("fixture_untracked"),
   ]);
 });
 

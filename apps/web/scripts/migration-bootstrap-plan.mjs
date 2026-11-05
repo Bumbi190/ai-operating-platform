@@ -9,6 +9,8 @@ import { RUNS_DISPATCH_FIXTURE, extractRunsDispatchSchema } from "./migration-bo
 export { RUNS_DISPATCH_FIXTURE } from "./migration-bootstrap-runs.mjs";
 import { SECURITY_FIXTURES, extractSecurityFixture } from "./migration-bootstrap-security.mjs";
 export { SECURITY_FIXTURES } from "./migration-bootstrap-security.mjs";
+import { MEDIA_FIXTURES, extractMediaFixture } from "./migration-bootstrap-media.mjs";
+export { MEDIA_FIXTURES } from "./migration-bootstrap-media.mjs";
 import {
   createdRelations,
   inspectBaselineProvenance,
@@ -120,12 +122,13 @@ export function extractPlatformTokensSchema(source) {
   return { extracted, body };
 }
 
-export const SYNTHETIC_FIXTURES = Object.freeze([PLATFORM_CONFIG_FIXTURE, PLATFORM_TOKENS_FIXTURE, RUNS_DISPATCH_FIXTURE, ...SECURITY_FIXTURES]);
+export const SYNTHETIC_FIXTURES = Object.freeze([PLATFORM_CONFIG_FIXTURE, PLATFORM_TOKENS_FIXTURE, RUNS_DISPATCH_FIXTURE, ...SECURITY_FIXTURES, ...MEDIA_FIXTURES]);
 export function extractSyntheticFixture(step, source) {
   if (step.path === PLATFORM_CONFIG_FIXTURE.path) return extractPlatformConfigTable(source);
   if (step.path === PLATFORM_TOKENS_FIXTURE.path) return extractPlatformTokensSchema(source);
   if (step.path === RUNS_DISPATCH_FIXTURE.path) return extractRunsDispatchSchema(source);
   if (SECURITY_FIXTURES.some((s) => s.path === step.path)) return extractSecurityFixture(step, source);
+  if (MEDIA_FIXTURES.some((s) => s.path === step.path)) return extractMediaFixture(step, source);
   throw new Error("unknown synthetic fixture");
 }
 // Legacy creators of relations first needed after the early window (the provenance scan stops there).
@@ -246,6 +249,7 @@ function columnPrerequisiteProblems(pre, sql, baselineColumns, ordered) {
 export function planCanonicalBootstrap({
   canonical,
   legacy = [],
+  recoveredMedia = [],
   candidates,
   baselinePath = BASELINE_FIXTURE,
   grandfatheredNames,
@@ -524,6 +528,23 @@ export function planCanonicalBootstrap({
       if (source === undefined) throw new Error("security fixture source missing");
       extractSecurityFixture(pin, source);
       plan.fixtures.push({ ...pin, position: target.position, provides: [], providesColumns: [] });
+    } catch (error) {
+      blockers.push({ code: "synthetic_fixture_refused", detail: error.message });
+    }
+  }
+
+  if (plan.fixtures.some((f) => f.provides.includes("media_insights"))) {
+    try {
+      const anchor = names.indexOf("20260602_atlas_bi_foundation.sql");
+      if (anchor < 0 || anchor + 1 >= names.length) throw new Error("missing media BI replay anchor");
+      if (!/ALTER TABLE media_insights ADD COLUMN IF NOT EXISTS platform\s+TEXT NOT NULL DEFAULT 'instagram';/i.test(ordered[anchor].sql))
+        throw new Error("media BI platform prerequisite changed");
+      for (const pin of MEDIA_FIXTURES) {
+        const source = recoveredMedia.find((r) => pin.sourcePath.endsWith("/" + r.name))?.sql;
+        if (source === undefined) throw new Error("recovered media source missing");
+        extractMediaFixture(pin, source);
+        plan.fixtures.push({ ...pin, position: anchor + 1, provides: [], providesColumns: [] });
+      }
     } catch (error) {
       blockers.push({ code: "synthetic_fixture_refused", detail: error.message });
     }

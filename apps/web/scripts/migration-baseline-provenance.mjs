@@ -300,6 +300,7 @@ export function readProvenanceInputs(repo) {
   return {
     canonical: readDir(CANONICAL_DIR),
     legacy: readDir(LEGACY_DIR),
+    recoveredMedia: readDir("docs/verification/web-studio/recovered-history"),
     candidates: BASELINE_CANDIDATES.map((path) => {
       const abs = resolve(repo, path);
       return { path, tracked: false, sql: existsSync(abs) ? readFileSync(abs, "utf8") : null };

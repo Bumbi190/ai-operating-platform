@@ -1,0 +1,532 @@
+{
+    "guardCases":  [
+                       {
+                           "label":  "empty",
+                           "passed":  true
+                       },
+                       {
+                           "label":  "nonempty",
+                           "passed":  true
+                       },
+                       {
+                           "label":  "existing_kind",
+                           "passed":  true
+                       }
+                   ],
+    "enqueue":  true,
+    "detail":  {
+                   "columns":  [
+                                   {
+                                       "table_name":  "media_insights",
+                                       "column_name":  "avg_view_pct",
+                                       "data_type":  "numeric",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "media_insights",
+                                       "column_name":  "comments",
+                                       "data_type":  "integer",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "media_insights",
+                                       "column_name":  "facebook_post_id",
+                                       "data_type":  "text",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "media_insights",
+                                       "column_name":  "fetched_at",
+                                       "data_type":  "timestamp with time zone",
+                                       "not_null":  true,
+                                       "default_expression":  "now()"
+                                   },
+                                   {
+                                       "table_name":  "media_insights",
+                                       "column_name":  "followers_gained",
+                                       "data_type":  "integer",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "media_insights",
+                                       "column_name":  "id",
+                                       "data_type":  "uuid",
+                                       "not_null":  true,
+                                       "default_expression":  "gen_random_uuid()"
+                                   },
+                                   {
+                                       "table_name":  "media_insights",
+                                       "column_name":  "impressions",
+                                       "data_type":  "integer",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "media_insights",
+                                       "column_name":  "instagram_media_id",
+                                       "data_type":  "text",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "media_insights",
+                                       "column_name":  "likes",
+                                       "data_type":  "integer",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "media_insights",
+                                       "column_name":  "link_clicks",
+                                       "data_type":  "integer",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "media_insights",
+                                       "column_name":  "platform",
+                                       "data_type":  "text",
+                                       "not_null":  true,
+                                       "default_expression":  "\u0027instagram\u0027::text"
+                                   },
+                                   {
+                                       "table_name":  "media_insights",
+                                       "column_name":  "profile_visits",
+                                       "data_type":  "integer",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "media_insights",
+                                       "column_name":  "project_id",
+                                       "data_type":  "uuid",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "media_insights",
+                                       "column_name":  "published_at",
+                                       "data_type":  "timestamp with time zone",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "media_insights",
+                                       "column_name":  "reach",
+                                       "data_type":  "integer",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "media_insights",
+                                       "column_name":  "saved",
+                                       "data_type":  "integer",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "media_insights",
+                                       "column_name":  "script_id",
+                                       "data_type":  "uuid",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "media_insights",
+                                       "column_name":  "shares",
+                                       "data_type":  "integer",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "media_insights",
+                                       "column_name":  "total_interactions",
+                                       "data_type":  "integer",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "media_insights",
+                                       "column_name":  "views",
+                                       "data_type":  "integer",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "media_insights",
+                                       "column_name":  "youtube_video_id",
+                                       "data_type":  "text",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "action_class",
+                                       "data_type":  "text",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "action_kind",
+                                       "data_type":  "text",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "action_outcome",
+                                       "data_type":  "text",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "action_phase",
+                                       "data_type":  "text",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "attempt_group",
+                                       "data_type":  "uuid",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "attempts",
+                                       "data_type":  "integer",
+                                       "not_null":  true,
+                                       "default_expression":  "0"
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "authorization_id",
+                                       "data_type":  "uuid",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "authorized_at",
+                                       "data_type":  "timestamp with time zone",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "cancel_reason",
+                                       "data_type":  "text",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "cancel_requested",
+                                       "data_type":  "boolean",
+                                       "not_null":  true,
+                                       "default_expression":  "false"
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "cancelled_by",
+                                       "data_type":  "text",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "claim_id",
+                                       "data_type":  "uuid",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "claimed_at",
+                                       "data_type":  "timestamp with time zone",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "context",
+                                       "data_type":  "jsonb",
+                                       "not_null":  true,
+                                       "default_expression":  "\u0027{}\u0027::jsonb"
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "created_at",
+                                       "data_type":  "timestamp with time zone",
+                                       "not_null":  true,
+                                       "default_expression":  "now()"
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "dispatch_started_at",
+                                       "data_type":  "timestamp with time zone",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "error",
+                                       "data_type":  "text",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "error_history",
+                                       "data_type":  "jsonb",
+                                       "not_null":  true,
+                                       "default_expression":  "\u0027[]\u0027::jsonb"
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "finished_at",
+                                       "data_type":  "timestamp with time zone",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "human_story_request_id",
+                                       "data_type":  "uuid",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "id",
+                                       "data_type":  "uuid",
+                                       "not_null":  true,
+                                       "default_expression":  "gen_random_uuid()"
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "idempotency_key",
+                                       "data_type":  "text",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "input",
+                                       "data_type":  "jsonb",
+                                       "not_null":  true,
+                                       "default_expression":  "\u0027{}\u0027::jsonb"
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "kind",
+                                       "data_type":  "text",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "last_error",
+                                       "data_type":  "text",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "lease_until",
+                                       "data_type":  "timestamp with time zone",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "max_attempts",
+                                       "data_type":  "integer",
+                                       "not_null":  true,
+                                       "default_expression":  "3"
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "outcome_recorded_at",
+                                       "data_type":  "timestamp with time zone",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "policy_class",
+                                       "data_type":  "text",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "project_id",
+                                       "data_type":  "uuid",
+                                       "not_null":  true,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "reconciliation_reason",
+                                       "data_type":  "text",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "reconciliation_required",
+                                       "data_type":  "boolean",
+                                       "not_null":  true,
+                                       "default_expression":  "false"
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "remote_confirmed_at",
+                                       "data_type":  "timestamp with time zone",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "remote_operation_id",
+                                       "data_type":  "text",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "side_effect_summary",
+                                       "data_type":  "jsonb",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "started_at",
+                                       "data_type":  "timestamp with time zone",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "status",
+                                       "data_type":  "text",
+                                       "not_null":  true,
+                                       "default_expression":  "\u0027pending\u0027::text"
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "steps_snapshot",
+                                       "data_type":  "jsonb",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "target_version_hash",
+                                       "data_type":  "text",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "workflow_def_hash",
+                                       "data_type":  "text",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "workflow_from_state",
+                                       "data_type":  "text",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "workflow_id",
+                                       "data_type":  "uuid",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   },
+                                   {
+                                       "table_name":  "runs",
+                                       "column_name":  "workflow_instance_id",
+                                       "data_type":  "uuid",
+                                       "not_null":  false,
+                                       "default_expression":  null
+                                   }
+                               ]
+               },
+    "mediaIndex":  {
+                       "definition":  "CREATE UNIQUE INDEX media_insights_script_platform_key ON public.media_insights USING btree (script_id, platform)",
+                       "unique":  true,
+                       "valid":  true
+                   },
+    "mediaGuards":  [
+                        {
+                            "path":  "synthetic/20260605071529_media_insights_multiplatform",
+                            "variant":  "empty",
+                            "passed":  true
+                        },
+                        {
+                            "path":  "synthetic/20260605071529_media_insights_multiplatform",
+                            "variant":  "nonempty",
+                            "passed":  true
+                        },
+                        {
+                            "path":  "synthetic/20260605071529_media_insights_multiplatform",
+                            "variant":  "existing_column",
+                            "passed":  true
+                        },
+                        {
+                            "path":  "synthetic/20260605213648_media_insights_retention",
+                            "variant":  "empty",
+                            "passed":  true
+                        },
+                        {
+                            "path":  "synthetic/20260605213648_media_insights_retention",
+                            "variant":  "nonempty",
+                            "passed":  true
+                        },
+                        {
+                            "path":  "synthetic/20260605213648_media_insights_retention",
+                            "variant":  "existing_column",
+                            "passed":  true
+                        }
+                    ],
+    "roleCases":  [
+                      {
+                          "label":  "anon_config_hidden",
+                          "passed":  true
+                      },
+                      {
+                          "label":  "authenticated_config_readonly",
+                          "passed":  true
+                      },
+                      {
+                          "label":  "anon_heartbeat_denied",
+                          "passed":  true
+                      },
+                      {
+                          "label":  "authenticated_heartbeat_denied",
+                          "passed":  true
+                      },
+                      {
+                          "label":  "service_direct_stop_change_denied",
+                          "passed":  true
+                      },
+                      {
+                          "label":  "service_access",
+                          "passed":  true
+                      }
+                  ]
+}

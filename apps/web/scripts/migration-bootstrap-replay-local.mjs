@@ -11,7 +11,7 @@ import { basename, dirname, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { readProvenanceInputs } from "./migration-baseline-provenance.mjs";
-import { BASELINE_FIXTURE, planCanonicalBootstrap } from "./migration-bootstrap-plan.mjs";
+import { BASELINE_FIXTURE, SYNTHETIC_FIXTURES, extractSyntheticFixture, planCanonicalBootstrap } from "./migration-bootstrap-plan.mjs";
 import { CANONICAL_DIR, LEGACY_DIR, sha256 } from "./migration-replay-preflight.mjs";
 
 // Same pinned images and platform prerequisites as verify-calendar-full-ledger-local.mjs.
@@ -55,7 +55,10 @@ class Refusal extends Error {
 const redact = (text) => String(text ?? "").replaceAll(SYNTHETIC_PASSWORD, "[synthetic]").slice(0, 2000);
 
 export function stepPath(step) {
+  if (step?.kind === "synthetic")
+    return SYNTHETIC_FIXTURES.some((fixture) => Object.entries(fixture).every(([key, value]) => step[key] === value)) ? step.path : null;
   if (step?.kind === "canonical") return CANONICAL_NAME.test(step.name ?? "") ? `${CANONICAL_DIR}/${step.name}` : null;
+  if (SYNTHETIC_FIXTURES.some((fixture) => step?.path === fixture.sourcePath)) return null;
   if (step?.kind === "fixture") return step.path === BASELINE_FIXTURE || LEGACY_PATH.test(step.path ?? "") ? step.path : null;
   return null;
 }
@@ -85,9 +88,11 @@ export function planProblems(plan) {
 export function loadVerifiedSequence(sequence, read) {
   return sequence.map((step, index) => {
     const path = stepPath(step);
+    if (!path) throw new Refusal("step_not_allowed", "synthetic pins or step path not allowed");
     let body;
     try {
-      body = read(path).replace(/\r\n/g, "\n");
+      const source = read(step.kind === "synthetic" ? step.sourcePath : path).replace(/\r\n/g, "\n");
+      body = step.kind === "synthetic" ? extractSyntheticFixture(step, source).body : source;
     } catch (error) {
       throw new Refusal("sequence_unreadable", `${path}: ${error.message}`);
     }
@@ -97,7 +102,16 @@ export function loadVerifiedSequence(sequence, read) {
   });
 }
 
-const stepRef = ({ index, kind, path, lfSha256 }) => ({ index, kind, path, lfSha256 });
+const stepRef = ({ index, kind, path, lfSha256 }) => {
+  const fixture = kind === "synthetic" ? SYNTHETIC_FIXTURES.find((s) => s.path === path) : null;
+  return {
+    index, kind, path, lfSha256,
+    ...(fixture ? {
+      sourcePath: fixture.sourcePath, sourceLfSha256: fixture.sourceLfSha256,
+      extractedLfSha256: fixture.extractedLfSha256, limitation: fixture.limitation,
+    } : {}),
+  };
+};
 
 export function replaySteps({ steps, apply, limit = steps.length }) {
   const applied = [];

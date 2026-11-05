@@ -7,6 +7,10 @@ import {
   BASELINE_FIXTURE,
   COLUMN_PREREQUISITES,
   DURABLE_RUNS_FIXTURE,
+  PLATFORM_CONFIG_FIXTURE,
+  PLATFORM_TOKENS_FIXTURE,
+  extractPlatformConfigTable,
+  extractPlatformTokensSchema,
   planCanonicalBootstrap,
   SUPPLEMENTAL_FIXTURES,
 } from "./migration-bootstrap-plan.mjs";
@@ -15,6 +19,100 @@ import { sha256 } from "./migration-replay-preflight.mjs";
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const inputs = readProvenanceInputs(repo);
 const codes = (plan) => plan.blockers.map((b) => b.code).sort();
+
+test("platform_tokens extracts exactly four DDL statements, never the credential backfill", () => {
+  const source = inputs.legacy.find((f) => f.name === "20260602_g1_multitenant_platform_tokens.sql").sql;
+  const { extracted, body } = extractPlatformTokensSchema(source);
+  assert.equal(extracted, `alter table public.platform_tokens add column if not exists project_id uuid references public.projects(id) on delete cascade;
+alter table public.platform_tokens add column if not exists account_id text;
+alter table public.platform_tokens drop constraint if exists platform_tokens_platform_token_type_key;
+create unique index if not exists platform_tokens_project_platform_type_key
+  on public.platform_tokens (project_id, platform, token_type);
+`);
+  assert.equal(extracted.split(";").length, 5);
+  assert.equal(sha256(extracted), "232551356dbbf8f28409890de69bd784ab6d11aef4241d1f717f3e1d35eef543");
+  assert.ok(body.endsWith(extracted));
+  assert.match(body, /^LOCK TABLE ONLY public\.platform_tokens IN ACCESS EXCLUSIVE MODE;/);
+  assert.ok(body.indexOf("IF EXISTS (SELECT 1 FROM ONLY public.platform_tokens)") < body.indexOf(extracted));
+  assert.match(body, /expected old platform_tokens schema/);
+  assert.match(body, /rolsuper OR r.rolbypassrls OR c.relowner = r.oid/);
+  assert.match(body, /relrowsecurity AND NOT c.relforcerowsecurity/);
+  assert.match(body, /names IS DISTINCT FROM ARRAY\['id','platform','token_type','access_token','expires_at','refreshed_at','created_at'\]/);
+  assert.match(body, /defaults IS DISTINCT FROM ARRAY/);
+  assert.match(body, /c.conname = 'platform_tokens_platform_token_type_key'.*c.conkey = ARRAY\[2,3\]/);
+  assert.match(body, /pg_catalog.pg_policy/);
+  assert.match(body, /pg_catalog.pg_inherits/);
+  assert.doesNotMatch(body, /update\s+public\.platform_tokens|ai-media-automation|select\s+(?:\*|access_token)\s+from|GRANT\s|REVOKE\s|DISABLE ROW LEVEL SECURITY/i);
+  assert.throws(() => extractPlatformTokensSchema(source + "\n-- changed"), /source.*SHA/i);
+  assert.deepEqual(extractPlatformTokensSchema(source.replace(/\r?\n/g, "\r\n")), { extracted, body });
+});
+
+test("platform_tokens synthetic prerequisite follows creation and preserves canonical credential guards", () => {
+  const plan = planCanonicalBootstrap(inputs);
+  const at = plan.sequence.findIndex((s) => s.path === PLATFORM_TOKENS_FIXTURE.path);
+  assert.ok(at > plan.sequence.findIndex((s) => s.name === "20260527_platform_tokens.sql"));
+  assert.deepEqual(plan.sequence[at], PLATFORM_TOKENS_FIXTURE);
+  assert.equal(plan.sequence[at + 1].name, "20260914120300_platform_tokens_project_binding.sql");
+  assert.ok(plan.sequence.findIndex((s) => s.name === "20260914090000_platform_tokens_client_revoke.sql") < at);
+  assert.ok(!plan.sequence.some((s) => s.kind === "fixture" && s.path === PLATFORM_TOKENS_FIXTURE.sourcePath));
+  for (const changed of [null, (sql) => sql + "\n-- drift"]) {
+    const legacy = inputs.legacy.flatMap((f) => f.name !== "20260602_g1_multitenant_platform_tokens.sql" ? [f] : changed ? [{ ...f, sql: changed(f.sql) }] : []);
+    const result = planCanonicalBootstrap({ ...inputs, legacy });
+    assert.ok(codes(result).includes("synthetic_fixture_refused"));
+    assert.ok(!result.sequence.some((s) => s.path === PLATFORM_TOKENS_FIXTURE.path));
+  }
+  const noBase = planCanonicalBootstrap({ ...inputs, canonical: inputs.canonical.filter((m) => m.name !== "20260527_platform_tokens.sql") });
+  assert.ok(codes(noBase).includes("synthetic_fixture_refused"));
+  assert.ok(!noBase.sequence.some((s) => s.path === PLATFORM_TOKENS_FIXTURE.path));
+});
+
+test("platform_config extracts only the pinned CREATE and qualifies it with strict absence semantics", () => {
+  const source = inputs.legacy.find((f) => f.name === "20260528_pass_a_safeguards.sql").sql;
+  const { extracted, body } = extractPlatformConfigTable(source);
+  assert.equal(sha256(extracted), "6d79a5b176cb70f544c6e149693b01f1349262847d27d3c98b5250f22c7bfe18");
+  assert.equal(body, `CREATE TABLE public.platform_config (
+  id                   INT PRIMARY KEY DEFAULT 1,
+  automation_paused    BOOLEAN     NOT NULL DEFAULT FALSE,
+  max_daily_renders    INT         NOT NULL DEFAULT 4,
+  max_retry_attempts   INT         NOT NULL DEFAULT 3,
+  paused_at            TIMESTAMPTZ,
+  paused_reason        TEXT,
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT single_row CHECK (id = 1)
+);
+`);
+  assert.equal(body.split(";").length, 2);
+  assert.doesNotMatch(body, /IF NOT EXISTS|UPDATE |INSERT |ALTER |POLICY|GRANT|REVOKE|media_scripts|runs\b/i);
+  assert.throws(() => extractPlatformConfigTable(source + "\n-- drift"), /source.*SHA/i);
+  assert.throws(() => extractPlatformConfigTable(source.replace("DEFAULT 4", "DEFAULT 40")), /source.*SHA/i);
+  assert.deepEqual(extractPlatformConfigTable(source.replace(/\r?\n/g, "\r\n")), { extracted, body });
+});
+
+test("platform_config synthetic step precedes budgets without applying the full legacy file", () => {
+  const plan = planCanonicalBootstrap(inputs);
+  const at = plan.sequence.findIndex((s) => s.kind === "synthetic");
+  assert.ok(at > 0);
+  assert.deepEqual(plan.sequence[at], PLATFORM_CONFIG_FIXTURE);
+  assert.equal(plan.sequence[at + 1].name, "20260831_budget_scopes.sql");
+  assert.ok(!plan.sequence.some((s) => s.kind === "fixture" && s.path === PLATFORM_CONFIG_FIXTURE.sourcePath));
+  assert.match(plan.sequence[at].limitation, /No row seeding.*RLS.*ACL/);
+  for (const changed of [null, (sql) => sql + "\n-- drift"]) {
+    const legacy = inputs.legacy.flatMap((f) => f.name !== "20260528_pass_a_safeguards.sql" ? [f] : changed ? [{ ...f, sql: changed(f.sql) }] : []);
+    const refused = planCanonicalBootstrap({ ...inputs, legacy });
+    assert.ok(codes(refused).includes("synthetic_fixture_refused"));
+    assert.ok(!refused.sequence.some((s) => s.path === PLATFORM_CONFIG_FIXTURE.path));
+  }
+  const preexisting = planCanonicalBootstrap({ ...inputs, candidates: inputs.candidates.map((c) => c.path !== BASELINE_FIXTURE ? c : {
+    ...c, sql: c.sql + "\ncreate table public.platform_config(id int);"
+  }) });
+  assert.ok(codes(preexisting).includes("synthetic_fixture_refused"));
+  const unsafe = planCanonicalBootstrap({ ...inputs, supplemental: [
+    ...SUPPLEMENTAL_FIXTURES,
+    { name: "20260528_pass_a_safeguards.sql", lfSha256: PLATFORM_CONFIG_FIXTURE.sourceLfSha256 },
+  ] });
+  assert.ok(codes(unsafe).includes("synthetic_fixture_refused"));
+  assert.ok(!unsafe.sequence.some((s) => s.kind === "fixture" && s.path === PLATFORM_CONFIG_FIXTURE.sourcePath));
+});
 
 test("full durable runs fixture follows pg_cron and precedes every canonical function replacement", () => {
   const plan = planCanonicalBootstrap(inputs);
@@ -88,6 +186,8 @@ test("repository: canonical bootstrap needs an interleaved legacy fixture, so no
     "supabase/migrations/20260603_durable_runs.sql",
     "supabase/migrations/20260609_dream_issues_ledger.sql",
     "supabase/migrations/20260609_manager_task_dream_link.sql",
+    "synthetic/platform_config_table_only",
+    "synthetic/platform_tokens_schema_only",
   ]);
   const cron = byPath["supabase/migrations/20260528_pg_cron_setup.sql"];
   assert.deepEqual([cron.provides, cron.requires, cron.preexisting, cron.supplemental], [["omnira_cron"], [], true, false]);
@@ -145,11 +245,13 @@ test("repository: canonical bootstrap needs an interleaved legacy fixture, so no
   assert.deepEqual([link.position, link.preexisting], [0, true]);
   assert.ok(at((s) => s.path === link.path) < at((s) => s.name === "20260820_manager_tasks_work_packages.sql"));
   assert.equal(plan.sequence.filter((s) => s.path === link.path).length, 1);
-  for (const f of plan.fixtures.filter((f) => f !== link && !f.path.endsWith("/20260603_durable_runs.sql"))) assert.deepEqual(f.providesColumns, []);
+  for (const f of plan.fixtures.filter((f) => f.kind !== "synthetic" && f !== link && !f.path.endsWith("/20260603_durable_runs.sql"))) assert.deepEqual(f.providesColumns, []);
 
   assert.deepEqual(codes(plan), [
     "execution_not_run",
     "fixture_interleaved",
+    "fixture_untracked",
+    "fixture_untracked",
     "fixture_untracked",
     "fixture_untracked",
     "fixture_untracked",

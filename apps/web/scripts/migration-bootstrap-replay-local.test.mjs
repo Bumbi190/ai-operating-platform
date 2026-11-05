@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readProvenanceInputs } from "./migration-baseline-provenance.mjs";
-import { BASELINE_FIXTURE, planCanonicalBootstrap } from "./migration-bootstrap-plan.mjs";
+import { BASELINE_FIXTURE, PLATFORM_CONFIG_FIXTURE, PLATFORM_TOKENS_FIXTURE, planCanonicalBootstrap } from "./migration-bootstrap-plan.mjs";
 import {
   LABEL,
   LABEL_KEY,
@@ -20,6 +20,118 @@ import { sha256 } from "./migration-replay-preflight.mjs";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const repoPlan = planCanonicalBootstrap(readProvenanceInputs(repo));
+
+test("platform_tokens synthetic pins and full-file prohibition fail closed before Docker", async () => {
+  const step = PLATFORM_TOKENS_FIXTURE;
+  const disk = (path) => readFileSync(resolve(repo, path), "utf8");
+  for (const key of ["sourceLfSha256", "extractedLfSha256", "lfSha256"]) {
+    const changed = { ...step, [key]: "0".repeat(64) };
+    assert.throws(() => loadVerifiedSequence([changed], disk), /synthetic|pin/i);
+    const fake = fakeDocker();
+    const receipt = await run(fake, { plan: synthetic({ sequence: [synthetic().sequence[0], changed] }) });
+    assert.equal(receipt.refusal?.code, "plan_not_executable");
+    assert.deepEqual(fake.calls, []);
+  }
+  const fake = fakeDocker();
+  const receipt = await run(fake, {
+    plan: synthetic({ sequence: [synthetic().sequence[0], step] }),
+    read: (path) => path === step.sourcePath ? disk(path) + "\n-- drift" : read(path),
+  });
+  assert.equal(receipt.refusal?.code, "sequence_unreadable");
+  assert.deepEqual(fake.calls, []);
+  assert.throws(() => loadVerifiedSequence([{ kind: "fixture", path: step.sourcePath, lfSha256: step.sourceLfSha256 }], disk), /not allowed/);
+});
+
+test("token lock, catalog/empty guard and DDL are one single-transaction psql call with pinned receipt", async () => {
+  const step = PLATFORM_TOKENS_FIXTURE;
+  const fake = fakeDocker({ failOn: "NEVER_MATCHES" });
+  const receipt = await run(fake, {
+    plan: synthetic({ sequence: [synthetic().sequence[0], step] }),
+    read: (path) => path === step.sourcePath ? readFileSync(resolve(repo, path), "utf8") : read(path),
+  });
+  assert.equal(receipt.completed, true);
+  const bodies = fake.sql.filter((s) => s.startsWith("LOCK TABLE ONLY public.platform_tokens"));
+  assert.equal(bodies.length, 1);
+  assert.match(bodies[0], /ACCESS EXCLUSIVE MODE;[\s\S]*IF EXISTS \(SELECT 1 FROM ONLY public.platform_tokens\)[\s\S]*alter table public.platform_tokens add column/);
+  for (const args of fake.calls.filter((a) => a.includes("psql"))) {
+    assert.ok(args.includes("--single-transaction"));
+    assert.ok(args.includes("ON_ERROR_STOP=1"));
+  }
+  assert.equal(receipt.applied[1].sourcePath, step.sourcePath);
+  assert.equal(receipt.applied[1].extractedLfSha256, step.extractedLfSha256);
+  assert.equal(receipt.cleanup, "removed");
+});
+
+test("any token guard SQL error stops replay and cleans up without a backfill fallback", async () => {
+  const step = PLATFORM_TOKENS_FIXTURE;
+  const fake = fakeDocker({ failOn: "LOCK TABLE ONLY public.platform_tokens" });
+  const receipt = await run(fake, {
+    plan: synthetic({ sequence: [synthetic().sequence[0], step, synthetic().sequence[1]] }),
+    read: (path) => path === step.sourcePath ? readFileSync(resolve(repo, path), "utf8") : read(path),
+  });
+  assert.equal(receipt.failure?.kind, "synthetic");
+  assert.equal(receipt.applied.length, 1);
+  assert.equal(receipt.completed, false);
+  assert.ok(!fake.sql.includes(files["apps/web/supabase/migrations/20260520_a.sql"]));
+  assert.equal(receipt.cleanup, "removed");
+});
+
+test("synthetic fixture verifies every pin before Docker and never loads full legacy SQL as a fixture", async () => {
+  const disk = (path) => readFileSync(resolve(repo, path), "utf8");
+  const step = PLATFORM_CONFIG_FIXTURE;
+  const [loaded] = loadVerifiedSequence([step], disk);
+  assert.match(loaded.body, /^CREATE TABLE public\.platform_config \(/);
+  assert.doesNotMatch(loaded.body, /UPDATE |INSERT |ALTER |POLICY|GRANT|media_scripts|runs\b/i);
+  for (const key of ["sourceLfSha256", "extractedLfSha256", "lfSha256"]) {
+    const changed = { ...step, [key]: "0".repeat(64) };
+    assert.throws(() => loadVerifiedSequence([changed], disk), /synthetic|pin/i);
+    const fake = fakeDocker();
+    const receipt = await run(fake, { plan: synthetic({ sequence: [synthetic().sequence[0], changed] }) });
+    assert.equal(receipt.refusal?.code, "plan_not_executable");
+    assert.deepEqual(fake.calls, []);
+  }
+  assert.throws(() => loadVerifiedSequence([step], (path) => disk(path) + "\n-- changed source"), /SHA|sha/);
+  const drifted = fakeDocker();
+  const refused = await run(drifted, {
+    plan: synthetic({ sequence: [synthetic().sequence[0], step] }),
+    read: (path) => path === step.sourcePath ? disk(path) + "\n-- changed source" : read(path),
+  });
+  assert.equal(refused.refusal?.code, "sequence_unreadable");
+  assert.deepEqual(drifted.calls, []);
+  const full = { kind: "fixture", path: step.sourcePath, lfSha256: step.sourceLfSha256 };
+  assert.throws(() => loadVerifiedSequence([full], disk), /not allowed/);
+  assert.ok(planProblems(synthetic({ sequence: [synthetic().sequence[0], full] })).some((p) => /not allowed/.test(p)));
+});
+
+test("synthetic receipt preserves extraction provenance and omitted row/RLS/ACL limitation", async () => {
+  const step = PLATFORM_CONFIG_FIXTURE;
+  const plan = synthetic({ sequence: [synthetic().sequence[0], step] });
+  const fake = fakeDocker({ failOn: "NEVER_MATCHES" });
+  const receipt = await run(fake, { plan, read: (path) => path === step.sourcePath ? readFileSync(resolve(repo, path), "utf8") : read(path) });
+  assert.equal(receipt.completed, true);
+  assert.equal(receipt.replayReady, false);
+  assert.equal(receipt.applied[1].sourceLfSha256, step.sourceLfSha256);
+  assert.equal(receipt.applied[1].extractedLfSha256, step.extractedLfSha256);
+  assert.match(receipt.applied[1].limitation, /No row seeding.*RLS.*ACL/);
+  const create = fake.sql.filter((s) => s.startsWith("CREATE TABLE public.platform_config"));
+  assert.equal(create.length, 1);
+  assert.equal(create[0].split(";").length, 2);
+  assert.equal(receipt.cleanup, "removed");
+});
+
+test("synthetic CREATE failure stops replay and preserves cleanup without any fallback SQL", async () => {
+  const step = PLATFORM_CONFIG_FIXTURE;
+  const fake = fakeDocker({ failOn: "CREATE TABLE public.platform_config" });
+  const receipt = await run(fake, {
+    plan: synthetic({ sequence: [synthetic().sequence[0], step, synthetic().sequence[1]] }),
+    read: (path) => path === step.sourcePath ? readFileSync(resolve(repo, path), "utf8") : read(path),
+  });
+  assert.equal(receipt.failure?.kind, "synthetic");
+  assert.equal(receipt.completed, false);
+  assert.equal(receipt.applied.length, 1);
+  assert.ok(!fake.sql.includes(files["apps/web/supabase/migrations/20260520_a.sql"]));
+  assert.equal(receipt.cleanup, "removed");
+});
 
 test("repository plan is executable in shape and every pinned file SHA verifies from disk", () => {
   assert.deepEqual(planProblems(repoPlan), []);

@@ -1,6 +1,6 @@
 // Offline bootstrap plan. Reads files only: no SQL execution, Docker, network or secrets.
-// Composes existing, unmodified SQL (one untracked baseline candidate plus the legacy creators the
-// provenance report names) into an ordered fixture sequence for a disposable local replay of every
+// Composes existing SQL and explicitly pinned, guarded schema-only extractions
+// into an ordered fixture sequence for a disposable local replay of every
 // canonical migration. A plan is never replay evidence: ok, replayReady and executionValidated stay false.
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -15,6 +15,113 @@ import { LEGACY_DIR, sha256 } from "./migration-replay-preflight.mjs";
 
 // Same baseline the historical ledger replay (verify-calendar-full-ledger-local.mjs) applies.
 export const BASELINE_FIXTURE = "packages/db/full_schema_run_in_supabase.sql";
+// This source is NEVER executable as a full fixture: it updates unrelated operational tables.
+export const PLATFORM_CONFIG_FIXTURE = Object.freeze({
+  kind: "synthetic",
+  path: "synthetic/platform_config_table_only",
+  sourcePath: "supabase/migrations/20260528_pass_a_safeguards.sql",
+  sourceLfSha256: "4665ac611487c0d833914c2b2e40de11b2e0433e9ed89d172b9b0e463e4c0c04",
+  extractedLfSha256: "6d79a5b176cb70f544c6e149693b01f1349262847d27d3c98b5250f22c7bfe18",
+  lfSha256: "8b7a5960642aa6c02b9a0bc192d05c46a1d19f9af90d103f9c0a67455e396355",
+  limitation: "No row seeding, RLS or explicit ACL reconstruction. Executor default privileges may apply; no production security parity claim.",
+});
+const PLATFORM_CONFIG_FIRST_USE = "20260831_budget_scopes.sql";
+
+export function extractPlatformConfigTable(source) {
+  const lf = source.replace(/\r\n/g, "\n");
+  if (sha256(lf) !== PLATFORM_CONFIG_FIXTURE.sourceLfSha256) throw new Error("platform_config source SHA mismatch");
+  // Safe only for these exact reviewed source bytes, not a general SQL extraction parser.
+  const matches = [...lf.matchAll(/^CREATE TABLE IF NOT EXISTS platform_config \([\s\S]*?^\);/gm)];
+  if (matches.length !== 1) throw new Error("platform_config CREATE extraction ambiguous");
+  const extracted = matches[0][0] + "\n";
+  if (sha256(extracted) !== PLATFORM_CONFIG_FIXTURE.extractedLfSha256) throw new Error("platform_config extracted SHA mismatch");
+  // Plain CREATE is the atomic absence guard: never accept an existing relation with unknown shape.
+  // Qualifying the target and requiring absence are the only changes to the reviewed statement.
+  const body = extracted.replace("CREATE TABLE IF NOT EXISTS platform_config (", "CREATE TABLE public.platform_config (");
+  if (sha256(body) !== PLATFORM_CONFIG_FIXTURE.lfSha256) throw new Error("platform_config executable SHA mismatch");
+  return { extracted, body };
+}
+
+export const PLATFORM_TOKENS_FIXTURE = Object.freeze({
+  kind: "synthetic",
+  path: "synthetic/platform_tokens_schema_only",
+  sourcePath: "supabase/migrations/20260602_g1_multitenant_platform_tokens.sql",
+  sourceLfSha256: "88a3f8e1f95cf3334dbedc11edb924a316d630ea52f7d47458665766db712d98",
+  extractedLfSha256: "232551356dbbf8f28409890de69bd784ab6d11aef4241d1f717f3e1d35eef543",
+  lfSha256: "45fc6471291c6bd21b41c458d4dc4e713f6f50873ed285176a162f29759e704b",
+  limitation: "Empty-token offline schema prerequisite only; no credential backfill, row seeding, RLS or ACL changes; no hosted parity claim.",
+});
+const PLATFORM_TOKENS_FIRST_USE = "20260914120300_platform_tokens_project_binding.sql";
+// LOCK requires a surrounding transaction. The executor sends this entire body once with
+// --single-transaction and ON_ERROR_STOP. Nothing catches a failed lock, catalog read or empty check.
+// Table ownership/bypass is required so RLS cannot hide credential rows from SELECT 1.
+const PLATFORM_TOKENS_GUARD = `LOCK TABLE ONLY public.platform_tokens IN ACCESS EXCLUSIVE MODE;
+DO $guard$
+DECLARE
+  target oid := 'public.platform_tokens'::regclass;
+  names text[]; types oid[]; required boolean[]; defaults text[];
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_roles r ON r.rolname = current_user
+    WHERE c.oid = target AND c.relkind = 'r' AND NOT c.relispartition
+      AND c.relrowsecurity AND NOT c.relforcerowsecurity
+      AND (r.rolsuper OR r.rolbypassrls OR c.relowner = r.oid)
+  ) OR EXISTS (SELECT 1 FROM pg_catalog.pg_inherits WHERE inhrelid = target OR inhparent = target) THEN
+    RAISE EXCEPTION 'expected old platform_tokens schema and unfiltered read authority';
+  END IF;
+  IF EXISTS (SELECT 1 FROM ONLY public.platform_tokens) THEN
+    RAISE EXCEPTION 'platform_tokens must be empty for offline schema fixture';
+  END IF;
+  SELECT array_agg(a.attname::text ORDER BY a.attnum), array_agg(a.atttypid ORDER BY a.attnum),
+         array_agg(a.attnotnull ORDER BY a.attnum),
+         array_agg(coalesce(pg_catalog.pg_get_expr(d.adbin, d.adrelid), '<none>') ORDER BY a.attnum)
+    INTO names, types, required, defaults
+    FROM pg_catalog.pg_attribute a LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+    WHERE a.attrelid = target AND a.attnum > 0 AND NOT a.attisdropped;
+  IF names IS DISTINCT FROM ARRAY['id','platform','token_type','access_token','expires_at','refreshed_at','created_at']::text[]
+     OR types IS DISTINCT FROM ARRAY['uuid'::regtype::oid,'text'::regtype::oid,'text'::regtype::oid,'text'::regtype::oid,
+                                    'timestamptz'::regtype::oid,'timestamptz'::regtype::oid,'timestamptz'::regtype::oid]
+     OR required IS DISTINCT FROM ARRAY[true,true,true,true,false,true,true]
+     OR defaults IS DISTINCT FROM ARRAY['gen_random_uuid()','<none>',$default$'user'::text$default$,'<none>','<none>','now()','now()']::text[]
+     OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid = target AND attnum > 0
+                AND (attisdropped OR atttypmod <> -1 OR attidentity <> '' OR attgenerated <> '')) THEN
+    RAISE EXCEPTION 'expected old platform_tokens schema: columns/defaults';
+  END IF;
+  IF (SELECT count(*) FROM pg_catalog.pg_constraint WHERE conrelid = target) <> 2
+     OR (SELECT count(*) FROM pg_catalog.pg_constraint c WHERE c.conrelid = target
+         AND c.convalidated AND NOT c.condeferrable AND NOT c.condeferred
+         AND ((c.conname = 'platform_tokens_pkey' AND c.contype = 'p' AND c.conkey = ARRAY[1]::smallint[])
+           OR (c.conname = 'platform_tokens_platform_token_type_key' AND c.contype = 'u' AND c.conkey = ARRAY[2,3]::smallint[]))) <> 2
+     OR (SELECT count(*) FROM pg_catalog.pg_index WHERE indrelid = target) <> 2
+     OR EXISTS (SELECT 1 FROM pg_catalog.pg_index WHERE indrelid = target
+                AND (NOT indisvalid OR NOT indisready OR NOT indisunique OR indpred IS NOT NULL OR indexprs IS NOT NULL))
+     OR pg_catalog.to_regclass('public.platform_tokens_project_platform_type_key') IS NOT NULL
+     OR EXISTS (SELECT 1 FROM pg_catalog.pg_policy WHERE polrelid = target)
+     OR EXISTS (SELECT 1 FROM pg_catalog.pg_trigger WHERE tgrelid = target AND NOT tgisinternal) THEN
+    RAISE EXCEPTION 'expected old platform_tokens schema: constraints/indexes/policies/triggers';
+  END IF;
+END;
+$guard$;
+`;
+
+export function extractPlatformTokensSchema(source) {
+  const lf = source.replace(/\r\n/g, "\n");
+  if (sha256(lf) !== PLATFORM_TOKENS_FIXTURE.sourceLfSha256) throw new Error("platform_tokens source SHA mismatch");
+  const statements = [...lf.matchAll(/^alter table public\.platform_tokens (?:add column|drop constraint)[^;]*;|^create unique index if not exists platform_tokens_project_platform_type_key\n  on public\.platform_tokens \(project_id, platform, token_type\);/gm)].map((m) => m[0]);
+  if (statements.length !== 4) throw new Error("platform_tokens schema extraction ambiguous");
+  const extracted = statements.join("\n") + "\n";
+  if (sha256(extracted) !== PLATFORM_TOKENS_FIXTURE.extractedLfSha256) throw new Error("platform_tokens extracted SHA mismatch");
+  const body = PLATFORM_TOKENS_GUARD + extracted;
+  if (sha256(body) !== PLATFORM_TOKENS_FIXTURE.lfSha256) throw new Error("platform_tokens executable SHA mismatch");
+  return { extracted, body };
+}
+
+export const SYNTHETIC_FIXTURES = Object.freeze([PLATFORM_CONFIG_FIXTURE, PLATFORM_TOKENS_FIXTURE]);
+export function extractSyntheticFixture(step, source) {
+  if (step.path === PLATFORM_CONFIG_FIXTURE.path) return extractPlatformConfigTable(source);
+  if (step.path === PLATFORM_TOKENS_FIXTURE.path) return extractPlatformTokensSchema(source);
+  throw new Error("unknown synthetic fixture");
+}
 // Legacy creators of relations first needed after the early window (the provenance scan stops there).
 // Pinned by LF SHA-256; still untracked fixtures with no canonical migration or ledger row.
 export const SUPPLEMENTAL_FIXTURES = Object.freeze([
@@ -268,6 +375,14 @@ export function planCanonicalBootstrap({
     }
   }
 
+  // Reserve the unsafe legacy source for extraction only, even if provenance or an explicit
+  // supplemental declaration would otherwise select it as a full fixture.
+  const unsafeSource = "20260528_pass_a_safeguards.sql";
+  for (const fixture of SYNTHETIC_FIXTURES) {
+    if (sources.delete(fixture.sourcePath.slice(LEGACY_DIR.length + 1)))
+      blockers.push({ code: "synthetic_fixture_refused", detail: `Full ${fixture.sourcePath} execution is forbidden` });
+  }
+
   // Place each fixture at the earliest replay position where its DDL-time public dependencies exist,
   // and no later than the first canonical use of what it provides. Position 0 means truly preexisting.
   for (const [name, { provides, providesColumns = [], providesFunctions, schedules, afterFixture, firstUsedBy, supplemental: pinned }] of [...sources].sort(([a], [b]) =>
@@ -314,7 +429,45 @@ export function planCanonicalBootstrap({
       });
   }
 
-  const fixtureStep = (f) => ({ kind: "fixture", path: f.path, lfSha256: f.lfSha256 });
+  const firstConfigUse = ordered.find((m) => relationRefs(m.sql).some((r) => r.schema === "public" && r.name === "platform_config"));
+  if (firstConfigUse) {
+    try {
+      if (firstConfigUse.name !== PLATFORM_CONFIG_FIRST_USE) throw new Error("unexpected platform_config first use");
+      const earlier = ordered.slice(0, names.indexOf(PLATFORM_CONFIG_FIRST_USE));
+      const fixtureSql = [...sources.keys()].map((name) => legacy.find((f) => f.name === name).sql);
+      if ([baselineSql, ...earlier.map((m) => m.sql), ...fixtureSql].some((sql) => createdRelations(sql).some((r) => r.name === "platform_config")))
+        throw new Error("platform_config must be absent before synthetic creation");
+      const source = legacy.find((f) => f.name === unsafeSource)?.sql;
+      if (source === undefined) throw new Error("platform_config source missing");
+      extractPlatformConfigTable(source);
+      plan.fixtures.push({ ...PLATFORM_CONFIG_FIXTURE, position: names.indexOf(PLATFORM_CONFIG_FIRST_USE), provides: ["platform_config"], providesColumns: [] });
+    } catch (error) {
+      blockers.push({ code: "synthetic_fixture_refused", detail: error.message });
+    }
+  }
+
+  const firstTokenUse = ordered.find((m) => /\b(project_id|account_id)\b/.test(code(m.sql)) &&
+    relationRefs(m.sql).some((r) => r.schema === "public" && r.name === "platform_tokens"));
+  if (firstTokenUse) {
+    try {
+      if (firstTokenUse.name !== PLATFORM_TOKENS_FIRST_USE) throw new Error("unexpected platform_tokens column first use");
+      const position = names.indexOf(PLATFORM_TOKENS_FIRST_USE);
+      const earlier = ordered.slice(0, position);
+      const base = earlier.find((m) => m.name === "20260527_platform_tokens.sql");
+      if (!base || !createdRelations(base.sql).some((r) => r.name === "platform_tokens"))
+        throw new Error("platform_tokens canonical creation must precede schema fixture");
+      if (![baselineSql, ...earlier.map((m) => m.sql)].some((sql) => createdRelations(sql).some((r) => r.name === "projects")))
+        throw new Error("projects must precede platform_tokens schema fixture");
+      const source = legacy.find((f) => `${LEGACY_DIR}/${f.name}` === PLATFORM_TOKENS_FIXTURE.sourcePath)?.sql;
+      if (source === undefined) throw new Error("platform_tokens source missing");
+      extractPlatformTokensSchema(source);
+      plan.fixtures.push({ ...PLATFORM_TOKENS_FIXTURE, position, provides: [], providesColumns: ["platform_tokens.project_id", "platform_tokens.account_id"] });
+    } catch (error) {
+      blockers.push({ code: "synthetic_fixture_refused", detail: error.message });
+    }
+  }
+
+  const fixtureStep = (f) => f.kind === "synthetic" ? { ...SYNTHETIC_FIXTURES.find((s) => s.path === f.path) } : { kind: "fixture", path: f.path, lfSha256: f.lfSha256 };
   plan.sequence.push({ kind: "fixture", path: baselinePath, lfSha256: candidate.lfSha256 });
   ordered.forEach((m, i) => {
     for (const f of plan.fixtures) if (f.position === i) plan.sequence.push(fixtureStep(f));

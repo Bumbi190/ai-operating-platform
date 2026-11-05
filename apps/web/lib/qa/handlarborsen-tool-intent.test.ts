@@ -22,6 +22,14 @@ describe('Handlarbörsen read-only intent classification', () => {
     expect(read('Hur många verifierade handlare har Handlarbörsen?'))
       .toBe('handlarborsen_statistics')
   })
+  it('routes explicit Handlarbörsen growth questions to the owner-only growth tool', () => {
+    expect(read('Nova, hur utvecklas Handlarbörsen och vad bör vi prioritera för att få fler handlare?'))
+      .toBe('handlarborsen_growth_brief')
+    expect(read('Hur ser registreringsintresset ut?', ['Handlarbörsen']))
+      .toBe('handlarborsen_growth_brief')
+    expect(read('Skicka en tillväxtrapport för Handlarbörsen')).toBeNull()
+    expect(read('Hur utvecklas Familje-Stunden?')).toBeNull()
+  })
   it('does not open unrelated project mail or status and never turns generic speech into a request', () => {
     expect(read('Vad säger de senaste mejlen i Familje-Stunden?')).toBeNull()
     expect(read('Vad är statistiken i The Prompt?')).toBeNull()

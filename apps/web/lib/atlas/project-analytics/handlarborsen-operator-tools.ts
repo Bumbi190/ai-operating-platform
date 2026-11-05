@@ -9,6 +9,8 @@ import { loadHandlarborsenMarketplaceReport } from '@/lib/atlas/project-analytic
 import { readHandlarborsenSalesOverview } from '@/lib/atlas/project-analytics/handlarborsen-sales-overview'
 import { readHandlarborsenReplyLifecycle } from '@/lib/atlas/project-analytics/handlarborsen-reply-lifecycle'
 import { compareHandlarborsenWorkflowEvidence } from '@/lib/atlas/project-analytics/handlarborsen-evidence-comparison'
+import { loadHandlarborsenTraffic } from '@/lib/atlas/project-analytics/handlarborsen-posthog-traffic'
+import { deriveHandlarborsenGrowthBrief } from '@/lib/atlas/project-analytics/handlarborsen-growth-brief'
 
 /**
  * Operator-only, read-only bridges from Atlas's already ingested sources.
@@ -17,6 +19,7 @@ import { compareHandlarborsenWorkflowEvidence } from '@/lib/atlas/project-analyt
  */
 export const HANDLARBORSEN_READ_TOOL_NAMES = [
   'handlarborsen_statistics',
+  'handlarborsen_growth_brief',
   'handlarborsen_latest_mail',
   'handlarborsen_sales_overview',
   'handlarborsen_reply_lifecycle',
@@ -25,6 +28,11 @@ export const HANDLARBORSEN_READ_TOOL_NAMES = [
 export type HandlarborsenReadTool = (typeof HANDLARBORSEN_READ_TOOL_NAMES)[number]
 
 export const HANDLARBORSEN_READ_TOOLS = [
+  {
+    name: 'handlarborsen_growth_brief',
+    description: 'Läs Handlarbörsens källstyrda, regelbaserade tillväxtunderlag från granskade företags-snapshots och samtyckesstyrda PostHog-sidvisningar på /registrera. Endast projektägare; inga personuppgifter, identifierare, konverteringsgrader eller automatiska åtgärder. Redovisa källor, datum och osäkerheter; formulera endast förslag till manuell granskning.',
+    input_schema: { type: 'object' as const, properties: {}, required: [] },
+  },
   {
     name: 'handlarborsen_statistics',
     description: 'Läs verklig, senast sparad statistik från Handlarbörsens marknadsplats: företag, verifierade företag, fordon, bud och affärer. Ange datum, datakvalitet och om jämförelsen är jämförbar. Statistiken är aggregerad och innehåller INTE namnet på den senaste verifierade handlaren. Läs endast; skapa aldrig påhittade tal.',
@@ -82,6 +90,24 @@ export async function handleHandlarborsenReadTool(name: HandlarborsenReadTool, c
   const { db, userId, allowedProjectIds } = context
   if (!userId || !assertProjectAllowed(HANDLARBORSEN_PROJECT_ID, allowedProjectIds)) {
     return { status: 'not_permitted' as const }
+  }
+  if (name === 'handlarborsen_growth_brief') {
+    const source = await loadHandlarborsenMarketplaceReport(fixedProject, { allowedProjectIds }, { db, now: context.now })
+    if (source.status !== 'ok') return { status: 'not_permitted' as const }
+    // Both reads are scoped to the same fixed project and verified owner allow-list.
+    // A failed traffic read contributes no fabricated zeros or visitor identities.
+    const traffic = await loadHandlarborsenTraffic(fixedProject, { allowedProjectIds })
+    if (!traffic) return { status: 'not_permitted' as const }
+    const brief = deriveHandlarborsenGrowthBrief(source.report, traffic, context.now ?? new Date())
+    return {
+      status: 'ok' as const,
+      readiness: brief.status,
+      source: 'handlarborsen_verified_growth_brief',
+      observations: brief.observations,
+      manualChecks: brief.checks,
+      provenance: brief.provenance,
+      limitation: 'Detta är ett regelbaserat, källstyrt granskningsunderlag. Sidvisningar är inte unika personer eller registreringar. Ingen konverteringsgrad är verifierad. Inga åtgärder har utförts.',
+    }
   }
   if (name === 'handlarborsen_statistics') {
     const source = await loadHandlarborsenMarketplaceReport(fixedProject, { allowedProjectIds }, { db, now: context.now })

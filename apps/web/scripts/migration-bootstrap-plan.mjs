@@ -15,12 +15,25 @@ import { LEGACY_DIR, sha256 } from "./migration-replay-preflight.mjs";
 
 // Same baseline the historical ledger replay (verify-calendar-full-ledger-local.mjs) applies.
 export const BASELINE_FIXTURE = "packages/db/full_schema_run_in_supabase.sql";
+// Legacy creators of relations first needed after the early window (the provenance scan stops there).
+// Pinned by LF SHA-256; still untracked fixtures with no canonical migration or ledger row.
+export const SUPPLEMENTAL_FIXTURES = Object.freeze([
+  // public.dream_issues, read by canonical 20260617160200_backfill_dream_issues.sql.
+  { name: "20260609_dream_issues_ledger.sql", lfSha256: "efc2b09e75c60fb8d14bcafdf4bcf2712e7d28e2107336634487d18fb9510089" },
+]);
 const DISCLAIMER =
   "Static offline bootstrap plan only. No SQL was executed; fixtures are untracked test inputs, so this is not clean-bootstrap or production readiness evidence.";
 
 const uniqueSorted = (values) => [...new Set(values)].sort();
 
-export function planCanonicalBootstrap({ canonical, legacy = [], candidates, baselinePath = BASELINE_FIXTURE, grandfatheredNames }) {
+export function planCanonicalBootstrap({
+  canonical,
+  legacy = [],
+  candidates,
+  baselinePath = BASELINE_FIXTURE,
+  grandfatheredNames,
+  supplemental = SUPPLEMENTAL_FIXTURES,
+}) {
   const blockers = [];
   const plan = {
     schema: "omnira.migration-bootstrap-plan.v1",
@@ -61,7 +74,7 @@ export function planCanonicalBootstrap({ canonical, legacy = [], candidates, bas
       });
       continue;
     }
-    const entry = sources.get(dep.legacyCreators[0]) ?? { provides: [], firstUsedBy: [] };
+    const entry = sources.get(dep.legacyCreators[0]) ?? { provides: [], firstUsedBy: [], supplemental: false };
     entry.provides.push(provides);
     entry.firstUsedBy.push(dep.firstUsedBy);
     sources.set(dep.legacyCreators[0], entry);
@@ -71,9 +84,35 @@ export function planCanonicalBootstrap({ canonical, legacy = [], candidates, bas
   const names = ordered.map((m) => m.name);
   const baselineRelations = createdRelations(baselineSql).map((r) => r.name);
 
+  // Pinned post-window sources: they provide what they create that the baseline lacks, and must land
+  // before the first canonical file that references it at DDL time.
+  for (const pin of supplemental) {
+    const sql = legacy.find((f) => f.name === pin.name)?.sql;
+    if (sql === undefined) {
+      blockers.push({ code: "fixture_source_missing", detail: `${LEGACY_DIR}/${pin.name} (pinned)` });
+      continue;
+    }
+    if (sha256(sql) !== pin.lfSha256) {
+      blockers.push({ code: "fixture_sha_mismatch", detail: `${LEGACY_DIR}/${pin.name} expected ${pin.lfSha256}, got ${sha256(sql)}` });
+      continue;
+    }
+    const provides = createdRelations(sql)
+      .map((r) => r.name)
+      .filter((r) => !baselineRelations.includes(r));
+    const firstUse = ordered.find((m) => relationRefs(m.sql).some((r) => r.schema === "public" && !r.deferred && provides.includes(r.name)));
+    if (!firstUse) {
+      blockers.push({ code: "fixture_source_unused", detail: `${LEGACY_DIR}/${pin.name} provides nothing a canonical migration references` });
+      continue;
+    }
+    const entry = sources.get(pin.name) ?? { provides: [], firstUsedBy: [], supplemental: true };
+    entry.provides.push(...provides);
+    entry.firstUsedBy.push(firstUse.name);
+    sources.set(pin.name, entry);
+  }
+
   // Place each fixture at the earliest replay position where its DDL-time public dependencies exist,
   // and no later than the first canonical use of what it provides. Position 0 means truly preexisting.
-  for (const [name, { provides, firstUsedBy }] of [...sources].sort(([a], [b]) => (a < b ? -1 : 1))) {
+  for (const [name, { provides, firstUsedBy, supplemental: pinned }] of [...sources].sort(([a], [b]) => (a < b ? -1 : 1))) {
     const sql = legacy.find((f) => f.name === name).sql;
     const path = `${LEGACY_DIR}/${name}`;
     const own = new Set(createdRelations(sql).map((r) => r.name));
@@ -101,6 +140,7 @@ export function planCanonicalBootstrap({ canonical, legacy = [], candidates, bas
       after: position > 0 ? names[position - 1] : null,
       before: position >= 0 ? names[position] : null,
       preexisting: position === 0,
+      supplemental: pinned,
     };
     plan.fixtures.push(fixture);
     if (position === -1)

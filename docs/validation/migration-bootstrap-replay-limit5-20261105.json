@@ -1,0 +1,91 @@
+{
+  "schema": "omnira.migration-bootstrap-replay.v1",
+  "replayReady": false,
+  "completed": false,
+  "disclaimer": "Local disposable Docker diagnostic only (--pull=never, --network none, no mounts or ports, cron job launching off). Fixtures are untracked test inputs; even a completed run is not clean-bootstrap, hosted parity or production readiness evidence.",
+  "planSha256": "34b228af00f7aadffcbba9e89ef6e5bdaf23c0f6331831774fcb6ab91d944ddc",
+  "planBlockers": [
+    "fixture_interleaved",
+    "fixture_untracked",
+    "fixture_untracked",
+    "fixture_untracked",
+    "execution_not_run"
+  ],
+  "environment": {
+    "image": "public.ecr.aws/supabase/postgres:17.11.0.004",
+    "storageImage": "public.ecr.aws/supabase/storage-api:v1.79.36",
+    "pull": "never",
+    "label": "com.omnira.testplan=migration-bootstrap-replay",
+    "inspected": {
+      "network": "none",
+      "mounts": 0,
+      "publishedPorts": 0,
+      "privileged": false
+    },
+    "cronLaunchActiveJobs": "off",
+    "cronJobRuns": 0
+  },
+  "coverage": {
+    "planned": 177,
+    "verified": 177,
+    "limit": 5,
+    "attempted": 5,
+    "applied": 5,
+    "bounded": true
+  },
+  "prerequisites": [
+    {
+      "ref": "platform-stubs",
+      "lfSha256": "7436b9fe08ab4122dad818f777e2ad3d89408c32333cbf68387e3ca3e6f86a88"
+    },
+    {
+      "ref": "public-default-privileges",
+      "lfSha256": "1526995a65eba4b0258aee4b313cd2527509366c62d993883373188295bccd7a"
+    },
+    {
+      "ref": "public.ecr.aws/supabase/storage-api:v1.79.36/0002-storage-schema.sql",
+      "lfSha256": "a6b7d8135524e00f86d53ffef7effef2624bec10c4817b27b10e0eb50c580b85",
+      "sourceSha256": "19562682ff1b77cda9ba096671b873e7e226b10f0b0564bd4823e6c1754393b6"
+    },
+    {
+      "ref": "public.ecr.aws/supabase/storage-api:v1.79.36/0008-add-public-to-buckets.sql",
+      "lfSha256": "71ee004a42546de37c21cc62ef4dd1f14ecf59450f97341709514e75f0b04ca5",
+      "sourceSha256": "1d881092aea62e83493f1a9c4cb4f101f3035a08d62be84a7e7970ee0c6f0f48"
+    }
+  ],
+  "applied": [
+    {
+      "index": 0,
+      "kind": "fixture",
+      "path": "packages/db/full_schema_run_in_supabase.sql",
+      "lfSha256": "986ec4743fb23c2f392fbbb420f12081b2550b02e63d1b203416c75a9a110755"
+    },
+    {
+      "index": 1,
+      "kind": "fixture",
+      "path": "supabase/migrations/20260528_pg_cron_setup.sql",
+      "lfSha256": "22569e22cd61cef171ad3be914a02d3e7d013a787304ce6904f09a24218d0967"
+    },
+    {
+      "index": 2,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260520_media_tables.sql",
+      "lfSha256": "ec1a18ef576352e99d2b38b54da6d2c8db6cb5b409b38e4ece3921135200e07c"
+    },
+    {
+      "index": 3,
+      "kind": "fixture",
+      "path": "supabase/migrations/20260601_media_insights.sql",
+      "lfSha256": "b3cad2590764175d104db1f6f62a48b2b63915e95fc3f0ee4020233e2ee941dd"
+    },
+    {
+      "index": 4,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260520_media_images.sql",
+      "lfSha256": "e1d544a46214f72d09588b66725989c5caf9ef4ce6bb8e53c34c34850264ca58"
+    }
+  ],
+  "failure": null,
+  "refusal": null,
+  "cleanup": "removed"
+}

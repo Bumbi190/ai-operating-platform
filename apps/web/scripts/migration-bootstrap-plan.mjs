@@ -5,6 +5,8 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { orderReplayMigrations } from "./analysis-replay-order.mjs";
+import { RUNS_DISPATCH_FIXTURE, extractRunsDispatchSchema } from "./migration-bootstrap-runs.mjs";
+export { RUNS_DISPATCH_FIXTURE } from "./migration-bootstrap-runs.mjs";
 import {
   createdRelations,
   inspectBaselineProvenance,
@@ -116,10 +118,11 @@ export function extractPlatformTokensSchema(source) {
   return { extracted, body };
 }
 
-export const SYNTHETIC_FIXTURES = Object.freeze([PLATFORM_CONFIG_FIXTURE, PLATFORM_TOKENS_FIXTURE]);
+export const SYNTHETIC_FIXTURES = Object.freeze([PLATFORM_CONFIG_FIXTURE, PLATFORM_TOKENS_FIXTURE, RUNS_DISPATCH_FIXTURE]);
 export function extractSyntheticFixture(step, source) {
   if (step.path === PLATFORM_CONFIG_FIXTURE.path) return extractPlatformConfigTable(source);
   if (step.path === PLATFORM_TOKENS_FIXTURE.path) return extractPlatformTokensSchema(source);
+  if (step.path === RUNS_DISPATCH_FIXTURE.path) return extractRunsDispatchSchema(source);
   throw new Error("unknown synthetic fixture");
 }
 // Legacy creators of relations first needed after the early window (the provenance scan stops there).
@@ -492,6 +495,18 @@ export function planCanonicalBootstrap({
       if (source === undefined) throw new Error("platform_tokens source missing");
       extractPlatformTokensSchema(source);
       plan.fixtures.push({ ...PLATFORM_TOKENS_FIXTURE, position, provides: [], providesColumns: ["platform_tokens.project_id", "platform_tokens.account_id"] });
+    } catch (error) {
+      blockers.push({ code: "synthetic_fixture_refused", detail: error.message });
+    }
+  }
+
+  // Baseline runs exists before canonical replay. Do not introduce the full marketing engine.
+  if (baselineColumns.has("runs")) {
+    try {
+      const source = legacy.find((f) => `${LEGACY_DIR}/${f.name}` === RUNS_DISPATCH_FIXTURE.sourcePath)?.sql;
+      if (source === undefined) throw new Error("runs dispatch source missing");
+      extractRunsDispatchSchema(source);
+      plan.fixtures.unshift({ ...RUNS_DISPATCH_FIXTURE, position: 0, provides: [], providesColumns: ["runs.kind"] });
     } catch (error) {
       blockers.push({ code: "synthetic_fixture_refused", detail: error.message });
     }

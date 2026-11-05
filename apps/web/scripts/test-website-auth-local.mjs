@@ -14,6 +14,9 @@ const withRoutes=process.argv.includes('--routes');
 if(withRoutes&&!withApplication)throw Error('--routes requires --application');
 const routeModule=withRoutes?await import('./website-auth-routes-bundle.mjs'):null;
 const routeBundle=routeModule?.buildRouteRunner();
+const withHttp=process.argv.includes('--next-http');
+if(withHttp&&!withRoutes)throw Error('--next-http requires --routes');
+const nextFixture=withHttp?(await import('./website-auth-next-fixture.mjs')).buildNextFixture():null;
 const IMAGES={
  db:'public.ecr.aws/supabase/postgres@sha256:06ddc7962e11ab0f4f0334fd05671e97c30ea202f6e6a7113800bd3d6e416108',
  auth:'public.ecr.aws/supabase/gotrue@sha256:1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b',
@@ -35,7 +38,7 @@ function docker(args,input,raw=false){
 }
 const sql=body=>docker(['exec','-i',names.db,'psql','-X','-q','-A','-t','--single-transaction','-v','ON_ERROR_STOP=1','-U','supabase_admin','-d','postgres'],body);
 function start(key,env,port,args=[]){
- const options=['run','-d','--pull=never','--name',names[key],'--label',label+'='+runId,'--network',network,'--memory',key==='db'?'768m':'256m'];
+ const options=['run','-d','--pull=never','--name',names[key],'--label',label+'='+runId,'--network',network,'--memory',key==='db'?'768m':key==='client'&&withHttp?'512m':'256m'];
  options.push('--network-alias',key); // All HTTP clients stay inside the internal Docker network.
  for(const [k,v] of Object.entries(env))options.push('-e',k+'='+v);
  docker([...options,IMAGES[key],...args]);
@@ -122,7 +125,7 @@ try{
  const anon=await request(rest,'/webbuilder_auth_probe');check('anonymous_denied',anon.status===401||anon.status===403);
  const admin=await request(rest,'/webbuilder_auth_probe?select=id',{token:service});check('service_sees_two_fictional_rows',admin.status===200&&admin.data?.length===2);
  if(applicationModule)await applicationModule.testApplicationHTTP({sql,check,request,rest,auth,service,a,b,token:renewed.data.access_token,context:applicationContext});
- if(routeModule)routeModule.runRouteChecks({bundle:routeBundle,docker,sql,check,receipt,client:names.client,service,anon:serviceJWT('anon'),a:{...a,access_token:renewed.data.access_token,refresh_token:renewed.data.refresh_token},b,context:applicationContext});
+ if(routeModule)routeModule.runRouteChecks({bundle:routeBundle,nextFixture,docker,sql,check,receipt,client:names.client,service,anon:serviceJWT('anon'),a:{...a,access_token:renewed.data.access_token,refresh_token:renewed.data.refresh_token},b,context:applicationContext});
  const signedOut=await request(auth,'/logout',{token:renewed.data.access_token,method:'POST'});
  check('signout',signedOut.status===204);
  const revoked=await request(auth,'/token?grant_type=refresh_token',{method:'POST',body:{refresh_token:renewed.data.refresh_token}});
@@ -141,10 +144,12 @@ try{
  if(Object.values(receipt.cleanup).some(v=>!['removed','not_present'].includes(v)))receipt.completed=false;
  receipt.finishedAt=new Date().toISOString();
  routeBundle?.cleanup();
- receipt.mode=withRoutes?'application-route-cookies':withApplication?'canonical-application':'auth-probe';
+ nextFixture?.cleanup();
+ receipt.mode=withHttp?'next-http':withRoutes?'application-route-cookies':withApplication?'canonical-application':'auth-probe';
  if(withApplication)receipt.limitations=['Real local Auth and canonical application SQL through PostgREST only; no Next.js UI/cookies, application route/context resolver, worker, hosted acceptance, Storage HTTP or paid model calls.'];
  if(withRoutes)receipt.limitations=['Real route exports invoked in-process with Next request storage and real SSR cookies, GoTrue and PostgREST. No Next HTTP server, middleware, browser UI, worker, hosted acceptance, Storage HTTP or paid models.'];
- const path=fileURLToPath(new URL('../../../docs/validation/'+(withRoutes?'website-real-auth-routes-local-20261105.json':withApplication?'website-real-auth-application-local-20261105.json':'website-real-auth-local-20261105.json'),import.meta.url));
+ if(withHttp)receipt.limitations=['Actual standalone Next HTTP routes and production middleware against real local Auth/canonical SQL. Minimal test app, not full WebBuilder browser UI; no worker, hosted acceptance, Storage HTTP or paid models.'];
+ const path=fileURLToPath(new URL('../../../docs/validation/'+(withHttp?'website-real-auth-next-http-20261105.json':withRoutes?'website-real-auth-routes-local-20261105.json':withApplication?'website-real-auth-application-local-20261105.json':'website-real-auth-local-20261105.json'),import.meta.url));
  writeFileSync(path,JSON.stringify(receipt,null,2)+'\n');
  console.log(JSON.stringify(receipt,null,2));process.exitCode=receipt.completed?0:1;
 }

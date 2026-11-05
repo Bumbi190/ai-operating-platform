@@ -104,7 +104,7 @@ describe('Atlas Handlarbörsen read-only tools', () => {
     const result = await handleHandlarborsenReadTool('handlarborsen_growth_brief', {
       ...scope(dbFixture().db), now: new Date('2026-11-04T20:00:00Z'),
     })
-    expect(result).toMatchObject({status:'ok',readiness:'insufficient_data'})
+    expect(result).toMatchObject({status:'ok',readiness:'insufficient_data',v3Availability:'source_unavailable'})
     expect(JSON.stringify(result)).not.toContain('0 gånger')
   })
   it('does not touch the database without the owner-scoped project allowlist', async () => {

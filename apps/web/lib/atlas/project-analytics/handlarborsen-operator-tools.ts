@@ -126,8 +126,9 @@ export async function handleHandlarborsenReadTool(name: HandlarborsenReadTool, c
     }
     return {
       status: 'ok' as const,
-      readiness: brief.status,
+      readiness: 'insufficient_data' as const,
       source: 'handlarborsen_verified_growth_brief',
+      v3Availability: real.reason,
       observations: brief.observations,
       manualChecks: brief.checks,
       provenance: brief.provenance,

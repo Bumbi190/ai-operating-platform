@@ -15,6 +15,7 @@ const REPLY_LIFECYCLE = /svarsutkast|svarsgodk[aä]nn|mejlsvarsstatus|reply[\s_-
 const REPLY_READ = /sammanfatta|sammanst[aä]ll|[oö]versikt|status|visa|visar|kolla|hur|vilka|j[aä]mf[oö]r|granska|vad betyder|antal/i
 const SALES_READ = /sammanfatta|sammanställ|översikt|överblick|antal|hur många|status|statistik|hur ser|hur är läget|siffror|kolla läget|visa.*(?:läget|status|antal|översikt|siffror)|vilka.*(?:status|antal)/i
 const ACTION_START = /^(?:skriv|skicka|starta|kör|publicera|ändra|uppdatera|radera|importera|ta bort|slå på|godkänn|avslå|besvara|sänd|aktivera|visa inte|sök inte|kolla inte)\b/i
+const EXPLICIT_V3 = /\b(?:statistik|schema|kpi|m[aå]tt)\s*v?3\b|\bv3\s*(?:statistik|m[aå]tt)\b|(?:riktig[a]?|verklig[a]?|extern[a]?)\s+(?:bil)?handlar(?:e|na)\b|\btest(?:konton?|organisationer|bolag)\b|\binterna?\s+bolag\b/i
 const GROWTH = /tillv[aä]xt|registreringsintresse|registreringssida|fler(?:\s+(?:registrerade|verifierade|aktiva|nya))*\s+handlare|nya(?:\s+(?:registrerade|verifierade|aktiva))*\s+handlare|handlarrekrytering|konvertering/i
 const GROWTH_READ = /hur|analys|varf[oö]r|visa|kolla|utveckl|prioriter|sammanfatta|unders[oö]k|rapport|vad|status/i
 const STATS = /statistik|verifierad|registrerad|handlar(?:e|na)|fordon|bud|aff[aä]r|tillv[aä]xt|rekryter|r[aä]ckvidd|n[aå] ut/i
@@ -37,6 +38,7 @@ export function classifyHandlarborsenReadIntent(last: unknown, previousUserMessa
   if (REPLY_LIFECYCLE.test(text) && REPLY_READ.test(text)) return 'handlarborsen_reply_lifecycle'
   if (SALES.test(text) && SALES_READ.test(text)) return 'handlarborsen_sales_overview'
   if (MAIL.test(text) && MAIL_READ.test(text)) return 'handlarborsen_latest_mail'
+  if (EXPLICIT_V3.test(text) && (GROWTH_READ.test(text) || STATS_READ.test(text))) return 'handlarborsen_growth_brief'
   if (GROWTH.test(text) && GROWTH_READ.test(text)) return 'handlarborsen_growth_brief'
   if (STATS.test(text) && STATS_READ.test(text)) return 'handlarborsen_statistics'
   return null

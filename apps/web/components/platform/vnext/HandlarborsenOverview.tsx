@@ -76,7 +76,7 @@ export function HandlarborsenOverview({
         {traffic && <HandlarborsenPosthogTraffic traffic={traffic} />}
         <HandlarborsenRegistrationJourney report={report} traffic={traffic} now={now} />
         {projectSlug && <AnalysisDraftHistoryLink projectSlug={projectSlug} />}
-        <HandlarborsenWorkflowDrafts report={report} now={now} />
+        {(!report.latest || report.latest.dataScope === 'production_excluding_quarantined_test') && <HandlarborsenWorkflowDrafts report={report} now={now} />}
       </>
     )
   }
@@ -112,7 +112,7 @@ export function HandlarborsenOverview({
             projectSlug={projectSlug}
             analysisSelectors={analysisSelectors}
           />
-          <HandlarborsenWorkflowDrafts report={report} now={now} />
+          {(!report.latest || report.latest.dataScope === 'production_excluding_quarantined_test') && <HandlarborsenWorkflowDrafts report={report} now={now} />}
           {projectSlug && <AnalysisDraftHistoryLink projectSlug={projectSlug} />}
         </div>
       </details>

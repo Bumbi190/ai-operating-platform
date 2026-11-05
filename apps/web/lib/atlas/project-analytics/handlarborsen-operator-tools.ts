@@ -115,6 +115,13 @@ export async function handleHandlarborsenReadTool(name: HandlarborsenReadTool, c
     const { report } = source
     if (report.state !== 'ok' || !report.latest) return { status: 'unavailable' as const, reason: report.state }
     const { latest, history } = report
+    if (latest.dataScope !== 'production_excluding_quarantined_test') {
+      return {
+        status: 'unavailable' as const, reason: 'legacy_includes_test_organisations',
+        snapshotDate: latest.snapshotDate, dataScope: latest.dataScope ?? null,
+        limitation: 'Äldre råstatistik innehåller testorganisationer och skyddade bolag. Antal verkliga registrerade eller verifierade bilhandlare får inte räknas härifrån. Värdena finns kvar endast i revisionsunderlaget.',
+      }
+    }
     return {
       status: 'ok' as const,
       source: 'handlarborsen_marketplace_snapshots',
@@ -129,9 +136,7 @@ export async function handleHandlarborsenReadTool(name: HandlarborsenReadTool, c
       comparison: history.comparison,
       limitation: [
         'Snapshotens företagstal är aggregerade. Ingen företagsidentitet finns i denna datakälla; påstå aldrig vilket företag som senast verifierats.',
-        latest.dataScope === 'legacy_all_organisations'
-          ? 'VARNING: legacy_all_organisations inkluderar historiska testorganisationer. Tolka INTE verifierade som antalet riktiga aktiva bilhandlare, och dra INTE en tillväxtslutsats från statusändringar utan jämförbar källa.'
-          : 'Kvalitetskontrollera alltid urvalet och definitionen före en tillväxtslutsats.',
+        'Kvalitetskontrollera alltid urvalet. Att organisationer inte är i karantän innebär INTE automatiskt att de är riktiga bilhandlare eller godkända pilotkunder.',
       ].join(' '),
     }
   }

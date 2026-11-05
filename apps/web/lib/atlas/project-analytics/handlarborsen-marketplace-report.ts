@@ -544,12 +544,18 @@ function renderValue(metric: MetricView): string {
 export function renderHandlarborsenFactBlock(report: MarketplaceReport): string | null {
   if (report.state !== 'ok' || !report.latest) return null
   const { latest, history } = report
+  if (latest.dataScope !== 'production_excluding_quarantined_test') {
+    return '\n[HANDLARBÖRSEN — ÄLDRE TESTINKLUDERANDE STATISTIK] Den sparade rapporten har ett urval som inkluderar testorganisationer och skyddade företag. Ingen statistik över verkliga bilhandlare eller tillväxt får härledas härifrån. Öppna revisionsrapporten för råvärden; ange inte dessa som riktiga handlare.'
+  }
 
   const lines: string[] = [
     `\n\n${FACT_BLOCK_HEADER}`,
     `Rapport för ${latest.snapshotDate}, uppmätt ${formatStockholm(latest.observedAt)} (svensk tid), ${formatAge(latest.ageHours)} gammal.`,
     `Datakvalitet: ${COMPLETENESS_LABELS[latest.completeness].toLowerCase()} — ${latest.availableCount} av ${latest.metrics.length} mätvärden tillgängliga.`,
   ]
+  if (latest.dataScope === 'production_excluding_quarantined_test') {
+    lines.push('OBS: v2 exkluderar enbart karantänmarkerade organisationer. Organisationer som klassats som test men ännu inte satts i karantän, samt skyddade riktiga bolag, kan ingå. Antalet verkliga bilhandlare är inte verifierat av denna definition.')
+  }
   if (latest.freshness === 'stale') {
     lines.push(`OBS: rapporten är äldre än ${STALE_AFTER_HOURS} tim och kan vara inaktuell.`)
   }

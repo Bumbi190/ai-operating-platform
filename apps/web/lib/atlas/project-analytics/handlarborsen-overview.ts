@@ -83,6 +83,13 @@ export function buildHandlarborsenOverview(report: MarketplaceReport): Handlarbo
     return { kind: 'note', title: message.title, text: `${message.body}${failure}`, tone: message.tone }
   }
 
+  if (report.latest.dataScope !== 'production_excluding_quarantined_test') {
+    return {
+      kind: 'note', tone: 'empty', title: 'Testdata ingår i den äldre rapporten',
+      text: 'Den senaste marknadsplatsrapporten använder en äldre definition som inkluderar testorganisationer och skyddade företag. Antal registrerade eller verifierade verkliga bilhandlare kan inte fastställas ur denna rapport. Historiska värden finns kvar i revisionsunderlaget, men får inte användas som produktions-KPI. En särskilt granskad handlarpopulation krävs.',
+    }
+  }
+
   const { latest, history } = report
   const comparison = history.comparison
   const byKey = new Map(latest.metrics.map((m) => [m.key, m]))

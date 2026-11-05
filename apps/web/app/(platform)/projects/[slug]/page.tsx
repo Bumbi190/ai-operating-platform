@@ -17,6 +17,7 @@ import {
   type ProjectCommandCenterModel,
 } from '@/lib/os/project-command-center'
 import { loadHandlarborsenMarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-read'
+import { readRealDealerMetricsV3 } from '@/lib/atlas/project-analytics/handlarborsen-real-dealer-v3'
 import { loadHandlarborsenTraffic } from '@/lib/atlas/project-analytics/handlarborsen-posthog-traffic'
 import { HandlarborsenOverview } from '@/components/platform/vnext/HandlarborsenOverview'
 import { candidateMemoryEnabled, loadCandidateMemory } from '@/lib/atlas/project-analytics/handlarborsen-competitor-memory-service'
@@ -105,8 +106,12 @@ async function LoadedHandlarborsenCommandCenter({
         analysisSelectors[ruleId] = selector
     }
   }
-  const traffic =
-    result.status === 'ok' ? await loadHandlarborsenTraffic(project, { allowedProjectIds: [project.id] }) : null
+  const [traffic, realDealerMetrics] = result.status === 'ok'
+    ? await Promise.all([
+        loadHandlarborsenTraffic(project, { allowedProjectIds: [project.id] }),
+        readRealDealerMetricsV3([project.id], now),
+      ])
+    : [null, null]
   const candidateMemoryFlag = candidateMemoryEnabled()
   const candidateMemory = result.status === 'ok' && candidateMemoryFlag ? await loadCandidateMemory() : null
   const reviewFlag = candidateReviewEnabled()
@@ -117,6 +122,7 @@ async function LoadedHandlarborsenCommandCenter({
         report={result.report}
         reportHref={model.links.marketplace}
         traffic={traffic}
+        realDealerMetrics={realDealerMetrics}
         now={now}
         projectSlug={project.slug}
         analysisSelectors={analysisSelectors}

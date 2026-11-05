@@ -3,7 +3,7 @@
  * This classifier selects a read endpoint only; never use client text as
  * authorization or allow it to choose a project/table/contact/recipient.
  */
-export type HandlarborsenReadIntent = 'handlarborsen_latest_mail' | 'handlarborsen_statistics' | 'handlarborsen_sales_overview' | 'handlarborsen_reply_lifecycle' | null
+export type HandlarborsenReadIntent = 'handlarborsen_latest_mail' | 'handlarborsen_statistics' | 'handlarborsen_sales_overview' | 'handlarborsen_reply_lifecycle' | 'handlarborsen_growth_brief' | null
 
 const HB = /handlarb[oö]rs(?:en|ens|[-\s]?b[oö]rsen)?|info@handlarborsen\.se/i
 const MAIL = /strato|inkorg|mejl|mail|e-post|meddeland(?:e|et)/i
@@ -15,6 +15,8 @@ const REPLY_LIFECYCLE = /svarsutkast|svarsgodk[aä]nn|mejlsvarsstatus|reply[\s_-
 const REPLY_READ = /sammanfatta|sammanst[aä]ll|[oö]versikt|status|visa|visar|kolla|hur|vilka|j[aä]mf[oö]r|granska|vad betyder|antal/i
 const SALES_READ = /sammanfatta|sammanställ|översikt|överblick|antal|hur många|status|statistik|hur ser|hur är läget|siffror|kolla läget|visa.*(?:läget|status|antal|översikt|siffror)|vilka.*(?:status|antal)/i
 const ACTION_START = /^(?:skriv|skicka|starta|kör|publicera|ändra|uppdatera|radera|importera|ta bort|slå på|godkänn|avslå|besvara|sänd|aktivera|visa inte|sök inte|kolla inte)\b/i
+const GROWTH = /tillv[aä]xt|registreringsintresse|registreringssida|fler handlare|nya handlare|handlarrekrytering|konvertering/i
+const GROWTH_READ = /hur|analys|varf[oö]r|visa|kolla|utveckl|prioriter|sammanfatta|unders[oö]k|rapport|vad|status/i
 const STATS = /statistik|verifierad|registrerad|handlar(?:e|na)|fordon|bud|aff[aä]r|tillv[aä]xt|rekryter|r[aä]ckvidd|n[aå] ut/i
 const STATS_READ = /visa|l[aä]s|kolla|analys|hur|m[aå]nga|finns|senast|status|j[aä]mf[oö]r|kan du|ser du|unders[oö]k|vad/i
 
@@ -35,6 +37,7 @@ export function classifyHandlarborsenReadIntent(last: unknown, previousUserMessa
   if (REPLY_LIFECYCLE.test(text) && REPLY_READ.test(text)) return 'handlarborsen_reply_lifecycle'
   if (SALES.test(text) && SALES_READ.test(text)) return 'handlarborsen_sales_overview'
   if (MAIL.test(text) && MAIL_READ.test(text)) return 'handlarborsen_latest_mail'
+  if (GROWTH.test(text) && GROWTH_READ.test(text)) return 'handlarborsen_growth_brief'
   if (STATS.test(text) && STATS_READ.test(text)) return 'handlarborsen_statistics'
   return null
 }

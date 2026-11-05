@@ -42,6 +42,14 @@ describe('Handlarbörsen read-only intent classification', () => {
     expect(route).toContain("mode === 'content' || isFastPathContent(lastUserText)")
     expect(route).toContain('const forceHbReadFirstTurn = hbReadIntent')
   })
+  it('limits an explicit growth turn to its read-only tool rather than the conflicting statistics tool', () => {
+    const route = readFileSync(fileURLToPath(new URL('../../app/api/chat/route.ts', import.meta.url)), 'utf8')
+    expect(route).toContain("hbReadIntent === 'handlarborsen_growth_brief' ? TOOLS.filter(tool => tool.name === 'handlarborsen_growth_brief')")
+    expect(route).toContain('const forceHbReadFirstTurn = hbReadIntent')
+    expect(route).toContain("name: forceHbReadFirstTurn")
+    expect(route).toContain('tillväxtfrågor ska gå till growth_brief')
+    expect(route).not.toContain('Använd vid frågor om registreringar, verifierade företag, aktivitet och hur vi ska nå fler handlare.')
+  })
   it('does not open unrelated project mail or status and never turns generic speech into a request', () => {
     expect(read('Vad säger de senaste mejlen i Familje-Stunden?')).toBeNull()
     expect(read('Vad är statistiken i The Prompt?')).toBeNull()

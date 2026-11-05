@@ -22,6 +22,14 @@ export function HandlarborsenPosthogTraffic({
   traffic: HandlarborsenTraffic;
 }) {
   const connected = traffic.status === "available";
+  const sessions = connected && traffic.sessions?.status === "available" ? traffic.sessions.count : null;
+  const sessionNote = sessions !== null
+    ? "PostHog-sessioner · cookieless · 7 UTC-dagar"
+    : connected && traffic.sessions?.status === "missing_permission"
+      ? "Läsbehörighet för sessioner saknas"
+      : connected && traffic.sessions?.status === "unavailable"
+        ? "Sessionsdata kunde inte verifieras"
+        : "Inväntar verifierad sessionsmätning";
   const hasData = connected && traffic.totalPageviews > 0;
   const peak = connected
     ? Math.max(1, ...traffic.days.map((row) => row.pageviews))
@@ -102,10 +110,8 @@ export function HandlarborsenPosthogTraffic({
           <span className={styles.metricLabel}>
             <Activity size={16} aria-hidden="true" /> Sessioner
           </span>
-          <strong className={styles.metricValue}>—</strong>
-          <span className={styles.metricNote}>
-            Inväntar verifierad sessionsmätning
-          </span>
+          <strong className={styles.metricValue}>{sessions === null ? "—" : number(sessions)}</strong>
+          <span className={styles.metricNote}>{sessionNote}</span>
         </div>
       </div>
       {connected && traffic.registrationPageviews !== undefined && (
@@ -180,6 +186,9 @@ export function HandlarborsenPosthogTraffic({
           </table>
           <p>Dagliga unika besökare summeras inte till ett unikt antal för hela veckan. Dagens siffror är ännu ofullständiga. Endast handlarborsen.se och www.handlarborsen.se ingår.</p>
         </div>
+      )}
+      {sessions !== null && (
+        <p className={styles.metricNote}>Sessioner är PostHogs cookieless-mätning för hela perioden, inte ett exakt antal personer.</p>
       )}
       <footer className={styles.footer}>
         <span>

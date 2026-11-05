@@ -2,12 +2,13 @@ import "server-only";
 import { assertProjectAllowed } from "@/lib/atlas/isolation";
 import { HANDLARBORSEN_PROJECT_ID, HANDLARBORSEN_PROJECT_SLUG } from "@/lib/atlas/collectors/handlarborsen-marketplace";
 
+export type TrafficSessions = { status: "available"; count: number } | { status: "unavailable" | "missing_permission" };
 export type TrafficDay = { date: string; pageviews: number; visitors?: number; registrationPageviews?: number };
 export type HandlarborsenTraffic =
   | { status: "not_connected" | "unavailable" | "missing_permission"; days: []; checkedAt: null }
   | { status: "waiting_for_events"; days: []; checkedAt: string }
   | { status: "available"; days: TrafficDay[]; totalPageviews: number; visitorsToday?: number; registrationPageviews?: number;
-      checkedAt: string; firstDate: string; lastDate: string };
+      checkedAt: string; firstDate: string; lastDate: string; sessions?: TrafficSessions };
 type TrafficEnv = {
   HANDLARBORSEN_POSTHOG_PROJECT_ID?: string; HANDLARBORSEN_POSTHOG_READ_TOKEN?: string;
   POSTHOG_PROJECT_ID?: string; POSTHOG_PERSONAL_API_KEY?: string;
@@ -82,6 +83,46 @@ async function boundedJson(response: Response, signal: AbortSignal): Promise<unk
     reader.releaseLock();
   }
 }
+
+/** Native PostHog session aggregation for the whole period, never a sum of daily counts.
+ * This query returns aggregate metrics only; no session or visitor IDs leave the server.
+ */
+async function readSessions(
+  config: { id: string; token: string }, dates: string[], fetcher: typeof fetch, signal: AbortSignal,
+): Promise<TrafficSessions> {
+  const unavailable = { status: "unavailable" } as const;
+  try {
+    const response = await fetcher("https://eu.posthog.com/api/projects/"+config.id+"/query/", {
+      method: "POST",
+      headers: { Authorization: "Bearer "+config.token, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: {
+          kind: "WebOverviewQuery",
+          dateRange: { date_from: dates[0], date_to: dates[6] },
+          filterTestAccounts: false,
+          properties: [{ key: "$host", type: "event", operator: "exact", value: ["handlarborsen.se","www.handlarborsen.se"] }],
+        },
+        name: "omnira_handlarborsen_sessions_7_utc_days", async: false,
+      }),
+      cache: "no-store", redirect: "error", signal,
+    });
+    if (response.status !== 200) {
+      void response.body?.cancel().catch(()=>{});
+      return { status: response.status === 403 ? "missing_permission" : "unavailable" };
+    }
+    const payload = await boundedJson(response, signal);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return unavailable;
+    const rows = (payload as { results?: unknown }).results;
+    if (!Array.isArray(rows) || rows.length > 10 ||
+      rows.some(row => !row || typeof row !== "object" || Array.isArray(row))) return unavailable;
+    const matches = rows.filter(row => row.key === "sessions");
+    if (matches.length !== 1 || matches[0].kind !== "unit") return unavailable;
+    const count: unknown = matches[0].value;
+    if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0) return unavailable;
+    return { status: "available", count };
+  } catch { return unavailable; }
+}
+
 export async function loadHandlarborsenTraffic(
   project: {id:string;slug:string}, scope: {allowedProjectIds:string[]}, options: TrafficOptions = {},
 ): Promise<HandlarborsenTraffic | null> {
@@ -100,11 +141,13 @@ export async function loadHandlarborsenTraffic(
   const dates = lastSevenUtcDates(now);
   if (dates.length !== 7) return {status:"unavailable",days:[],checkedAt:null};
   const signal = AbortSignal.timeout(7000);
+  const fetcher = options.fetcher ?? fetch;
+  const trafficPromise = (async (): Promise<HandlarborsenTraffic> => {
   try {
-    const response = await (options.fetcher ?? fetch)("https://eu.posthog.com/api/projects/"+config.id+"/query/",{
+    const response = await fetcher("https://eu.posthog.com/api/projects/"+config.id+"/query/",{
       method:"POST",headers:{Authorization:"Bearer "+config.token,"Content-Type":"application/json"},
       body:JSON.stringify({
-        query:{kind:"TrendsQuery",series:[
+        query:{kind:"TrendsQuery",filterTestAccounts:false,series:[
           {kind:"EventsNode",event:"$pageview",math:"total"},
           {kind:"EventsNode",event:"$pageview",math:"dau"},
           {kind:"EventsNode",event:"$pageview",math:"total",properties:[{key:"$pathname",type:"event",operator:"exact",value:["/registrera"]}]},
@@ -126,4 +169,9 @@ export async function loadHandlarborsenTraffic(
     return {status:"available",days,totalPageviews,registrationPageviews,visitorsToday:days[6].visitors,
       checkedAt:now.toISOString(),firstDate:dates[0],lastDate:dates[6]};
   } catch { return {status:"unavailable",days:[],checkedAt:null}; }
+  })();
+  // Parse each response under the deadline independently. A sessions timeout
+  // must not discard an already validated daily traffic response.
+  const [traffic, sessions] = await Promise.all([trafficPromise, readSessions(config, dates, fetcher, signal)]);
+  return traffic.status === "available" ? { ...traffic, sessions } : traffic;
 }

@@ -9,6 +9,7 @@ import {
   DURABLE_RUNS_FIXTURE,
   PLATFORM_CONFIG_FIXTURE,
   PLATFORM_TOKENS_FIXTURE,
+  REVENUE_SNAPSHOTS_FIXTURE,
   extractPlatformConfigTable,
   extractPlatformTokensSchema,
   planCanonicalBootstrap,
@@ -19,6 +20,70 @@ import { sha256 } from "./migration-replay-preflight.mjs";
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const inputs = readProvenanceInputs(repo);
 const codes = (plan) => plan.blockers.map((b) => b.code).sort();
+
+test("revenue snapshots is a pinned schema-only fixture after projects and before first canonical use", () => {
+  const plan = planCanonicalBootstrap(inputs);
+  const path = "supabase/migrations/20260602_stripe_intelligence_revenue_snapshots.sql";
+  const source = inputs.legacy.find((f) => f.name === REVENUE_SNAPSHOTS_FIXTURE.name);
+  assert.equal(sha256(source.sql), "941d578548f895e5087c201502bcc34c8cf9e8b90f422d7b35dbcffc764e833e");
+  const fixture = plan.fixtures.find((f) => f.path === path);
+  assert.ok(fixture);
+  assert.equal(fixture.lfSha256, sha256(source.sql));
+  assert.deepEqual(fixture.provides, ["revenue_snapshots"]);
+  assert.deepEqual(fixture.requires, ["projects"]);
+  assert.equal(fixture.position, 0); // projects already exists in the preceding baseline.
+  const at = plan.sequence.findIndex((s) => s.path === path);
+  assert.ok(at > plan.sequence.findIndex((s) => s.path === BASELINE_FIXTURE));
+  assert.ok(at < plan.sequence.findIndex((s) => s.name === "20261002190000_survival_input_epoch.sql"));
+  assert.equal(plan.sequence.filter((s) => s.path === path).length, 1);
+  assert.equal(plan.replayReady, false);
+  assert.match(plan.disclaimer, /not clean-bootstrap or production readiness/);
+});
+
+test("revenue fixture refuses missing source, byte drift and repinned unexpected SQL or semantics", () => {
+  const source = inputs.legacy.find((f) => f.name === "20260602_stripe_intelligence_revenue_snapshots.sql");
+  for (const sql of [null, source.sql + "\n-- drift"]) {
+    const legacy = inputs.legacy.flatMap((f) => f !== source ? [f] : sql === null ? [] : [{ ...f, sql }]);
+    const result = planCanonicalBootstrap({ ...inputs, legacy });
+    assert.ok(codes(result).includes(sql === null ? "fixture_source_missing" : "fixture_sha_mismatch"));
+    assert.ok(!result.fixtures.some((f) => f.path.endsWith(source.name)));
+  }
+  for (const sql of [
+    source.sql + "\ninsert into public.revenue_snapshots default values;",
+    source.sql + "\nupdate public.projects set name = 'changed';",
+    source.sql + "\ndelete from public.revenue_snapshots;",
+    source.sql + "\nselect net.http_get('https://example.invalid');",
+    source.sql + "\ngrant all on public.revenue_snapshots to anon;",
+    source.sql.replace("on delete set null", "on delete cascade"),
+    source.sql.replace("numeric(12,2)", "numeric(12,4)"),
+    source.sql.replace("default 'sek'", "default 'usd'"),
+    source.sql.replace("snapshot_date desc", "snapshot_date"),
+    source.sql.replace("enable row level security", "disable row level security"),
+  ]) {
+    const result = planCanonicalBootstrap({ ...inputs,
+      legacy: inputs.legacy.map((f) => f === source ? { ...f, sql } : f),
+      supplemental: SUPPLEMENTAL_FIXTURES.map((pin) => pin.name === source.name ? { ...pin, lfSha256: sha256(sql) } : pin),
+    });
+    assert.ok(codes(result).includes("fixture_statement_mismatch"), JSON.stringify(result.blockers));
+    assert.ok(!result.fixtures.some((f) => f.path.endsWith(source.name)));
+  }
+});
+
+test("revenue fixture waits for canonical projects creation or refuses an unavailable prerequisite", () => {
+  const source = inputs.legacy.find((f) => f.name === REVENUE_SNAPSHOTS_FIXTURE.name);
+  const early = { name: "20260528_agent_decisions.sql", sql: "select 1;" };
+  const projects = { name: "20260930_projects.sql", sql: "create table public.projects(id uuid primary key);" };
+  const use = { name: "20261002190000_survival_input_epoch.sql", sql: "select 1 from public.revenue_snapshots;" };
+  const result = plan([early, projects, use], [source], [REVENUE_SNAPSHOTS_FIXTURE]);
+  assert.deepEqual(result.fixtures[0].requires, ["projects"]);
+  assert.equal(result.fixtures[0].after, projects.name);
+  assert.equal(result.fixtures[0].before, use.name);
+  const missing = plan([early, use], [source], [REVENUE_SNAPSHOTS_FIXTURE]);
+  assert.ok(codes(missing).includes("fixture_unplaceable"));
+  assert.ok(!missing.sequence.some((s) => s.path?.endsWith(source.name)));
+  const drift = plan([early, projects, { ...use, name: "20261001_unreviewed_first_use.sql" }], [source], [REVENUE_SNAPSHOTS_FIXTURE]);
+  assert.ok(codes(drift).includes("fixture_first_use_mismatch"));
+});
 
 test("platform_tokens extracts exactly four DDL statements, never the credential backfill", () => {
   const source = inputs.legacy.find((f) => f.name === "20260602_g1_multitenant_platform_tokens.sql").sql;
@@ -182,6 +247,7 @@ test("repository: canonical bootstrap needs an interleaved legacy fixture, so no
   assert.deepEqual(Object.keys(byPath).sort(), [
     "supabase/migrations/20260528_pg_cron_setup.sql",
     "supabase/migrations/20260601_media_insights.sql",
+    "supabase/migrations/20260602_stripe_intelligence_revenue_snapshots.sql",
     "supabase/migrations/20260603_cron_heartbeat.sql",
     "supabase/migrations/20260603_durable_runs.sql",
     "supabase/migrations/20260609_dream_issues_ledger.sql",
@@ -250,6 +316,7 @@ test("repository: canonical bootstrap needs an interleaved legacy fixture, so no
   assert.deepEqual(codes(plan), [
     "execution_not_run",
     "fixture_interleaved",
+    "fixture_untracked",
     "fixture_untracked",
     "fixture_untracked",
     "fixture_untracked",

@@ -143,7 +143,7 @@ test("modified action binding prerequisite or dependent bytes fail closed", () =
     );
     assert.throws(
       () => orderReplayMigrations(rows),
-      new RegExp("unreviewed replay dependency: " + changed.name.replace(/\./g, "\\.")),
+      { message: "unreviewed replay dependency: " + changed.name },
     );
   }
 });

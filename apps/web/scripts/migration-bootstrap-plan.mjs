@@ -124,7 +124,26 @@ export function extractSyntheticFixture(step, source) {
 }
 // Legacy creators of relations first needed after the early window (the provenance scan stops there).
 // Pinned by LF SHA-256; still untracked fixtures with no canonical migration or ledger row.
+export const REVENUE_SNAPSHOTS_FIXTURE = Object.freeze({
+  name: "20260602_stripe_intelligence_revenue_snapshots.sql",
+  lfSha256: "941d578548f895e5087c201502bcc34c8cf9e8b90f422d7b35dbcffc764e833e",
+});
+// Exact statement allowlist, not a general SQL validator. Preserve literals, types, defaults,
+// nullability, FK delete action, uniqueness, index direction and RLS; allow no data/HTTP statements.
+function revenueSnapshotsStatementsMatch(sql) {
+  const statements = sql.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "")
+    .split(";").map((s) => s.replace(/\s+/g, " ").trim()).filter(Boolean);
+  const expected = [
+    "create table if not exists public.revenue_snapshots ( id uuid primary key default gen_random_uuid(), project_id uuid references public.projects(id) on delete set null, snapshot_date date not null default (now() at time zone 'utc')::date, captured_at timestamptz not null default now(), active_subscribers integer, new_subscribers integer, trialing integer, churned_this_month integer, mrr_sek numeric(12,2), revenue_month_sek numeric(12,2), currency text default 'sek', raw jsonb, unique (project_id, snapshot_date) )",
+    "create index if not exists revenue_snapshots_proj_date_idx on public.revenue_snapshots (project_id, snapshot_date desc)",
+    "alter table public.revenue_snapshots enable row level security",
+  ];
+  return JSON.stringify(statements) === JSON.stringify(expected);
+}
+
 export const SUPPLEMENTAL_FIXTURES = Object.freeze([
+  // Empty schema only, no Stripe calls/backfill. projects must exist before its FK is created.
+  REVENUE_SNAPSHOTS_FIXTURE,
   // public.cron_heartbeat, seeded by canonical 20260623_150300_atlas_collector_cron.sql. Side effects: SECURITY
   // DEFINER public.cron_job_status() and cron.schedule('omnira_heartbeat'); never launched locally (executor
   // runs cron.launch_active_jobs=off, --network none). Needs omnira_cron (20260528_pg_cron_setup.sql) at run time.
@@ -289,6 +308,17 @@ export function planCanonicalBootstrap({
     if (sha256(sql) !== pin.lfSha256) {
       blockers.push({ code: "fixture_sha_mismatch", detail: `${LEGACY_DIR}/${pin.name} expected ${pin.lfSha256}, got ${sha256(sql)}` });
       continue;
+    }
+    if (pin.name === REVENUE_SNAPSHOTS_FIXTURE.name) {
+      if (!revenueSnapshotsStatementsMatch(sql)) {
+        blockers.push({ code: "fixture_statement_mismatch", detail: `${LEGACY_DIR}/${pin.name}: expected only reviewed table, index and RLS DDL` });
+        continue;
+      }
+      const firstUse = ordered.find((m) => relationRefs(m.sql).some((r) => r.schema === "public" && r.name === "revenue_snapshots"));
+      if (firstUse?.name !== "20261002190000_survival_input_epoch.sql") {
+        blockers.push({ code: "fixture_first_use_mismatch", detail: `${LEGACY_DIR}/${pin.name}: unexpected first canonical revenue_snapshots use` });
+        continue;
+      }
     }
     const provides = createdRelations(sql)
       .map((r) => r.name)

@@ -6,6 +6,7 @@ import { readProvenanceInputs } from "./migration-baseline-provenance.mjs";
 import {
   BASELINE_FIXTURE,
   COLUMN_PREREQUISITES,
+  DURABLE_RUNS_FIXTURE,
   planCanonicalBootstrap,
   SUPPLEMENTAL_FIXTURES,
 } from "./migration-bootstrap-plan.mjs";
@@ -14,6 +15,63 @@ import { sha256 } from "./migration-replay-preflight.mjs";
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const inputs = readProvenanceInputs(repo);
 const codes = (plan) => plan.blockers.map((b) => b.code).sort();
+
+test("full durable runs fixture follows pg_cron and precedes every canonical function replacement", () => {
+  const plan = planCanonicalBootstrap(inputs);
+  const path = "supabase/migrations/20260603_durable_runs.sql";
+  const at = (name) => plan.sequence.findIndex((s) => (s.path ?? s.name) === name);
+  const fixture = plan.fixtures.find((f) => f.path === path);
+  assert.ok(fixture, "durable runs must be an explicit full fixture");
+  assert.equal(fixture.lfSha256, "a189659945447189022e96bb8a26a5cb4e0e26fb321c9f56a02d0b6e44da7ee4");
+  assert.deepEqual(fixture.providesColumns, ["runs.attempts", "runs.claimed_at", "runs.error_history", "runs.last_error", "runs.lease_until", "runs.max_attempts"]);
+  assert.deepEqual(fixture.providesFunctions, ["public.claim_runs", "omnira_cron.reap_stuck_runs"]);
+  assert.deepEqual(fixture.schedules, ["omnira_runs_drain", "omnira_runs_reaper"]);
+  assert.ok(at("supabase/migrations/20260528_pg_cron_setup.sql") < at(path));
+  assert.ok(at(path) < at("20260614091000_h1p5_runs_claim_id.sql"));
+  for (const migration of inputs.canonical.filter((m) => /create or replace function (?:public.claim_runs|omnira_cron.reap_stuck_runs)\(/i.test(m.sql))) {
+    assert.ok(at(path) < at(migration.name), migration.name);
+    assert.equal(plan.sequence[at(migration.name)].lfSha256, sha256(migration.sql));
+  }
+  assert.equal(plan.sequence.filter((s) => s.path === path).length, 1);
+});
+
+test("durable runs missing, changed bytes or missing pg_cron prerequisite refuse the plan", () => {
+  for (const [name, change, expected] of [
+    ["20260603_durable_runs.sql", null, "fixture_source_missing"],
+    ["20260603_durable_runs.sql", (sql) => sql + "\n-- drift", "fixture_sha_mismatch"],
+    ["20260528_pg_cron_setup.sql", null, "fixture_source_missing"],
+    ["20260528_pg_cron_setup.sql", (sql) => sql + "\n-- drift", "full_fixture_mismatch"],
+  ]) {
+    const legacy = inputs.legacy.flatMap((f) => f.name !== name ? [f] : change ? [{ ...f, sql: change(f.sql) }] : []);
+    const plan = planCanonicalBootstrap({ ...inputs, legacy });
+    assert.ok(codes(plan).includes(expected), JSON.stringify(plan.blockers));
+    assert.ok(!plan.sequence.some((s) => s.path === "supabase/migrations/20260603_durable_runs.sql"));
+  }
+});
+
+test("full fixture contract rejects column, function, schedule and baseline drift even with a matching supplied digest", () => {
+  const original = inputs.legacy.find((f) => f.name === DURABLE_RUNS_FIXTURE.name);
+  for (const sql of [
+    original.sql.replace("max_attempts  integer", "wrong_column  integer"),
+    original.sql.replace("public.claim_runs(", "public.wrong_function("),
+    original.sql.replace("'omnira_runs_drain'", "'wrong_schedule'"),
+  ]) {
+    const result = planCanonicalBootstrap({
+      ...inputs,
+      legacy: inputs.legacy.map((f) => f === original ? { ...f, sql } : f),
+      durableRunsFixture: { ...DURABLE_RUNS_FIXTURE, lfSha256: sha256(sql) },
+    });
+    assert.ok(codes(result).includes("full_fixture_mismatch"));
+    assert.ok(!result.sequence.some((s) => s.path?.endsWith("/20260603_durable_runs.sql")));
+  }
+  const result = planCanonicalBootstrap({
+    ...inputs,
+    candidates: inputs.candidates.map((c) => c.path === BASELINE_FIXTURE ? {
+      ...c, sql: c.sql.replace("CREATE TABLE IF NOT EXISTS runs (", "CREATE TABLE IF NOT EXISTS runs (max_attempts integer,")
+    } : c),
+  });
+  assert.ok(codes(result).includes("full_fixture_mismatch"));
+});
 
 test("repository: canonical bootstrap needs an interleaved legacy fixture, so no preexisting baseline exists", () => {
   const plan = planCanonicalBootstrap(inputs);
@@ -27,6 +85,7 @@ test("repository: canonical bootstrap needs an interleaved legacy fixture, so no
     "supabase/migrations/20260528_pg_cron_setup.sql",
     "supabase/migrations/20260601_media_insights.sql",
     "supabase/migrations/20260603_cron_heartbeat.sql",
+    "supabase/migrations/20260603_durable_runs.sql",
     "supabase/migrations/20260609_dream_issues_ledger.sql",
     "supabase/migrations/20260609_manager_task_dream_link.sql",
   ]);
@@ -86,11 +145,12 @@ test("repository: canonical bootstrap needs an interleaved legacy fixture, so no
   assert.deepEqual([link.position, link.preexisting], [0, true]);
   assert.ok(at((s) => s.path === link.path) < at((s) => s.name === "20260820_manager_tasks_work_packages.sql"));
   assert.equal(plan.sequence.filter((s) => s.path === link.path).length, 1);
-  for (const f of plan.fixtures.filter((f) => f !== link)) assert.deepEqual(f.providesColumns, []);
+  for (const f of plan.fixtures.filter((f) => f !== link && !f.path.endsWith("/20260603_durable_runs.sql"))) assert.deepEqual(f.providesColumns, []);
 
   assert.deepEqual(codes(plan), [
     "execution_not_run",
     "fixture_interleaved",
+    "fixture_untracked",
     "fixture_untracked",
     "fixture_untracked",
     "fixture_untracked",
@@ -106,7 +166,7 @@ test("plan is deterministic for identical inputs", () => {
 
 const base = [{ path: "base.sql", tracked: false, sql: "create table if not exists p (id uuid);" }];
 const plan = (canonical, legacy, supplemental = [], columnPrerequisites = []) =>
-  planCanonicalBootstrap({ canonical, legacy, candidates: base, baselinePath: "base.sql", supplemental, columnPrerequisites });
+  planCanonicalBootstrap({ canonical, legacy, candidates: base, baselinePath: "base.sql", supplemental, columnPrerequisites, durableRunsFixture: null });
 
 test("a fixture whose dependencies exist before replay is preexisting; one needing canonical tables is interleaved", () => {
   const canonical = [

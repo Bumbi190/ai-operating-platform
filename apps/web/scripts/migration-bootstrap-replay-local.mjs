@@ -271,9 +271,12 @@ export async function runBootstrapReplay({
       const launch = psql("select current_setting('cron.launch_active_jobs')");
       receipt.environment.cronLaunchActiveJobs = launch.ok ? launch.stdout : null;
       const runs = psql("select count(*) from cron.job_run_details");
-      receipt.environment.cronJobRuns = runs.ok ? Number(runs.stdout) : null;
+      const countReadable = runs.ok && /^(0|[1-9][0-9]*)$/.test(runs.stdout) && Number.isSafeInteger(Number(runs.stdout));
+      receipt.environment.cronJobRuns = countReadable ? Number(runs.stdout) : null;
       if (receipt.environment.inspected && launch.ok && launch.stdout !== "off" && !receipt.failure)
         receipt.failure = { phase: "guard", error: "cron.launch_active_jobs is not off" };
+      if ((!countReadable || receipt.environment.cronJobRuns !== 0) && !receipt.failure)
+        receipt.failure = { phase: "guard", error: "cron.job_run_details count is unreadable or nonzero" };
       // The random name is ours alone; remove only if it carries our label.
       const labelled = docker(["inspect", "--format", `{{index .Config.Labels "${LABEL_KEY}"}}`, name]);
       if (labelled.status !== 0) receipt.cleanup = "not_created";

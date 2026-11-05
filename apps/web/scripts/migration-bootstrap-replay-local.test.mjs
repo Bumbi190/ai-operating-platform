@@ -58,7 +58,7 @@ const read = (path) => {
 const storageBody = "create schema if not exists storage;\n";
 const storagePrerequisites = [["0002-storage-schema.sql", sha256(storageBody)]];
 
-function fakeDocker({ endpoint = "npipe:////./pipe/docker_engine", inspect = {}, label = LABEL, failOn = "FAIL_HERE", cron = "off" } = {}) {
+function fakeDocker({ endpoint = "npipe:////./pipe/docker_engine", inspect = {}, label = LABEL, failOn = "FAIL_HERE", cron = "off", cronRuns = "0", cronRunsReadable = true } = {}) {
   const calls = [];
   const sql = [];
   const ok = (stdout = "") => ({ status: 0, stdout, stderr: "" });
@@ -82,7 +82,7 @@ function fakeDocker({ endpoint = "npipe:////./pipe/docker_engine", inspect = {},
     if (cmd === "exec" && args.includes("psql")) {
       sql.push(input);
       if (input.includes("cron.launch_active_jobs")) return ok(cron + "\n");
-      if (input.includes("cron.job_run_details")) return ok("0\n");
+      if (input.includes("cron.job_run_details")) return cronRunsReadable ? ok(cronRuns + "\n") : { status: 3, stdout: "", stderr: "cannot read job_run_details" };
       if (input.includes(failOn)) return { status: 3, stdout: "", stderr: "psql:<stdin>:1: ERROR:  boom" };
       return ok();
     }
@@ -220,6 +220,17 @@ test("cron launching left on is a guard failure", async () => {
   const receipt = await run(fakeDocker({ failOn: "NEVER_MATCHES", cron: "on" }));
   assert.equal(receipt.failure.phase, "guard");
   assert.equal(receipt.completed, false);
+});
+
+test("nonzero, malformed or unreadable cron run evidence fails completed SQL and preserves cleanup", async () => {
+  for (const evidence of [{ cronRuns: "1" }, { cronRuns: "" }, { cronRuns: "invalid" }, { cronRuns: "-1" }, { cronRuns: "0.0" }, { cronRunsReadable: false }]) {
+    const receipt = await run(fakeDocker({ failOn: "NEVER_MATCHES", ...evidence }));
+    assert.equal(receipt.applied.length, 4);
+    assert.equal(receipt.failure?.phase, "guard", JSON.stringify(evidence));
+    assert.match(receipt.failure.error, /cron.job_run_details/);
+    assert.equal(receipt.completed, false);
+    assert.equal(receipt.cleanup, "removed");
+  }
 });
 
 test("receipts can only be written as new migration-bootstrap-replay files under docs/validation", () => {

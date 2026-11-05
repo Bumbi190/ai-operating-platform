@@ -162,6 +162,57 @@ test("missing workflow_action_binding or execution_stop_safety is refused", () =
   );
 });
 
+test("failure model alone triggers binding ordering without readonly authorization", () => {
+  const between = { name: "20260830_in_between.sql", sha256: "unrelated" };
+  const input = Object.freeze([binding, between, failure, stop]);
+  const ordered = orderReplayMigrations(input);
+  assert.deepEqual(ordered, [stop, binding, failure, between]);
+  assert.deepEqual(input, [binding, between, failure, stop]);
+  assert.deepEqual(orderReplayMigrations(ordered), ordered);
+  assert.throws(
+    () => orderReplayMigrations([failure]),
+    /missing replay dependency: workflow_action_binding/,
+  );
+});
+
+test("action dependency pins reject missing hashes", () => {
+  for (const changed of [binding, failure, readonly, stop]) {
+    for (const sha256 of [undefined, null, ""]) {
+      const rows = [binding, failure, readonly, stop].map((row) =>
+        row === changed ? { ...row, sha256 } : row,
+      );
+      assert.throws(
+        () => orderReplayMigrations(rows),
+        { message: "unreviewed replay dependency: " + changed.name },
+      );
+    }
+  }
+});
+
+test("action ordering pins cover canonical file bytes and reject byte changes", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { createHash } = await import("node:crypto");
+  const digest = (body) => createHash("sha256").update(body).digest("hex");
+  const rows = [binding, failure, readonly, stop].map(({ name }) => {
+    // Pins cover Git's LF bytes, also on a CRLF checkout. Never execute SQL.
+    const body = readFileSync(new URL("../supabase/migrations/" + name, import.meta.url), "utf8")
+      .replaceAll("\r\n", "\n");
+    return { name, body, sha256: digest(body) };
+  });
+  assert.deepEqual(orderReplayMigrations(rows).map((row) => row.name), [
+    stop.name, binding.name, failure.name, readonly.name,
+  ]);
+  for (const changed of rows) {
+    const tampered = rows.map((row) => row === changed
+      ? { ...row, sha256: digest(row.body + "\n-- changed bytes\n") }
+      : row);
+    assert.throws(
+      () => orderReplayMigrations(tampered),
+      { message: "unreviewed replay dependency: " + changed.name },
+    );
+  }
+});
+
 test("repository replay retains every canonical SQL file exactly once", async () => {
   const { readdirSync } = await import("node:fs");
   const { execFileSync } = await import("node:child_process");

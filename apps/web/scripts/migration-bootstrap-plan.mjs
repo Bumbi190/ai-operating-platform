@@ -40,6 +40,17 @@ export const COLUMN_PREREQUISITES = Object.freeze([
     firstUsedBy: "20260820_manager_tasks_work_packages.sql",
   },
 ]);
+// Full, unmodified legacy fixture: unlike COLUMN_PREREQUISITES this deliberately installs
+// functions and schedules. Run only with cron launching off in the disposable offline executor.
+export const DURABLE_RUNS_FIXTURE = Object.freeze({
+  name: "20260603_durable_runs.sql",
+  lfSha256: "a189659945447189022e96bb8a26a5cb4e0e26fb321c9f56a02d0b6e44da7ee4",
+});
+const DURABLE_COLUMNS = ["attempts", "max_attempts", "claimed_at", "lease_until", "last_error", "error_history"];
+const DURABLE_FUNCTIONS = ["public.claim_runs", "omnira_cron.reap_stuck_runs"];
+const DURABLE_SCHEDULES = ["omnira_runs_drain", "omnira_runs_reaper"];
+const DURABLE_FIRST_USE = "20260614091000_h1p5_runs_claim_id.sql";
+const DURABLE_CRON = "20260528_pg_cron_setup.sql";
 const DISCLAIMER =
   "Static offline bootstrap plan only. No SQL was executed; fixtures are untracked test inputs, so this is not clean-bootstrap or production readiness evidence.";
 
@@ -108,6 +119,7 @@ export function planCanonicalBootstrap({
   grandfatheredNames,
   supplemental = SUPPLEMENTAL_FIXTURES,
   columnPrerequisites = COLUMN_PREREQUISITES,
+  durableRunsFixture = DURABLE_RUNS_FIXTURE,
 }) {
   const blockers = [];
   const plan = {
@@ -213,9 +225,52 @@ export function planCanonicalBootstrap({
     });
   }
 
+  // Dedicated full-fixture gate. The immutable SHA covers defaults, function bodies, ACLs,
+  // indexes and schedule commands; these checks also verify the declared schema/ordering contract.
+  // Do not route this through, or broaden, the bare column-only validator above.
+  if (durableRunsFixture) {
+    const pin = durableRunsFixture;
+    const path = `${LEGACY_DIR}/${pin.name}`;
+    const sql = legacy.find((f) => f.name === pin.name)?.sql;
+    const cron = legacy.find((f) => f.name === DURABLE_CRON);
+    const problems = [];
+    if (sql === undefined) blockers.push({ code: "fixture_source_missing", detail: path });
+    else if (sha256(sql) !== pin.lfSha256)
+      blockers.push({ code: "fixture_sha_mismatch", detail: path });
+    else {
+      const text = code(sql);
+      const added = [...text.matchAll(/alter table public\.runs add column if not exists (\w+)\s/g)].map((m) => m[1]);
+      const functions = [...text.matchAll(/create or replace function ([\w.]+)\(/g)].map((m) => m[1]);
+      const schedules = [...sql.replace(/--[^\n]*/g, "").matchAll(/select cron\.schedule\('([^']+)'/g)].map((m) => m[1]);
+      if (JSON.stringify(added) !== JSON.stringify(DURABLE_COLUMNS)) problems.push("expected six durable runs columns");
+      if (JSON.stringify(functions) !== JSON.stringify(DURABLE_FUNCTIONS)) problems.push("expected claim/reaper functions");
+      if (JSON.stringify(schedules) !== JSON.stringify(DURABLE_SCHEDULES)) problems.push("expected drain/reaper named schedules");
+      const columns = baselineColumns.get("runs") ?? [];
+      if (!["id", "created_at", "status", "started_at", "finished_at", "error"].every((c) => columns.includes(c)) ||
+          DURABLE_COLUMNS.some((c) => columns.includes(c))) problems.push("baseline runs columns differ from prerequisite contract");
+      if (!cron || !sources.has(DURABLE_CRON))
+        blockers.push({ code: "fixture_source_missing", detail: `${path} requires ${DURABLE_CRON}` });
+      else if (sha256(cron.sql) !== "22569e22cd61cef171ad3be914a02d3e7d013a787304ce6904f09a24218d0967")
+        problems.push("unreviewed pg_cron setup bytes");
+      const firstUse = ordered.find((m) => /\b(?:attempts|max_attempts|claimed_at|lease_until|last_error|error_history)\b/.test(code(m.sql)) &&
+        relationRefs(m.sql).some((r) => r.schema === "public" && r.name === "runs"));
+      if (firstUse?.name !== DURABLE_FIRST_USE) problems.push("first durable columns use must be H1.P5");
+      const firstReplacement = ordered.find((m) => /create or replace function (?:public\.claim_runs|omnira_cron\.reap_stuck_runs)\(/.test(code(m.sql)));
+      if (firstReplacement?.name !== DURABLE_FIRST_USE) problems.push("first function replacement must be H1.P5");
+      if (sources.has(pin.name)) problems.push("ambiguous full fixture source");
+      for (const detail of problems) blockers.push({ code: "full_fixture_mismatch", detail: `${path}: ${detail}` });
+      if (!problems.length && cron && sources.has(DURABLE_CRON)) sources.set(pin.name, {
+        provides: [], providesColumns: DURABLE_COLUMNS.map((c) => `runs.${c}`),
+        providesFunctions: DURABLE_FUNCTIONS, schedules: DURABLE_SCHEDULES,
+        afterFixture: `${LEGACY_DIR}/${DURABLE_CRON}`,
+        firstUsedBy: [DURABLE_FIRST_USE], supplemental: true,
+      });
+    }
+  }
+
   // Place each fixture at the earliest replay position where its DDL-time public dependencies exist,
   // and no later than the first canonical use of what it provides. Position 0 means truly preexisting.
-  for (const [name, { provides, providesColumns = [], firstUsedBy, supplemental: pinned }] of [...sources].sort(([a], [b]) =>
+  for (const [name, { provides, providesColumns = [], providesFunctions, schedules, afterFixture, firstUsedBy, supplemental: pinned }] of [...sources].sort(([a], [b]) =>
     a < b ? -1 : 1,
   )) {
     const sql = legacy.find((f) => f.name === name).sql;
@@ -247,6 +302,7 @@ export function planCanonicalBootstrap({
       before: position >= 0 ? names[position] : null,
       preexisting: position === 0,
       supplemental: pinned,
+      ...(afterFixture ? { afterFixture, providesFunctions, schedules } : {}),
     };
     plan.fixtures.push(fixture);
     if (position === -1)
@@ -264,6 +320,11 @@ export function planCanonicalBootstrap({
     for (const f of plan.fixtures) if (f.position === i) plan.sequence.push(fixtureStep(f));
     plan.sequence.push({ kind: "canonical", name: m.name, lfSha256: m.sha256 });
   });
+  for (const f of plan.fixtures.filter((f) => f.afterFixture)) {
+    const at = (path) => plan.sequence.findIndex((s) => s.path === path);
+    if (at(f.afterFixture) < 0 || at(f.path) <= at(f.afterFixture))
+      blockers.push({ code: "fixture_unplaceable", detail: `${f.path} must follow ${f.afterFixture}` });
+  }
 
   for (const path of [baselinePath, ...plan.fixtures.map((f) => f.path)])
     blockers.push({ code: "fixture_untracked", detail: `${path} has no canonical migration file or ledger row` });

@@ -34,6 +34,14 @@ describe('Handlarbörsen read-only intent classification', () => {
     expect(read('Skicka en tillväxtrapport för Handlarbörsen')).toBeNull()
     expect(read('Hur utvecklas Familje-Stunden?')).toBeNull()
   })
+  it('routes explicit v3 classified-dealer questions, preserving plain-statistics reads', () => {
+    expect(read('Nova, hur många riktiga externa bilhandlare har vi i Handlarbörsen? Visa även antal testkonton och interna bolag. Använd statistik v3 och ange datakällan.')).toBe('handlarborsen_growth_brief')
+    expect(read('Visa statistik v3 för Handlarbörsen')).toBe('handlarborsen_growth_brief')
+    expect(read('Hur många verkliga bilhandlare finns i Handlarbörsen?')).toBe('handlarborsen_growth_brief')
+    expect(read('Hur många registrerade företag finns i Handlarbörsen?')).toBe('handlarborsen_statistics')
+    expect(read('Skicka statistik v3 för Handlarbörsen till kontakter')).toBeNull()
+    expect(read('Visa statistik v3 för Familje-Stunden')).toBeNull()
+  })
   it('keeps explicit growth evidence reads out of the content fast-path', () => {
     const route = readFileSync(fileURLToPath(new URL('../../app/api/chat/route.ts', import.meta.url)), 'utf8')
     expect(route).toContain('const hbGrowthBriefReadIntent =')

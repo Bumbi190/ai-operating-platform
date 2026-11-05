@@ -1,3 +1,5 @@
+import type { RealDealerMetricsV3 } from '@/lib/atlas/project-analytics/handlarborsen-real-dealer-v3'
+import { HandlarborsenRealDealerKpis } from './HandlarborsenRealDealerKpis'
 import Link from 'next/link'
 import {
   COLLECTION_TODAY_LABELS,
@@ -27,10 +29,12 @@ export function HandlarborsenMarketplaceReport({
   slug,
   name,
   report,
+  realDealerMetrics,
 }: {
   slug: string
   name: string
   report: MarketplaceReport
+  realDealerMetrics?: RealDealerMetricsV3 | null
 }) {
   const latest = report.latest
 
@@ -44,12 +48,21 @@ export function HandlarborsenMarketplaceReport({
         </nav>
       </header>
 
+      {realDealerMetrics && <HandlarborsenRealDealerKpis data={realDealerMetrics} />}
+
       {report.state !== 'ok' || !latest ? (
         <StateNote state={report.state === 'ok' ? 'no_snapshot' : report.state} />
       ) : (
-        <>
+        <details className={styles.panel}>
+          <summary className={styles.sectionTitle}>Historiskt revisionsunderlag · äldre definition</summary>
+          <p className={styles.note} role="note" data-tone="warning">
+            {latest.dataScope === 'legacy_all_organisations'
+              ? 'Testdata ingår i den äldre rapporten, tillsammans med interna bolag.'
+              : 'Den sparade v2-rapporten har ett annat urval än v3.'}
+            {' '}Dessa råvärden visar inte antalet riktiga externa handlare och jämförs inte med v3-panelen.
+          </p>
           <section className={styles.panel} aria-labelledby="hb-report">
-            <h2 id="hb-report" className={styles.sectionTitle}>Senaste rapport</h2>
+            <h2 id="hb-report" className={styles.sectionTitle}>Senast sparade historiska rapport</h2>
             <dl className={styles.facts}>
               <div className={styles.fact}>
                 <dt>Uppmätt</dt>
@@ -129,7 +142,7 @@ export function HandlarborsenMarketplaceReport({
               </ol>
             ) : null}
           </section>
-        </>
+        </details>
       )}
     </main>
   )
@@ -219,7 +232,7 @@ function MetricRow({ metric, delta }: { metric: MetricView; delta: number | null
         )}
         {delta !== null ? (
           <span className={styles.delta} aria-label={`Förändring ${delta > 0 ? 'plus' : delta < 0 ? 'minus' : ''} ${Math.abs(delta)}`}>
-            {delta > 0 ? `+${delta}` : delta}
+            {delta === 0 ? ' · oförändrat' : ` · ${delta > 0 ? '+' : ''}${delta}`}
           </span>
         ) : null}
       </span>

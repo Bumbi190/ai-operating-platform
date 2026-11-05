@@ -1,3 +1,5 @@
+import type { RealDealerMetricsV3 } from '@/lib/atlas/project-analytics/handlarborsen-real-dealer-v3'
+import { companyPopulation } from '@/lib/atlas/project-analytics/handlarborsen-company-population'
 import type { MarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-report'
 import type { HandlarborsenTraffic } from '@/lib/atlas/project-analytics/handlarborsen-posthog-traffic'
 import { deriveHandlarborsenGrowthBrief } from '@/lib/atlas/project-analytics/handlarborsen-growth-brief'
@@ -17,16 +19,18 @@ function safeCount(value: number | null | undefined): number | null {
 export function registrationJourneySteps(
   report: MarketplaceReport,
   traffic?: HandlarborsenTraffic | null,
+  realDealerMetrics?: RealDealerMetricsV3 | null,
+  now = new Date(),
 ): Step[] {
-  const latest = report.state === 'ok' && report.latest?.dataScope === 'production_excluding_quarantined_test'
-    ? report.latest
-    : null
-  const metrics = new Map(latest?.metrics.map((entry) => [entry.key, entry.value]) ?? [])
-  const registered = safeCount(metrics.get('companies_registered_total'))
-  const verifiedSource = safeCount(metrics.get('companies_verified_total'))
-  const verified = registered !== null && verifiedSource !== null && verifiedSource <= registered
-    ? verifiedSource
-    : null
+  const population = companyPopulation(report, now, realDealerMetrics)
+  const { registered, verified } = population
+  const sourceNote = realDealerMetrics !== undefined
+    ? population.observedAt
+      ? 'Handlarbörsens v3-API · classified_real_external_dealers · observerad ' + population.observedAt
+      : 'Handlarbörsens v3-API · verifierat underlag ej tillgängligt; inga äldre antal används'
+    : population.observedAt
+      ? 'Handlarbörsen · totalt till ' + population.observedAt.slice(0, 10) + ' UTC'
+      : 'Handlarbörsen · verifierad produktionsrapport saknas'
   const trafficValue = traffic?.status === 'available' ? safeCount(traffic.registrationPageviews) : null
 
   return [
@@ -38,14 +42,14 @@ export function registrationJourneySteps(
         : 'PostHog · trafikdata ej tillgänglig',
     },
     {
-      title: 'Registrerade företag',
+      title: realDealerMetrics !== undefined ? 'Riktiga externa handlare' : 'Registrerade företag',
       value: registered,
-      note: latest ? `Handlarbörsen · totalt till ${latest.observedAt.slice(0, 10)} UTC` : 'Handlarbörsen · verifierad produktionsrapport saknas',
+      note: sourceNote,
     },
     {
-      title: 'Verifierade företag',
+      title: realDealerMetrics !== undefined ? 'Verifierade externa handlare' : 'Verifierade företag',
       value: verified,
-      note: latest ? `Handlarbörsen · totalt till ${latest.observedAt.slice(0, 10)} UTC` : 'Handlarbörsen · verifierad produktionsrapport saknas',
+      note: sourceNote,
     },
   ]
 }
@@ -53,14 +57,16 @@ export function registrationJourneySteps(
 export function HandlarborsenRegistrationJourney({
   report,
   traffic,
+  realDealerMetrics,
   now,
 }: {
   report: MarketplaceReport
   traffic?: HandlarborsenTraffic | null
+  realDealerMetrics?: RealDealerMetricsV3 | null
   now: Date
 }) {
-  const steps = registrationJourneySteps(report, traffic)
-  const brief = deriveHandlarborsenGrowthBrief(report, traffic, now)
+  const steps = registrationJourneySteps(report, traffic, realDealerMetrics, now)
+  const brief = deriveHandlarborsenGrowthBrief(report, traffic, now, realDealerMetrics)
   return (
     <section aria-labelledby="hb-registration-journey-title"
       className="my-6 rounded-2xl border border-sky-400/20 bg-slate-950/40 p-5 text-slate-100">
@@ -68,7 +74,7 @@ export function HandlarborsenRegistrationJourney({
       <h2 id="hb-registration-journey-title" className="mt-2 text-xl font-semibold">Från intresse till verifierad handlare</h2>
       <p className="mt-2 text-sm text-slate-300">
         Tre separata mätvärden från två källor. Ingen konverteringsgrad beräknas eftersom
-        sidvisningar och historiska företagsantal inte avser samma användare eller tidsperiod.
+        sidvisningar och företagsantal inte avser samma användare eller tidsperiod.
       </p>
       <div className="mt-5 grid gap-3 md:grid-cols-3">
         {steps.map((step, index) => (
@@ -93,7 +99,7 @@ export function HandlarborsenRegistrationJourney({
       </aside>
       <p className="mt-4 text-xs text-slate-400">
         En sidvisning är inte en person eller en påbörjad ansökan. Företagsantal kommer från
-        Handlarbörsens egna granskade snapshots och kan vara äldre än trafikstatistiken.
+        Handlarbörsens angivna datakälla vid dess observationstid och kan avse en annan tid än trafikstatistiken.
       </p>
     </section>
   )

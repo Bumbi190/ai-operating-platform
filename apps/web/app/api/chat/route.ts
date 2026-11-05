@@ -812,6 +812,12 @@ export async function POST(request: Request) {
   const hbReplyLifecycleReadIntent = !pendingNovaCuratorReview && !hbCompositeEvidenceIntent && !image && !studioContext && !websitePlanRef && !rawBuildContext && !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText) && classifyHandlarborsenReadIntent(lastUserText, messages.slice(0, -1)
     .filter(m => m.role === 'user' && typeof m.content === 'string')
     .slice(-2).map(m => m.content as string)) === 'handlarborsen_reply_lifecycle'
+  // Explicit growth evidence reads must not be swallowed by copywriting mode,
+  // including when the client supplies mode='content'. This is routing only:
+  // the actual tool still checks the authenticated project allow-list.
+  const hbGrowthBriefReadIntent = !pendingNovaCuratorReview && !hbCompositeEvidenceIntent && !image && !studioContext && !websitePlanRef && !rawBuildContext && !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText) && classifyHandlarborsenReadIntent(lastUserText, messages.slice(0, -1)
+    .filter(m => m.role === 'user' && typeof m.content === 'string')
+    .slice(-2).map(m => m.content as string)) === 'handlarborsen_growth_brief'
   // A narrowly scoped read-only Strato request cannot become a generic
   // writing/navigation/action turn. Owner and conversation are re-checked
   // by the reader; this classifier grants no new access by itself.
@@ -821,7 +827,7 @@ export async function POST(request: Request) {
     && !isNotionKnowledgeIntent(lastUserText) && hbStratoInboxReadEnabled()
     && isHandlarborsenInboxReadIntent(lastUserText)
   const socialPreparationIntent = isSocialPreparationIntent(lastUserText) || isSocialPreparationTurn(messages) || isSocialContentReadIntent(lastUserText)
-  const fastPath = !pendingNovaCuratorReview && !stratoInboxReadIntent && !hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent && !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText) && !image && !isCalendarIntent(lastUserText) && !studioContext && !websitePlanRef && !rawBuildContext && !hbReplyLifecycleReadIntent && !socialPreparationIntent && (mode === 'content' || isFastPathContent(lastUserText))
+  const fastPath = !pendingNovaCuratorReview && !stratoInboxReadIntent && !hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent && !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText) && !image && !isCalendarIntent(lastUserText) && !studioContext && !websitePlanRef && !rawBuildContext && !hbReplyLifecycleReadIntent && !hbGrowthBriefReadIntent && !socialPreparationIntent && (mode === 'content' || isFastPathContent(lastUserText))
   // Statisk konversation (hej/tack/vem är du) — besvaras ur Atlas identitet ensam.
   // Allow-list, aldrig gissning: allt som inte bevisligen klarar sig utan live-
   // data, projekt, Memory, klocka och verktyg går full path.

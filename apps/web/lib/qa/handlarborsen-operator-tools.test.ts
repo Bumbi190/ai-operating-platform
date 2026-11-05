@@ -1,7 +1,11 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 const marketplace = vi.hoisted(() => ({ load: vi.fn() }))
+const traffic = vi.hoisted(() => ({ load: vi.fn() }))
+const real = vi.hoisted(() => ({ read: vi.fn() }))
+vi.mock('@/lib/atlas/project-analytics/handlarborsen-real-dealer-v3', () => ({ readRealDealerMetricsV3: real.read }))
+vi.mock('@/lib/atlas/project-analytics/handlarborsen-posthog-traffic', () => ({ loadHandlarborsenTraffic: traffic.load }))
 vi.mock('@/lib/atlas/project-analytics/handlarborsen-marketplace-read', () => ({
   loadHandlarborsenMarketplaceReport: marketplace.load,
 }))
@@ -60,6 +64,49 @@ function scope(db: unknown, allowedProjectIds: string[] = [HB], userId = OWNER) 
 }
 
 describe('Atlas Handlarbörsen read-only tools', () => {
+  beforeEach(() => { real.read.mockReset(); real.read.mockResolvedValue({status:'unavailable',reason:'source_unavailable'}) })
+  it('denies growth reads without verified project access before either source is fetched', async () => {
+    const fake = dbFixture()
+    marketplace.load.mockClear(); traffic.load.mockClear()
+    expect(await handleHandlarborsenReadTool('handlarborsen_growth_brief', scope(fake.db, [])))
+      .toEqual({ status: 'not_permitted' })
+    expect(marketplace.load).not.toHaveBeenCalled()
+    expect(traffic.load).not.toHaveBeenCalled()
+  })
+  it('returns only sourced aggregate observations and review steps for a verified owner', async () => {
+    marketplace.load.mockResolvedValueOnce({ status: 'ok', report: {
+      state: 'ok', latest: {
+        observedAt: '2026-11-04T06:55:00.000Z', freshness: 'fresh',
+        dataScope: 'production_excluding_quarantined_test',
+        metrics: [{key:'companies_registered_total',value:10},{key:'companies_verified_total',value:3}],
+      },
+    } })
+    real.read.mockResolvedValueOnce({ status:'available',registered:1,verified:1,
+      testOrganisations:8,internalOrganisations:2,unclassifiedOrganisations:0,
+      observedAt:'2026-11-04T19:55:00Z' })
+    traffic.load.mockResolvedValueOnce({ status: 'available', registrationPageviews: 2,
+      firstDate: '2026-10-29', lastDate: '2026-11-04', checkedAt: '2026-11-04T16:00:00Z' })
+    const result = await handleHandlarborsenReadTool('handlarborsen_growth_brief', {
+      ...scope(dbFixture().db), now: new Date('2026-11-04T20:00:00Z'),
+    })
+    expect(result).toMatchObject({status:'ok',readiness:'review',source:'handlarborsen_classified_real_external_v3'})
+    expect(result).toHaveProperty('observations')
+    expect(result).toHaveProperty('manualChecks')
+    expect(JSON.stringify(result)).toContain('1 klassificerade riktiga externa handlare')
+    expect(JSON.stringify(result)).not.toContain('10 registrerade')
+    expect(result).not.toHaveProperty('identity')
+    expect(result).not.toHaveProperty('email')
+    expect(traffic.load).toHaveBeenCalledWith({id:HB,slug:'handlarborsen'}, {allowedProjectIds:[HB]})
+  })
+  it('does not invent traffic when PostHog is unavailable', async () => {
+    marketplace.load.mockResolvedValueOnce({ status:'ok',report:{state:'no_snapshot',latest:null} })
+    traffic.load.mockResolvedValueOnce({status:'not_connected',days:[],checkedAt:null})
+    const result = await handleHandlarborsenReadTool('handlarborsen_growth_brief', {
+      ...scope(dbFixture().db), now: new Date('2026-11-04T20:00:00Z'),
+    })
+    expect(result).toMatchObject({status:'ok',readiness:'insufficient_data',v3Availability:'source_unavailable'})
+    expect(JSON.stringify(result)).not.toContain('0 gånger')
+  })
   it('does not touch the database without the owner-scoped project allowlist', async () => {
     const fake = dbFixture()
     const result = await handleHandlarborsenReadTool('handlarborsen_latest_mail', scope(fake.db, []))
@@ -108,6 +155,22 @@ describe('Atlas Handlarbörsen read-only tools', () => {
     } })
     expect(await handleHandlarborsenReadTool('handlarborsen_latest_mail', scope(disabledMailbox.db)))
       .toMatchObject({ status: 'unavailable', reason: 'mailbox_not_authenticated' })
+  })
+  it('blocks legacy test-inclusive counts from the statistics chat tool', async () => {
+    marketplace.load.mockResolvedValueOnce({ status: 'ok', report: {
+      state: 'ok', latest: {
+        snapshotDate: '2026-11-05', observedAt: '2026-11-05T06:55:00Z',
+        dataScope: 'legacy_all_organisations',
+        metrics: [
+          { key: 'companies_registered_total', value: 11 },
+          { key: 'companies_verified_total', value: 3 },
+        ],
+      }, history: { comparison: { available: false, reason: 'no_previous_snapshot' } },
+    } })
+    const result = await handleHandlarborsenReadTool('handlarborsen_statistics', scope(dbFixture().db))
+    expect(result).toMatchObject({ status: 'unavailable', reason: 'legacy_includes_test_organisations' })
+    expect(result).not.toHaveProperty('metrics')
+    expect(result).not.toHaveProperty('comparison')
   })
   it('returns the existing validated KPI report with its snapshot provenance and does not invent a dealer identity', async () => {
     marketplace.load.mockResolvedValueOnce({

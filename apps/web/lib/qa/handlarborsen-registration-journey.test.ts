@@ -8,6 +8,8 @@ import { HandlarborsenRegistrationJourney, registrationJourneySteps } from '@/co
 
 (globalThis as unknown as { React: typeof React }).React = React
 
+const now = new Date('2026-11-04T20:30:00.000Z')
+
 const report = (registered: number | null, verified: number | null, scope = 'production_excluding_quarantined_test') => ({
   state: 'ok',
   latest: {
@@ -37,7 +39,7 @@ describe('Handlarbörsen registration journey', () => {
     expect(steps.map(step => step.value)).toEqual([5, 10, 3])
     expect(steps[0].note).toContain('7 UTC-dagar')
     expect(steps[1].note).toContain('2026-11-04')
-    const html = renderToStaticMarkup(createElement(HandlarborsenRegistrationJourney, { report: report(10, 3), traffic: traffic(5) }))
+    const html = renderToStaticMarkup(createElement(HandlarborsenRegistrationJourney, { report: report(10, 3), traffic: traffic(5), now }))
     expect(html).toContain('Från intresse till verifierad handlare')
     expect(html).toContain('Ingen konverteringsgrad')
     expect(html).toContain('sidvisning är inte en person')
@@ -47,7 +49,7 @@ describe('Handlarbörsen registration journey', () => {
   it('does not replace missing traffic or counts with zeros', () => {
     const steps = registrationJourneySteps(report(null, null))
     expect(steps.map(step => step.value)).toEqual([null, null, null])
-    const html = renderToStaticMarkup(createElement(HandlarborsenRegistrationJourney, { report: report(null, null) }))
+    const html = renderToStaticMarkup(createElement(HandlarborsenRegistrationJourney, { report: report(null, null), now }))
     expect(html).toContain('—')
     expect(html).not.toContain('>0<')
   })

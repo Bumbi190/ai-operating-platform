@@ -1,5 +1,6 @@
 import type { MarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-report'
 import type { HandlarborsenTraffic } from '@/lib/atlas/project-analytics/handlarborsen-posthog-traffic'
+import { deriveHandlarborsenGrowthBrief } from '@/lib/atlas/project-analytics/handlarborsen-growth-brief'
 
 type Step = { title: string; value: number | null; note: string }
 
@@ -52,11 +53,14 @@ export function registrationJourneySteps(
 export function HandlarborsenRegistrationJourney({
   report,
   traffic,
+  now,
 }: {
   report: MarketplaceReport
   traffic?: HandlarborsenTraffic | null
+  now: Date
 }) {
   const steps = registrationJourneySteps(report, traffic)
+  const brief = deriveHandlarborsenGrowthBrief(report, traffic, now)
   return (
     <section aria-labelledby="hb-registration-journey-title"
       className="my-6 rounded-2xl border border-sky-400/20 bg-slate-950/40 p-5 text-slate-100">
@@ -78,6 +82,15 @@ export function HandlarborsenRegistrationJourney({
           </div>
         ))}
       </div>
+      <aside aria-labelledby="hb-growth-brief-title" className="mt-5 rounded-xl border border-sky-400/20 bg-sky-950/20 p-4">
+        <p className="text-xs font-semibold uppercase tracking-wider text-sky-300">Nova · granskningsunderlag</p>
+        <h3 id="hb-growth-brief-title" className="mt-2 text-base font-semibold">{brief.headline}</h3>
+        <p className="mt-1 text-xs text-slate-300">Regelbaserad rapport · ingen AI-genererad analys eller automatisk åtgärd</p>
+        {brief.observations.length > 0 && <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">{brief.observations.map(item => <li key={item}>{item}</li>)}</ul>}
+        <p className="mt-4 text-sm font-semibold">Föreslagna manuella kontroller</p>
+        <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-slate-300">{brief.checks.map(item => <li key={item}>{item}</li>)}</ul>
+        <details className="mt-4 text-xs text-slate-300"><summary className="cursor-pointer">Källor och observationsperioder</summary><ul className="mt-2 list-disc space-y-1 pl-5">{brief.provenance.map(item => <li key={item}>{item}</li>)}</ul></details>
+      </aside>
       <p className="mt-4 text-xs text-slate-400">
         En sidvisning är inte en person eller en påbörjad ansökan. Företagsantal kommer från
         Handlarbörsens egna granskade snapshots och kan vara äldre än trafikstatistiken.

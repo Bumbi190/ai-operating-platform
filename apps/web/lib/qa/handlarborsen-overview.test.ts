@@ -51,7 +51,7 @@ const NOW = new Date('2026-10-10T11:00:00.000Z')
 function row(overrides: Record<string, unknown> = {}, metrics: Record<string, number | null> = {}, observedAt = '2026-10-10T10:22:00.000Z') {
   const base: Record<string, unknown> = {
     project_id: HB_ID, snapshot_date: '2026-10-10', observed_at: observedAt, captured_at: observedAt,
-    schema_version: 1, window_hours: 24, completeness: 'complete', unavailable: {},
+    schema_version: 2, definition_id: 'handlarborsen-production-v2', data_scope: 'production_excluding_quarantined_test', excluded_test_organisations: 1, window_hours: 24, completeness: 'complete', unavailable: {},
   }
   MARKETPLACE_METRIC_KEYS.forEach((k, i) => { base[k] = 501 + i })
   return { ...base, ...metrics, ...overrides }
@@ -61,6 +61,15 @@ const render = (r: ReturnType<typeof report>) =>
   renderToStaticMarkup(createElement(HandlarborsenOverview, { report: r, reportHref: '/projects/handlarborsen/marketplace' }))
 
 describe('overview model', () => {
+  it('blocks legacy test-inclusive organisations from executive dealer KPIs', () => {
+    const legacy = report([row({ schema_version: 1, definition_id: 'handlarborsen-legacy-v1', data_scope: 'legacy_all_organisations', excluded_test_organisations: null }, { companies_registered_total: 11, companies_verified_total: 3 })])
+    expect(buildHandlarborsenOverview(legacy)).toMatchObject({ kind: 'note', title: 'Testdata ingår i den äldre rapporten' })
+    const html = render(legacy)
+    expect(html).toContain('testorganisationer')
+    expect(html).not.toContain('Verifierade handlare')
+    expect(html).not.toContain('11 verifierade')
+    expect(html).not.toContain('id="hb-executive-heading"')
+  })
   it('headline (6) + activity (5) cover exactly the 11 metrics, once each', () => {
     expect(HEADLINE_KEYS).toHaveLength(6)
     expect(ACTIVITY_KEYS).toHaveLength(5)

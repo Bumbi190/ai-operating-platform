@@ -3,7 +3,12 @@ import assert from "node:assert/strict";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readProvenanceInputs } from "./migration-baseline-provenance.mjs";
-import { BASELINE_FIXTURE, planCanonicalBootstrap, SUPPLEMENTAL_FIXTURES } from "./migration-bootstrap-plan.mjs";
+import {
+  BASELINE_FIXTURE,
+  COLUMN_PREREQUISITES,
+  planCanonicalBootstrap,
+  SUPPLEMENTAL_FIXTURES,
+} from "./migration-bootstrap-plan.mjs";
 import { sha256 } from "./migration-replay-preflight.mjs";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -21,7 +26,9 @@ test("repository: canonical bootstrap needs an interleaved legacy fixture, so no
   assert.deepEqual(Object.keys(byPath).sort(), [
     "supabase/migrations/20260528_pg_cron_setup.sql",
     "supabase/migrations/20260601_media_insights.sql",
+    "supabase/migrations/20260603_cron_heartbeat.sql",
     "supabase/migrations/20260609_dream_issues_ledger.sql",
+    "supabase/migrations/20260609_manager_task_dream_link.sql",
   ]);
   const cron = byPath["supabase/migrations/20260528_pg_cron_setup.sql"];
   assert.deepEqual([cron.provides, cron.requires, cron.preexisting, cron.supplemental], [["omnira_cron"], [], true, false]);
@@ -31,9 +38,16 @@ test("repository: canonical bootstrap needs an interleaved legacy fixture, so no
   assert.equal(insights.preexisting, false);
   assert.equal(insights.after, "20260520_media_tables.sql");
   // Pinned post-window fixture: unmodified legacy SQL, placed before the canonical backfill that reads it.
+  const pinned = (name) => SUPPLEMENTAL_FIXTURES.find((f) => f.name === name).lfSha256;
+  const heartbeat = byPath["supabase/migrations/20260603_cron_heartbeat.sql"];
+  assert.equal(heartbeat.supplemental, true);
+  assert.equal(heartbeat.lfSha256, pinned("20260603_cron_heartbeat.sql"));
+  assert.equal(heartbeat.lfSha256, sha256(inputs.legacy.find((f) => f.name === "20260603_cron_heartbeat.sql").sql));
+  assert.deepEqual([heartbeat.provides, heartbeat.requires], [["cron_heartbeat"], []]);
+  assert.deepEqual([heartbeat.position, heartbeat.preexisting], [0, true]);
   const dream = byPath["supabase/migrations/20260609_dream_issues_ledger.sql"];
   assert.equal(dream.supplemental, true);
-  assert.equal(dream.lfSha256, SUPPLEMENTAL_FIXTURES[0].lfSha256);
+  assert.equal(dream.lfSha256, pinned("20260609_dream_issues_ledger.sql"));
   assert.equal(dream.lfSha256, sha256(inputs.legacy.find((f) => f.name === "20260609_dream_issues_ledger.sql").sql));
   assert.deepEqual(dream.provides, ["dream_issues"]);
   assert.deepEqual(dream.requires, ["manager_tasks", "memories", "projects"]);
@@ -55,10 +69,30 @@ test("repository: canonical bootstrap needs an interleaved legacy fixture, so no
   assert.ok(at((s) => s.path === insights.path) < at((s) => s.name === "20260602_atlas_bi_foundation.sql"));
   assert.ok(at((s) => s.path === dream.path) < at((s) => s.name === "20260617160200_backfill_dream_issues.sql"));
   assert.equal(plan.sequence.filter((s) => s.path === dream.path).length, 1);
+  // Heartbeat's cron.schedule calls omnira_cron, so it lands after pg_cron_setup and before its canonical seed.
+  assert.ok(at((s) => s.path === cron.path) < at((s) => s.path === heartbeat.path));
+  assert.ok(at((s) => s.path === heartbeat.path) < at((s) => s.name === "20260623_150300_atlas_collector_cron.sql"));
+  assert.equal(plan.sequence.filter((s) => s.path === heartbeat.path).length, 1);
+  // Column-only prerequisite: creates no relation, adds manager_tasks columns the baseline lacks and that
+  // canonical 20260820_manager_tasks_work_packages.sql uses first (replay v3 stopped there without them).
+  const link = byPath["supabase/migrations/20260609_manager_task_dream_link.sql"];
+  const pre = COLUMN_PREREQUISITES.find((f) => f.name === "20260609_manager_task_dream_link.sql");
+  assert.equal(link.lfSha256, pre.lfSha256);
+  assert.equal(link.lfSha256, sha256(inputs.legacy.find((f) => f.name === pre.name).sql));
+  assert.deepEqual(
+    [link.provides, link.providesColumns, link.requires, link.supplemental],
+    [[], ["manager_tasks.owner", "manager_tasks.source", "manager_tasks.source_key"], ["manager_tasks"], true],
+  );
+  assert.deepEqual([link.position, link.preexisting], [0, true]);
+  assert.ok(at((s) => s.path === link.path) < at((s) => s.name === "20260820_manager_tasks_work_packages.sql"));
+  assert.equal(plan.sequence.filter((s) => s.path === link.path).length, 1);
+  for (const f of plan.fixtures.filter((f) => f !== link)) assert.deepEqual(f.providesColumns, []);
 
   assert.deepEqual(codes(plan), [
     "execution_not_run",
     "fixture_interleaved",
+    "fixture_untracked",
+    "fixture_untracked",
     "fixture_untracked",
     "fixture_untracked",
     "fixture_untracked",
@@ -71,8 +105,8 @@ test("plan is deterministic for identical inputs", () => {
 });
 
 const base = [{ path: "base.sql", tracked: false, sql: "create table if not exists p (id uuid);" }];
-const plan = (canonical, legacy, supplemental = []) =>
-  planCanonicalBootstrap({ canonical, legacy, candidates: base, baselinePath: "base.sql", supplemental });
+const plan = (canonical, legacy, supplemental = [], columnPrerequisites = []) =>
+  planCanonicalBootstrap({ canonical, legacy, candidates: base, baselinePath: "base.sql", supplemental, columnPrerequisites });
 
 test("a fixture whose dependencies exist before replay is preexisting; one needing canonical tables is interleaved", () => {
   const canonical = [
@@ -132,6 +166,72 @@ test("a SHA-pinned post-window fixture is placed at its earliest safe position b
   assert.deepEqual(drifted.fixtures, []);
   assert.ok(codes(drifted).includes("fixture_sha_mismatch"));
   assert.ok(codes(plan(canonical, [], pin)).includes("fixture_source_missing"));
+});
+
+test("a pinned column prerequisite is placed before its first canonical use only when SQL, baseline and use agree", () => {
+  const sql = "-- adds c\nalter table public.p add column if not exists c   text;\ncreate index if not exists p_c on public.p (id, c);\n";
+  const legacy = [{ name: "20260609_c.sql", sql }];
+  const pre = {
+    name: "20260609_c.sql",
+    lfSha256: sha256(sql),
+    table: "p",
+    columns: ["c"],
+    indexes: [{ name: "p_c", columns: ["id", "c"] }],
+    firstUsedBy: "20260820_use.sql",
+  };
+  const early = { name: "20260528_agent_decisions.sql", sql: "-- c appears only in this comment\nselect 1 from p where id::text <> 'c';" };
+  const use = { name: "20260820_use.sql", sql: "alter table public.p add constraint p_c_check check (c <> '');" };
+  const result = plan([early, use], legacy, [], [pre]);
+  const [c] = result.fixtures;
+  assert.deepEqual(
+    [c.provides, c.providesColumns, c.requires, c.position, c.preexisting, c.supplemental],
+    [[], ["p.c"], ["p"], 0, true, true],
+  );
+  assert.deepEqual(result.sequence.map((s) => s.path ?? s.name), [
+    "base.sql",
+    "supabase/migrations/20260609_c.sql",
+    "20260528_agent_decisions.sql",
+    "20260820_use.sql",
+  ]);
+  assert.deepEqual(codes(result), ["execution_not_run", "fixture_untracked", "fixture_untracked"]);
+  assert.equal(result.ok, false);
+
+  // Explicit metadata only: without a declaration the column-only file is never inferred as a fixture.
+  assert.deepEqual(plan([early, use], legacy).fixtures, []);
+
+  const rejected = (r) => {
+    assert.deepEqual(r.fixtures, []);
+    assert.equal(r.ok, false);
+    return codes(r);
+  };
+  assert.ok(rejected(plan([early, use], legacy, [], [{ ...pre, lfSha256: "0".repeat(64) }])).includes("fixture_sha_mismatch"));
+  assert.ok(rejected(plan([early, use], [], [], [pre])).includes("fixture_source_missing"));
+  const mismatch = (canonical, files, declared) => {
+    const found = rejected(plan(canonical, files, [], [declared]));
+    assert.ok(found.includes("column_prerequisite_mismatch"), found.join(", "));
+  };
+  const repinned = (text) => [[{ name: pre.name, sql: text }], { ...pre, lfSha256: sha256(text) }];
+  // The file also creates a relation, or adds a column with a default: not a bare column prerequisite.
+  mismatch([early, use], ...repinned(`${sql}create table if not exists q (id uuid);`));
+  mismatch([early, use], ...repinned(sql.replace("c   text", "c text default 'x'")));
+  // Declaration drifts from the SQL.
+  mismatch([early, use], legacy, { ...pre, columns: ["c", "d"] });
+  mismatch([early, use], legacy, { ...pre, indexes: [] });
+  mismatch([early, use], legacy, { ...pre, table: "zz" });
+  // Canonical first use is earlier, absent, or the first user adds the column itself.
+  mismatch([{ ...early, sql: "select c from p;" }, use], legacy, pre);
+  mismatch([early, { ...use, sql: "select 1 from p;" }], legacy, pre);
+  mismatch([early, { ...use, sql: "alter table public.p\n  add column if not exists   c text;" }], legacy, pre);
+  // The baseline already has the column, so the prerequisite would hide a real difference.
+  const wide = planCanonicalBootstrap({
+    canonical: [early, use],
+    legacy,
+    candidates: [{ path: "base.sql", tracked: false, sql: "create table if not exists p (id uuid, c text);" }],
+    baselinePath: "base.sql",
+    supplemental: [],
+    columnPrerequisites: [pre],
+  });
+  assert.ok(rejected(wide).includes("column_prerequisite_mismatch"));
 });
 
 test("missing or ambiguous legacy sources and a missing baseline fail closed", () => {

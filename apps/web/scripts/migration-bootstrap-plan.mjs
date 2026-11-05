@@ -18,13 +18,87 @@ export const BASELINE_FIXTURE = "packages/db/full_schema_run_in_supabase.sql";
 // Legacy creators of relations first needed after the early window (the provenance scan stops there).
 // Pinned by LF SHA-256; still untracked fixtures with no canonical migration or ledger row.
 export const SUPPLEMENTAL_FIXTURES = Object.freeze([
+  // public.cron_heartbeat, seeded by canonical 20260623_150300_atlas_collector_cron.sql. Side effects: SECURITY
+  // DEFINER public.cron_job_status() and cron.schedule('omnira_heartbeat'); never launched locally (executor
+  // runs cron.launch_active_jobs=off, --network none). Needs omnira_cron (20260528_pg_cron_setup.sql) at run time.
+  { name: "20260603_cron_heartbeat.sql", lfSha256: "f3c28dcd9bd031098bed10f86817f7e4bb55d5b03193199e102ffeae9bcbd831" },
   // public.dream_issues, read by canonical 20260617160200_backfill_dream_issues.sql.
   { name: "20260609_dream_issues_ledger.sql", lfSha256: "efc2b09e75c60fb8d14bcafdf4bcf2712e7d28e2107336634487d18fb9510089" },
+]);
+// Legacy files that only add columns to a baseline table. They create no relation, so createdRelations cannot
+// find them: each is declared explicitly, pinned by LF SHA-256, and its declaration must match the SQL statement
+// by statement, the baseline's columns, and the first canonical file that uses the columns. Any drift fails closed.
+export const COLUMN_PREREQUISITES = Object.freeze([
+  // manager_tasks.owner/source/source_key plus idx_manager_tasks_source. Canonical
+  // 20260820_manager_tasks_work_packages.sql constrains and freezes source/source_key.
+  {
+    name: "20260609_manager_task_dream_link.sql",
+    lfSha256: "c1fb7723f386343e61f9f81297f6e0eb2622dde1d703d348298e7c57b22a767a",
+    table: "manager_tasks",
+    columns: ["owner", "source", "source_key"],
+    indexes: [{ name: "idx_manager_tasks_source", columns: ["project_id", "source", "source_key"] }],
+    firstUsedBy: "20260820_manager_tasks_work_packages.sql",
+  },
 ]);
 const DISCLAIMER =
   "Static offline bootstrap plan only. No SQL was executed; fixtures are untracked test inputs, so this is not clean-bootstrap or production readiness evidence.";
 
 const uniqueSorted = (values) => [...new Set(values)].sort();
+// Lowercased SQL without comments or string literals. Dollar-quoted bodies stay: DO blocks run at DDL time.
+const code = (sql) =>
+  sql
+    .toLowerCase()
+    .replace(/--[^\n]*/g, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/'(?:[^']|'')*'/g, "''");
+const quoted = (name) => String.raw`"?${name}"?`;
+
+// Only two statement shapes are accepted: a bare single-column ADD COLUMN IF NOT EXISTS (one type word, no
+// default or constraint) and CREATE INDEX IF NOT EXISTS on plain columns, both on public.<table>.
+function columnStatements(sql, table) {
+  const target = String.raw`(?:only )?(?:"?public"?\.)?${quoted(table)}`;
+  const add = new RegExp(String.raw`^alter table (?:if exists )?${target} add column if not exists "?([a-z_][\w$]*)"? [a-z_]\w*$`);
+  const index = new RegExp(String.raw`^create index if not exists "?([a-z_][\w$]*)"? on ${target} \(([^()]*)\)$`);
+  const result = { added: [], indexes: [], unexpected: [] };
+  for (const statement of code(sql).split(";").map((s) => s.replace(/\s+/g, " ").trim()).filter(Boolean)) {
+    const a = add.exec(statement);
+    const i = index.exec(statement);
+    if (a) result.added.push(a[1]);
+    else if (i) result.indexes.push({ name: i[1], columns: i[2].split(",").map((c) => c.trim().replace(/"/g, "")) });
+    else result.unexpected.push(statement.slice(0, 80));
+  }
+  return result;
+}
+
+function columnPrerequisiteProblems(pre, sql, baselineColumns, ordered) {
+  const problems = [];
+  const created = createdRelations(sql).map((r) => r.name);
+  if (created.length) problems.push(`creates ${created.join(", ")}; a column prerequisite must create no relation`);
+  const { added, indexes, unexpected } = columnStatements(sql, pre.table);
+  for (const statement of unexpected) problems.push(`unexpected statement: ${statement}`);
+  if (JSON.stringify([...added].sort()) !== JSON.stringify([...pre.columns].sort()))
+    problems.push(`adds ${added.join(", ") || "no column"}, declared ${pre.columns.join(", ")}`);
+  if (JSON.stringify(indexes) !== JSON.stringify(pre.indexes))
+    problems.push(`indexes ${JSON.stringify(indexes)} differ from declared ${JSON.stringify(pre.indexes)}`);
+  if (!baselineColumns) problems.push(`baseline does not create public.${pre.table} with a column list`);
+  else {
+    const present = pre.columns.filter((c) => baselineColumns.includes(c));
+    if (present.length) problems.push(`baseline already has ${pre.table}.${present.join(", ")}`);
+    const unknown = pre.indexes.flatMap((i) => i.columns).filter((c) => !baselineColumns.includes(c) && !pre.columns.includes(c));
+    if (unknown.length) problems.push(`index needs ${pre.table}.${uniqueSorted(unknown).join(", ")}, absent from baseline`);
+  }
+  // First canonical file, in replay order, that touches the table (DDL-time or deferred) and names a declared
+  // column outside comments and literals. Over-matching moves first use earlier, which fails closed.
+  const uses = new RegExp(String.raw`\b(?:${pre.columns.join("|")})\b`);
+  const firstUse = ordered.find(
+    (m) => relationRefs(m.sql).some((r) => r.schema === "public" && r.name === pre.table) && uses.test(code(m.sql)),
+  );
+  if (firstUse?.name !== pre.firstUsedBy)
+    problems.push(`first canonical use of ${pre.table}.(${pre.columns.join(", ")}) is ${firstUse?.name ?? "none"}, declared ${pre.firstUsedBy}`);
+  else if (new RegExp(String.raw`\badd\s+column\s+(?:if\s+not\s+exists\s+)?"?(?:${pre.columns.join("|")})"?\s`).test(code(firstUse.sql)))
+    problems.push(`${firstUse.name} adds a declared column itself; the prerequisite is not needed`);
+  return problems;
+}
 
 export function planCanonicalBootstrap({
   canonical,
@@ -33,6 +107,7 @@ export function planCanonicalBootstrap({
   baselinePath = BASELINE_FIXTURE,
   grandfatheredNames,
   supplemental = SUPPLEMENTAL_FIXTURES,
+  columnPrerequisites = COLUMN_PREREQUISITES,
 }) {
   const blockers = [];
   const plan = {
@@ -110,9 +185,39 @@ export function planCanonicalBootstrap({
     sources.set(pin.name, entry);
   }
 
+  // Pinned column-only prerequisites: validated against their own SQL, the baseline and canonical first use.
+  const baselineColumns = new Map(createdRelations(baselineSql).map((r) => [r.name, r.columns]));
+  for (const pre of columnPrerequisites) {
+    const path = `${LEGACY_DIR}/${pre.name}`;
+    const sql = legacy.find((f) => f.name === pre.name)?.sql;
+    if (sql === undefined) {
+      blockers.push({ code: "fixture_source_missing", detail: `${path} (pinned column prerequisite)` });
+      continue;
+    }
+    if (sha256(sql) !== pre.lfSha256) {
+      blockers.push({ code: "fixture_sha_mismatch", detail: `${path} expected ${pre.lfSha256}, got ${sha256(sql)}` });
+      continue;
+    }
+    if (sources.has(pre.name)) {
+      blockers.push({ code: "fixture_source_ambiguous", detail: `${path} is both a relation source and a column prerequisite` });
+      continue;
+    }
+    const problems = columnPrerequisiteProblems(pre, sql, baselineColumns.get(pre.table) ?? null, ordered);
+    for (const problem of problems) blockers.push({ code: "column_prerequisite_mismatch", detail: `${path}: ${problem}` });
+    if (problems.length) continue;
+    sources.set(pre.name, {
+      provides: [],
+      providesColumns: pre.columns.map((c) => `${pre.table}.${c}`),
+      firstUsedBy: [pre.firstUsedBy],
+      supplemental: true,
+    });
+  }
+
   // Place each fixture at the earliest replay position where its DDL-time public dependencies exist,
   // and no later than the first canonical use of what it provides. Position 0 means truly preexisting.
-  for (const [name, { provides, firstUsedBy, supplemental: pinned }] of [...sources].sort(([a], [b]) => (a < b ? -1 : 1))) {
+  for (const [name, { provides, providesColumns = [], firstUsedBy, supplemental: pinned }] of [...sources].sort(([a], [b]) =>
+    a < b ? -1 : 1,
+  )) {
     const sql = legacy.find((f) => f.name === name).sql;
     const path = `${LEGACY_DIR}/${name}`;
     const own = new Set(createdRelations(sql).map((r) => r.name));
@@ -135,6 +240,7 @@ export function planCanonicalBootstrap({
       path,
       lfSha256: sha256(sql),
       provides: uniqueSorted(provides),
+      providesColumns: uniqueSorted(providesColumns),
       requires,
       position,
       after: position > 0 ? names[position - 1] : null,

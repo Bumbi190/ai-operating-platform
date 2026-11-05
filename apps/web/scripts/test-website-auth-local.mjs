@@ -7,6 +7,9 @@ import {fileURLToPath} from 'node:url';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 if(!process.argv.includes('--run'))throw Error('Explicit --run required');
+const withApplication=process.argv.includes('--application');
+const applicationModule=withApplication?await import('./website-auth-application-local.mjs'):null;
+let applicationContext=null;
 const IMAGES={
  db:'public.ecr.aws/supabase/postgres@sha256:06ddc7962e11ab0f4f0334fd05671e97c30ea202f6e6a7113800bd3d6e416108',
  auth:'public.ecr.aws/supabase/gotrue@sha256:1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b',
@@ -21,12 +24,12 @@ const receipt={schema:'omnira.website-real-auth-local.v1',startedAt:new Date().t
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const check=(name,ok)=>{receipt.checks.push({name,passed:Boolean(ok)});if(!ok)throw Error(name);};
 const safe=s=>secrets.reduce((v,key)=>v.replaceAll(key,'[synthetic-redacted]'),String(s??'')).slice(-2200);
-function docker(args,input){
+function docker(args,input,raw=false){
  const r=spawnSync('docker',args,{input,encoding:'utf8',maxBuffer:4*1024*1024,timeout:60000});
  if(r.status!==0){const e=Error('DOCKER_COMMAND_FAILED');e.detail=safe(r.stderr||r.error?.message);throw e;}
- return r.stdout.trim();
+ return raw?r.stdout:r.stdout.trim();
 }
-const sql=body=>docker(['exec','-i',names.db,'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-U','supabase_admin','-d','postgres'],body);
+const sql=body=>docker(['exec','-i',names.db,'psql','-X','-q','-A','-t','--single-transaction','-v','ON_ERROR_STOP=1','-U','supabase_admin','-d','postgres'],body);
 function start(key,env,port,args=[]){
  const options=['run','-d','--pull=never','--name',names[key],'--label',label+'='+runId,'--network',network,'--memory',key==='db'?'768m':'256m'];
  options.push('--network-alias',key); // All HTTP clients stay inside the internal Docker network.
@@ -61,7 +64,7 @@ try{
  for(const image of Object.values(IMAGES))docker(['image','inspect',image]);
  docker(['network','create','--internal','--label',label+'='+runId,network]);
  const net=JSON.parse(docker(['network','inspect',network]))[0];check('network_has_no_external_gateway',net.Internal===true);
- start('db',{POSTGRES_PASSWORD:password},null,['postgres','-c','cron.launch_active_jobs=off','-c','listen_addresses=*']);
+ start('db',{POSTGRES_PASSWORD:password},null,['postgres','-c','shared_preload_libraries=pg_stat_statements,pg_cron,pg_net','-c','cron.database_name=postgres','-c','cron.launch_active_jobs=off','-c','listen_addresses=*']);
  let ready=false;for(let n=0;n<100;n++){
   try{const pid=docker(['exec',names.db,'cat','/proc/1/comm']);docker(['exec',names.db,'pg_isready','-U','postgres']);if(['postgres','.postgres-wrapp'].includes(pid)){ready=true;break;}}catch{}await sleep(400);
  }
@@ -87,6 +90,7 @@ try{
  const renewed=await request(auth,'/token?grant_type=refresh_token',{method:'POST',body:{refresh_token:a.refresh_token}});
  check('refresh_session',renewed.status===200&&renewed.data?.user?.id===a.id&&Boolean(renewed.data?.access_token));
  secrets.push(renewed.data.access_token,renewed.data.refresh_token);
+ if(applicationModule)applicationContext=applicationModule.bootstrapApplication({sql,docker,check,receipt,a,b});
  sql(`create table public.webbuilder_auth_probe(id uuid primary key default gen_random_uuid(),owner_id uuid not null references auth.users(id),body text not null);
  alter table public.webbuilder_auth_probe enable row level security;
  create policy probe_read on public.webbuilder_auth_probe for select to authenticated using((select auth.uid())=owner_id);
@@ -113,6 +117,7 @@ try{
  check('foreign_insert_denied',insert.status===403);
  const anon=await request(rest,'/webbuilder_auth_probe');check('anonymous_denied',anon.status===401||anon.status===403);
  const admin=await request(rest,'/webbuilder_auth_probe?select=id',{token:service});check('service_sees_two_fictional_rows',admin.status===200&&admin.data?.length===2);
+ if(applicationModule)await applicationModule.testApplicationHTTP({sql,check,request,rest,auth,service,a,b,token:renewed.data.access_token,context:applicationContext});
  const signedOut=await request(auth,'/logout',{token:renewed.data.access_token,method:'POST'});
  check('signout',signedOut.status===204);
  const revoked=await request(auth,'/token?grant_type=refresh_token',{method:'POST',body:{refresh_token:renewed.data.refresh_token}});
@@ -130,7 +135,9 @@ try{
  try{const item=JSON.parse(docker(['network','inspect',network]))[0];if(item.Labels?.[label]!==runId)throw Error('LABEL_MISMATCH');docker(['network','rm',network]);receipt.cleanup.network='removed';}catch{receipt.cleanup.network='not_present_or_failed';}
  if(Object.values(receipt.cleanup).some(v=>!['removed','not_present'].includes(v)))receipt.completed=false;
  receipt.finishedAt=new Date().toISOString();
- const path=fileURLToPath(new URL('../../../docs/validation/website-real-auth-local-20261105.json',import.meta.url));
+ receipt.mode=withApplication?'canonical-application':'auth-probe';
+ if(withApplication)receipt.limitations=['Real local Auth and canonical application SQL through PostgREST only; no Next.js UI/cookies, application route/context resolver, worker, hosted acceptance, Storage HTTP or paid model calls.'];
+ const path=fileURLToPath(new URL('../../../docs/validation/'+(withApplication?'website-real-auth-application-local-20261105.json':'website-real-auth-local-20261105.json'),import.meta.url));
  writeFileSync(path,JSON.stringify(receipt,null,2)+'\n');
  console.log(JSON.stringify(receipt,null,2));process.exitCode=receipt.completed?0:1;
 }

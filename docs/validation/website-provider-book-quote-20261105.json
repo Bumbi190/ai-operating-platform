@@ -1,0 +1,41 @@
+{
+  "schema": "omnira.website-provider-book-quote.v1",
+  "createdAt": "2026-11-05T14:05:08.863Z",
+  "model": "claude-sonnet-4-6",
+  "scenarioOnly": true,
+  "authorizesDispatch": false,
+  "providerDispatched": false,
+  "pricingBasis": "Current local canonical price book; official standard Sonnet prices verified 2026-11-05",
+  "fxBasis": "Explicit local scenario 10.5 SEK/USD, not a current exchange-rate quote or production snapshot",
+  "inputBoundTokens": 1000000,
+  "steps": [
+    {
+      "operation": "website.feedback.interpret",
+      "maxTokens": 2000,
+      "reservedCeilingSek": 31.815,
+      "modelBookCeilingUsd": 3.03
+    },
+    {
+      "operation": "website.cinematic.copy",
+      "maxTokens": 300,
+      "reservedCeilingSek": 31.5473,
+      "modelBookCeilingUsd": 3.0045
+    }
+  ],
+  "totalReservedCeilingSek": 63.3623,
+  "totalModelBookCeilingUsd": 6.0344999999999995,
+  "limitations": [
+    "No actual worker request payload captured; these are the current two output-cap scenarios.",
+    "Not an actual invoice or current remaining budget; existing USD10 allowance is not reset or duplicated.",
+    "Before live dispatch: bind exact request, current canonical rates and original nonrenewing allowance; no automatic retries."
+  ],
+  "sources": [
+    "https://platform.claude.com/docs/en/models/sonnet-4-6/overview",
+    "https://platform.claude.com/docs/en/build-with-claude/context-windows"
+  ],
+  "sourceHashes": {
+    "apps/web/lib/cost/spend-ceiling.ts": "f2c9180d5a0cb1452ed8758256a49b66cc0bdfd89a7cc1ffd95009905f84d6a8",
+    "apps/web/lib/ai/pricing.ts": "49b42e34bd74bae31e374795eed7e3830cee73f8108ace8d6d9305838562adca",
+    "apps/web/lib/website-build/worker.ts": "99fa9519fb550a3fb3e217801b6a31b719725b7ef0d8958e803432961755b90b"
+  }
+}

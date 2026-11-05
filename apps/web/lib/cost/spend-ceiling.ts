@@ -101,12 +101,13 @@ export function ceilToLedgerScale(sek: number): number {
  * hard bound on billed input. Only models with BOTH a price-book entry and a
  * documented window are boundable; anything else is refused.
  *
- * Anthropic's larger 1M window exists only behind a beta header, which the
- * ceiling refuses outright, so 200k is the bound for every listed Claude model.
+ * Verified 2026-11-05: Opus/Sonnet 4.6 use 1M context without a beta header.
+ * Other listed Claude models retain 200k. Source:
+ * https://platform.claude.com/docs/en/build-with-claude/context-windows
  */
 export const CONTEXT_WINDOW_TOKENS: Readonly<Record<string, number>> = Object.freeze({
-  'claude-opus-4-6': 200_000,
-  'claude-sonnet-4-6': 200_000,
+  'claude-opus-4-6': 1_000_000,
+  'claude-sonnet-4-6': 1_000_000,
   'claude-haiku-4-5': 200_000,
   'claude-haiku-4-5-20251001': 200_000,
   'claude-3-5-haiku-20241022': 200_000,

@@ -57,5 +57,6 @@ export async function runWorkerAcceptance({base,jarA,jarB,f,check}:any){
  check('worker_preview_preserves_reviewed_binding',artifact.data.cinematicPreset?.binding.sha256===CINEMATIC_BINDING.sha256)
  const hidden=await http('/api/website-builds/'+first.data.sessionId+'?projectId='+projectId,jarB)
  check('worker_preview_hidden_from_other_user',hidden.status===404)
+ return {projectSlug:created.data.projectSlug,conversationId,sessionId:first.data.sessionId}
  // Drain terminalization, provider-backed generation and media/export are separate acceptance.
 }

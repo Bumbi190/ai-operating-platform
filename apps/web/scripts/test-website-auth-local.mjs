@@ -18,7 +18,8 @@ const withHttp=process.argv.includes('--next-http');
 if(withHttp&&!withRoutes)throw Error('--next-http requires --routes');
 const withWorker=process.argv.includes('--worker');
 if(withWorker&&!withHttp)throw Error('--worker requires --next-http');
-const nextFixture=withHttp?(await import('./website-auth-next-fixture.mjs')).buildNextFixture():null;
+const withBrowser=process.argv.includes('--browser');
+if(withBrowser&&!withWorker)throw Error('--browser requires --worker');
 const IMAGES={
  db:'public.ecr.aws/supabase/postgres@sha256:06ddc7962e11ab0f4f0334fd05671e97c30ea202f6e6a7113800bd3d6e416108',
  auth:'public.ecr.aws/supabase/gotrue@sha256:1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b',
@@ -27,8 +28,11 @@ const IMAGES={
 };
 const runId=randomUUID(),prefix='omnira-web-auth-'+runId,network=prefix+'-net';
 const names={db:prefix+'-db',auth:prefix+'-auth',rest:prefix+'-rest',client:prefix+'-client'};
+const browserNetwork=network+'-browser';
+if(withBrowser){names.browserProxy=prefix+'-browser-proxy';IMAGES.browserProxy=IMAGES.client;}
 const label='com.omnira.real-auth-test',password=randomBytes(24).toString('hex'),jwtSecret=randomBytes(32).toString('hex');
 const secrets=[password,jwtSecret];
+const nextFixture=withHttp?(await import('./website-auth-next-fixture.mjs')).buildNextFixture(withBrowser?{url:'http://127.0.0.1:54393',anon:serviceJWT('anon')}:null):null;
 const receipt={schema:'omnira.website-real-auth-local.v1',startedAt:new Date().toISOString(),images:IMAGES,checks:[],completed:false,cleanup:{},limitations:['Real local Auth/PostgREST and a fictional RLS table only. No WebBuilder UI, canonical application schema, worker, hosted Auth, Storage HTTP or paid models are tested.']};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const check=(name,ok)=>{receipt.checks.push({name,passed:Boolean(ok)});if(!ok)throw Error(name);};
@@ -40,8 +44,9 @@ function docker(args,input,raw=false){
 }
 const sql=body=>docker(['exec','-i',names.db,'psql','-X','-q','-A','-t','--single-transaction','-v','ON_ERROR_STOP=1','-U','supabase_admin','-d','postgres'],body);
 function start(key,env,port,args=[]){
- const options=['run','-d','--pull=never','--name',names[key],'--label',label+'='+runId,'--network',network,'--memory',key==='db'?'768m':key==='client'&&withHttp?'512m':'256m'];
- options.push('--network-alias',key); // All HTTP clients stay inside the internal Docker network.
+ const options=['run','-d','--pull=never','--name',names[key],'--label',label+'='+runId,'--network',key==='browserProxy'?browserNetwork:network,'--memory',key==='db'?'768m':key==='client'&&withHttp?'512m':'256m'];
+ if(key==='browserProxy'&&withBrowser)options.push('--cap-drop','ALL','--security-opt','no-new-privileges','-p','127.0.0.1:54393:54393','-p','127.0.0.1:54394:54394');
+ options.push('--network-alias',key); // Core services stay internal; browser mode adds an owned fixed-upstream loopback proxy.
  for(const [k,v] of Object.entries(env))options.push('-e',k+'='+v);
  docker([...options,IMAGES[key],...args]);
 }
@@ -81,6 +86,12 @@ try{
  sql("alter role supabase_auth_admin with password '"+password+"';alter role authenticator with password '"+password+"';grant anon,authenticated,service_role to authenticator;");
  check('managed_auth_uid_available',sql("select to_regprocedure('auth.uid()') is not null;")==='t');
  start('client',{},null,['node','-e','setInterval(()=>{},1000000)']);
+ if(withBrowser){
+  docker(['network','create','--label',label+'='+runId,browserNetwork]);
+  const {BROWSER_PROXY_CODE}=await import('./website-auth-browser-proxy.mjs');
+  start('browserProxy',{},null,['node','-e',BROWSER_PROXY_CODE]);
+  docker(['network','connect',network,names.browserProxy]);
+ }
  start('auth',{GOTRUE_API_HOST:'0.0.0.0',GOTRUE_API_PORT:'9999',API_EXTERNAL_URL:'http://127.0.0.1',GOTRUE_DB_DRIVER:'postgres',GOTRUE_DB_DATABASE_URL:'postgres://supabase_auth_admin:'+password+'@db:5432/postgres',GOTRUE_SITE_URL:'http://127.0.0.1',GOTRUE_DISABLE_SIGNUP:'true',GOTRUE_JWT_ADMIN_ROLES:'service_role',GOTRUE_JWT_AUD:'authenticated',GOTRUE_JWT_DEFAULT_GROUP_NAME:'authenticated',GOTRUE_JWT_EXP:'3600',GOTRUE_JWT_SECRET:jwtSecret,GOTRUE_EXTERNAL_EMAIL_ENABLED:'true',GOTRUE_MAILER_AUTOCONFIRM:'true',GOTRUE_EXTERNAL_PHONE_ENABLED:'false',GOTRUE_SMTP_HOST:'127.0.0.1',GOTRUE_SMTP_PORT:'1025'},9999);
  const auth=endpoint('auth',9999);await waitHttp(auth+'/health');check('real_auth_health',true);
  const service=serviceJWT(),users=[];
@@ -127,7 +138,7 @@ try{
  const anon=await request(rest,'/webbuilder_auth_probe');check('anonymous_denied',anon.status===401||anon.status===403);
  const admin=await request(rest,'/webbuilder_auth_probe?select=id',{token:service});check('service_sees_two_fictional_rows',admin.status===200&&admin.data?.length===2);
  if(applicationModule)await applicationModule.testApplicationHTTP({sql,check,request,rest,auth,service,a,b,token:renewed.data.access_token,context:applicationContext});
- if(routeModule)routeModule.runRouteChecks({bundle:routeBundle,nextFixture,withWorker,docker,sql,check,receipt,client:names.client,service,anon:serviceJWT('anon'),a:{...a,access_token:renewed.data.access_token,refresh_token:renewed.data.refresh_token},b,context:applicationContext});
+ if(routeModule)await routeModule.runRouteChecks({bundle:routeBundle,nextFixture,withWorker,withBrowser,password,docker,sql,check,receipt,client:names.client,browserProxy:names.browserProxy,service,anon:serviceJWT('anon'),a:{...a,access_token:renewed.data.access_token,refresh_token:renewed.data.refresh_token},b,context:applicationContext});
  const signedOut=await request(auth,'/logout',{token:renewed.data.access_token,method:'POST'});
  check('signout',signedOut.status===204);
  const revoked=await request(auth,'/token?grant_type=refresh_token',{method:'POST',body:{refresh_token:renewed.data.refresh_token}});
@@ -139,20 +150,22 @@ try{
  const logs={};for(const key of ['db','auth','rest']){const r=spawnSync('docker',['logs','--tail','18',names[key]],{encoding:'utf8',timeout:5000});if(r.status===0)logs[key]=safe(r.stderr||r.stdout);}
  writeFileSync(join(tmpdir(),'omnira-website-auth-local-diagnostics.json'),JSON.stringify(logs,null,2));
 }finally{
- for(const key of ['rest','auth','client','db']){
+ for(const key of (withBrowser?['browserProxy','rest','auth','client','db']:['rest','auth','client','db'])){
   try{const item=JSON.parse(docker(['inspect',names[key]]))[0];if(item.Config.Labels?.[label]!==runId)throw Error('LABEL_MISMATCH');docker(['rm','-f','-v',names[key]]);receipt.cleanup[key]='removed';}catch{const r=spawnSync('docker',['inspect',names[key]],{encoding:'utf8',timeout:5000});receipt.cleanup[key]=r.status!==0?'not_present':'cleanup_failed';}
  }
  try{const item=JSON.parse(docker(['network','inspect',network]))[0];if(item.Labels?.[label]!==runId)throw Error('LABEL_MISMATCH');docker(['network','rm',network]);receipt.cleanup.network='removed';}catch{receipt.cleanup.network='not_present_or_failed';}
+ if(withBrowser){try{const item=JSON.parse(docker(['network','inspect',browserNetwork]))[0];if(item.Labels?.[label]!==runId)throw Error('LABEL_MISMATCH');docker(['network','rm',browserNetwork]);receipt.cleanup.browserNetwork='removed';}catch{receipt.cleanup.browserNetwork='not_present_or_failed';}}
  if(Object.values(receipt.cleanup).some(v=>!['removed','not_present'].includes(v)))receipt.completed=false;
  receipt.finishedAt=new Date().toISOString();
  routeBundle?.cleanup();
  nextFixture?.cleanup();
- receipt.mode=withWorker?'preset-worker':withHttp?'next-http':withRoutes?'application-route-cookies':withApplication?'canonical-application':'auth-probe';
+ receipt.mode=withBrowser?'real-browser':withWorker?'preset-worker':withHttp?'next-http':withRoutes?'application-route-cookies':withApplication?'canonical-application':'auth-probe';
  if(withApplication)receipt.limitations=['Real local Auth and canonical application SQL through PostgREST only; no Next.js UI/cookies, application route/context resolver, worker, hosted acceptance, Storage HTTP or paid model calls.'];
  if(withRoutes)receipt.limitations=['Real route exports invoked in-process with Next request storage and real SSR cookies, GoTrue and PostgREST. No Next HTTP server, middleware, browser UI, worker, hosted acceptance, Storage HTTP or paid models.'];
  if(withHttp)receipt.limitations=['Actual standalone Next HTTP routes and production middleware against real local Auth/canonical SQL. Minimal test app, not full WebBuilder browser UI; no worker, hosted acceptance, Storage HTTP or paid models.'];
  if(withWorker)receipt.limitations=['Real Next approvals/budget/queue and canonical preset worker with zero provider steps. No browser UI, drain terminalization, paid generation, media/export or hosted acceptance.'];
- const path=fileURLToPath(new URL('../../../docs/validation/'+(withWorker?'website-real-auth-worker-20261105.json':withHttp?'website-real-auth-next-http-20261105.json':withRoutes?'website-real-auth-routes-local-20261105.json':withApplication?'website-real-auth-application-local-20261105.json':'website-real-auth-local-20261105.json'),import.meta.url));
+ if(withBrowser)receipt.limitations=['Actual Chromium login and Studio components in minimal Next shell with real Auth/SQL and preset worker. Loopback-only temporary browser ports. No full platform shell, chat generation, provider spend, complete media/export or hosted target.'];
+ const path=fileURLToPath(new URL('../../../docs/validation/'+(withBrowser?'website-real-auth-browser-20261105.json':withWorker?'website-real-auth-worker-20261105.json':withHttp?'website-real-auth-next-http-20261105.json':withRoutes?'website-real-auth-routes-local-20261105.json':withApplication?'website-real-auth-application-local-20261105.json':'website-real-auth-local-20261105.json'),import.meta.url));
  writeFileSync(path,JSON.stringify(receipt,null,2)+'\n');
  console.log(JSON.stringify(receipt,null,2));process.exitCode=receipt.completed?0:1;
 }

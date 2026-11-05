@@ -1,6 +1,6 @@
 // Test-only runner: real route exports, SSR cookies, Auth, access resolver and RPC store.
-// Next request storage is supplied by this runner; no Next HTTP server/browser/middleware.
-import {readFileSync} from 'node:fs'
+// In-process mode supplies request storage; HTTP/browser modes use the real standalone Next server.
+import {writeFileSync,existsSync,readFileSync} from 'node:fs'
 import {createServer} from 'node:http'
 import {spawn} from 'node:child_process'
 import {createServerClient} from '@supabase/ssr'
@@ -17,9 +17,10 @@ import {resolveProjectAccess} from '../lib/auth/project-access'
 const checks:{name:string;passed:boolean}[]=[]
 function check(name:string,ok:unknown){checks.push({name,passed:Boolean(ok)});if(!ok)throw Error(name)}
 async function main(){
- const f=JSON.parse(readFileSync(0,'utf8')),base='http://client:3080',appBase=f.nextServer?'http://client:3100':base
+ const f=JSON.parse(readFileSync(0,'utf8')),base=f.browser?'http://127.0.0.1:54393':'http://client:3080',appBase=f.nextServer?'http://client:3100':base
  let nextProcess:ReturnType<typeof spawn>|null=null
  let refreshRequests=0
+ let workerReady:any=null
  const nativeFetch=globalThis.fetch
  globalThis.fetch=(async(input:any,init:any)=>{
   const url=new URL(typeof input==='string'?input:input instanceof URL?input.href:input.url)
@@ -40,7 +41,7 @@ async function main(){
    res.end(Buffer.from(await result.arrayBuffer()))
   }catch{res.writeHead(502).end()}
  })
- await new Promise<void>(r=>server.listen(3080,'0.0.0.0',r))
+ await new Promise<void>(r=>server.listen(f.browser?54393:3080,'0.0.0.0',r))
  process.env.NEXT_PUBLIC_SUPABASE_URL=base
  process.env.SUPABASE_SERVICE_ROLE_KEY=f.service
  // Anon key will be supplied separately by the harness; never use service credentials for a session client.
@@ -113,7 +114,7 @@ async function main(){
   check('route_mockup_approved',mockup.status===200&&mockup.data.designReview.approved.mockupId===option.id)
   const approved=await route(planApprove.POST,jarA,{...approval,mockupDecisionId:mockup.data.designReview.approved.id},'',params)
   check('route_plan_approved_by_session_user',approved.status===200&&approved.data.approvedBy===f.a.id&&approved.data.sessionId===null)
-  if(f.worker)await runWorkerAcceptance({base:appBase,jarA,jarB,f,check})
+  if(f.worker)workerReady=await runWorkerAcceptance({base:appBase,jarA,jarB,f,check})
   if(f.nextServer){
    // Only local expiry metadata is aged; real GoTrue JWT/refresh tokens are preserved.
    const name=jarA[0].name.replace(/\.\d+$/,'')
@@ -127,6 +128,11 @@ async function main(){
    check('next_middleware_called_real_refresh_endpoint',refreshRequests>before)
    check('next_middleware_returns_refreshed_cookie',refreshed.headers.getSetCookie().some(v=>v.startsWith(name)&&v.includes('Path=/')))
    check('refreshed_route_response_private',refreshed.headers.get('cache-control')==='private, no-store')
+  }
+  if(f.browser){
+   writeFileSync('/tmp/omnira-browser-ready.json',JSON.stringify(workerReady));
+   for(let n=0;n<720&&!existsSync('/tmp/omnira-browser-done.json');n++)await new Promise(r=>setTimeout(r,250));
+   check('host_browser_completed',existsSync('/tmp/omnira-browser-done.json')&&JSON.parse(readFileSync('/tmp/omnira-browser-done.json','utf8')).completed===true);
   }
  }finally{if(nextProcess){nextProcess.kill();await Promise.race([new Promise<void>(r=>nextProcess!.once('exit',()=>r())),new Promise<void>(r=>setTimeout(r,2000))])}await new Promise<void>(r=>server.close(()=>r()))}
 }

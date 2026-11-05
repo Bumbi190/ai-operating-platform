@@ -248,6 +248,7 @@ test("applies prerequisites then the sequence in order, stops at the first failu
     "platform-stubs",
     "public-default-privileges",
     "public.ecr.aws/supabase/storage-api:v1.79.36/0002-storage-schema.sql",
+    "storage-schema-usage",
   ]);
   // The executed body is the LF-normalized, hash-verified file; every psql call stops on error.
   assert.ok(fake.sql.includes("create table p (id uuid);\n"));
@@ -502,4 +503,27 @@ test('catalog comparison covers every requested field and emits only changed met
     { table_name: 'agents', field: 'anon_insert', external: true, local: false },
     { table_name: 'agents', field: 'authenticated_insert', external: true, local: false },
   ]);
+});
+
+test('storage API schema access runs after storage creation and before baseline replay', async () => {
+ const fake=fakeDocker({failOn:'NEVER_MATCHES'});
+ const receipt=await run(fake);
+ const grant='grant usage on schema storage to anon, authenticated, service_role;';
+ const at=fake.sql.indexOf(grant);
+ assert.ok(at>=0,'storage schema usage prerequisite was not executed');
+ assert.ok(fake.sql.slice(0,at).some(s=>s.startsWith("SET storage.install_roles='false';")));
+ assert.ok(at<fake.sql.indexOf(files[BASELINE_FIXTURE].replace(/\r\n/g,'\n')));
+ const pin=receipt.prerequisites.find(p=>p.ref==='storage-schema-usage');
+ assert.equal(pin?.lfSha256,sha256(grant));
+ assert.equal(receipt.completed,true);
+ assert.equal(receipt.replayReady,false);
+});
+test('storage schema access failure aborts before migrations and preserves cleanup', async () => {
+ const fake=fakeDocker({failOn:'grant usage on schema storage'});
+ const receipt=await run(fake);
+ assert.equal(receipt.completed,false);
+ assert.equal(receipt.failure?.phase,'prerequisites');
+ assert.equal(receipt.failure?.ref,'storage-schema-usage');
+ assert.equal(receipt.applied.length,0);
+ assert.equal(receipt.cleanup,'removed');
 });

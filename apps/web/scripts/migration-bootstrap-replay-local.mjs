@@ -289,6 +289,10 @@ export async function runBootstrapReplay({
       prerequisite(`${STORAGE_IMAGE}/${upstream}`, `SET storage.install_roles='false';${exact}`, { sourceSha256: expected });
     }
 
+    // install_roles=false omits managed storage role setup. Reproduce observed schema access only;
+    // table policies, object grants and hosted privileges are not changed by this local prerequisite.
+    prerequisite("storage-schema-usage", "grant usage on schema storage to anon, authenticated, service_role;");
+
     const effective = limit ?? steps.length;
     receipt.coverage.bounded = effective < steps.length;
     const { applied, failure } = replaySteps({ steps, apply: psql, limit: effective });

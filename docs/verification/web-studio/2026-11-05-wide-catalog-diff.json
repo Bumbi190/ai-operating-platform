@@ -1,0 +1,1337 @@
+{
+  "productionObjects": 1100,
+  "localObjects": 1094,
+  "missing": [
+    "default_acl:postgres.public.S",
+    "default_acl:postgres.public.f",
+    "default_acl:postgres.public.r",
+    "default_acl:postgres.storage.S",
+    "default_acl:postgres.storage.f",
+    "default_acl:postgres.storage.r"
+  ],
+  "extra": [],
+  "changed": [
+    {
+      "kind": "function",
+      "key": "local_text_cloud_immutable()",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "manager_tasks_reject_work_package_delete()",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+          "local": "{=X/supabase_admin,supabase_admin=X/supabase_admin,postgres=X/supabase_admin,anon=X/supabase_admin,authenticated=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "manager_tasks_reject_work_package_mutation()",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+          "local": "{=X/supabase_admin,supabase_admin=X/supabase_admin,postgres=X/supabase_admin,anon=X/supabase_admin,authenticated=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "project_lifecycle_resume_guard()",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "runs_action_binding_guard()",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+          "local": "{=X/supabase_admin,supabase_admin=X/supabase_admin,postgres=X/supabase_admin,anon=X/supabase_admin,authenticated=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "definition_md5",
+          "production": "bb8769f55e90cbb961daef19300f90bc",
+          "local": "198111bf6af6195eaffec2b01769e3b0"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "runs_action_outcome_guard()",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+          "local": "{=X/supabase_admin,supabase_admin=X/supabase_admin,postgres=X/supabase_admin,anon=X/supabase_admin,authenticated=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "definition_md5",
+          "production": "0f8af4c13b3b614ffa96530d79bbda17",
+          "local": "a6666a3418084fa9a8afb746275275c2"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "runs_human_story_binding_guard()",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin}"
+        },
+        {
+          "field": "definition_md5",
+          "production": "6dd4545254a35999dd8c88e796537572",
+          "local": "fe50470543ffc3e5f6d4e02cf29499ce"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "runs_require_bind_provenance()",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin}"
+        },
+        {
+          "field": "definition_md5",
+          "production": "d1aca9958639434015ee7bfc6c744e89",
+          "local": "9680d201cb3f94e9f17acdb30a28b07b"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "stop_guard_platform_config()",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "stop_guard_projects()",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "survival_input_epoch_bump()",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "survival_input_truncate_refused()",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_append_feedback(p_principal jsonb, p_ref jsonb, p_input jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_builder_get(p_principal jsonb, p_input jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_builder_set(p_principal jsonb, p_input jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_check_access(p_principal jsonb, p_project_id uuid, p_write boolean)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_commit_revision(p_writer jsonb, p_artifact jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_control(p_principal jsonb, p_ref jsonb, p_input jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_create(p_principal jsonb, p_input jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_enqueue(p_session_id uuid)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_lock_writer(p_writer jsonb, p_allow_pause boolean)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_mockup_approve(p_principal jsonb, p_input jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_mockup_immutable()",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_mockup_keep_reference()",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_mockup_pin_plan()",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_mockup_pin_session()",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_mockup_prepare(p_principal jsonb, p_input jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_mockup_read(p_principal jsonb, p_input jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_mockup_view(p_principal jsonb, p_input jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_park(p_writer jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_plan_approve(p_principal jsonb, p_input jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_plan_decision_immutable()",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_plan_revision_immutable()",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_plan_save(p_principal jsonb, p_input jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_plan_start(p_principal jsonb, p_input jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_plan_view(p_principal jsonb, p_input jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_read_artifact(p_principal jsonb, p_ref jsonb, p_revision_id uuid)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_reconcile_run()",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_record_interpretation(p_writer jsonb, p_interpretation jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_revision_immutable()",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_root_get(p_principal jsonb, p_input jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_root_set(p_principal jsonb, p_input jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_save_candidate(p_writer jsonb, p_artifact jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_set_stage(p_writer jsonb, p_status text)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_snapshot(p_writer jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_studio_budget_immutable()",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_studio_budget_set(p_principal jsonb, p_input jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_studio_ensure(p_principal jsonb, p_input jsonb, p_preset jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_studio_require_active(p_project_id uuid)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_studio_require_owner(p_principal jsonb, p_project_id uuid)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_validate_artifact(p_artifact jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_view(p_principal jsonb, p_ref jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "key": "website_build_workspace_request(p_principal jsonb, p_input jsonb)",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=X/postgres,service_role=X/postgres}",
+          "local": "{supabase_admin=X/supabase_admin,postgres=X/supabase_admin,service_role=X/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "agents",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,anon=arwdDxtm/supabase_admin,authenticated=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "cron_heartbeat",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "dream_issues",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,anon=arwdDxtm/supabase_admin,authenticated=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "manager_tasks",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,anon=arwdDxtm/supabase_admin,authenticated=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "media_insights",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,anon=arwdDxtm/supabase_admin,authenticated=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "memories",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,anon=arwdDxtm/supabase_admin,authenticated=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "outputs",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,anon=arwdDxtm/supabase_admin,authenticated=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "platform_config",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,anon=arwdxtm/postgres,authenticated=arwdxtm/postgres,service_role=arwdxtm/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,anon=arwdxtm/supabase_admin,authenticated=arwdxtm/supabase_admin,service_role=arwdxtm/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "platform_tokens",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "projects",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,anon=arwdxtm/postgres,authenticated=arwdxtm/postgres,service_role=arwdxtm/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,anon=arwdxtm/supabase_admin,authenticated=arwdxtm/supabase_admin,service_role=arwdxtm/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "revenue_snapshots",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,anon=arwdxtm/postgres,authenticated=arwdxtm/postgres,service_role=arwdxtm/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,anon=arwdxtm/supabase_admin,authenticated=arwdxtm/supabase_admin,service_role=arwdxtm/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "run_logs",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,anon=arwdDxtm/supabase_admin,authenticated=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "runs",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,anon=arwdDxtm/supabase_admin,authenticated=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "website_build_feedback",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin,authenticated=r/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "website_build_mockup_decisions",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "website_build_mockups",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "website_build_operator_settings",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin,authenticated=r/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "website_build_plan_decisions",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin,authenticated=r/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "website_build_plan_revisions",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin,authenticated=r/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "website_build_plans",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin,authenticated=r/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "website_build_project_settings",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin,authenticated=r/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "website_build_sessions",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin,authenticated=r/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "website_build_studio_budget_events",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,authenticated=r/postgres,service_role=r/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,authenticated=r/supabase_admin,service_role=r/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "website_build_studio_intents",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,authenticated=r/postgres,service_role=r/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,authenticated=r/supabase_admin,service_role=r/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "website_build_workspace_requests",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,authenticated=r/postgres,service_role=r/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,authenticated=r/supabase_admin,service_role=r/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "website_content",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,anon=arwdDxtm/supabase_admin,authenticated=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "website_preview_revisions",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin,authenticated=r/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "key": "workflows",
+      "differences": [
+        {
+          "field": "acl",
+          "production": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+          "local": "{supabase_admin=arwdDxtm/supabase_admin,postgres=arwdDxtm/supabase_admin,anon=arwdDxtm/supabase_admin,authenticated=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin}"
+        },
+        {
+          "field": "owner",
+          "production": "postgres",
+          "local": "supabase_admin"
+        }
+      ]
+    }
+  ],
+  "counts": {
+    "missing": 6,
+    "extra": 0,
+    "changed": 81,
+    "unchanged": 1013
+  }
+}

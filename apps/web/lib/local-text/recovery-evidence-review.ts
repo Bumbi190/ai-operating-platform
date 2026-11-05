@@ -54,6 +54,7 @@ export interface ReadOnlyProofAssessment {
 
 const uuid = (s:unknown):s is string => typeof s === 'string'
   && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
+const sameUuid=(a:unknown,b:unknown):boolean => uuid(a)&&uuid(b)&&a.toLowerCase()===b.toLowerCase()
 const sha = (s:unknown):s is string => typeof s === 'string' && /^[a-f0-9]{64}$/.test(s)
 const model = (s:unknown):s is string => typeof s === 'string' && /^sha256:[a-f0-9]{64}$/.test(s)
 const obj=(x:unknown):x is Record<string,unknown> => x!==null&&typeof x==='object'&&!Array.isArray(x)
@@ -82,13 +83,18 @@ export function assessHistoricalLocalTextEvidence(
   }
   if(candidate===null || candidate===undefined) return finding('CANDIDATE_RECEIPT_MISSING')
   if(!obj(candidate) || !validBindings(candidate) ||
-     !['completed','known_failed','not_dispatched'].includes(String(candidate.outcome)) ||
+     typeof candidate.outcome!=='string' ||
+     !['completed','known_failed','not_dispatched'].includes(candidate.outcome) ||
      !sha(candidate.signedReceiptHash) ||
      typeof candidate.claimedSigner!=='string' ||
      candidate.claimedSigner.length<1 || candidate.claimedSigner.length>128) {
     return finding('INVALID_CANDIDATE_RECEIPT')
   }
-  for(const field of [...boundFields,'fence','inputHash','modelDigest'] as const) {
+  // Compare UUID identity only; preserve original receipt bytes for verification.
+  for(const field of boundFields) {
+    if(!sameUuid(candidate[field],canonical[field])) return finding('BOUND_IDENTITY_MISMATCH')
+  }
+  for(const field of ['fence','inputHash','modelDigest'] as const) {
     if(candidate[field]!==canonical[field]) return finding('BOUND_IDENTITY_MISMATCH')
   }
   // A matching digest or self-asserted signature is not an independently

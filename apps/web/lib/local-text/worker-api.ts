@@ -20,9 +20,9 @@ export function parseWorkerPayload(operation:WorkerOperation,bytes:Uint8Array):W
   if(operation==='heartbeat'){
    if(!exact(v,['health','activeAttemptId'])||!(v.activeAttemptId===null||isUuid(v.activeAttemptId))||!exact(v.health,['state','lifecycleLock','gpuAvailable','runtimeVersion','runtimeHash','adapterHash','configurationHash','models']))fail()
    const h=v.health as Record<string,unknown>
-   if(!['ready','blocked','stopped'].includes(String(h.state))||!['clear','uncertain'].includes(String(h.lifecycleLock))||typeof h.gpuAvailable!=='boolean'||typeof h.runtimeVersion!=='string'||h.runtimeVersion.length>64||!isSha256(h.runtimeHash)||!isSha256(h.adapterHash)||!isSha256(h.configurationHash)||!Array.isArray(h.models)||h.models.length>3)fail()
+   if(typeof h.state!=='string'||!['ready','blocked','stopped'].includes(h.state)||typeof h.lifecycleLock!=='string'||!['clear','uncertain'].includes(h.lifecycleLock)||typeof h.gpuAvailable!=='boolean'||typeof h.runtimeVersion!=='string'||h.runtimeVersion.length>64||!isSha256(h.runtimeHash)||!isSha256(h.adapterHash)||!isSha256(h.configurationHash)||!Array.isArray(h.models)||h.models.length>3)fail()
    const models=h.models as unknown[]
-   if(models.some(m=>!exact(m,['candidateId','modelDigest'])||!candidates.includes(String(m.candidateId))||typeof m.modelDigest!=='string'||!/^sha256:[a-f0-9]{64}$/.test(m.modelDigest))||new Set(models.map(m=>(m as Record<string,unknown>).candidateId)).size!==models.length)fail()
+   if(models.some(m=>!exact(m,['candidateId','modelDigest'])||typeof m.candidateId!=='string'||!candidates.includes(m.candidateId)||typeof m.modelDigest!=='string'||!/^sha256:[a-f0-9]{64}$/.test(m.modelDigest))||new Set(models.map(m=>(m as Record<string,unknown>).candidateId)).size!==models.length)fail()
    return v
   }
   const c=parseClaim(v.claim);if(c.inputHash!==hashTask(c.task))fail()
@@ -33,8 +33,8 @@ export function parseWorkerPayload(operation:WorkerOperation,bytes:Uint8Array):W
    return {...v,claim:c,result}
   }
   if(operation==='fail'){
-   if(v.outcome==='known_failed'){if(!exact(v,['claim','outcome','reasonCode'])||!reasonCodes.includes(String(v.reasonCode)))fail()}
-   else if(!['dispatch_unknown','cancelled'].includes(String(v.outcome))||!exact(v,['claim','outcome']))fail()
+   if(v.outcome==='known_failed'){if(!exact(v,['claim','outcome','reasonCode'])||typeof v.reasonCode!=='string'||!reasonCodes.includes(v.reasonCode))fail()}
+   else if(typeof v.outcome!=='string'||!['dispatch_unknown','cancelled'].includes(v.outcome)||!exact(v,['claim','outcome']))fail()
    return {...v,claim:c}
   }
   if(operation==='reconcile'){if(!exact(v,['claim','proofRef'])||!isUuid(v.proofRef))fail();return {...v,claim:c}}
@@ -58,14 +58,14 @@ export async function executeWorkerRequest(db:Db,request:Request,operation:Worke
     if(operation==='claim'){
      if(v.value===null)value=null;else{const c=parseClaim(v.value);if(c.deviceId!==verified.deviceId||c.inputHash!==hashTask(c.task)||Date.parse(c.leaseUntil)<=now.getTime()||Date.parse(c.expiresAt)<=now.getTime())throw Error('invalid');value=c}
     }else if(operation==='heartbeat'){
-     if(!object(v.value)||v.value.deviceId!==verified.deviceId||!['continue','abort'].includes(String(v.value.jobAction)))throw Error('invalid')
+     if(!object(v.value)||v.value.deviceId!==verified.deviceId||typeof v.value.jobAction!=='string'||!['continue','abort'].includes(v.value.jobAction))throw Error('invalid')
      value={deviceId:verified.deviceId,jobAction:v.value.jobAction,...(typeof v.value.reasonCode==='string'&&/^[A-Z_]+$/.test(v.value.reasonCode)?{reasonCode:v.value.reasonCode}:{})}
     }else if(operation==='enroll'){
-     if(!object(v.value)||v.value.deviceId!==verified.deviceId||!['pending','active'].includes(String(v.value.status))||!Number.isSafeInteger(v.value.version)||Number(v.value.version)<1)throw Error('invalid')
+     if(!object(v.value)||v.value.deviceId!==verified.deviceId||typeof v.value.status!=='string'||!['pending','active'].includes(v.value.status)||!Number.isSafeInteger(v.value.version)||Number(v.value.version)<1)throw Error('invalid')
      value={deviceId:verified.deviceId,status:v.value.status,version:v.value.version}
     }else{
      const c=payload.claim as Claim
-     if(!object(v.value)||v.value.id!==c.jobId||!JOB_STATES.includes(v.value.state as never)||!['pending','approved','rejected','unknown'].includes(String(v.value.reviewStatus)))throw Error('invalid')
+     if(!object(v.value)||v.value.id!==c.jobId||!JOB_STATES.includes(v.value.state as never)||typeof v.value.reviewStatus!=='string'||!['pending','approved','rejected','unknown'].includes(v.value.reviewStatus))throw Error('invalid')
      value={id:c.jobId,state:v.value.state,reviewStatus:v.value.reviewStatus}
     }
     result={kind:v.kind,value}

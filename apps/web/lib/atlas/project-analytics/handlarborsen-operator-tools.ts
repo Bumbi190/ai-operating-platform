@@ -11,6 +11,8 @@ import { readHandlarborsenReplyLifecycle } from '@/lib/atlas/project-analytics/h
 import { compareHandlarborsenWorkflowEvidence } from '@/lib/atlas/project-analytics/handlarborsen-evidence-comparison'
 import { loadHandlarborsenTraffic } from '@/lib/atlas/project-analytics/handlarborsen-posthog-traffic'
 import { deriveHandlarborsenGrowthBrief } from '@/lib/atlas/project-analytics/handlarborsen-growth-brief'
+import { emptyReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-report'
+import { readRealDealerMetricsV3 } from '@/lib/atlas/project-analytics/handlarborsen-real-dealer-v3'
 
 /**
  * Operator-only, read-only bridges from Atlas's already ingested sources.
@@ -98,7 +100,30 @@ export async function handleHandlarborsenReadTool(name: HandlarborsenReadTool, c
     // A failed traffic read contributes no fabricated zeros or visitor identities.
     const traffic = await loadHandlarborsenTraffic(fixedProject, { allowedProjectIds })
     if (!traffic) return { status: 'not_permitted' as const }
-    const brief = deriveHandlarborsenGrowthBrief(source.report, traffic, context.now ?? new Date())
+    // Never reuse historical test-inclusive v1/v2 company totals as real dealer KPIs.
+    const brief = deriveHandlarborsenGrowthBrief(emptyReport('no_snapshot'), traffic, context.now ?? new Date())
+    const real = await readRealDealerMetricsV3(allowedProjectIds, context.now ?? new Date())
+    if (real.status === 'available') {
+      const validTraffic = traffic.status === 'available' && typeof traffic.registrationPageviews === 'number'
+        && Number.isSafeInteger(traffic.registrationPageviews) && traffic.registrationPageviews >= 0
+      return {
+        status: 'ok' as const,
+        readiness: validTraffic ? 'review' as const : 'insufficient_data' as const,
+        source: 'handlarborsen_classified_real_external_v3',
+        observations: [
+          ...brief.observations,
+          `Handlarbörsen har ${real.registered} klassificerade riktiga externa handlare, varav ${real.verified} verifierade.`,
+          `${real.testOrganisations} verifierade testorganisationer och ${real.internalOrganisations} interna skyddade bolag ingår inte i handlarantalet.`,
+          `${real.unclassifiedOrganisations} oklassade organisationer redovisas separat och räknas inte som riktiga handlare.`,
+        ],
+        manualChecks: [
+          ...brief.checks.filter(item => !item.includes('företagsrapport')),
+          'Kontrollera separat hur många verifierade externa handlare som har publicerat fordon före slutsatser om aktivering.',
+        ],
+        provenance: [...brief.provenance, `Handlarbörsen · explicit v3-API · classified_real_external_dealers · observerad ${real.observedAt}`],
+        limitation: 'Klassificerat verkliga externa handlare är ett separat urval från samtyckesbaserade PostHog-sidvisningar. Ingen konverteringsgrad beräknas. Klassificering är inte ett bevis för aktiv användning eller betalning. Inga åtgärder har utförts.',
+      }
+    }
     return {
       status: 'ok' as const,
       readiness: brief.status,

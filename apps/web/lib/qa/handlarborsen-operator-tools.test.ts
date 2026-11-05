@@ -1,8 +1,10 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 const marketplace = vi.hoisted(() => ({ load: vi.fn() }))
 const traffic = vi.hoisted(() => ({ load: vi.fn() }))
+const real = vi.hoisted(() => ({ read: vi.fn() }))
+vi.mock('@/lib/atlas/project-analytics/handlarborsen-real-dealer-v3', () => ({ readRealDealerMetricsV3: real.read }))
 vi.mock('@/lib/atlas/project-analytics/handlarborsen-posthog-traffic', () => ({ loadHandlarborsenTraffic: traffic.load }))
 vi.mock('@/lib/atlas/project-analytics/handlarborsen-marketplace-read', () => ({
   loadHandlarborsenMarketplaceReport: marketplace.load,
@@ -62,6 +64,7 @@ function scope(db: unknown, allowedProjectIds: string[] = [HB], userId = OWNER) 
 }
 
 describe('Atlas Handlarbörsen read-only tools', () => {
+  beforeEach(() => { real.read.mockReset(); real.read.mockResolvedValue({status:'unavailable',reason:'source_unavailable'}) })
   it('denies growth reads without verified project access before either source is fetched', async () => {
     const fake = dbFixture()
     marketplace.load.mockClear(); traffic.load.mockClear()
@@ -78,14 +81,19 @@ describe('Atlas Handlarbörsen read-only tools', () => {
         metrics: [{key:'companies_registered_total',value:10},{key:'companies_verified_total',value:3}],
       },
     } })
+    real.read.mockResolvedValueOnce({ status:'available',registered:1,verified:1,
+      testOrganisations:8,internalOrganisations:2,unclassifiedOrganisations:0,
+      observedAt:'2026-11-04T19:55:00Z' })
     traffic.load.mockResolvedValueOnce({ status: 'available', registrationPageviews: 2,
       firstDate: '2026-10-29', lastDate: '2026-11-04', checkedAt: '2026-11-04T16:00:00Z' })
     const result = await handleHandlarborsenReadTool('handlarborsen_growth_brief', {
       ...scope(dbFixture().db), now: new Date('2026-11-04T20:00:00Z'),
     })
-    expect(result).toMatchObject({status:'ok',readiness:'review',source:'handlarborsen_verified_growth_brief'})
+    expect(result).toMatchObject({status:'ok',readiness:'review',source:'handlarborsen_classified_real_external_v3'})
     expect(result).toHaveProperty('observations')
     expect(result).toHaveProperty('manualChecks')
+    expect(JSON.stringify(result)).toContain('1 klassificerade riktiga externa handlare')
+    expect(JSON.stringify(result)).not.toContain('10 registrerade')
     expect(result).not.toHaveProperty('identity')
     expect(result).not.toHaveProperty('email')
     expect(traffic.load).toHaveBeenCalledWith({id:HB,slug:'handlarborsen'}, {allowedProjectIds:[HB]})

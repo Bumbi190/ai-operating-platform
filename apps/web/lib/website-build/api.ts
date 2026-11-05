@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {exportWebsiteProject} from './project-export'
 import { appendBuildFeedback, createBuildSession, readBuildArtifact, readBuildSession, requestBuildControl, WebsiteBuildError } from './store'
 import { assertSameOrigin } from '@/lib/atlas/executive/http'
+import { acceptanceTargetDenial } from './acceptance-target'
 import type { CreateBuildInput, FeedbackInput } from './types'
 
 const planMessages:Record<string,string>={PROJECT_BUDGET_REQUIRED:'Välj en månadsbudget i byggstudion innan Atlas fortsätter.',PROJECT_INACTIVE:'Projektet är pausat eller arkiverat. Öppna projektets kontroller för att fortsätta.',INVALID_BUDGET:'Ange en månadsbudget i kronor med högst två decimaler.',PLAN_REVIEW_REQUIRED:'Planera hemsidan med Atlas och granska planen innan bygget startar.',PLAN_STALE:'Planen har ändrats. Granska den aktuella versionen.',BUILD_AGENT_REQUIRED:'Välj en byggagent för projektet i inställningarna.',PROJECT_LOCATION_LOCKED:'Projektets plats är redan bunden. En ändrad standardmapp flyttar inte projektet.',PLAN_CONTAINS_SECRET:'Lägg nycklar i den skyddade inställningen hos tjänsten.',PLAN_TOO_LARGE:'Planen behöver kortas innan den kan byggas.'}
@@ -41,12 +42,16 @@ export async function readWebsiteBuildBody(request: Request): Promise<Record<str
 }
 
 export async function websiteBuildApi(action: 'create' | 'get' | 'feedback' | 'control' | 'artifact' | 'export', request: Request, params: { sessionId?: string; revisionId?: string }): Promise<Response> {
+  // 'control' stays open: pause/cancel must remain reachable as a safety stop.
+  if (action === 'create' || action === 'feedback') { const blocked = acceptanceTargetDenial('build-' + action); if (blocked) return blocked }
   const access = await resolveProjectAccess()
   if (!access.ok) { access.response.headers.set('cache-control', headers['cache-control']); return access.response }
   let body:Record<string,unknown>={}
   try {
     if(['create','feedback','control'].includes(action)){const denied=assertSameOrigin(request);if(denied){denied.headers.set('cache-control',headers['cache-control']);return denied}}
     body = ['create', 'feedback', 'control'].includes(action) ? await readWebsiteBuildBody(request) : {}
+    // A paused build must not be resumed from a preview wired to production.
+    if(action==='control'&&body.action==='resume'){const blocked=acceptanceTargetDenial('build-resume');if(blocked)return blocked}
     const db = createAdminClient()
     const ref = { projectId: (body.projectId ?? new URL(request.url).searchParams.get('projectId')) as string, sessionId: params.sessionId as string }
     if (action === 'create') return Response.json(await createBuildSession(db, access, body as unknown as CreateBuildInput), { status: 201, headers })

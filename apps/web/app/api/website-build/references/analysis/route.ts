@@ -3,6 +3,7 @@ import {createAdminClient} from '@/lib/supabase/admin'
 import {assertSameOrigin} from '@/lib/atlas/executive/http'
 import {buildErrorResponse,readWebsiteBuildBody} from '@/lib/website-build/api'
 import {WebsiteBuildError} from '@/lib/website-build/store'
+import {acceptanceTargetDenial} from '@/lib/website-build/acceptance-target'
 import {parseAnalysisAction,parseAnalysisSource,isUuid} from '@/lib/website-build/reference-analysis/contract'
 import {executeAnalysisAction,listAnalysisSources,readAnalysisJob} from '@/lib/website-build/reference-analysis/service'
 export const dynamic='force-dynamic'
@@ -10,6 +11,7 @@ export const runtime='nodejs'
 export const maxDuration=60
 const headers={'cache-control':'private, no-store'}
 export async function POST(request:Request){
+ const blocked=acceptanceTargetDenial('references-analysis');if(blocked)return blocked
  const owner=await resolveProjectAccess()
  if(!owner.ok){owner.response.headers.set('cache-control',headers['cache-control']);return owner.response}
  const denied=assertSameOrigin(request)

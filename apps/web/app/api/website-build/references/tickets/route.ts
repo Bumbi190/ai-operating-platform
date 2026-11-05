@@ -6,6 +6,7 @@ import { issueReferenceTicket, parseTicketInput, assertReferenceWorkspace } from
 import { referenceUploadEnabled } from '@/lib/website-build/assets/availability'
 import {referenceAnalysisEnabled} from '@/lib/website-build/reference-analysis/availability'
 import { WebsiteBuildError } from '@/lib/website-build/store'
+import {acceptanceTargetDenial} from '@/lib/website-build/acceptance-target'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -13,6 +14,7 @@ const headers = { 'cache-control': 'private, no-store' }
 
 /** Mints a path-limited upload token, not a signed read URL. */
 export async function POST(request: Request): Promise<Response> {
+  const blocked=acceptanceTargetDenial('references-ticket');if(blocked)return blocked
   const access = await resolveProjectAccess()
   if (!access.ok) {
     access.response.headers.set('cache-control',headers['cache-control'])

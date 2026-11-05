@@ -3,6 +3,7 @@ import {createAdminClient} from '@/lib/supabase/admin'
 import {assertSameOrigin} from '@/lib/atlas/executive/http'
 import {buildErrorResponse,readWebsiteBuildBody} from '@/lib/website-build/api'
 import {WebsiteBuildError} from '@/lib/website-build/store'
+import {acceptanceTargetDenial} from '@/lib/website-build/acceptance-target'
 import {CINEMATIC_BINDING,importCinematicPlan,type CinematicImportInput} from '@/lib/website-build/studio/cinematic-import'
 export const dynamic='force-dynamic'
 const headers={'cache-control':'private, no-store'}
@@ -12,6 +13,8 @@ export async function GET(){
  return Response.json({binding:CINEMATIC_BINDING},{headers})
 }
 export async function POST(request:Request){
+ const blocked=acceptanceTargetDenial('cinematic-import')
+ if(blocked)return blocked
  const a=await resolveProjectAccess()
  if(!a.ok)return a.response
  const denied=assertSameOrigin(request)

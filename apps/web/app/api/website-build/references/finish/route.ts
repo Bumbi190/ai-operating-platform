@@ -5,6 +5,7 @@ import { buildErrorResponse, readWebsiteBuildBody } from '@/lib/website-build/ap
 import { finalizeReferenceTicket, parseFinalizeInput } from '@/lib/website-build/assets/finalize'
 import { referenceUploadEnabled } from '@/lib/website-build/assets/availability'
 import { WebsiteBuildError } from '@/lib/website-build/store'
+import {acceptanceTargetDenial} from '@/lib/website-build/acceptance-target'
 
 export const dynamic='force-dynamic'
 export const runtime='nodejs'
@@ -12,6 +13,7 @@ export const maxDuration=30
 const headers={'cache-control':'private, no-store'}
 
 export async function POST(request:Request):Promise<Response> {
+  const blocked=acceptanceTargetDenial('references-finish');if(blocked)return blocked
   const access=await resolveProjectAccess()
   if(!access.ok){access.response.headers.set('cache-control',headers['cache-control']);return access.response}
   const denied=assertSameOrigin(request)

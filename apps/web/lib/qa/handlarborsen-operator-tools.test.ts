@@ -148,6 +148,22 @@ describe('Atlas Handlarbörsen read-only tools', () => {
     expect(await handleHandlarborsenReadTool('handlarborsen_latest_mail', scope(disabledMailbox.db)))
       .toMatchObject({ status: 'unavailable', reason: 'mailbox_not_authenticated' })
   })
+  it('blocks legacy test-inclusive counts from the statistics chat tool', async () => {
+    marketplace.load.mockResolvedValueOnce({ status: 'ok', report: {
+      state: 'ok', latest: {
+        snapshotDate: '2026-11-05', observedAt: '2026-11-05T06:55:00Z',
+        dataScope: 'legacy_all_organisations',
+        metrics: [
+          { key: 'companies_registered_total', value: 11 },
+          { key: 'companies_verified_total', value: 3 },
+        ],
+      }, history: { comparison: { available: false, reason: 'no_previous_snapshot' } },
+    } })
+    const result = await handleHandlarborsenReadTool('handlarborsen_statistics', scope(dbFixture().db))
+    expect(result).toMatchObject({ status: 'unavailable', reason: 'legacy_includes_test_organisations' })
+    expect(result).not.toHaveProperty('metrics')
+    expect(result).not.toHaveProperty('comparison')
+  })
   it('returns the existing validated KPI report with its snapshot provenance and does not invent a dealer identity', async () => {
     marketplace.load.mockResolvedValueOnce({
       status: 'ok', report: {

@@ -170,7 +170,7 @@ const read = (path) => {
 const storageBody = "create schema if not exists storage;\n";
 const storagePrerequisites = [["0002-storage-schema.sql", sha256(storageBody)]];
 
-function fakeDocker({ endpoint = "npipe:////./pipe/docker_engine", inspect = {}, label = LABEL, failOn = "FAIL_HERE", cron = "off", cronRuns = "0", cronRunsReadable = true } = {}) {
+function fakeDocker({ endpoint = "npipe:////./pipe/docker_engine", inspect = {}, label = LABEL, failOn = "FAIL_HERE", cron = "off", cronReadable = true, cronRuns = "0", cronRunsReadable = true, catalog = "[]", catalogThrows = false, catalogStatus = 0 } = {}) {
   const calls = [];
   const sql = [];
   const ok = (stdout = "") => ({ status: 0, stdout, stderr: "" });
@@ -193,7 +193,11 @@ function fakeDocker({ endpoint = "npipe:////./pipe/docker_engine", inspect = {},
       );
     if (cmd === "exec" && args.includes("psql")) {
       sql.push(input);
-      if (input.includes("cron.launch_active_jobs")) return ok(cron + "\n");
+      if (input.startsWith("SELECT COALESCE(json_agg(catalog")) {
+        if (catalogThrows) throw new Error("secret query error");
+        return { status: catalogStatus, stdout: catalog, stderr: "secret catalog error" };
+      }
+      if (input.includes("cron.launch_active_jobs")) return cronReadable ? ok(cron + "\n") : { status: 3, stdout: "", stderr: "cannot read cron setting" };
       if (input.includes("cron.job_run_details")) return cronRunsReadable ? ok(cronRuns + "\n") : { status: 3, stdout: "", stderr: "cannot read job_run_details" };
       if (input.includes(failOn)) return { status: 3, stdout: "", stderr: "psql:<stdin>:1: ERROR:  boom" };
       return ok();
@@ -355,4 +359,147 @@ test("receipts can only be written as new migration-bootstrap-replay files under
     "migration-bootstrap-replay.json",
   ])
     assert.equal(receiptPathProblems(repo, path).length, 1, path);
+});
+
+// Independent, metadata-only fixture; no dependency on the external snapshot in tests.
+const catalogNames = ['agents', 'cron_heartbeat', 'dream_issues', 'manager_tasks', 'media_insights', 'memories', 'outputs', 'platform_config', 'platform_tokens', 'projects', 'revenue_snapshots', 'run_logs', 'runs', 'workflows'];
+const catalogRecords = () => catalogNames.map((table_name) => ({
+  table_name, rls_enabled: true, force_rls: false, owner: 'postgres', policy_count: 1,
+  column_count: 9, anon_select: true, authenticated_select: true, service_select: true,
+  anon_insert: true, authenticated_insert: true,
+}));
+const catalogOptions = (records = catalogRecords()) => ({
+  catalogCompare: resolve(repo, '../../local-evidence/catalog.json'),
+  readCatalog: () => JSON.stringify({ source: 'metadata only', records }),
+});
+const catalogQueries = (fake) => fake.sql.filter((sql) => sql.includes('pg_catalog.pg_class'));
+
+test('catalog comparison reports only metadata differences after full replay and cron guards, then removes container', async () => {
+  const local = catalogRecords();
+  local[0].owner = 'supabase_admin';
+  local[1].anon_select = false;
+  const fake = fakeDocker({ failOn: 'NEVER_MATCHES', catalog: JSON.stringify(local) });
+  const receipt = await run(fake, catalogOptions());
+  assert.equal(receipt.completed, true);
+  assert.equal(receipt.replayReady, false);
+  assert.equal(receipt.cleanup, 'removed');
+  const comparison = receipt.diagnostics.catalogComparison;
+  assert.equal(comparison.status, 'compared');
+  assert.equal(comparison.matches, false);
+  assert.deepEqual(comparison.differences, [
+    { table_name: 'agents', field: 'owner', external: 'postgres', local: 'supabase_admin' },
+    { table_name: 'cron_heartbeat', field: 'anon_select', external: true, local: false },
+  ]);
+  assert.match(comparison.limitations.join(' '), /ownership.*default privileges/i);
+  assert.match(comparison.limitations.join(' '), /RLS policy definitions.*not checked/i);
+  assert.equal(catalogQueries(fake).length, 1);
+  assert.ok(fake.sql.indexOf(catalogQueries(fake)[0]) > fake.sql.indexOf('select count(*) from cron.job_run_details'));
+  const args = fake.calls.find((args) => args.some((arg) => arg.includes('default_transaction_read_only=on')));
+  assert.ok(args.includes('-e'));
+  assert.ok(args.includes('ON_ERROR_STOP=1'));
+  const sql = catalogQueries(fake)[0];
+  // Privilege names such as 'INSERT' are string values, not SQL commands.
+  assert.doesNotMatch(sql.replace(/'[^']*'/g, "''"), /\b(?:INSERT|UPDATE|DELETE|CREATE|ALTER|COPY|DO|CALL)\b/i);
+  assert.deepEqual([...sql.matchAll(/\b(?:FROM|JOIN)\s+([a-z_.]+)/gi)].map((m) => m[1]).sort(),
+    ['pg_catalog.pg_attribute', 'pg_catalog.pg_class', 'pg_catalog.pg_namespace', 'pg_catalog.pg_policy']);
+  const queriedNames = [...sql.slice(sql.indexOf('c.relname IN (')).matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+  assert.deepEqual(queriedNames, catalogNames);
+  assert.equal(Object.hasOwn(comparison, 'source'), false);
+  assert.doesNotMatch(JSON.stringify(comparison), /records|local-evidence/);
+});
+
+test('catalog all-match and missing-table evidence never makes replayReady true', async () => {
+  for (const missing of [false, true]) {
+    const local = catalogRecords();
+    if (missing) local.pop();
+    const fake = fakeDocker({ failOn: 'NEVER_MATCHES', catalog: JSON.stringify(local) });
+    const receipt = await run(fake, catalogOptions());
+    assert.equal(receipt.diagnostics.catalogComparison.matches, !missing);
+    assert.deepEqual(receipt.diagnostics.catalogComparison.missingTables, missing ? ['workflows'] : []);
+    assert.equal(receipt.replayReady, false);
+    assert.equal(receipt.cleanup, 'removed');
+  }
+});
+
+test('catalog query is skipped after failed, bounded or unsafe replay; default has no new diagnostics', async () => {
+  for (const options of [{}, { limit: 2 }, { plan: synthetic({ replayReady: true }) }, { failOn: 'NEVER_MATCHES', cronRuns: '1' }, { failOn: 'NEVER_MATCHES', cron: 'on' }]) {
+    const fake = fakeDocker(options);
+    const { failOn, cronRuns, cron, ...extra } = options;
+    const receipt = await run(fake, { ...catalogOptions(), ...extra });
+    assert.equal(catalogQueries(fake).length, 0);
+    assert.equal(receipt.diagnostics.catalogComparison.status, 'skipped');
+    assert.equal(receipt.cleanup, options.plan ? 'not_created' : 'removed');
+  }
+  const receipt = await run(fakeDocker());
+  assert.equal(Object.hasOwn(receipt, 'diagnostics'), false);
+});
+
+test('malformed or unavailable external catalog refuses before Docker without leaking input or errors', async () => {
+  const valid = catalogRecords();
+  const variants = [valid.slice(1), [...valid, valid[0]], valid.map((r, i) => i ? r : { ...r, table_name: "agents'; select secret" }),
+    valid.map((r, i) => i ? r : { ...r, password: 'secret' }),
+    ...['true', null, 1].map((rls_enabled) => valid.map((r, i) => i ? r : { ...r, rls_enabled })),
+    ...[-1, 1.5, '1', Number.MAX_SAFE_INTEGER + 1].map((policy_count) => valid.map((r, i) => i ? r : { ...r, policy_count })),
+    valid.map((r, i) => i ? r : { ...r, owner: 'secret\nowner' }),
+  ];
+  for (const options of [...variants.map(catalogOptions),
+    { ...catalogOptions(), readCatalog: () => { throw new Error('secret path credential'); } },
+    { ...catalogOptions(), readCatalog: () => 'secret malformed JSON' },
+    { ...catalogOptions(), readCatalog: () => JSON.stringify({ records: valid, credentials: 'secret' }) },
+    { ...catalogOptions(), catalogCompare: 'https://secret.example/catalog.json' },
+    { ...catalogOptions(), catalogCompare: '\\\\secret-host\\catalog.json' },
+  ]) {
+    const fake = fakeDocker();
+    const receipt = await run(fake, options);
+    assert.equal(receipt.refusal?.code, 'catalog_metadata_invalid');
+    assert.deepEqual(fake.calls, []);
+    assert.doesNotMatch(JSON.stringify(receipt), /secret|credential|password/);
+  }
+});
+
+test('catalog query errors and malformed outputs fail closed, suppress raw output and preserve cleanup', async () => {
+  const valid = catalogRecords();
+  for (const options of [{ catalogThrows: true }, { catalogStatus: 3, catalog: JSON.stringify(valid) }, { catalog: 'secret malformed output' },
+    { catalog: JSON.stringify([...valid, valid[0]]) },
+    { catalog: JSON.stringify(valid.map((r, i) => i ? r : { ...r, owner: 'secret\nvalue' })) },
+    { catalog: JSON.stringify(valid.map((r, i) => i ? r : { ...r, table_name: 'secret' })) },
+  ]) {
+    const fake = fakeDocker({ failOn: 'NEVER_MATCHES', ...options });
+    const receipt = await run(fake, catalogOptions());
+    assert.equal(receipt.completed, false);
+    assert.equal(receipt.failure?.phase, 'catalog_comparison');
+    assert.equal(receipt.diagnostics.catalogComparison.status, 'unavailable');
+    assert.equal(receipt.cleanup, 'removed');
+    assert.equal(receipt.environment.cronJobRuns, 0);
+    assert.doesNotMatch(JSON.stringify(receipt), /secret/);
+  }
+});
+
+test('catalog comparison requires readable cron launch-off evidence before its query', async () => {
+  const fake = fakeDocker({ failOn: 'NEVER_MATCHES', cronReadable: false });
+  const receipt = await run(fake, catalogOptions());
+  assert.equal(catalogQueries(fake).length, 0);
+  assert.equal(receipt.completed, false);
+  assert.equal(receipt.failure?.phase, 'guard');
+  assert.equal(receipt.cleanup, 'removed');
+});
+
+test('catalog comparison covers every requested field and emits only changed metadata', async () => {
+  const local = catalogRecords();
+  Object.assign(local[0], { rls_enabled: false, force_rls: true, owner: 'supabase_admin',
+    policy_count: 2, column_count: 10, anon_select: false, authenticated_select: false,
+    service_select: false, anon_insert: false, authenticated_insert: false });
+  const receipt = await run(fakeDocker({ failOn: 'NEVER_MATCHES', catalog: JSON.stringify(local) }), catalogOptions());
+  assert.deepEqual(receipt.diagnostics.catalogComparison.differences, [
+    { table_name: 'agents', field: 'rls_enabled', external: true, local: false },
+    { table_name: 'agents', field: 'force_rls', external: false, local: true },
+    { table_name: 'agents', field: 'owner', external: 'postgres', local: 'supabase_admin' },
+    { table_name: 'agents', field: 'policy_count', external: 1, local: 2 },
+    { table_name: 'agents', field: 'column_count', external: 9, local: 10 },
+    { table_name: 'agents', field: 'anon_select', external: true, local: false },
+    { table_name: 'agents', field: 'authenticated_select', external: true, local: false },
+    { table_name: 'agents', field: 'service_select', external: true, local: false },
+    { table_name: 'agents', field: 'anon_insert', external: true, local: false },
+    { table_name: 'agents', field: 'authenticated_insert', external: true, local: false },
+  ]);
 });

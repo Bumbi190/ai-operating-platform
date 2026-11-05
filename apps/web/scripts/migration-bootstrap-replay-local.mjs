@@ -7,12 +7,13 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { readProvenanceInputs } from "./migration-baseline-provenance.mjs";
 import { BASELINE_FIXTURE, SYNTHETIC_FIXTURES, extractSyntheticFixture, planCanonicalBootstrap } from "./migration-bootstrap-plan.mjs";
 import { CANONICAL_DIR, LEGACY_DIR, sha256 } from "./migration-replay-preflight.mjs";
+import { CATALOG_LIMITATIONS, CATALOG_SQL, compareCatalog, parseExternalCatalog } from "./migration-bootstrap-catalog-local.mjs";
 
 // Same pinned images and platform prerequisites as verify-calendar-full-ledger-local.mjs.
 export const IMAGE = "public.ecr.aws/supabase/postgres:17.11.0.004";
@@ -192,15 +193,33 @@ export async function runBootstrapReplay({
   docker,
   env = {},
   limit = null,
+  catalogCompare = null,
+  readCatalog = (path) => readFileSync(path, "utf8"),
   storagePrerequisites = STORAGE_PREREQUISITES,
   sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
   name = `omnira-bootstrap-replay-${randomUUID()}`,
 }) {
   const receipt = baseReceipt(plan, limit);
+  const comparison = catalogCompare === null ? null : {
+    status: "skipped", matches: null, limitations: [...CATALOG_LIMITATIONS],
+  };
+  if (comparison) receipt.diagnostics = { catalogComparison: comparison };
   const refuse = (code, detail) => ((receipt.refusal = { code, detail: redact(detail) }), receipt);
   const problems = planProblems(plan);
   if (problems.length) return refuse("plan_not_executable", problems.join("; "));
   if (limit !== null && !(Number.isInteger(limit) && limit > 0)) return refuse("invalid_limit", String(limit));
+  let externalCatalog;
+  if (comparison) {
+    try {
+      // Local absolute file path only: no URLs, UNC/network shares or device paths.
+      if (typeof catalogCompare !== "string" || !isAbsolute(catalogCompare) || /^[\\/]{2}/.test(catalogCompare) || !/\.json$/i.test(catalogCompare))
+        throw new Error("Invalid local metadata path");
+      externalCatalog = parseExternalCatalog(readCatalog(catalogCompare));
+    } catch {
+      comparison.status = "unavailable";
+      return refuse("catalog_metadata_invalid", "Local catalog metadata unavailable or invalid");
+    }
+  }
   let steps;
   try {
     steps = loadVerifiedSequence(plan.sequence, read);
@@ -291,6 +310,21 @@ export async function runBootstrapReplay({
         receipt.failure = { phase: "guard", error: "cron.launch_active_jobs is not off" };
       if ((!countReadable || receipt.environment.cronJobRuns !== 0) && !receipt.failure)
         receipt.failure = { phase: "guard", error: "cron.job_run_details count is unreadable or nonzero" };
+      if (comparison && (!launch.ok || launch.stdout !== "off") && !receipt.failure)
+        receipt.failure = { phase: "guard", error: "Catalog comparison requires readable cron.launch_active_jobs=off evidence" };
+      // Only a full, successfully guarded replay may produce comparison evidence.
+      // The new operation is fenced from cleanup: no raw output/errors enter the receipt.
+      if (comparison && !receipt.failure && !receipt.coverage.bounded && receipt.applied.length === steps.length) {
+        try {
+          const args = ["exec", "-e", "PGOPTIONS=-c default_transaction_read_only=on -c statement_timeout=10000 -c search_path=pg_catalog", ...psqlArgs(name).slice(1)];
+          const result = docker(args, CATALOG_SQL);
+          if (result.status !== 0) throw new Error("Catalog query failed");
+          Object.assign(comparison, compareCatalog(externalCatalog, result.stdout));
+        } catch {
+          comparison.status = "unavailable";
+          receipt.failure = { phase: "catalog_comparison", error: "Local catalog query unavailable or invalid" };
+        }
+      }
       // The random name is ours alone; remove only if it carries our label.
       const labelled = docker(["inspect", "--format", `{{index .Config.Labels "${LABEL_KEY}"}}`, name]);
       if (labelled.status !== 0) receipt.cleanup = "not_created";
@@ -305,7 +339,8 @@ export async function runBootstrapReplay({
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-  const { values } = parseArgs({ options: { limit: { type: "string" }, receipt: { type: "string" } } });
+  // Example: --catalog-compare C:/local-evidence/catalog.json --receipt docs/validation/migration-bootstrap-replay-catalog.json
+  const { values } = parseArgs({ options: { limit: { type: "string" }, receipt: { type: "string" }, "catalog-compare": { type: "string" } } });
   const receiptPath = values.receipt ?? DEFAULT_RECEIPT;
   const pathProblems = receiptPathProblems(repo, receiptPath);
   if (pathProblems.length) throw new Error(pathProblems.join("; "));
@@ -317,6 +352,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
       spawnSync(dockerBin, args, { input, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, timeout: 600000 }),
     env: { DOCKER_HOST: process.env.DOCKER_HOST },
     limit: values.limit === undefined ? null : Number(values.limit),
+    catalogCompare: values["catalog-compare"] ?? null,
   });
   writeFileSync(resolve(repo, receiptPath), JSON.stringify(receipt, null, 2) + "\n");
   const { planned, attempted, applied } = receipt.coverage;

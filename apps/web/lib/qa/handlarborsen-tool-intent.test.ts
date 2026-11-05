@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { classifyHandlarborsenReadIntent as read } from '@/lib/atlas/project-analytics/handlarborsen-tool-intent'
 
 describe('Handlarbörsen read-only intent classification', () => {
@@ -31,6 +33,14 @@ describe('Handlarbörsen read-only intent classification', () => {
       .toBe('handlarborsen_growth_brief')
     expect(read('Skicka en tillväxtrapport för Handlarbörsen')).toBeNull()
     expect(read('Hur utvecklas Familje-Stunden?')).toBeNull()
+  })
+  it('keeps explicit growth evidence reads out of the content fast-path', () => {
+    const route = readFileSync(fileURLToPath(new URL('../../app/api/chat/route.ts', import.meta.url)), 'utf8')
+    expect(route).toContain('const hbGrowthBriefReadIntent =')
+    expect(route).toContain("=== 'handlarborsen_growth_brief'")
+    expect(route).toContain('&& !hbReplyLifecycleReadIntent && !hbGrowthBriefReadIntent && !socialPreparationIntent &&')
+    expect(route).toContain("mode === 'content' || isFastPathContent(lastUserText)")
+    expect(route).toContain('const forceHbReadFirstTurn = hbReadIntent')
   })
   it('does not open unrelated project mail or status and never turns generic speech into a request', () => {
     expect(read('Vad säger de senaste mejlen i Familje-Stunden?')).toBeNull()

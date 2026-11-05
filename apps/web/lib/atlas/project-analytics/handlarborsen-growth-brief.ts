@@ -1,3 +1,5 @@
+import type { RealDealerMetricsV3 } from './handlarborsen-real-dealer-v3'
+import { companyPopulation } from './handlarborsen-company-population'
 import type { MarketplaceReport } from './handlarborsen-marketplace-report'
 import type { HandlarborsenTraffic } from './handlarborsen-posthog-traffic'
 
@@ -18,21 +20,10 @@ export function deriveHandlarborsenGrowthBrief(
   report: MarketplaceReport,
   traffic: HandlarborsenTraffic | null | undefined,
   now: Date,
+  realDealerMetrics?: RealDealerMetricsV3 | null,
 ): GrowthBrief {
-  const latest = report.state === 'ok' && report.latest?.dataScope === 'production_excluding_quarantined_test'
-    ? report.latest
-    : null
-  const observedMs = latest ? Date.parse(latest.observedAt) : NaN
-  const nowMs = now.getTime()
-  const fresh = latest !== null && Number.isFinite(observedMs) && Number.isFinite(nowMs)
-    && observedMs <= nowMs && nowMs - observedMs <= 26 * 60 * 60 * 1000
-    && latest.freshness === 'fresh'
-  const metric = (key: string) => {
-    const value = latest?.metrics.find(entry => entry.key === key)?.value
-    return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null
-  }
-  const registered = metric('companies_registered_total')
-  const verified = metric('companies_verified_total')
+  const population = companyPopulation(report, now, realDealerMetrics)
+  const { registered, verified, fresh } = population
   const validCompanyCounts = registered !== null && verified !== null && verified <= registered
 
   const trafficValid = traffic?.status === 'available' && typeof traffic.registrationPageviews === 'number'
@@ -50,13 +41,17 @@ export function deriveHandlarborsenGrowthBrief(
     checks.push('Verifiera PostHog-anslutning och datakvalitet innan några slutsatser om registreringsintresse dras.')
   }
 
-  if (validCompanyCounts && latest) {
-    observations.push(`Handlarbörsen hade ${registered} registrerade och ${verified} verifierade företag vid senaste rapporten.`)
-    provenance.push(`Handlarbörsen · företagssnapshot · observerad ${latest.observedAt} · ${latest.dataScope}`)
+  if (validCompanyCounts && population.observedAt) {
+    observations.push(`Handlarbörsen hade ${registered} registrerade och ${verified} verifierade ${realDealerMetrics !== undefined ? "externa handlare enligt v3" : "företag vid senaste rapporten"}.`)
+    provenance.push(`Handlarbörsen · ${realDealerMetrics !== undefined ? "v3-API" : "företagssnapshot"} · observerad ${population.observedAt} · ${population.scope}`)
     if (fresh && registered > verified)
-      checks.push('Granska väntande företagsverifieringar i ordinarie handläggningsflöde; inga konton ändras automatiskt.')
+      checks.push(realDealerMetrics !== undefined
+        ? 'Granska verifieringsstatus i ordinarie handläggningsflöde; skillnaden mellan registrerade och verifierade visar inte hur många ansökningar som väntar.'
+        : 'Granska väntande företagsverifieringar i ordinarie handläggningsflöde; inga konton ändras automatiskt.')
   } else {
-    checks.push('Kontrollera att en aktuell, verifierad produktionssnapshot innehåller jämförbara företagsantal.')
+    checks.push(realDealerMetrics !== undefined
+      ? 'Kontrollera att Handlarbörsens v3-API ger aktuella, verifierade antal externa handlare; äldre rapporter används inte som reserv.'
+      : 'Kontrollera att en aktuell, verifierad produktionssnapshot innehåller jämförbara företagsantal.')
   }
 
   if (!fresh)

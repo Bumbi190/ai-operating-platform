@@ -40,14 +40,14 @@ async function browserPhase({client,browserProxy,fixture,docker,receipt,password
  if(code!==0)throw Error('BROWSER_CONTAINER_RUNNER_FAILED');
  return JSON.parse(stdout);
 }
-export async function runRouteChecks({bundle,nextFixture,withWorker,withFeedback,withSpendGuard,withBrowser,password,docker,sql,check,receipt,client,browserProxy,service,anon,a,b,context}){
+export async function runRouteChecks({bundle,nextFixture,withWorker,withFeedback,withSpendGuard,withDrain,withBrowser,password,docker,sql,check,receipt,client,browserProxy,service,anon,a,b,context}){
  if(withWorker){sql('insert into public.platform_config(id,automation_paused) values(1,false) on conflict(id) do nothing;');check('local_worker_authority_available',sql('select automation_paused from public.platform_config where id=1;')==='f');}
  if(withSpendGuard)sql('update public.platform_config set global_daily_sek=1000,global_weekly_sek=1000,global_monthly_sek=1000 where id=1;');
  const routeConversation=randomUUID();
  sql("insert into public.conversations(id,project_id,user_id) values('"+routeConversation+"','"+context.projects[0]+"','"+a.id+"');");
  if(nextFixture)docker(['cp',nextFixture.directory,client+':/tmp/omnira-next']);
  docker(['cp',bundle.path,client+':/tmp/omnira-routes.mjs']);
- const fixture=JSON.stringify({spendGuard:withSpendGuard,feedback:withFeedback,browser:withBrowser,worker:withWorker,nextServer:nextFixture?'/tmp/omnira-next/'+nextFixture.serverRelative:null,service,anon,a,b,context:{...context,routeConversation}});
+ const fixture=JSON.stringify({drain:withDrain,spendGuard:withSpendGuard,feedback:withFeedback,browser:withBrowser,worker:withWorker,nextServer:nextFixture?'/tmp/omnira-next/'+nextFixture.serverRelative:null,service,anon,a,b,context:{...context,routeConversation}});
  const result=withBrowser?await browserPhase({client,browserProxy,fixture,docker,receipt,password,a,b}):JSON.parse(docker(['exec','-i',client,'node','/tmp/omnira-routes.mjs'],fixture));
  receipt.routes=result;
  check('actual_routes_with_real_cookie_sessions',result.completed&&result.checks.every(c=>c.passed));

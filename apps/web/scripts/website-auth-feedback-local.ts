@@ -1,4 +1,5 @@
 // Test-only durable feedback/candidate acceptance. Interpretation and copy are explicit fixtures, not model output.
+import {testBudgetDrain} from './website-auth-drain-local'
 import {probeWorkerSpend,testReservationSafety} from './website-auth-spend-local'
 import {executeWebsiteBuildRun} from '../lib/website-build/worker'
 import {recordBuildInterpretation,saveBuildCandidate} from '../lib/website-build/store'
@@ -50,5 +51,6 @@ export async function runFeedbackAcceptance({db,http,jarA,jarB,f,externalAttempt
  const unchanged=await http(sessionPath+query,jarA)
  check('feedback_completed_run_replay_idempotent',unchanged.data.revisions.length===2&&unchanged.data.activePreviewRevisionId===newId)
  check('feedback_new_revision_hidden_from_foreign_user',(await http(sessionPath+'/revisions/'+newId+query,jarB)).status===404)
+ if(f.drain)await testBudgetDrain({db,http,jarA,sessionPath,query,projectId,oldId:newId,expectedArtifact:updated.data,check,externalAttempts});
  return {oldRevisionId:oldId,newRevisionId:newId,newCopy,oldCopy:initialArtifact.cinematicPreset.copy.roadsterCta}
 }

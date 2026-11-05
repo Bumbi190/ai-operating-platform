@@ -20,6 +20,8 @@ const withWorker=process.argv.includes('--worker');
 if(withWorker&&!withHttp)throw Error('--worker requires --next-http');
 const withFeedback=process.argv.includes('--feedback');
 if(withFeedback&&!withWorker)throw Error('--feedback requires --worker');
+const withDrain=process.argv.includes('--drain');
+if(withDrain&&(!process.argv.includes('--spend-guard')||process.argv.includes('--browser')))throw Error('--drain requires --spend-guard and currently excludes --browser');
 const withSpendGuard=process.argv.includes('--spend-guard');
 if(withSpendGuard&&!withFeedback)throw Error('--spend-guard requires --feedback');
 const withBrowser=process.argv.includes('--browser');
@@ -142,7 +144,7 @@ try{
  const anon=await request(rest,'/webbuilder_auth_probe');check('anonymous_denied',anon.status===401||anon.status===403);
  const admin=await request(rest,'/webbuilder_auth_probe?select=id',{token:service});check('service_sees_two_fictional_rows',admin.status===200&&admin.data?.length===2);
  if(applicationModule)await applicationModule.testApplicationHTTP({sql,check,request,rest,auth,service,a,b,token:renewed.data.access_token,context:applicationContext});
- if(routeModule)await routeModule.runRouteChecks({bundle:routeBundle,nextFixture,withWorker,withFeedback,withSpendGuard,withBrowser,password,docker,sql,check,receipt,client:names.client,browserProxy:names.browserProxy,service,anon:serviceJWT('anon'),a:{...a,access_token:renewed.data.access_token,refresh_token:renewed.data.refresh_token},b,context:applicationContext});
+ if(routeModule)await routeModule.runRouteChecks({bundle:routeBundle,nextFixture,withWorker,withFeedback,withSpendGuard,withDrain,withBrowser,password,docker,sql,check,receipt,client:names.client,browserProxy:names.browserProxy,service,anon:serviceJWT('anon'),a:{...a,access_token:renewed.data.access_token,refresh_token:renewed.data.refresh_token},b,context:applicationContext});
  const signedOut=await request(auth,'/logout',{token:renewed.data.access_token,method:'POST'});
  check('signout',signedOut.status===204);
  const revoked=await request(auth,'/token?grant_type=refresh_token',{method:'POST',body:{refresh_token:renewed.data.refresh_token}});
@@ -163,7 +165,7 @@ try{
  receipt.finishedAt=new Date().toISOString();
  routeBundle?.cleanup();
  nextFixture?.cleanup();
- receipt.mode=withSpendGuard?'real-spend-refusal':withFeedback?'prepared-feedback':withBrowser?'real-browser':withWorker?'preset-worker':withHttp?'next-http':withRoutes?'application-route-cookies':withApplication?'canonical-application':'auth-probe';
+ receipt.mode=withDrain?'real-budget-drain':withSpendGuard?'real-spend-refusal':withFeedback?'prepared-feedback':withBrowser?'real-browser':withWorker?'preset-worker':withHttp?'next-http':withRoutes?'application-route-cookies':withApplication?'canonical-application':'auth-probe';
  if(withApplication)receipt.limitations=['Real local Auth and canonical application SQL through PostgREST only; no Next.js UI/cookies, application route/context resolver, worker, hosted acceptance, Storage HTTP or paid model calls.'];
  if(withRoutes)receipt.limitations=['Real route exports invoked in-process with Next request storage and real SSR cookies, GoTrue and PostgREST. No Next HTTP server, middleware, browser UI, worker, hosted acceptance, Storage HTTP or paid models.'];
  if(withHttp)receipt.limitations=['Actual standalone Next HTTP routes and production middleware against real local Auth/canonical SQL. Minimal test app, not full WebBuilder browser UI; no worker, hosted acceptance, Storage HTTP or paid models.'];
@@ -171,7 +173,8 @@ try{
  if(withBrowser)receipt.limitations=['Actual Chromium login and Studio components in minimal Next shell with real Auth/SQL and preset worker. Loopback-only temporary browser ports. No full platform shell, chat generation, provider spend, complete media/export or hosted target.'];
  if(withFeedback)receipt.limitations=['Real feedback/claim/worker/history with explicit prepared interpretation and candidate fixtures after the model boundary; not real AI interpretation or generated copy. No full shell/provider spend/media/export/drain/hosted acceptance.'];
  if(withSpendGuard)receipt.limitations=['Real worker/runner/Anthropic adapter budget refusal and real SQL reservation concurrency/replay tests. No provider credentials or dispatched model calls; prepared feedback candidate still used after refusal. Not successful AI generation, provider settlement, full shell/media/export/drain/hosted acceptance.'];
- const path=fileURLToPath(new URL('../../../docs/validation/'+(withSpendGuard?'website-real-auth-spend-20261105.json':withFeedback?'website-real-auth-feedback-20261105.json':withBrowser?'website-real-auth-browser-20261105.json':withWorker?'website-real-auth-worker-20261105.json':withHttp?'website-real-auth-next-http-20261105.json':withRoutes?'website-real-auth-routes-local-20261105.json':withApplication?'website-real-auth-application-local-20261105.json':'website-real-auth-local-20261105.json'),import.meta.url));
+ if(withDrain)receipt.limitations=['Actual drain route export invoked in-process against real owned SQL/Auth, real claim/worker/Anthropic budget refusal and real session/artifact reads. Prepared interpretation/candidate fixtures precede the separately refused third generation. No provider credentials, dispatched model calls, successful AI generation, provider settlement, browser/full shell/media/export or hosted acceptance.'];
+ const path=fileURLToPath(new URL('../../../docs/validation/'+(withDrain?'website-real-auth-drain-20261105.json':withSpendGuard?'website-real-auth-spend-20261105.json':withFeedback?'website-real-auth-feedback-20261105.json':withBrowser?'website-real-auth-browser-20261105.json':withWorker?'website-real-auth-worker-20261105.json':withHttp?'website-real-auth-next-http-20261105.json':withRoutes?'website-real-auth-routes-local-20261105.json':withApplication?'website-real-auth-application-local-20261105.json':'website-real-auth-local-20261105.json'),import.meta.url));
  writeFileSync(path,JSON.stringify(receipt,null,2)+'\n');
  console.log(JSON.stringify(receipt,null,2));process.exitCode=receipt.completed?0:1;
 }

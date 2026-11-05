@@ -34,6 +34,7 @@ import { isMemoryEnabled, recordMemoryEvent } from '@/lib/atlas/memory/record-ev
 import { executeWorkflowAction, isWorkflowActionRun } from '@/lib/workflows/action-executor'
 import { isPhysicalAdmissionRefusal, isGovernanceDispatchUnknown } from '@/lib/governance/execution-signal'
 import { ExecutionStoppedError } from '@/lib/governance/execution-stop'
+import { SpendRefusedError } from '@/lib/cost/governed-spend'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
@@ -699,7 +700,9 @@ export async function GET(request: Request) {
       // attempts är redan inkrementerad av claim_runs → willRetry om vi inte nått taket.
       const willRetry = (run.attempts ?? 0) < (run.max_attempts ?? 3)
         && !isCampaignRun(run.kind)
-        && !(isWebsiteBuildRun(run.kind) && isWebsiteBuildPermanentError(e))
+        // A refused spend requires an explicit owner decision before another build attempt.
+        // Preserve the existing fenced failure write and all other run families' retry policy.
+        && !(isWebsiteBuildRun(run.kind) && (isWebsiteBuildPermanentError(e) || e instanceof SpendRefusedError))
       const history = [
         ...(Array.isArray(run.error_history) ? run.error_history : []),
         { at: new Date().toISOString(), attempt: run.attempts, error: msg },

@@ -60,7 +60,7 @@ try{
  if(mode==='studio'){
   const report=resolve(out,'studio.json')
   env.PLAYWRIGHT_JSON_OUTPUT_FILE=report
-  const focus=process.argv.includes('--studio-focus-first-send')?['--grep','first send creates once']:[]
+  const focus=process.argv.includes('--studio-focus-first-send')?['--grep','first send creates once']:process.argv.includes('--studio-focus-showroom')?['--grep','showroom Studio journey']:[]
   runNode([resolve(root,'node_modules/@playwright/test/cli.js'),'test','--config','playwright.atlas-builder-studio.config.ts',...focus,'--reporter=list,json','--output',resolve(out,'browser'),'--global-timeout=900000','--max-failures=1'],'studio',960000)
   const reportData=JSON.parse(readFileSync(report,'utf8')),stats=reportData.stats
   Object.assign(result,{passed:stats.expected>0&&stats.unexpected===0&&stats.skipped===0&&stats.flaky===0&&(reportData.errors??[]).length===0,tests:stats.expected+stats.unexpected+stats.skipped+stats.flaky,passedTests:stats.expected,failedTests:stats.unexpected})

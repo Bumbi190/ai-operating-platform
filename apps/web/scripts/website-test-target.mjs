@@ -26,7 +26,7 @@ export function assertWebsiteTestTarget(info,target){
 export function resolveWebsiteTestMode(args){
  assert.ok(Array.isArray(args),'Runner arguments must be an array')
  if(args.length===0)return 'sql'
- if(args.length===2&&args[0]==='--studio'&&args[1]==='--studio-focus-first-send')return 'studio'
+ if(args.length===2&&args[0]==='--studio'&&['--studio-focus-first-send','--studio-focus-showroom'].includes(args[1]))return 'studio'
  assert.deepEqual(args,['--studio'],'Unsupported test runner arguments')
  return 'studio'
 }

@@ -158,7 +158,8 @@ test("platform_config synthetic step precedes budgets without applying the full 
   const at = plan.sequence.findIndex((s) => s.path === PLATFORM_CONFIG_FIXTURE.path);
   assert.ok(at > 0);
   assert.deepEqual(plan.sequence[at], PLATFORM_CONFIG_FIXTURE);
-  assert.equal(plan.sequence[at + 1].name, "20260831_budget_scopes.sql");
+  assert.equal(plan.sequence[at + 1].path, "synthetic/platform_config_security_only");
+  assert.equal(plan.sequence[at + 2].name, "20260831_budget_scopes.sql");
   assert.ok(!plan.sequence.some((s) => s.kind === "fixture" && s.path === PLATFORM_CONFIG_FIXTURE.sourcePath));
   assert.match(plan.sequence[at].limitation, /No row seeding.*RLS.*ACL/);
   for (const changed of [null, (sql) => sql + "\n-- drift"]) {
@@ -252,6 +253,8 @@ test("repository: canonical bootstrap needs an interleaved legacy fixture, so no
     "supabase/migrations/20260603_durable_runs.sql",
     "supabase/migrations/20260609_dream_issues_ledger.sql",
     "supabase/migrations/20260609_manager_task_dream_link.sql",
+    "synthetic/cron_heartbeat_security_only",
+    "synthetic/platform_config_security_only",
     "synthetic/platform_config_table_only",
     "synthetic/platform_tokens_schema_only",
     "synthetic/runs_dispatch_schema_only",
@@ -317,7 +320,7 @@ test("repository: canonical bootstrap needs an interleaved legacy fixture, so no
   assert.deepEqual(codes(plan), [
     "execution_not_run",
     "fixture_interleaved",
-    ...Array(11).fill("fixture_untracked"),
+    ...Array(13).fill("fixture_untracked"),
   ]);
 });
 

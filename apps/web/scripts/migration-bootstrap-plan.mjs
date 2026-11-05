@@ -7,6 +7,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { orderReplayMigrations } from "./analysis-replay-order.mjs";
 import { RUNS_DISPATCH_FIXTURE, extractRunsDispatchSchema } from "./migration-bootstrap-runs.mjs";
 export { RUNS_DISPATCH_FIXTURE } from "./migration-bootstrap-runs.mjs";
+import { SECURITY_FIXTURES, extractSecurityFixture } from "./migration-bootstrap-security.mjs";
+export { SECURITY_FIXTURES } from "./migration-bootstrap-security.mjs";
 import {
   createdRelations,
   inspectBaselineProvenance,
@@ -118,11 +120,12 @@ export function extractPlatformTokensSchema(source) {
   return { extracted, body };
 }
 
-export const SYNTHETIC_FIXTURES = Object.freeze([PLATFORM_CONFIG_FIXTURE, PLATFORM_TOKENS_FIXTURE, RUNS_DISPATCH_FIXTURE]);
+export const SYNTHETIC_FIXTURES = Object.freeze([PLATFORM_CONFIG_FIXTURE, PLATFORM_TOKENS_FIXTURE, RUNS_DISPATCH_FIXTURE, ...SECURITY_FIXTURES]);
 export function extractSyntheticFixture(step, source) {
   if (step.path === PLATFORM_CONFIG_FIXTURE.path) return extractPlatformConfigTable(source);
   if (step.path === PLATFORM_TOKENS_FIXTURE.path) return extractPlatformTokensSchema(source);
   if (step.path === RUNS_DISPATCH_FIXTURE.path) return extractRunsDispatchSchema(source);
+  if (SECURITY_FIXTURES.some((s) => s.path === step.path)) return extractSecurityFixture(step, source);
   throw new Error("unknown synthetic fixture");
 }
 // Legacy creators of relations first needed after the early window (the provenance scan stops there).
@@ -507,6 +510,20 @@ export function planCanonicalBootstrap({
       if (source === undefined) throw new Error("runs dispatch source missing");
       extractRunsDispatchSchema(source);
       plan.fixtures.unshift({ ...RUNS_DISPATCH_FIXTURE, position: 0, provides: [], providesColumns: ["runs.kind"] });
+    } catch (error) {
+      blockers.push({ code: "synthetic_fixture_refused", detail: error.message });
+    }
+  }
+
+  for (const pin of SECURITY_FIXTURES) {
+    const targetPath = pin.path.includes("cron_heartbeat") ? `${LEGACY_DIR}/20260603_cron_heartbeat.sql` : PLATFORM_CONFIG_FIXTURE.path;
+    const target = plan.fixtures.find((f) => f.path === targetPath);
+    if (!target) continue; // Custom reduced plans need not include either table.
+    try {
+      const source = legacy.find((f) => `${LEGACY_DIR}/${f.name}` === pin.sourcePath)?.sql;
+      if (source === undefined) throw new Error("security fixture source missing");
+      extractSecurityFixture(pin, source);
+      plan.fixtures.push({ ...pin, position: target.position, provides: [], providesColumns: [] });
     } catch (error) {
       blockers.push({ code: "synthetic_fixture_refused", detail: error.message });
     }

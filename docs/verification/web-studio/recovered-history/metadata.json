@@ -1,0 +1,16 @@
+[
+  {
+    "version": "20260605071529",
+    "name": "media_insights_multiplatform",
+    "bytes": 756,
+    "md5": "243c06afd89bda2acfa6d565b4517aa0",
+    "sha256": "bd29b60044d8214d87ca435412c82d8784c52488800248ff0d1865786ca4b4d0"
+  },
+  {
+    "version": "20260605213648",
+    "name": "media_insights_retention",
+    "bytes": 315,
+    "md5": "4eececd0c4316c4dc35eb225b501d7f3",
+    "sha256": "390846a61efd21ab9156320d7cd298c1c2c8b2031f98a0580adc49cd76873ef9"
+  }
+]

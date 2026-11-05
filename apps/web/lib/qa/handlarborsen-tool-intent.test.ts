@@ -25,6 +25,8 @@ describe('Handlarbörsen read-only intent classification', () => {
   it('routes explicit Handlarbörsen growth questions to the owner-only growth tool', () => {
     expect(read('Nova, hur utvecklas Handlarbörsen och vad bör vi prioritera för att få fler handlare?'))
       .toBe('handlarborsen_growth_brief')
+    expect(read('Nova, hur utvecklas Handlarbörsen och vad borde vi prioritera för att få fler registrerade handlare? Använd verifierade siffror och ange källorna.'))
+      .toBe('handlarborsen_growth_brief')
     expect(read('Hur ser registreringsintresset ut?', ['Handlarbörsen']))
       .toBe('handlarborsen_growth_brief')
     expect(read('Skicka en tillväxtrapport för Handlarbörsen')).toBeNull()

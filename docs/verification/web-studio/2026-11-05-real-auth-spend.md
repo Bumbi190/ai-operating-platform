@@ -1,0 +1,17 @@
+# Web Studio: real worker/provider-adapter budget refusal and SQL reservation safety
+
+Command: `node apps/web/scripts/test-website-auth-local.mjs --run --application --routes --next-http --worker --browser --feedback --spend-guard`
+
+The preliminary internal run omits --browser. --spend-guard requires the existing feedback/worker fixture. It enables H1_SPEND_GATE=1 only in the temporary Node worker and its Next child process. No production flag, code, budget, provider credential or deployment is changed.
+
+The new mode replaces the prior artificial beforePaidStep refusal with the unchanged real worker -> runStep -> governed Anthropic adapter -> reserveSpend -> budget_reserve chain. There is no provider mock or early-stop hook on this attempt. A zero-monthly-budget project must throw SpendRefusedError(budget_exceeded), name website.feedback.interpret and bind to project_monthly with allowed=false and advisoryOverride=false. Its real reservation must be released, have positive estimated SEK and have no dispatched_at/dispatch_token. Provider credentials are absent. The fetch allowlist/counter and core internal network remain backstops; this is not a successful inference or invoice-price verification.
+
+Only the owned disposable platform_config row receives synthetic daily/weekly/monthly limits of 1000 SEK, so the test project's zero budget is the decisive scope. These are local accounting fixtures, not approval or funding for a provider call. The other original fictional project has no budget; withGovernedSpend must refuse it with no_budget_configured before its test callback executes.
+
+A separate fictional project is created through the real Studio route and assigned a 1-SEK numeric test budget. Two concurrent reserveSpend calls each request 0.75 SEK through actual PostgREST/SQL. Exactly one may hold headroom. The hold must be open but undispatched, then become released via the real release RPC. Reusing its key must remain a hard replay_released refusal even while this one direct-reservation check temporarily sets the local flag to advisory; the flag is restored in finally. A new 1-SEK hold must fit after release, then be released. None of these accounting-only calls dispatches a provider.
+
+Parent checks require no open reservations, no dispatch-intent timestamps and no cost events. After the verified refusal the earlier explicit interpretation/candidate fixtures still complete revision two; browser history, auth, owner isolation and refresh cases run unchanged. This continues to be prepared feedback output, not AI-generated copy. Drain error handling/terminalization, positive provider dispatch, metering/settlement after a real call and production enforcement remain separate acceptance.
+
+Receipt: docs/validation/website-real-auth-spend-20261105.json. The preliminary non-browser run completed successfully before combined Chromium acceptance. Syntax/import checks and final owned-resource cleanup are required; unrelated shared-fixture application tests are outside this runner.
+
+Final combined acceptance completed 2026-11-05T13:38:11.973Z: 54/54 parent checks, 125/125 route/worker checks and 15/15 Chromium checks passed. All five owned containers and both owned networks were removed; subsequent labelled-resource inventory and temporary Next-directory inventory were empty. JavaScript syntax checks and git diff --check passed. The full shared-fixture application suite was not run; this change only extends the isolated integration harness, with no production application source changes.

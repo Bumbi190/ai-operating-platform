@@ -5,7 +5,7 @@ import {executeWebsiteBuildRun} from '../lib/website-build/worker'
 import {CINEMATIC_BINDING} from '../lib/website-build/studio/cinematic-binding'
 import {isFencedError} from '../lib/ai/fencing'
 import {randomUUID} from 'node:crypto'
-export async function runWorkerAcceptance({base,jarA,jarB,f,check}:any){
+export async function runWorkerAcceptance({base,jarA,jarB,f,check,externalAttempts}:any){
  const db=createAdminClient()
  async function http(path:string,jar:any[],body?:unknown){
   const response=await fetch(base+path,{method:body===undefined?'GET':'POST',headers:{origin:base,host:new URL(base).host,'content-type':'application/json',cookie:jar.map(c=>c.name+'='+c.value).join('; ')},...(body===undefined?{}:{body:JSON.stringify(body)}),redirect:'manual'})
@@ -58,7 +58,7 @@ export async function runWorkerAcceptance({base,jarA,jarB,f,check}:any){
  check('worker_preview_preserves_reviewed_binding',artifact.data.cinematicPreset?.binding.sha256===CINEMATIC_BINDING.sha256)
  const hidden=await http('/api/website-builds/'+first.data.sessionId+'?projectId='+projectId,jarB)
  check('worker_preview_hidden_from_other_user',hidden.status===404)
- const revisions=f.feedback?await runFeedbackAcceptance({db,http,jarA,jarB,projectId,sessionId:first.data.sessionId,initialView:session.data,initialArtifact:artifact.data,check}):null
+ const revisions=f.feedback?await runFeedbackAcceptance({db,http,jarA,jarB,f,externalAttempts,projectId,sessionId:first.data.sessionId,initialView:session.data,initialArtifact:artifact.data,check}):null
  return {projectSlug:created.data.projectSlug,conversationId,sessionId:first.data.sessionId,revisions}
  // Drain terminalization, provider-backed generation and media/export are separate acceptance.
 }

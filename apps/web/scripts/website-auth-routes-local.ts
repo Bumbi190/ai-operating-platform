@@ -19,12 +19,13 @@ function check(name:string,ok:unknown){checks.push({name,passed:Boolean(ok)});if
 async function main(){
  const f=JSON.parse(readFileSync(0,'utf8')),base=f.browser?'http://127.0.0.1:54393':'http://client:3080',appBase=f.nextServer?'http://client:3100':base
  let nextProcess:ReturnType<typeof spawn>|null=null
+ let externalAttempts=0
  let refreshRequests=0
  let workerReady:any=null
  const nativeFetch=globalThis.fetch
  globalThis.fetch=(async(input:any,init:any)=>{
   const url=new URL(typeof input==='string'?input:input instanceof URL?input.href:input.url)
-  if(![base,appBase,'http://auth:9999','http://rest:3000'].includes(url.origin))throw Error('NONLOCAL_FETCH_REFUSED')
+  if(![base,appBase,'http://auth:9999','http://rest:3000'].includes(url.origin)){externalAttempts++;throw Error('NONLOCAL_FETCH_REFUSED')}
   return nativeFetch(input,{...init,signal:init?.signal??AbortSignal.timeout(10000)})
  }) as typeof fetch
  // SDK gateway paths only. No fabricated Auth or database responses.
@@ -42,6 +43,7 @@ async function main(){
   }catch{res.writeHead(502).end()}
  })
  await new Promise<void>(r=>server.listen(f.browser?54393:3080,'0.0.0.0',r))
+ if(f.spendGuard)process.env.H1_SPEND_GATE='1'
  process.env.NEXT_PUBLIC_SUPABASE_URL=base
  process.env.SUPABASE_SERVICE_ROLE_KEY=f.service
  // Anon key will be supplied separately by the harness; never use service credentials for a session client.
@@ -114,7 +116,7 @@ async function main(){
   check('route_mockup_approved',mockup.status===200&&mockup.data.designReview.approved.mockupId===option.id)
   const approved=await route(planApprove.POST,jarA,{...approval,mockupDecisionId:mockup.data.designReview.approved.id},'',params)
   check('route_plan_approved_by_session_user',approved.status===200&&approved.data.approvedBy===f.a.id&&approved.data.sessionId===null)
-  if(f.worker)workerReady=await runWorkerAcceptance({base:appBase,jarA,jarB,f,check})
+  if(f.worker)workerReady=await runWorkerAcceptance({base:appBase,jarA,jarB,f,check,externalAttempts:()=>externalAttempts})
   if(f.nextServer){
    // Only local expiry metadata is aged; real GoTrue JWT/refresh tokens are preserved.
    const name=jarA[0].name.replace(/\.\d+$/,'')

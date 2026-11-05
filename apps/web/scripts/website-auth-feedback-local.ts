@@ -1,8 +1,9 @@
 // Test-only durable feedback/candidate acceptance. Interpretation and copy are explicit fixtures, not model output.
+import {probeWorkerSpend,testReservationSafety} from './website-auth-spend-local'
 import {executeWebsiteBuildRun} from '../lib/website-build/worker'
 import {recordBuildInterpretation,saveBuildCandidate} from '../lib/website-build/store'
 import {compileCinematicArtifact,CINEMATIC_BINDING} from '../lib/website-build/studio/cinematic-binding'
-export async function runFeedbackAcceptance({db,http,jarA,jarB,projectId,sessionId,initialView,initialArtifact,check}:any){
+export async function runFeedbackAcceptance({db,http,jarA,jarB,f,externalAttempts,projectId,sessionId,initialView,initialArtifact,check}:any){
  const sessionPath='/api/website-builds/'+sessionId,query='?projectId='+projectId,oldId=initialView.activePreviewRevisionId
  const newCopy='Boka en provvisning'
  const input={projectId,idempotencyKey:'real-feedback-change',text:'Byt Roadsterns kontaktknapp till '+newCopy+'.',inputSource:'text',viewedRevisionId:oldId}
@@ -16,10 +17,16 @@ export async function runFeedbackAcceptance({db,http,jarA,jarB,projectId,session
  check('feedback_canonical_claim',!claim.error&&claim.data?.length===1)
  const run=claim.data[0]
  check('feedback_claim_bound_to_successor',run.id===queued.data.currentRunId&&run.input.sessionId===sessionId&&run.input.generation===2)
+ if(f.spendGuard){
+  await probeWorkerSpend({db,run,check,externalAttempts});
+  await testReservationSafety({db,http,jarA,f,check,externalAttempts});
+ }
  const paidSteps:string[]=[]
  let stopped=false
- try{await executeWebsiteBuildRun(db,run,run.claim_id,{beforePaidStep:step=>{paidSteps.push(step.operation);throw Error('LOCAL_NO_PAID_ALLOWANCE')}})}catch(error){stopped=error instanceof Error&&error.message==='LOCAL_NO_PAID_ALLOWANCE'}
- check('feedback_stops_before_real_model',stopped&&paidSteps.length===1&&paidSteps[0]==='website.feedback.interpret')
+ if(!f.spendGuard){
+  try{await executeWebsiteBuildRun(db,run,run.claim_id,{beforePaidStep:step=>{paidSteps.push(step.operation);throw Error('LOCAL_NO_PAID_ALLOWANCE')}})}catch(error){stopped=error instanceof Error&&error.message==='LOCAL_NO_PAID_ALLOWANCE'}
+  check('feedback_stops_before_real_model',stopped&&paidSteps.length===1&&paidSteps[0]==='website.feedback.interpret')
+ }
  const held=await http(sessionPath+query,jarA),before=await http(sessionPath+'/revisions/'+oldId+query,jarA)
  check('feedback_pending_preserves_active_preview',held.data.activePreviewRevisionId===oldId&&held.data.revisions.length===1&&before.data.sha256===initialArtifact.sha256)
  const writer={projectId,sessionId,runId:run.id,claimId:run.claim_id,generation:run.input.generation}

@@ -148,3 +148,51 @@ Evidence digests (SHA-256):
 - Sorted source inventory with LF SQL hashes: `3ccf9ad606cee08997eb770ed0629868c84680a7d17614f0e2113151cf81f091`
 - Existing v10 receipt bytes: `03eecea6f66c54e0a15f3a6366da4aa2aa30ac6dddd0eebd195559b34356e1d9`
 - Deterministic CLI stdout: `abaab7f4af49335b035a5e428a1db98590d900f83bef10ee188a194792f4b826`
+
+## Addendum: offline whole-file fingerprint and limited catalog audit
+
+The additional [verifier](../../../apps/web/scripts/migration-history-fingerprint-audit.mjs) read the external
+`webbuilder-unmatched-migrations-fingerprint-20261105.json` (13 records) and
+`webbuilder-production-catalog-security-20261105.json` (the known 14 public tables). Raw snapshots remain outside
+the repository. Both schemas are strictly allowlisted, including record counts, unique identities, numeric ranges
+and boolean types; unexpected fields or unavailable inputs produce a sanitized failure with exit 1.
+
+Actual result: **0 of 13 exact full-file fingerprints; 13 without a full-file match**, scanning **174 canonical
+and 38 legacy SQL files**. All 13 supplied statement counts are 1. Equality requires both raw file byte length and
+MD5 to equal the supplied production SQL-string metadata. No newline/BOM/whitespace normalization, SQL parsing,
+fragment search, statement joining or PostgreSQL array reformatting is performed. These mismatches do not establish
+semantic differences or unapplied migrations. The export's hash expression and encoding are unverified; even an
+equal MD5/length would be fingerprint evidence rather than collision-resistant proof of SQL identity or provenance.
+The 197-row ledger and historical 184 replay pins were not revalidated by this additional verifier.
+
+The supplied catalog reports all 14 tables owned by `postgres`, RLS enabled on 14/14, force-RLS on 0/14,
+and service SELECT true on 14/14. Nine tables have one policy. Five have zero policies:
+`cron_heartbeat`, `dream_issues`, `media_insights`, `platform_tokens`, `revenue_snapshots`.
+For `cron_heartbeat` and `platform_tokens`, supplied anon/authenticated SELECT and INSERT booleans are false;
+for the other 12 tables all four are true. The CLI reports each table's flags, owner, policy/column counts and
+all five supplied privilege booleans. These are **supplied production metadata only, not production/local parity**;
+grants do not establish effective access under RLS, and policy counts do not reveal policy definitions or behavior.
+No local catalog was inspected and no security conclusion is inferred from these booleans.
+
+Hosted parity still requires separately authorized work: authenticate target identity and snapshot freshness;
+obtain original deployment artifacts and document statement-array/hash encoding; establish a reviewed baseline,
+prerequisite and ordering contract; observe an isolated hosted Dashboard replay and its actual applied sequence;
+then compare complete, paired production/target catalogs. Those catalogs must include columns/types/defaults,
+constraints/indexes, functions/bodies/search paths, triggers, extensions, owners, roles/memberships/bypass,
+grants/default ACLs, RLS flags and full policy definitions, storage prerequisites and cron jobs. The limited
+14-table export cannot supply that evidence. All readiness, SQL-identity and catalog-parity flags remain false.
+
+```powershell
+node apps/web/scripts/migration-history-fingerprint-audit.mjs --fingerprints C:/Users/Andre/Projects/Omnira/Temp/webbuilder-unmatched-migrations-fingerprint-20261105.json --catalog C:/Users/Andre/Projects/Omnira/Temp/webbuilder-production-catalog-security-20261105.json
+node --test apps/web/scripts/migration-history-fingerprint-audit.test.mjs apps/web/scripts/migration-ledger-reconciliation.test.mjs
+```
+
+Two real CLI runs exited 0 with identical stdout. Exit 0 means valid offline reporting, including zero matches,
+not replay readiness. The pure-Node regression run passed **16/16 tests**. No network, Docker, SQL execution,
+Supabase calls, migration edits, commits or pushes were performed.
+
+Evidence digests (SHA-256):
+
+- External fingerprint snapshot bytes: `ea3a3efac657e6b0d73286896cb13f8c0ada93461dceb53f94fcb84abb4cd49e`
+- External catalog snapshot bytes: `08e3a83d4480552e97c93dfba45bfed05d0745e5217ae01b00dd6828dd7399e1`
+- Sorted raw-byte source fingerprint inventory: `09867755023e5a7528c131991bbe2eff1e6036fe634ad3982e9dd152312e0cf2`

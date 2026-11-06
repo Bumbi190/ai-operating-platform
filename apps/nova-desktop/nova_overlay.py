@@ -109,6 +109,7 @@ class NovaOverlay:
         self.draft = ""
         self.last_transcript = ""
         self.pending = ""
+        self.pending_choices = []  # only visible inside the ⋯ menu
         self.history: list[tuple[str, str]] = []  # session UI trace, not AI memory
         self._setup_fonts()
         self._draw_collapsed()
@@ -197,7 +198,10 @@ class NovaOverlay:
                  font=("Segoe UI", 8), anchor="w").pack(anchor="w")
         self._btn(top, "×", self.quit, width=3, surface=True).pack(side="right")
         self._btn(top, "–", self.collapse, width=3, surface=True).pack(side="right", padx=(0, 5))
-        self._btn(top, "Anslut Atlas", self.connect_atlas, surface=True).pack(side="right", padx=(0, 5))
+        self.more_button = self._btn(top, "⋯", self._show_more_menu,
+                                     width=3, surface=True)
+        self.more_button.pack(side="right", padx=(0, 5))
+        self._refresh_more_button()
 
         self.activity = tk.Canvas(content, width=PANEL_W-36, height=44,
                                   bg=PANEL, highlightthickness=0, bd=0)
@@ -240,21 +244,18 @@ class NovaOverlay:
                                relief="flat", padx=12, pady=9, highlightthickness=1,
                                highlightbackground="#4a496a", highlightcolor=ACCENT)
         self.command.pack(fill="x", pady=(7, 8))
-        self.command.bind("<Control-Return>", lambda _e: self.send())
+        self.command.bind("<Return>", self._submit_enter)
+        self.command.bind("<Control-Return>", self._submit_enter)
+        self.command.bind("<Control-period>", self._stop_shortcut)
         self.command.bind("<Escape>", lambda _e: self.collapse())
         self.command.bind("<KeyRelease>", self._on_input)
         self.command.insert("1.0", self.draft)
         actions = tk.Frame(content, bg=SURFACE)
         actions.pack(fill="x")
-        self._btn(actions, "🎙 Tala", self.dictate).pack(side="left", padx=(0, 5))
-        self._btn(actions, "➤ Skicka", self.send, emphasis=True).pack(side="left", padx=(0, 5))
-        self._btn(actions, "Projekt", self.show_projects, surface=True).pack(side="left", padx=(0, 5))
-        self._btn(actions, "Fönster", self.show_windows, surface=True).pack(side="left", padx=(0, 5))
-        self._btn(actions, "Stopp", self.stop, surface=True).pack(side="right")
-        self.choices = tk.Frame(content, bg=SURFACE)
-        self.choices.pack(fill="x", pady=(6, 0))
+        self._btn(actions, "🎙 Prata", self.dictate).pack(side="left", padx=(0, 8))
+        self._btn(actions, "➤ Skicka", self.send, emphasis=True).pack(side="right")
         tk.Label(content,
-                 text="Ctrl+Alt+Space · Ctrl+Enter skickar · Inga mejl skickas automatiskt",
+                 text="Enter skickar · Shift+Enter ny rad · Fler val under ⋯",
                  bg=SURFACE, fg="#828ba9", font=("Segoe UI", 8)).pack(
                      fill="x", pady=(9, 0))
 
@@ -290,13 +291,52 @@ class NovaOverlay:
             self._render_history()
 
     def _choices(self, options):
-        if not self.expanded:
-            return
-        for child in self.choices.winfo_children():
-            child.destroy()
-        for label, callback in options:
-            self._btn(self.choices, label, callback, surface=True).pack(
-                side="left", padx=(0, 6))
+        # Contextual actions are retained but never clutter the chat composer.
+        self.pending_choices = list(options)
+        self._refresh_more_button()
+
+    def _refresh_more_button(self):
+        if self.expanded and hasattr(self, "more_button"):
+            self.more_button.configure(
+                bg="#605bd2" if self.pending_choices else "#313852"
+            )
+
+    def _make_more_menu(self):
+        menu = tk.Menu(self.root, tearoff=0)
+        if self.pending_choices:
+            for label, callback in self.pending_choices:
+                menu.add_command(label=label, command=callback)
+            menu.add_separator()
+        menu.add_command(label="Anslut Atlas", command=self.connect_atlas)
+        menu.add_command(label="Välj skyddad testmiljö", command=self.choose_preview)
+        menu.add_command(label="Öppna Atlas i webbläsaren",
+                         command=lambda: self._open_url(URLS["atlas"], "Öppnar Atlas"))
+        menu.add_separator()
+        menu.add_command(label="Projektmappar", command=self.show_projects)
+        menu.add_command(label="Öppna fönster", command=self.show_windows)
+        menu.add_separator()
+        menu.add_command(label="Stoppa pågående uppdrag (Ctrl+.)", command=self.stop)
+        menu.add_command(label="Avsluta Nova", command=self.quit)
+        return menu
+
+    def _show_more_menu(self):
+        menu = self._make_more_menu()
+        x = self.more_button.winfo_rootx()
+        y = self.more_button.winfo_rooty() + self.more_button.winfo_height()
+        try:
+            menu.tk_popup(x, y)
+        finally:
+            menu.grab_release()
+
+    def _submit_enter(self, event):
+        if event.state & 0x0001:  # Shift+Enter: insert a newline.
+            return None
+        self.send()
+        return "break"
+
+    def _stop_shortcut(self, _event):
+        self.stop()
+        return "break"
 
     def _phase(self, state: str, detail: str):
         self.phase = state
@@ -562,6 +602,7 @@ class NovaOverlay:
             self._phase("redo", "Skriv eller diktera vad jag ska göra")
             return
         self.task_epoch += 1
+        self._choices([])
         self._append("you", "DU: " + text)
         self._phase("tolkar", "Avgör vilken godkänd åtgärd som passar")
         self.command.delete("1.0", "end")

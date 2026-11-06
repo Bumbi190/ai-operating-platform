@@ -10,8 +10,13 @@ Windows session and is available via **Ctrl+Alt+Space**.
   Windows' usable work area. Click to expand into a chat/activity panel.
 - Windows-wide shortcut opens the expanded panel and **requests** dictation
   with Win+H. The microphone must be enabled; Swedish input language needed.
-- Live dictated/typed text preview, actual task steps, replies/status,
-  choice buttons and an abort option. The abort option cannot undo prior steps.
+- Minimal chat composer: **Prata** and **Skicka** are the only buttons below
+  the text field. Enter sends, Shift+Enter creates a newline.
+- Project folders, open windows, stop/cancel, Atlas pairing and contextual
+  choices are behind the top-right **⋯** menu; Ctrl+. also stops a pending task.
+- The talk button opens Windows voice typing; review the transcript and press
+  Enter or Skicka. Voice typing is not a continuous hands-free agent yet.
+- Visible text, replies and activity state. Stop cannot undo prior steps.
 - Known browser destinations: Omnira Atlas/planning/projects, Gmail,
   Handlarbörsen, Familje-Stunden, Outlook Web.
 - Local program starts: Chrome, VS Code, Outlook Classic, FileZilla, Epic.
@@ -45,8 +50,8 @@ Windows session and is available via **Ctrl+Alt+Space**.
 - Canonical Atlas project memory is used **only if** existing recall AND
   injection flags authorize it. No new local memory store or flag override.
 - Only one queued/active task; at most 10 queries per 5 minutes per runtime.
-- Local UI displays the received text as one streaming Atlas answer. It has a
-  Stop button. During long replies the browser polls local task status and
+- Local UI displays the received text as one streaming Atlas answer. Stop is
+  in the **⋯** menu (or Ctrl+. shortcut). During long replies the browser polls local task status and
   aborts the browser fetch on cancellation; an Atlas 'done' receipt is required
   before Nova claims completion. Already spent model tokens cannot be refunded.
 - Genuine **local UI-to-HTTP-to-synthetic-browser-to-UI** proof passed.

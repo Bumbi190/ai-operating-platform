@@ -18,6 +18,8 @@ import { getManager } from '@/lib/ai/manager'
 import { buildAgentRunInsert } from '@/lib/ai/run-create'
 import { fetchOperatorPatterns } from '@/lib/os/patterns'
 import { buildAtlasSystemPrompt } from '@/lib/atlas/identity'
+import { isNovaReadOnlyMode, shouldExposeAtlasTools, NOVA_READONLY_DIRECTIVE, renderNovaReadOnlyMemory } from '@/lib/atlas/nova-readonly'
+import { resolveMemoryContext } from '@/lib/atlas/intelligence/memory-context'
 import {
   classifyAnthropicError,
   getAtlasServiceErrorMessage,
@@ -666,6 +668,7 @@ export async function POST(request: Request) {
     const m = messages[messages.length - 1]
     return m?.role === 'user' && typeof m.content === 'string' ? m.content : ''
   })()
+  const novaReadOnly = isNovaReadOnlyMode(mode)
   const fastPath = mode === 'content' || isFastPathContent(lastUserText)
   // Statisk konversation (hej/tack/vem är du) — besvaras ur Atlas identitet ensam.
   // Allow-list, aldrig gissning: allt som inte bevisligen klarar sig utan live-
@@ -687,7 +690,9 @@ export async function POST(request: Request) {
   const statusIntent = (!fastPath && !staticConversation && !actionIntent && !navIntent)
     ? classifyStatusIntent(lastUserText)
     : null
-  const reqType = fastPath
+  const reqType = novaReadOnly
+    ? 'nova_readonly'
+    : fastPath
     ? 'fast_path'
     : staticConversation
       ? 'static_conversation'
@@ -791,12 +796,24 @@ export async function POST(request: Request) {
     }
   }
 
+  if (novaReadOnly) {
+    systemPrompt += NOVA_READONLY_DIRECTIVE
+    // Reuse canonical, project-scoped Atlas memory. Never turn on recall or
+    // injection from this endpoint: existing server flags govern both.
+    try {
+      const memory = await resolveMemoryContext({ userId, projectIds: allowedProjectIds })
+      systemPrompt += renderNovaReadOnlyMemory(memory)
+    } catch { /* unavailable memory is not a license to guess */ }
+  }
+
   // Static conversation is defined as the class that needs no tool, so it is
   // sent none. Sending zero tools is also what makes skipping the isolation
   // read safe: with no tool schema the model cannot emit a tool_use block, so
   // executeTool is unreachable on this path. Every other class keeps TOOLS
   // exactly as before — this is not general per-class schema pruning.
-  const activeTools = (fastPath || staticConversation) ? [] : TOOLS
+  // Hard gate: the desktop relay can never receive an executable tool schema.
+  // The native launcher has no trusted action authority or email credentials.
+  const activeTools = shouldExposeAtlasTools(mode, { fastPath, staticConversation }) ? TOOLS : []
   const forceToolFirstTurn = actionIntent && activeTools.length > 0
   const forceResolutionFirstTurn = resolutionIntent && activeTools.length > 0
   // Direkt navigeringskommando → tvinga specifikt navigate-verktyget på turn 0.
@@ -887,7 +904,8 @@ export async function POST(request: Request) {
             : {}
           const llm = await anthropic.messages.stream({
             model: 'claude-sonnet-4-6',
-            max_tokens: voice ? 150 : (fastPath ? 1200 : 4096),
+            // Desktop read-only answers are deliberately short: cap model spend.
+            max_tokens: novaReadOnly ? 900 : (voice ? 150 : (fastPath ? 1200 : 4096)),
             system: systemPrompt,
             tools: activeTools,   // fast path = [] → ingen verktygsloop
             ...toolChoice,
@@ -946,6 +964,13 @@ export async function POST(request: Request) {
 
             if (fullText) void saveMessage('assistant', fullText)
             break
+          }
+
+          // Belt-and-suspenders: even a provider/protocol regression that
+          // emitted tool_use despite an empty schema cannot reach executeTool.
+          if (novaReadOnly) {
+            send('error', { code: 'NOVA_READONLY_TOOL_BLOCKED' })
+            return
           }
 
           // Process tool calls

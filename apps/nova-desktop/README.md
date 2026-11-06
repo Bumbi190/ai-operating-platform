@@ -1,4 +1,4 @@
-# Nova Desktop — Windows bubble (pilot v2)
+# Nova Desktop — Windows bubble + Atlas read-only relay (pilot v3)
 
 Windows-native companion **to the existing Omnira/Atlas**, not a separate
 AI, memory database, workflow engine or agent. It runs in the logged-in
@@ -21,15 +21,47 @@ Windows session and is available via **Ctrl+Alt+Space**.
   and can try to focus one of those windows (Windows can reject focus changes).
 - Session-only activity history survives collapse/expand, but is NOT a
   separate knowledge memory. All account access remains in Atlas or the browser.
-- Complex instructions copied to clipboard with explicit option to open Atlas.
-  **You must paste and submit them in Atlas yourself.**
+- Before browser pairing/deployment, complex instructions are copied to the
+  clipboard with an explicit option to open Atlas: manually paste and submit.
+- A new *branch-only* browser relay can stream authenticated Atlas replies back
+  into the bubble. Until the web half is deployed and paired, that capability
+  is not operational on the live site.
 - Closing the window with the X exits the process; click "–" to shrink
   back to the corner bubble; right-click bubble for the quit menu.
 
+## Atlas read-only relay (integrated with current main, preview pending)
+
+- Local stdlib HTTP server at random 127.0.0.1 port with strict Host, Origin,
+  expiring in-memory pairing key and no persisted credentials.
+- Browser half: authenticated Omnira `/nova-bridge` page, explicitly paired by
+  clicking **Anslut**. Browsers may request Loopback network permission.
+- The **Anslut Atlas** button no longer opens the missing production route:
+  select an exact SSO-protected Omnira Vercel preview first. Its short-lived
+  local key is rotated when the selected preview changes. Arbitrary domains
+  are refused. Preview remains undeployed until separate approval/verification.
+- The browser calls the existing `/api/chat` with `mode=nova_readonly`.
+  The current Atlas router rejects all non-chat payload keys *before* native
+  website-plan approval, forbids all LLM tools including specialist tools,
+  disallows forced tool selection, enforces a second no-execution guard and
+  caps replies at 900 output tokens.
+- Canonical Atlas project memory is used **only if** existing recall AND
+  injection flags authorize it. No new local memory store or flag override.
+- Only one queued/active task; at most 10 queries per 5 minutes per runtime.
+- Local UI displays the received text as one streaming Atlas answer. It has a
+  Stop button. During long replies the browser polls local task status and
+  aborts the browser fetch on cancellation; an Atlas 'done' receipt is required
+  before Nova claims completion. Already spent model tokens cannot be refunded.
+- Genuine **local UI-to-HTTP-to-synthetic-browser-to-UI** proof passed.
+  This does NOT prove production authentication or an actual AI response.
+- The `/nova-bridge` web route is not yet in production; clicking its link
+  may lead to the existing login screen or a missing-page error until reviewed
+  and deployed. Do NOT say this is connected end-to-end to live Atlas yet.
+
 ## NOT yet working
 
-- Direct authenticated Atlas conversation, retrieval of Atlas project memory,
-  continuous conversation with a language model inside the bubble.
+- Fully verified production browser pairing and live Atlas AI response.
+- Guaranteed complete/fresh Atlas project memory; recall/injection are
+  server-side feature flags and have not been changed.
 - Automatically reading, drafting/sending replies in email, creating or posting
   social-media content, running workflows, or monitoring their results.
 - Arbitrary UI control (click/type/scroll), screenshot interpretation,
@@ -46,9 +78,12 @@ Windows session and is available via **Ctrl+Alt+Space**.
 - Whitelisted app names only; window titles are never read.
 - Windows 11 dictation uses Microsoft's *online* speech service (Azure);
   it is **not** local/offline transcription. Windows controls microphone access.
-- Complex task text is temporarily copied to the Windows clipboard to
-  let the operator paste into the authenticated Atlas page; the clipboard
-  can be accessed by other local software. Do not dictate passwords.
+- Before pairing, complex text is temporarily copied to Windows clipboard
+  for manual Atlas paste. When paired, prompts are relayed via a local token
+  protected interface; cookies and Supabase tokens stay in the browser.
+- The session key is in a temporary URL fragment for explicit browser pairing;
+  this fragment is cleared from browser history by the bridge page. Browser
+  extensions or other local processes may still see it. Do not dictate passwords.
 - Nothing starts automatically at Windows login. No extra subscription installed.
 - For review, the local client does not call an arbitrary code agent, shell,
   LLM service, social API or email API.
@@ -63,15 +98,18 @@ cd apps/nova-desktop
 python -m unittest discover -s tests -p "test_*.py" -v
 python tests/smoke_overlay.py
 python tests/geometry_overlay.py
+python tests/smoke_relay_ui.py  # synthetic/local test, no Atlas API
+node tests/check_web_syntax.cjs  # existing TypeScript compiler required
 ```
 
 ## Path to the intended full assistant
 
-1. **Atlas memory**: verify canonical recall/injection flags and project
-   isolation under the signed-in Atlas server; do not mirror the DB locally.
-2. **Authenticated handoff**: add narrowly scoped, expiring localhost bridge
-   with end-user session binding, CSRF/replay protection, proof of receipt,
-   controlled project scope and a hard stop. Do not pass Gmail cookies/tokens.
+1. **Atlas memory**: read-only integration respects canonical memory flags
+   and project isolation; verify actual enabled flags, relevance and live output.
+2. **Authenticated handoff**: browser-mediated localhost relay exists in this
+   feature branch. Next: deploy protected preview, verify Chrome LNA prompt,
+   authenticated SSE, cancellation, session ownership and permission review.
+   No Gmail cookies/tokens enter local Python.
 3. **Email**: server-side approved Gmail/Outlook OAuth scopes. List/summarize
    read-only first; drafts then explicit human approval before send.
 4. **Content**: bind to existing Omnira marketing workflows. Preview,
@@ -84,9 +122,15 @@ python tests/geometry_overlay.py
 7. Only after interactive UI acceptance: PR review, safe merge and deployment.
    Mac/Atticus intentionally deferred.
 
+Read `PREVIEW_CHECKLIST.md` for exact protected-preview and acceptance checks.
+
 ## Development isolation
 
-Branch: `feat/nova-global-shortcut-20261106`
-Worktree: `C:\Users\Andre\Projects\Omnira\.worktrees\nova-global-shortcut-20261106`
+Branch: `feat/nova-main-integration-20261106`
+Worktree: `C:\Users\Andre\Projects\Omnira\.worktrees\nova-main-integration-20261106`
+
+This branch started from the current `origin/main` (2026-11-06), instead of
+continuing the older branch that was 678 GitHub commits behind. The older
+branch is retained untouched as a fallback.
 
 Main/production are unchanged. This is a Windows user-session pilot only.

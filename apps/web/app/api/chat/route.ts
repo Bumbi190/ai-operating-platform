@@ -25,6 +25,8 @@ import { getManager } from '@/lib/ai/manager'
 import { buildAgentRunInsert } from '@/lib/ai/run-create'
 import { fetchOperatorPatterns } from '@/lib/os/patterns'
 import { buildAtlasSystemPrompt } from '@/lib/atlas/identity'
+import { isNovaReadOnlyMode, isValidNovaReadOnlyEnvelope, shouldExposeAtlasTools, NOVA_READONLY_DIRECTIVE, renderNovaReadOnlyMemory } from '@/lib/atlas/nova-readonly'
+import { resolveMemoryContext } from '@/lib/atlas/intelligence/memory-context'
 import {
   classifyAnthropicError,
   getAtlasServiceErrorMessage,
@@ -738,7 +740,8 @@ export async function POST(request: Request) {
   }
   let anthropic = openaiEconomy ? null : getAnthropic(providerContext)
 
-  const { messages, conversation_id, voice, mode, view, websitePlanRef, buildContext:rawBuildContext, inputSource, studioContext:rawStudioContext, image:rawImage } = await request.json() as {
+  const rawChatBody: unknown = await request.json()
+  const { messages, conversation_id, voice, mode, view, websitePlanRef, buildContext:rawBuildContext, inputSource, studioContext:rawStudioContext, image:rawImage } = rawChatBody as {
     messages: Anthropic.MessageParam[]
     conversation_id?: string
     voice?: boolean
@@ -749,6 +752,17 @@ export async function POST(request: Request) {
     inputSource?:unknown
     studioContext?:unknown
     image?:unknown
+  }
+
+  // Nova desktop is an intentionally narrow browser-origin read surface.
+  // Reject side-effect carrier fields BEFORE any website-plan approvals or studio calls.
+  const novaReadOnly = isNovaReadOnlyMode(mode)
+  if (novaReadOnly) {
+    const denied = assertSameOrigin(request)
+    if (denied) return denied
+    if (!isValidNovaReadOnlyEnvelope(rawChatBody)) {
+      return NextResponse.json({ code: 'NOVA_READONLY_INVALID_REQUEST' }, { status: 400 })
+    }
   }
 
   if(rawImage!==undefined&&(!rawImage||typeof rawImage!=='object'||Array.isArray(rawImage)))return NextResponse.json({error:'Ogiltig bildbilaga.'},{status:400})
@@ -834,7 +848,7 @@ export async function POST(request: Request) {
   // A narrowly scoped read-only Strato request cannot become a generic
   // writing/navigation/action turn. Owner and conversation are re-checked
   // by the reader; this classifier grants no new access by itself.
-  const stratoInboxReadIntent = !pendingNovaCuratorReview && !hbCompositeEvidenceIntent && !externalReferenceReadIntent
+  const stratoInboxReadIntent = !novaReadOnly && !pendingNovaCuratorReview && !hbCompositeEvidenceIntent && !externalReferenceReadIntent
     && !hbSalesOverviewReadIntent && !hbReplyLifecycleReadIntent
     && !image && !studioContext && !websitePlanRef && !rawBuildContext
     && !isNotionKnowledgeIntent(lastUserText) && hbStratoInboxReadEnabled()
@@ -866,7 +880,9 @@ export async function POST(request: Request) {
   const statusIntent = (!fastPath && !staticConversation && !actionIntent && !navIntent)
     ? classifyStatusIntent(lastUserText)
     : null
-  const reqType = pendingNovaCuratorReview
+  const reqType = novaReadOnly
+    ? 'nova_readonly'
+    : pendingNovaCuratorReview
     ? 'nova_curator_unavailable'
     : fastPath
     ? 'fast_path'
@@ -885,7 +901,7 @@ export async function POST(request: Request) {
   const allowedProjectIds = studioContext ? [studioContext.projectId] : staticConversation && !websitePlanRef && !rawBuildContext ? [] : await getAllowedProjectIds(db, user.id)
   // One explicit, READ-ONLY project-memory class. No action/delegation tools
   // can be made available in the same turn as untrusted Notion source evidence.
-  const notionReadOnlyTurn = !pendingNovaCuratorReview && isNotionKnowledgeIntent(lastUserText)
+  const notionReadOnlyTurn = !novaReadOnly && !pendingNovaCuratorReview && isNotionKnowledgeIntent(lastUserText)
     && !fastPath && !staticConversation && !studioContext
     && !actionIntent && !navIntent && !resolutionIntent
     && notionChatReaderConfigured()
@@ -1053,13 +1069,23 @@ export async function POST(request: Request) {
     }
   }
 
+  if (novaReadOnly) {
+    systemPrompt += NOVA_READONLY_DIRECTIVE
+    try {
+      const memory = await resolveMemoryContext({ userId, projectIds: allowedProjectIds })
+      systemPrompt += renderNovaReadOnlyMemory(memory)
+    } catch { /* unavailable memory is never permission to guess */ }
+  }
+
   // Static conversation is defined as the class that needs no tool, so it is
   // sent none. Sending zero tools is also what makes skipping the isolation
   // read safe: with no tool schema the model cannot emit a tool_use block, so
   // executeTool is unreachable on this path. Every other class keeps TOOLS
   // exactly as before — this is not general per-class schema pruning.
   const localTextEnabled=availableLocalTextTools({inputSource:voice||inputSource==='voice'?'voice':'text',studio:!!studioContext,fast:fastPath,staticConversation}).length>0
-  const activeTools = pendingNovaCuratorReview ? [] : notionReadOnlyTurn
+  // Desktop voice/chat may ask questions but MUST NOT inherit any of Atlas's
+  // publishing, mail, workflow, studio, CRM or repository execution tools.
+  const activeTools = !shouldExposeAtlasTools(mode, { fastPath, staticConversation }) ? [] : pendingNovaCuratorReview ? [] : notionReadOnlyTurn
     ? ATLAS_NOTION_TOOLS
     : hbCompositeEvidenceIntent ? TOOLS.filter(tool => tool.name === 'handlarborsen_compare_workflow_evidence')
     : hbReplyLifecycleReadIntent ? TOOLS.filter(tool => tool.name === 'handlarborsen_reply_lifecycle')
@@ -1077,7 +1103,7 @@ export async function POST(request: Request) {
   // Nova's source access is a distinct, READ-ONLY operator turn. It never
   // enters normal Atlas tool dispatch, action turns, or the Code Broker.
   let sourceReadTurn = false
-  if (!pendingNovaCuratorReview && novaSourcePilotEnabled() && isNovaSourceReadIntent(lastUserText)
+  if (!novaReadOnly && !pendingNovaCuratorReview && novaSourcePilotEnabled() && isNovaSourceReadIntent(lastUserText)
     && !image && !websitePlanRef && !rawBuildContext
     && !fastPath && !staticConversation && !studioContext && !notionReadOnlyTurn
     && !hbCompositeEvidenceIntent && !hbReplyLifecycleReadIntent && !stratoInboxReadIntent
@@ -1087,7 +1113,7 @@ export async function POST(request: Request) {
   }
   const growthReadTurn = hbReadIntent === 'handlarborsen_growth_brief' && !sourceReadTurn
     && activeTools.some(tool => tool.name === 'handlarborsen_growth_brief')
-  const offeredTools: Anthropic.Tool[] = sourceReadTurn ? [NOVA_SOURCE_TOOL] : activeTools
+  const offeredTools: Anthropic.Tool[] = novaReadOnly ? [] : sourceReadTurn ? [NOVA_SOURCE_TOOL] : activeTools
   if (sourceReadTurn) {
     // SECURITY: the normal Atlas system prompt contains global LIVE CONTEXT,
     // other-project tool/action memory and view awareness. A repository file is
@@ -1114,7 +1140,7 @@ export async function POST(request: Request) {
   const forceToolFirstTurn = (actionIntent || socialPreparationTurn) && activeTools.length > 0
   // A Notion answer must not come from the model's memory when the approved
   // read tool is available. Keep Notion's narrower tool selection authoritative.
-  const forceNotionFirstTurn = notionReadOnlyTurn
+  const forceNotionFirstTurn = notionReadOnlyTurn && !novaReadOnly
   // Other explicit external references force only their authenticated read tool.
   const forceHbCompositeFirstTurn = hbCompositeEvidenceIntent && activeTools.some(tool => tool.name === 'handlarborsen_compare_workflow_evidence') && !forceNotionFirstTurn
   const forceExternalReferenceReadFirstTurn = externalReferenceReadIntent && activeTools.some(tool => tool.name === 'search_external_workflow_references') && !forceNotionFirstTurn
@@ -1228,7 +1254,7 @@ export async function POST(request: Request) {
           // TVINGAD ROUTNING (turn 0):
           //  • navigerings-kommando → tvinga specifikt navigate (kommandot ÄR bekräftelsen).
           //  • action-intent → tvinga något verktyg (tool_choice=any) så Atlas inte bara påstår.
-          const toolChoice = i === 0
+          const toolChoice = novaReadOnly ? {} : i === 0
             ? (sourceReadTurn
                 ? { tool_choice: { type: 'tool' as const, name: NOVA_SOURCE_TOOL_NAME } }
                 : forceNotionFirstTurn
@@ -1251,7 +1277,7 @@ export async function POST(request: Request) {
             : {}
           const modelInput = {
             model: modelPolicy.chatModel,
-            max_tokens: voice ? (socialPreparationTurn ? 4096 : 150) : (fastPath ? 1200 : 4096),
+            max_tokens: novaReadOnly ? 900 : voice ? (socialPreparationTurn ? 4096 : 150) : (fastPath ? 1200 : 4096),
             system: systemPrompt,
             tools: sourceReadTurn && sourceReadIssued ? [] : offeredTools, // one read then no more tools
             ...toolChoice,
@@ -1338,6 +1364,14 @@ export async function POST(request: Request) {
 
             if (fullText) void saveMessage('assistant', fullText)
             break
+          }
+
+          // Security boundary, independent of model claims or provider behavior.
+          // No desktop question can ever reach executeTool, even if a model
+          // emits tool_use despite the empty offeredTools array.
+          if (novaReadOnly) {
+            send('error', { code: 'NOVA_READONLY_TOOL_BLOCKED' })
+            return
           }
 
           // Process tool calls

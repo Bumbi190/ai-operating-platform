@@ -439,6 +439,7 @@ class NovaOverlay:
                 menu.add_command(label=label, command=callback)
             menu.add_separator()
         menu.add_command(label="Anslut Atlas", command=self.connect_atlas)
+        menu.add_command(label="Flytta Nova nära muspekaren", command=self._redock_near_pointer)
         menu.add_command(label="Välj skyddad testmiljö", command=self.choose_preview)
         menu.add_command(label="Öppna Atlas i webbläsaren",
                          command=lambda: self._open_url(URLS["atlas"], "Öppnar Atlas"))

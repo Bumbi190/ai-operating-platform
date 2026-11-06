@@ -1,59 +1,92 @@
-# Nova Desktop — Windows pilot
+# Nova Desktop — Windows bubble (pilot v2)
 
-A **thin local launcher** for the existing Omnira/Atlas web application,
-NOT a second AI brain. Uses only Windows 11 + Python 3 standard library.
-Runs from its isolated feature worktree; no production deployment.
+Windows-native companion **to the existing Omnira/Atlas**, not a separate
+AI, memory database, workflow engine or agent. It runs in the logged-in
+Windows session and is available via **Ctrl+Alt+Space**.
 
-## Try it (Windows stationar)
+## Tested now on stationära Hultgren
 
-1. Double-click `start-nova.cmd` in this directory.
-2. Press **Ctrl+Alt+Space** from any program to bring up Nova.
-3. Use **Windows voice typing** (Win+H); on global shortcut, Nova attempts
-   to start it automatically. Windows 11 supports Swedish voice typing
-   when Swedish is your input language. Review the transcript and press Enter.
-4. Try "Nova öppna Gmail", "Öppna Atlas", "Öppna Handlarbörsen",
-   or "Planera innehåll för Familje-Stunden".
+- Transparent key + 96% opacity; round Nova bubble docked at bottom-right of
+  Windows' usable work area. Click to expand into a chat/activity panel.
+- Windows-wide shortcut opens the expanded panel and **requests** dictation
+  with Win+H. The microphone must be enabled; Swedish input language needed.
+- Live dictated/typed text preview, actual task steps, replies/status,
+  choice buttons and an abort option. The abort option cannot undo prior steps.
+- Known browser destinations: Omnira Atlas/planning/projects, Gmail,
+  Handlarbörsen, Familje-Stunden, Outlook Web.
+- Local program starts: Chrome, VS Code, Outlook Classic, FileZilla, Epic.
+- Explorer opens one of three verified project roots: Omnira, Handlarborsen,
+  Familje-Stunden. No arbitrary paths or command execution.
+- Enumerates allowlisted open programs without reading any window titles,
+  and can try to focus one of those windows (Windows can reject focus changes).
+- Session-only activity history survives collapse/expand, but is NOT a
+  separate knowledge memory. All account access remains in Atlas or the browser.
+- Complex instructions copied to clipboard with explicit option to open Atlas.
+  **You must paste and submit them in Atlas yourself.**
+- Closing the window with the X exits the process; click "–" to shrink
+  back to the corner bubble; right-click bubble for the quit menu.
 
-## Actual limits
+## NOT yet working
 
-- **Working**: Windows-wide shortcut while the process is running,
-  local window, Windows voice typing shortcut, deterministic allowlisted
-  browser destinations, verified local Start Menu apps (Chrome, VS Code,\n  Outlook, Epic Games, FileZilla), copying a complex request and opening Atlas.
-- **NOT working yet**: automatic authenticated mail read/reply, sending
-  email, scheduling or posting social content, full Windows GUI
-  automation, live agent execution, hotkey hold-to-talk, or Atlas
-  taking the pasted request without you pressing Ctrl+V.
-- The native app does not receive any account tokens. It never reads
-  Gmail, sends messages, publishes social posts, or edits project files.
-- Windows dictation is a Microsoft feature and may use Microsoft's online
-  speech service. No microphone stream or transcript is intentionally
-  stored by this app; complex requests are copied to the Windows clipboard
-  for manual pasting into Atlas (which may retain them in chat).
-- Unknown commands are *not* executed as terminal instructions. They are
-  copied for review in Atlas instead.
+- Direct authenticated Atlas conversation, retrieval of Atlas project memory,
+  continuous conversation with a language model inside the bubble.
+- Automatically reading, drafting/sending replies in email, creating or posting
+  social-media content, running workflows, or monitoring their results.
+- Arbitrary UI control (click/type/scroll), screenshot interpretation,
+  screen observation across programs, or autonomous background execution.
+- No promise of Gmail permissions from ChatGPT carrying into Omnira.
+- An app launch means only that Windows accepted the request; Nova does not
+  falsely claim the app or web page is loaded.
 
-## Windows troubleshooting
+## Safety & privacy
 
-- If the global hotkey conflicts with another program, the app warns and
-  remains available via its window/taskbar entry.
-- Click **Avsluta** to terminate the background listener.
-- Use `python nova_desktop.py` for console diagnostics.
-- Run tests with `python -m unittest discover -s tests -v`.
+- No keys/passwords are read or stored in the desktop client.
+- No email is sent, no social post is published, and no project code is
+  modified by the launcher.
+- Whitelisted app names only; window titles are never read.
+- Windows 11 dictation uses Microsoft's *online* speech service (Azure);
+  it is **not** local/offline transcription. Windows controls microphone access.
+- Complex task text is temporarily copied to the Windows clipboard to
+  let the operator paste into the authenticated Atlas page; the clipboard
+  can be accessed by other local software. Do not dictate passwords.
+- Nothing starts automatically at Windows login. No extra subscription installed.
+- For review, the local client does not call an arbitrary code agent, shell,
+  LLM service, social API or email API.
 
-## Next integration stages (not yet delivered)
+## Run / test
 
-1. Add authenticated Atlas intent handoff, bound to the user's current
-   session and project authorization, to remove copy/paste. No passwords
-   stored in the native launcher.
-2. Connect Gmail/Outlook with read scopes to enable browsing/summarizing
-   messages. Draft/reply only with explicit per-action approval.
-3. Connect social content planner and existing workflow runner for
-   draft/schedule/review and approval before publication.
-4. Provide safe native UI automation (allowlist, audit, isolation,
-   kill switch) without granting unrestricted shell access.
-5. Evaluate Atticus on Mac separately; do not install it on Windows.
+Desktop shortcut: `Nova Desktop (Pilot).lnk`, on user's OneDrive desktop.
+Or double-click `start-nova.cmd`.
 
-## Source isolation
+```powershell
+cd apps/nova-desktop
+python -m unittest discover -s tests -p "test_*.py" -v
+python tests/smoke_overlay.py
+python tests/geometry_overlay.py
+```
 
-Branch: `feat/nova-global-shortcut-20261106`. Pilot files live in
-`apps/nova-desktop/`; do not merge before QA and code review.
+## Path to the intended full assistant
+
+1. **Atlas memory**: verify canonical recall/injection flags and project
+   isolation under the signed-in Atlas server; do not mirror the DB locally.
+2. **Authenticated handoff**: add narrowly scoped, expiring localhost bridge
+   with end-user session binding, CSRF/replay protection, proof of receipt,
+   controlled project scope and a hard stop. Do not pass Gmail cookies/tokens.
+3. **Email**: server-side approved Gmail/Outlook OAuth scopes. List/summarize
+   read-only first; drafts then explicit human approval before send.
+4. **Content**: bind to existing Omnira marketing workflows. Preview,
+   save draft, approval, schedule, publish, verify idempotently.
+5. **Full Windows navigation**: evaluate Microsoft's UI Automation APIs / winapp
+   CLI; allowlist applications, permission per action, visible action ledger,
+   screenshot redaction, fail-closed window binding, keyboard/mouse stop.
+6. **Execution evidence**: every workflow action reports its run ID, status,
+   actual result and failure; never infer success from model prose.
+7. Only after interactive UI acceptance: PR review, safe merge and deployment.
+   Mac/Atticus intentionally deferred.
+
+## Development isolation
+
+Branch: `feat/nova-global-shortcut-20261106`
+Worktree: `C:\Users\Andre\Projects\Omnira\.worktrees\nova-global-shortcut-20261106`
+
+Main/production are unchanged. This is a Windows user-session pilot only.

@@ -36,20 +36,88 @@ BUBBLE_W, BUBBLE_H = 94, 94
 PANEL_W, PANEL_H = 442, 600
 
 
-def work_area():
-    """Return the Win32 desktop work area, excluding the taskbar."""
-    rect = wintypes.RECT()
-    if ctypes.windll.user32.SystemParametersInfoW(48, 0, ctypes.byref(rect), 0):
-        return rect.left, rect.top, rect.right, rect.bottom
+def cursor_position() -> tuple[int, int]:
+    """Physical/logical pointer position in the current Tk process context."""
+    point = wintypes.POINT()
+    if ctypes.windll.user32.GetCursorPos(ctypes.byref(point)):
+        return point.x, point.y
+    return 0, 0
+
+
+def work_area(point: tuple[int, int] | None = None) -> tuple[int, int, int, int]:
+    """Usable area for the *pointer's monitor*, not the primary desktop only."""
+    px, py = point if point is not None else cursor_position()
     user = ctypes.windll.user32
+
+    class MONITORINFO(ctypes.Structure):
+        _fields_ = [
+            ("cbSize", wintypes.DWORD),
+            ("rcMonitor", wintypes.RECT),
+            ("rcWork", wintypes.RECT),
+            ("dwFlags", wintypes.DWORD),
+        ]
+
+    try:
+        # MonitorFromPoint takes POINT by value. Explicit arg/restype avoids
+        # truncated monitor handles on 64-bit Windows.
+        user.MonitorFromPoint.argtypes = [wintypes.POINT, wintypes.DWORD]
+        user.MonitorFromPoint.restype = wintypes.HMONITOR
+        user.GetMonitorInfoW.argtypes = [wintypes.HMONITOR, ctypes.POINTER(MONITORINFO)]
+        user.GetMonitorInfoW.restype = wintypes.BOOL
+        monitor = user.MonitorFromPoint(wintypes.POINT(px, py), 2)
+        info = MONITORINFO()
+        info.cbSize = ctypes.sizeof(MONITORINFO)
+        if monitor and user.GetMonitorInfoW(monitor, ctypes.byref(info)):
+            rect = info.rcWork
+            return rect.left, rect.top, rect.right, rect.bottom
+    except (AttributeError, OSError, TypeError):
+        pass
+    rect = wintypes.RECT()
+    if user.SystemParametersInfoW(48, 0, ctypes.byref(rect), 0):
+        return rect.left, rect.top, rect.right, rect.bottom
     return 0, 0, user.GetSystemMetrics(0), user.GetSystemMetrics(1)
 
 
-def anchored_geometry(width: int, height: int, margin: int = 18) -> str:
-    left, top, right, bottom = work_area()
+def visible_dock_area(
+    area: tuple[int, int, int, int],
+    pointer: tuple[int, int],
+    max_width: int = 1440,
+    max_height: int = 960,
+) -> tuple[int, int, int, int]:
+    """Create a view-sized zone centered near the pointer on ultra-wide desktops.
+
+    A 5120 px screen isn't necessarily a 5120 px visible work *window*.
+    Docking at the absolute edge can make a popup unreachable within the
+    portion of the desktop currently in use. All resulting coordinates are
+    clamped to the monitor's usable area (never offscreen).
+    """
+    left, top, right, bottom = area
+    width = max(0, right - left)
+    height = max(0, bottom - top)
+    if not width or not height:
+        return area
+    vw = min(width, max_width)
+    vh = min(height, max_height)
+    px, py = pointer
+    # Put the *right/bottom* edge near the pointer, not at the outer edge of
+    # a huge screen. This is the key for a 5120 px Windows desktop where a
+    # 1440 px cropped/remote browser viewport may be all the user can see.
+    right_edge = min(max(px + 110, left + vw), right)
+    bottom_edge = min(max(py + 130, top + vh), bottom)
+    return right_edge - vw, bottom_edge - vh, right_edge, bottom_edge
+
+
+def anchored_geometry(
+    width: int, height: int, margin: int = 18,
+    area: tuple[int, int, int, int] | None = None,
+) -> str:
+    left, top, right, bottom = area if area is not None else work_area()
     x = max(left, right - width - margin)
     y = max(top, bottom - height - margin)
-    return f"{width}x{height}+{x}+{y}"
+    # On a narrow display, use every available pixel without hiding a corner.
+    x = min(x, right - width)
+    y = min(y, bottom - height)
+    return f"{width}x{height}{x:+d}{y:+d}"
 
 
 def rounded_rectangle(canvas: tk.Canvas, x1, y1, x2, y2, radius, **kwargs):
@@ -111,6 +179,10 @@ class NovaOverlay:
         self.pending = ""
         self.pending_choices = []  # only visible inside the ⋯ menu
         self.history: list[tuple[str, str]] = []  # session UI trace, not AI memory
+        self._dock_area = self._area_near_pointer()
+        self._manual_anchor: tuple[int, int] | None = None
+        self._drag_origin = None
+        self._dragged = False
         self._setup_fonts()
         self._draw_collapsed()
         self.listener.start()
@@ -132,9 +204,62 @@ class NovaOverlay:
         for child in self.root.winfo_children():
             child.destroy()
 
+    def _area_near_pointer(self) -> tuple[int, int, int, int]:
+        pointer = cursor_position()
+        return visible_dock_area(work_area(pointer), pointer)
+
+    def _redock_near_pointer(self):
+        """Explicit reset: relocate to the working area around the pointer."""
+        self._manual_anchor = None
+        self._dock_area = self._area_near_pointer()
+        self._place(PANEL_W if self.expanded else BUBBLE_W,
+                    PANEL_H if self.expanded else BUBBLE_H)
+
     def _place(self, width: int, height: int):
-        self.root.geometry(anchored_geometry(width, height))
+        if self._manual_anchor is None:
+            geometry = anchored_geometry(width, height, area=self._dock_area)
+        else:
+            right, bottom = self._manual_anchor
+            left, top, monitor_right, monitor_bottom = work_area((right - 1, bottom - 1))
+            x = max(left, min(right - width, monitor_right - width))
+            y = max(top, min(bottom - height, monitor_bottom - height))
+            geometry = f"{width}x{height}{x:+d}{y:+d}"
+        self.root.geometry(geometry)
         self.root.lift()
+
+    def _begin_drag(self, event):
+        self._drag_origin = (
+            event.x_root, event.y_root, self.root.winfo_x(), self.root.winfo_y()
+        )
+        self._dragged = False
+
+    def _move_drag(self, event):
+        if self._drag_origin is None:
+            return
+        sx, sy, ox, oy = self._drag_origin
+        dx, dy = event.x_root - sx, event.y_root - sy
+        if abs(dx) < 4 and abs(dy) < 4 and not self._dragged:
+            return
+        self._dragged = True
+        left, top, right, bottom = work_area((event.x_root, event.y_root))
+        width, height = self.root.winfo_width(), self.root.winfo_height()
+        x = max(left, min(ox + dx, right - width))
+        y = max(top, min(oy + dy, bottom - height))
+        self.root.geometry(f"+{x}+{y}")
+        self._manual_anchor = (x + width, y + height)
+
+    def _end_bubble_drag(self, _event):
+        self._drag_origin = None
+        if not self._dragged:
+            self.expand(False)
+
+    def _end_header_drag(self, _event):
+        self._drag_origin = None
+
+    def _bind_drag(self, widget, finish=None):
+        widget.bind("<ButtonPress-1>", self._begin_drag)
+        widget.bind("<B1-Motion>", self._move_drag)
+        widget.bind("<ButtonRelease-1>", finish or self._end_header_drag)
 
     def _canvas(self, w, h):
         c = tk.Canvas(self.root, width=w, height=h, bg=TRANSPARENT,
@@ -152,7 +277,7 @@ class NovaOverlay:
         c.create_text(47, 43, text="N", fill="#f7f3ff",
                       font=("Segoe UI Semibold", 30))
         c.create_oval(69, 69, 83, 83, fill=SUCCESS, outline=SURFACE, width=2)
-        c.bind("<Button-1>", lambda _e: self.expand(False))
+        self._bind_drag(c, self._end_bubble_drag)
         c.bind("<Button-3>", self._bubble_menu)
         c.bind("<Enter>", lambda _e: c.configure(cursor="hand2"))
         self.bubble_canvas = c
@@ -160,6 +285,7 @@ class NovaOverlay:
     def _bubble_menu(self, event):
         menu = tk.Menu(self.root, tearoff=0)
         menu.add_command(label="Öppna Nova", command=lambda: self.expand(False))
+        menu.add_command(label="Flytta Nova nära muspekaren", command=self._redock_near_pointer)
         menu.add_command(label="Anslut Atlas", command=self.connect_atlas)
         menu.add_command(label="Välj skyddad testmiljö", command=self.choose_preview)
         menu.add_command(label="Öppna Atlas", command=lambda: self._open_url(
@@ -188,6 +314,9 @@ class NovaOverlay:
         logo.create_text(20, 19, text="N", font=("Segoe UI Semibold", 17), fill=TEXT)
         labels = tk.Frame(top, bg=SURFACE)
         labels.pack(side="left", fill="x", expand=True)
+        self._bind_drag(top)
+        self._bind_drag(logo)
+        self._bind_drag(labels)
         tk.Label(labels, text="NOVA  ·  OMNIRA", bg=SURFACE, fg=TEXT,
                  font=self.h, anchor="w").pack(anchor="w")
         self.phase_var = tk.StringVar(value="● Redo att hjälpa")
@@ -196,6 +325,8 @@ class NovaOverlay:
         self.bridge_var = tk.StringVar(value="Atlas: ej ansluten")
         tk.Label(labels, textvariable=self.bridge_var, bg=SURFACE, fg=MUTED,
                  font=("Segoe UI", 8), anchor="w").pack(anchor="w")
+        for child in labels.winfo_children():
+            self._bind_drag(child)
         self._btn(top, "×", self.quit, width=3, surface=True).pack(side="right")
         self._btn(top, "–", self.collapse, width=3, surface=True).pack(side="right", padx=(0, 5))
         self.more_button = self._btn(top, "⋯", self._show_more_menu,
@@ -476,6 +607,8 @@ class NovaOverlay:
                     if self.expanded:
                         self.collapse()
                     else:
+                        if self._manual_anchor is None:
+                            self._redock_near_pointer()
                         self.expand(listen=True)
         except queue.Empty:
             pass

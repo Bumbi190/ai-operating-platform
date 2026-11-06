@@ -1,6 +1,6 @@
 import unittest
 
-from nova_overlay import public_project_command, PROJECTS, anchored_geometry, work_area
+from nova_overlay import public_project_command, PROJECTS, anchored_geometry, work_area, visible_dock_area
 from nova_core import route
 from nova_windows import ALLOWLIST, list_known_windows, focus_known_window
 
@@ -40,15 +40,41 @@ class OverlayNavigationTests(unittest.TestCase):
                 self.assertEqual(route(request).kind, "handoff")
 
     def test_position_inside_work_area(self):
-        left, top, right, bottom = work_area()
+        desktop = work_area()
         for width, height in ((94, 94), (442, 600)):
             g = anchored_geometry(width, height)
-            size, position = g.split("+", 1)
+            _, position = g.split("+", 1)
             x, y = (int(n) for n in position.split("+"))
-            self.assertGreaterEqual(x, left)
-            self.assertGreaterEqual(y, top)
-            self.assertLessEqual(x + width, right)
-            self.assertLessEqual(y + height, bottom)
+            self.assertGreaterEqual(x, desktop[0])
+            self.assertGreaterEqual(y, desktop[1])
+            self.assertLessEqual(x + width, desktop[2])
+            self.assertLessEqual(y + height, desktop[3])
+
+    def test_ultrawide_cursor_zone_keeps_entire_chat_visible(self):
+        desktop = (0, 0, 5120, 1392)
+        for pointer in ((3932, 813), (4487, 815), (100, 100), (5090, 1370)):
+            with self.subTest(pointer=pointer):
+                zone = visible_dock_area(desktop, pointer)
+                self.assertGreaterEqual(zone[0], desktop[0])
+                self.assertGreaterEqual(zone[1], desktop[1])
+                self.assertLessEqual(zone[2], desktop[2])
+                self.assertLessEqual(zone[3], desktop[3])
+                self.assertLessEqual(zone[2], pointer[0] + 110 if pointer[0] >= 1330 else 1440)
+                geom = anchored_geometry(442, 600, area=zone)
+                parts = geom.split("+")
+                self.assertEqual(len(parts), 3)
+                x, y = map(int, parts[1:])
+                self.assertGreaterEqual(x, zone[0])
+                self.assertGreaterEqual(y, zone[1])
+                self.assertLessEqual(x + 442, zone[2])
+                self.assertLessEqual(y + 600, zone[3])
+
+    def test_regular_laptop_screen_keeps_full_chat(self):
+        desktop = (0, 0, 1366, 720)
+        zone = visible_dock_area(desktop, (850, 500))
+        self.assertEqual(zone, desktop)
+        geom = anchored_geometry(442, 600, area=zone)
+        self.assertEqual(geom, "442x600+906+102")
 
 
 if __name__ == "__main__":

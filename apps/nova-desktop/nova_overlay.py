@@ -15,6 +15,7 @@ from tkinter import font as tkfont
 import webbrowser
 
 from nova_core import HotkeyListener, URLS, APP_SHORTCUTS, route, normalized
+from nova_bridge import NovaBridge
 from nova_windows import list_known_windows, focus_known_window
 
 
@@ -96,6 +97,10 @@ class NovaOverlay:
 
         self.events: queue.Queue[str] = queue.Queue()
         self.listener = HotkeyListener(self.events)
+        self.bridge = NovaBridge()
+        self.bridge.start()
+        self.live_reply_id = None
+        self.live_reply_text = ''
         self.expanded = False
         self.phase = "redo"
         self.closed = False
@@ -111,6 +116,8 @@ class NovaOverlay:
         self.root.after(100, self._process_events)
         self.root.after(450, self._hotkey_check)
         self.root.after(170, self._animate)
+        self.root.after(150, self._poll_bridge)
+        self.root.after(900, self._show_bridge_status)
         self.root.deiconify()
         self.root.lift()
 
@@ -183,8 +190,12 @@ class NovaOverlay:
         self.phase_var = tk.StringVar(value="● Redo att hjälpa")
         tk.Label(labels, textvariable=self.phase_var, bg=SURFACE, fg=SUCCESS,
                  font=self.small, anchor="w").pack(anchor="w")
+        self.bridge_var = tk.StringVar(value="Atlas: ej ansluten")
+        tk.Label(labels, textvariable=self.bridge_var, bg=SURFACE, fg=MUTED,
+                 font=("Segoe UI", 8), anchor="w").pack(anchor="w")
         self._btn(top, "×", self.quit, width=3, surface=True).pack(side="right")
         self._btn(top, "–", self.collapse, width=3, surface=True).pack(side="right", padx=(0, 5))
+        self._btn(top, "Anslut Atlas", self.connect_atlas, surface=True).pack(side="right", padx=(0, 5))
 
         self.activity = tk.Canvas(content, width=PANEL_W-36, height=44,
                                   bg=PANEL, highlightthickness=0, bd=0)
@@ -320,6 +331,71 @@ class NovaOverlay:
         if self.listener.error and self.expanded:
             self._append("warn", "Nova: " + self.listener.error +
                          " Jag fungerar fortfarande med musen.")
+
+    def connect_atlas(self):
+        """Pair through the authenticated Omnira browser, not via stored cookies."""
+        self._append("step", "Nova: Öppnar webbläsarparning (läsläge).")
+        self._phase("godkannande", "Klicka Anslut i Omnira-fliken. Webbdelen kräver publicerad preview.")
+        try:
+            # Only the exact trusted Omnira origin receives the link. Ephemeral
+            # secret is in the fragment, never in the HTTP request or cookies.
+            if not webbrowser.open(self.bridge.pairing_url(), new=2):
+                self._append("warn", "Nova: Webbläsaren kunde inte öppna parningssidan.")
+            else:
+                self._append("warn", "Obs: parningssidan finns just nu endast i utvecklingsbranch. " +
+                             "Om du ser en saknad sida måste ändringen publiceras först.")
+        except Exception as exc:
+            self._append("warn", "Nova: Kopplingen kunde inte initieras: " + str(exc))
+
+    def _show_bridge_status(self):
+        if self.expanded and hasattr(self, "bridge_var"):
+            self.bridge_var.set("Atlas: kopplad (enbart läsning)" if self.bridge.state.online()
+                                else "Atlas: ej ansluten")
+        if not self.closed:
+            self.root.after(900, self._show_bridge_status)
+
+    def _poll_bridge(self):
+        try:
+            while True:
+                event = self.bridge.state.events.get_nowait()
+                kind = event.get("kind")
+                if kind == "connected":
+                    self._append("ok", "Nova: Autentiserad Atlas-flik har anslutit i läsläge.")
+                    self._phase("klar", "Atlas ansluten · inga skrivverktyg")
+                elif kind == "queued":
+                    self.live_reply_id = None
+                    self.live_reply_text = ""
+                    self._phase("tolkar", "Atlas förbereder svar")
+                elif kind == "text":
+                    reply_id = event.get("id")
+                    part = event.get("text", "")
+                    if reply_id != self.live_reply_id:
+                        self.live_reply_id = reply_id
+                        self.live_reply_text = ""
+                        self._append("nova", "NOVA (ATLAS): ")
+                    self.live_reply_text = (self.live_reply_text + part)[:30_000]
+                    # Replace a single message row instead of streaming noisy lines.
+                    if self.history and self.history[-1][0] == "nova":
+                        self.history[-1] = ("nova", "NOVA (ATLAS): " + self.live_reply_text)
+                        if self.expanded:
+                            self._render_history()
+                    self._phase("tolkar", "Atlas svarar i läsläge · " +
+                                str(len(self.live_reply_text)) + " tecken")
+                elif kind == "done":
+                    self._phase("klar", "Atlas svarade · ingen skrivåtgärd utförd")
+                    self._append("ok", "Nova: Atlas-svaret klart. Inga arbetsverktyg kördes.")
+                    self.live_reply_id = None
+                elif kind == "error":
+                    self._phase("godkannande", "Atlas kunde inte slutföra svaret")
+                    self._append("warn", "Nova: " + event.get("text", "Atlas-svar misslyckades"))
+                    self.live_reply_id = None
+                elif kind == "canceled":
+                    self._append("warn", "Nova: Avbrutet lokalt. Nätverkssvaret kan ha hunnit starta.")
+                    self.live_reply_id = None
+        except queue.Empty:
+            pass
+        if not self.closed:
+            self.root.after(150, self._poll_bridge)
 
     def _process_events(self):
         try:
@@ -476,7 +552,16 @@ class NovaOverlay:
         elif action.kind == "focus":
             self.focus_window(action.url)
         elif action.kind == "handoff":
-            self._handoff(text)
+            if self.bridge.state.online():
+                task_id, detail = self.bridge.state.enqueue(text)
+                if task_id:
+                    self._phase("tolkar", "Atlas analyserar frågan i läsläge")
+                    self._append("step", "  ↳ Fråga skickad till autentiserade Atlas (utan verktyg).")
+                else:
+                    self._append("warn", "Nova: " + detail)
+                    self._phase("godkannande", detail)
+            else:
+                self._handoff(text)
         else:
             self._phase("redo", "Skriv eller diktera ett kommando")
 
@@ -519,6 +604,7 @@ class NovaOverlay:
         self._phase("godkannande", "Exempel: Öppna Omniras projektmapp")
 
     def stop(self):
+        self.bridge.state.cancel()
         self.task_epoch += 1
         self._choices([])
         self._phase("stoppad", "Inga fler uppdrag utförs i Nova")
@@ -529,4 +615,5 @@ class NovaOverlay:
     def quit(self):
         self.closed = True
         self.listener.stop()
+        self.bridge.stop()
         self.root.destroy()

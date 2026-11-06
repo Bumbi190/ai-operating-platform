@@ -17,16 +17,11 @@ import webbrowser
 from nova_core import HotkeyListener, URLS, APP_SHORTCUTS, route, normalized
 from nova_bridge import NovaBridge, PROD_ORIGIN
 from nova_windows import list_known_windows, focus_known_window
-
-
-TRANSPARENT = "#02030a"
-SURFACE = "#141926"
-PANEL = "#1b2234"
-ACCENT = "#9186ff"
-TEXT = "#f6f5ff"
-MUTED = "#a9b4ce"
-SUCCESS = "#64d6b1"
-WARNING = "#ffcf88"
+from nova_theme import (
+    TRANSPARENT, SURFACE, PANEL, INPUT, ACCENT, CYAN, TEXT, MUTED,
+    SUCCESS, WARNING, BORDER, INITIAL_OPACITY,
+    paint_premium_panel, paint_nova_orb, PremiumButton, SlimScrollbar,
+)
 PROJECTS = {
     "Omnira": r"C:\Users\Andre\Projects\Omnira",
     "Handlarbörsen": r"C:\Users\Andre\Projects\Handlarborsen",
@@ -160,7 +155,9 @@ class NovaOverlay:
             self.root.wm_attributes("-transparentcolor", TRANSPARENT)
         except tk.TclError:
             pass
-        self.root.attributes("-alpha", 0.96)
+        self.opacity = INITIAL_OPACITY
+        self.opacity_percent = tk.IntVar(value=round(self.opacity * 100))
+        self.root.attributes("-alpha", self.opacity)
         self.root.protocol("WM_DELETE_WINDOW", self.collapse)
 
         self.events: queue.Queue[str] = queue.Queue()
@@ -272,18 +269,16 @@ class NovaOverlay:
         self._clear()
         self._place(BUBBLE_W, BUBBLE_H)
         c = self._canvas(BUBBLE_W, BUBBLE_H)
-        c.create_oval(8, 8, 86, 86, fill="#21203f", outline=ACCENT, width=3)
-        c.create_oval(16, 16, 78, 78, fill="#302961", outline="")
-        c.create_text(47, 43, text="N", fill="#f7f3ff",
-                      font=("Segoe UI Semibold", 30))
-        c.create_oval(69, 69, 83, 83, fill=SUCCESS, outline=SURFACE, width=2)
+        paint_nova_orb(c, BUBBLE_W)
         self._bind_drag(c, self._end_bubble_drag)
         c.bind("<Button-3>", self._bubble_menu)
         c.bind("<Enter>", lambda _e: c.configure(cursor="hand2"))
         self.bubble_canvas = c
 
     def _bubble_menu(self, event):
-        menu = tk.Menu(self.root, tearoff=0)
+        menu = tk.Menu(self.root, tearoff=0, bg="#172135", fg=TEXT,
+                       activebackground="#363560", activeforeground=TEXT,
+                       bd=1, relief="flat")
         menu.add_command(label="Öppna Nova", command=lambda: self.expand(False))
         menu.add_command(label="Flytta Nova nära muspekaren", command=self._redock_near_pointer)
         menu.add_command(label="Anslut Atlas", command=self.connect_atlas)
@@ -300,29 +295,36 @@ class NovaOverlay:
         self._clear()
         self._place(PANEL_W, PANEL_H)
         bg = self._canvas(PANEL_W, PANEL_H)
-        rounded_rectangle(bg, 1, 1, PANEL_W - 2, PANEL_H - 2, 25,
-                          fill=SURFACE, outline="#535079", width=2)
+        paint_premium_panel(bg, PANEL_W, PANEL_H)
         content = tk.Frame(bg, bg=SURFACE)
         bg.create_window(18, 18, window=content, anchor="nw",
                          width=PANEL_W - 36, height=PANEL_H - 36)
         top = tk.Frame(content, bg=SURFACE)
         top.pack(fill="x", pady=(0, 9))
-        logo = tk.Canvas(top, width=41, height=41, bg=SURFACE,
+        logo = tk.Canvas(top, width=42, height=42, bg=SURFACE,
                          bd=0, highlightthickness=0)
         logo.pack(side="left", padx=(0, 11))
-        logo.create_oval(2, 2, 39, 39, fill="#343065", outline=ACCENT, width=1)
-        logo.create_text(20, 19, text="N", font=("Segoe UI Semibold", 17), fill=TEXT)
+        logo.create_oval(1, 1, 40, 40, fill="#222a4d",
+                         outline="#5f6d99", width=1)
+        logo.create_arc(1, 1, 40, 40, start=48, extent=112,
+                        outline=CYAN, width=2, style="arc")
+        logo.create_arc(4, 4, 37, 37, start=214, extent=95,
+                        outline=ACCENT, width=2, style="arc")
+        logo.create_text(21, 20, text="N",
+                         font=("Segoe UI Semibold", 19), fill=TEXT)
         labels = tk.Frame(top, bg=SURFACE)
         labels.pack(side="left", fill="x", expand=True)
         self._bind_drag(top)
         self._bind_drag(logo)
         self._bind_drag(labels)
-        tk.Label(labels, text="NOVA  ·  OMNIRA", bg=SURFACE, fg=TEXT,
-                 font=self.h, anchor="w").pack(anchor="w")
+        tk.Label(labels, text="N O V A", bg=SURFACE, fg=TEXT,
+                 font=("Segoe UI Semibold", 14), anchor="w").pack(anchor="w")
+        tk.Label(labels, text="OMNIRA  /  DESKTOP INTELLIGENCE",
+                 bg=SURFACE, fg=CYAN,
+                 font=("Segoe UI Semibold", 7), anchor="w").pack(anchor="w")
+        # Activity strip below already shows task state; avoid repeating it here.
         self.phase_var = tk.StringVar(value="● Redo att hjälpa")
-        tk.Label(labels, textvariable=self.phase_var, bg=SURFACE, fg=SUCCESS,
-                 font=self.small, anchor="w").pack(anchor="w")
-        self.bridge_var = tk.StringVar(value="Atlas: ej ansluten")
+        self.bridge_var = tk.StringVar(value="Atlas  ·  inte ansluten")
         tk.Label(labels, textvariable=self.bridge_var, bg=SURFACE, fg=MUTED,
                  font=("Segoe UI", 8), anchor="w").pack(anchor="w")
         for child in labels.winfo_children():
@@ -334,47 +336,56 @@ class NovaOverlay:
         self.more_button.pack(side="right", padx=(0, 5))
         self._refresh_more_button()
 
-        self.activity = tk.Canvas(content, width=PANEL_W-36, height=44,
-                                  bg=PANEL, highlightthickness=0, bd=0)
-        self.activity.pack(fill="x", pady=(0, 9))
+        self.activity = tk.Canvas(content, width=PANEL_W-36, height=35,
+                                  bg=SURFACE, highlightthickness=0, bd=0)
+        self.activity.pack(fill="x", pady=(3, 9))
+        rounded_rectangle(self.activity, 1, 1, PANEL_W - 39, 34, 10,
+                          fill="#1a2940", outline="#324b6b", width=1)
+        self.activity.create_oval(15, 14, 23, 22, fill=CYAN, outline="")
         self.activity_text = self.activity.create_text(
-            22, 26, anchor="w", text="Tryck på mikrofonen eller skriv till Nova.",
+            36, 18, anchor="w", text="Redo för ett nytt kommando",
             fill=MUTED, font=self.small)
 
-        chat_container = tk.Frame(content, bg=PANEL, padx=9, pady=7)
+        chat_shell = tk.Frame(content, bg=BORDER, padx=1, pady=1)
+        chat_shell.pack(fill="both", expand=True)
+        chat_container = tk.Frame(chat_shell, bg=PANEL, padx=12, pady=9)
         chat_container.pack(fill="both", expand=True)
-        scroll = tk.Scrollbar(chat_container, orient="vertical",
-                              troughcolor=PANEL, activebackground=ACCENT)
-        scroll.pack(side="right", fill="y")
-        self.chat = tk.Text(chat_container, height=7, wrap="word", font=self.body,
+        scroll = SlimScrollbar(chat_container,
+                               on_scroll=lambda fraction: self.chat.yview_moveto(fraction))
+        scroll.pack(side="right", fill="y", padx=(5, 0))
+        self.chat = tk.Text(chat_container, height=4, wrap="word", font=self.body,
                             bg=PANEL, fg=TEXT, relief="flat", bd=0,
-                            padx=5, pady=9, highlightthickness=0,
+                            padx=7, pady=9, highlightthickness=0,
+                            spacing1=2, spacing3=3,
                             yscrollcommand=scroll.set)
         self.chat.pack(side="left", fill="both", expand=True)
-        scroll.config(command=self.chat.yview)
-        self.chat.tag_configure("you", foreground="#b5b4ff", spacing1=10)
+        self.chat.tag_configure("you", foreground="#c2b9ff", spacing1=10)
         self.chat.tag_configure("nova", foreground=TEXT, spacing1=9)
-        self.chat.tag_configure("step", foreground=MUTED, spacing1=4)
+        self.chat.tag_configure("step", foreground=CYAN, spacing1=4)
         self.chat.tag_configure("warn", foreground=WARNING, spacing1=6)
         self.chat.tag_configure("ok", foreground=SUCCESS, spacing1=5)
         self.chat.config(state="disabled")
         self._render_history()
 
         live = tk.Frame(content, bg=SURFACE)
-        live.pack(fill="x", pady=(10, 2))
-        tk.Label(live, text="DET DU SÄGER", bg=SURFACE, fg=MUTED,
-                 font=("Segoe UI Semibold", 8)).pack(anchor="w")
+        live.pack(fill="x", pady=(8, 0))
+        tk.Label(live, text="LIVE  /", bg=SURFACE, fg=CYAN,
+                 font=("Segoe UI Semibold", 8)).pack(side="left", padx=(0, 8))
         self.transcript_var = tk.StringVar(value="—")
         self.transcript_label = tk.Label(
             live, textvariable=self.transcript_var, bg=SURFACE, fg="#c9c8ff",
-            font=self.small, anchor="w", wraplength=384, justify="left")
-        self.transcript_label.pack(fill="x", pady=(2, 2))
+            font=self.small, anchor="w", width=35, justify="left")
+        self.transcript_label.pack(side="left", fill="x", expand=True)
 
-        self.command = tk.Text(content, height=2, wrap="word", font=self.entry_font,
-                               bg="#272b41", fg=TEXT, insertbackground=TEXT,
-                               relief="flat", padx=12, pady=9, highlightthickness=1,
-                               highlightbackground="#4a496a", highlightcolor=ACCENT)
-        self.command.pack(fill="x", pady=(7, 8))
+        self.input_shell = tk.Frame(content, bg="#4c5c83", padx=1, pady=1)
+        self.input_shell.pack(fill="x", pady=(7, 8))
+        self.command = tk.Text(self.input_shell, height=2, wrap="word", font=self.entry_font,
+                               bg=INPUT, fg=TEXT, insertbackground=CYAN,
+                               relief="flat", padx=13, pady=7, highlightthickness=0,
+                               selectbackground="#55559a")
+        self.command.pack(fill="x")
+        self.command.bind("<FocusIn>", lambda _e: self.input_shell.configure(bg=CYAN))
+        self.command.bind("<FocusOut>", lambda _e: self.input_shell.configure(bg="#4c5c83"))
         self.command.bind("<Return>", self._submit_enter)
         self.command.bind("<Control-Return>", self._submit_enter)
         self.command.bind("<Control-period>", self._stop_shortcut)
@@ -388,7 +399,7 @@ class NovaOverlay:
         tk.Label(content,
                  text="Enter skickar · Shift+Enter ny rad · Fler val under ⋯",
                  bg=SURFACE, fg="#828ba9", font=("Segoe UI", 8)).pack(
-                     fill="x", pady=(9, 0))
+                     fill="x", pady=(6, 0))
 
         if not self.history:
             self._append("nova", "Nova: Jag öppnar godkända program och projekt. "
@@ -398,11 +409,9 @@ class NovaOverlay:
             self.transcript_var.set(self.draft[:180])
 
     def _btn(self, parent, label, callback, emphasis=False, surface=False, width=None):
-        return tk.Button(
-            parent, text=label, command=callback, width=width, padx=9, pady=7,
-            font=("Segoe UI Semibold", 9), cursor="hand2", bd=0, relief="flat",
-            bg=("#605bd2" if emphasis else "#313852" if surface else "#403a76"),
-            fg=TEXT, activebackground="#746cf3", activeforeground=TEXT,
+        return PremiumButton(
+            parent, label, callback, emphasis=emphasis,
+            surface=surface, width=width, compact=(width is not None),
         )
 
     def _render_history(self):
@@ -428,12 +437,12 @@ class NovaOverlay:
 
     def _refresh_more_button(self):
         if self.expanded and hasattr(self, "more_button"):
-            self.more_button.configure(
-                bg="#605bd2" if self.pending_choices else "#313852"
-            )
+            self.more_button.set_attention(bool(self.pending_choices))
 
     def _make_more_menu(self):
-        menu = tk.Menu(self.root, tearoff=0)
+        menu = tk.Menu(self.root, tearoff=0, bg="#172135", fg=TEXT,
+                       activebackground="#363560", activeforeground=TEXT,
+                       bd=1, relief="flat")
         if self.pending_choices:
             for label, callback in self.pending_choices:
                 menu.add_command(label=label, command=callback)
@@ -448,8 +457,26 @@ class NovaOverlay:
         menu.add_command(label="Öppna fönster", command=self.show_windows)
         menu.add_separator()
         menu.add_command(label="Stoppa pågående uppdrag (Ctrl+.)", command=self.stop)
+        menu.add_separator()
+        opacity = tk.Menu(menu, tearoff=0, bg="#172135", fg=TEXT,
+                          activebackground="#363560", activeforeground=TEXT)
+        for percent in (78, 84, 88, 94):
+            opacity.add_radiobutton(
+                label=f"{100 - percent} % transparent" +
+                      (" · standard" if percent == 88 else ""),
+                variable=self.opacity_percent, value=percent,
+                command=lambda value=percent: self._set_opacity(value),
+            )
+        menu.add_cascade(label="Glas-effekt", menu=opacity)
         menu.add_command(label="Avsluta Nova", command=self.quit)
         return menu
+
+    def _set_opacity(self, percent: int):
+        """User preference is session-local; no account settings are modified."""
+        percent = max(75, min(98, int(percent)))
+        self.opacity = percent / 100
+        self.opacity_percent.set(percent)
+        self.root.attributes("-alpha", self.opacity)
 
     def _show_more_menu(self):
         menu = self._make_more_menu()
@@ -617,17 +644,24 @@ class NovaOverlay:
             self.root.after(100, self._process_events)
 
     def _animate(self):
+        # Low-frequency, decorative presence animation: no mic is sampled
+        # and no background agent execution is implied by the visual.
+        self.anim_tick = (self.anim_tick + 1) % 720
         if self.expanded and self.phase == "lyssnar":
             w = PANEL_W - 36
             self.activity.delete("pulse")
             for i in range(7):
                 h = 4 + 17 * abs(math.sin(self.anim_tick / 5 + i * .66))
                 x = w - 95 + i * 12
-                self.activity.create_rectangle(x, 26-h/2, x+6, 26+h/2,
-                                               fill=ACCENT, outline="", tags="pulse")
-            self.anim_tick += 1
+                self.activity.create_rectangle(x, 21-h/2, x+6, 21+h/2,
+                                               fill=ACCENT if i % 2 else CYAN,
+                                               outline="", tags="pulse")
         elif self.expanded:
             self.activity.delete("pulse")
+        elif hasattr(self, "bubble_canvas"):
+            self.bubble_canvas.itemconfigure(
+                "nova-orbit", start=(215 + self.anim_tick * 2) % 360
+            )
         if not self.closed:
             self.root.after(170, self._animate)
 
@@ -637,7 +671,7 @@ class NovaOverlay:
         self.transcript_var.set(text[-180:] if text else "—")
         if self.phase == "lyssnar" and text:
             self.activity.itemconfigure(self.activity_text,
-                                        text="Text mottagen · granska och tryck Ctrl+Enter")
+                                        text="Text mottagen · granska och tryck Enter")
 
     def dictate(self):
         self.expand(False) if not self.expanded else None

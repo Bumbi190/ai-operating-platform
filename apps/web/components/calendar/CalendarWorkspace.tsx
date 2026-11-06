@@ -3,7 +3,7 @@ import {useEffect,useState} from 'react';
 import {CalendarDays,ChevronLeft,ChevronRight,Plus} from 'lucide-react';
 import type {CalendarWeekModel,CalendarEntry,CalendarUndatedReview} from '@/lib/calendar/types';
 import {addCalendarDays} from '@/lib/calendar/time';
-import {proposeCalendarWeek} from '@/lib/calendar/week-proposal';
+import {WeekProposalEditor} from './WeekProposalEditor';
 import {useCalendarWorkspace} from './use-calendar';
 import {CalendarWeek} from './CalendarWeek';
 import {CalendarEventPanel} from './CalendarEventPanel';
@@ -29,7 +29,7 @@ function CalendarWorkspaceBody({initialWeek,userId}:{initialWeek:CalendarWeekMod
  const previewModel = s.filter === 'all'
    ? s.model
    : {...s.model, projects: s.filter === 'private' ? [] : s.model.projects.filter(p=>p.id===s.filter)};
- const weeklyPreview = proposeCalendarWeek(previewModel);
+
  const oldAtlasTasks=s.model.unscheduledTasks.filter(task=>task.source==='dream'&&task.createdAt&&Date.parse(task.createdAt)<Date.now()-30*86400000);
  const currentTasks=s.model.unscheduledTasks.filter(task=>!oldAtlasTasks.includes(task));
  return <main className={styles.workspace} data-week={s.week}>
@@ -50,25 +50,7 @@ function CalendarWorkspaceBody({initialWeek,userId}:{initialWeek:CalendarWeekMod
 
   {oldAtlasTasks.length>0&&<details className={styles.unscheduled}><summary>Äldre förslag från Atlas ({oldAtlasTasks.length})</summary><p className={styles.unscheduledIntro}>Skapade av Atlas minnesanalys för mer än 30 dagar sedan. De kan fortfarande vara öppna, men är inte automatiskt prioriterade för den här veckan. Granska innan du planerar tid; inget har raderats.</p>{oldAtlasTasks.slice(0,8).map(task=><div key={task.id} className={styles.unscheduledItem}><div className={styles.unscheduledBody}><div className={styles.unscheduledMeta}><span>{s.model.projects.find(p=>p.id===task.projectId)?.name??'Projekt'}</span><span>{task.createdAt?new Intl.DateTimeFormat('sv-SE',{year:'numeric',month:'short',day:'numeric'}).format(new Date(task.createdAt)):''}</span></div><strong>{task.title.length>110?task.title.slice(0,107)+'…':task.title}</strong><details className={styles.unscheduledOriginal}><summary>Visa original och status</summary><p>{task.title}</p><p>Status: {task.status}</p></details></div><button type="button" onClick={()=>s.newEvent(s.selectedDay,9*60,task)}>Planera tid</button></div>)}</details>}
   {s.sessionReady&&!s.loading&&!s.readError&&s.filter!=='private'&&
-    <details className={styles.unscheduled}>
-      <summary>Förslag på veckoplan (granska först)</summary>
-      <p className={styles.unscheduledIntro}>Lediga vardagstider kl. 09–17 för öppna projektuppgifter. Förslagen är endast en förhandsvisning – inget bokas eller ändras.</p>
-      {weeklyPreview.blocked
-        ? <p className={styles.unscheduledIntro}>Veckoplanen kan inte föreslås säkert eftersom underlaget är ofullständigt. Kontrollera datakällorna och ladda om.</p>
-        : weeklyPreview.proposals.length===0
-          ? <p className={styles.unscheduledIntro}>Inga lämpliga öppna uppgifter för den här veckan.</p>
-          : weeklyPreview.proposals.map(item=>
-            <div key={item.taskId} className={styles.unscheduledItem}>
-              <div className={styles.unscheduledBody}>
-                <div className={styles.unscheduledMeta}>
-                  <span>{s.model.projects.find(p=>p.id===item.projectId)?.name??'Projekt'}</span>
-                  <span>{new Intl.DateTimeFormat('sv-SE',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Stockholm'}).format(new Date(item.startUtc))}–{new Intl.DateTimeFormat('sv-SE',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Stockholm'}).format(new Date(item.endUtc))}</span>
-                </div>
-                <strong>{item.title}</strong>
-              </div>
-              <span>Förslag – ej bokat</span>
-            </div>)}
-    </details>}
+    <WeekProposalEditor key={s.week+':'+s.filter} model={previewModel}/>}
   {s.sessionReady&&undated&&undatedItems.some(e=>e.id===undated.id)?<CalendarEventPanel state={{...s,selected:null,form:null,closePanel:()=>{setUndated(null);s.closePanel();}}} undated={undated}/>:s.panelOpen&&<CalendarEventPanel state={s}/>}
  </main>;
 }

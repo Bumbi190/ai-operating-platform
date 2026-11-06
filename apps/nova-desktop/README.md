@@ -35,6 +35,10 @@ Windows session and is available via **Ctrl+Alt+Space**.
   expiring in-memory pairing key and no persisted credentials.
 - Browser half: authenticated Omnira `/nova-bridge` page, explicitly paired by
   clicking **Anslut**. Browsers may request Loopback network permission.
+- The **Anslut Atlas** button no longer opens the missing production route:
+  select an exact SSO-protected Omnira Vercel preview first. Its short-lived
+  local key is rotated when the selected preview changes. Arbitrary domains
+  are refused. Preview remains undeployed until separate approval/verification.
 - The browser calls existing `/api/chat` with `mode=nova_readonly`. Server removes
   every executable LLM tool schema, enforces a second hard stop on unexpected
   tool use and caps replies to 900 output tokens.
@@ -42,8 +46,9 @@ Windows session and is available via **Ctrl+Alt+Space**.
   injection flags authorize it. No new local memory store or flag override.
 - Only one queued/active task; at most 10 queries per 5 minutes per runtime.
 - Local UI displays the received text as one streaming Atlas answer. It has a
-  Stop button, but Stop cannot guarantee that an already-started model call
-  will incur zero additional cost.
+  Stop button. During long replies the browser polls local task status and
+  aborts the browser fetch on cancellation; an Atlas 'done' receipt is required
+  before Nova claims completion. Already spent model tokens cannot be refunded.
 - Genuine **local UI-to-HTTP-to-synthetic-browser-to-UI** proof passed.
   This does NOT prove production authentication or an actual AI response.
 - The `/nova-bridge` web route is not yet in production; clicking its link
@@ -114,6 +119,8 @@ node tests/check_web_syntax.cjs  # existing TypeScript compiler required
    actual result and failure; never infer success from model prose.
 7. Only after interactive UI acceptance: PR review, safe merge and deployment.
    Mac/Atticus intentionally deferred.
+
+Read `PREVIEW_CHECKLIST.md` for exact protected-preview and acceptance checks.
 
 ## Development isolation
 

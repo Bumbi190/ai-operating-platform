@@ -6,8 +6,16 @@ Windows session and is available via **Ctrl+Alt+Space**.
 
 ## Tested now on stationära Hultgren
 
-- Transparent key + 96% opacity; round Nova bubble docked at bottom-right of
-  Windows' usable work area. Click to expand into a chat/activity panel.
+- Transparent key + 96% opacity; round Nova bubble near the lower-right of
+  the **current pointer work zone**. On 5120px ultra-wide screens this uses a
+  1440x960 visible zone instead of snapping to the absolute monitor edge, so
+  the entire chat panel remains reachable even with a cropped work viewport.
+  Click the N bubble to expand. The whole 442x600 panel is monitor-clamped.
+- Drag the N bubble or the expanded chat's title/header to reposition it.
+  Its right/bottom anchor survives collapse and expand during the current
+  session. From the ⋯ or right-click menu choose *Flytta Nova nära muspekaren*
+  to reset it. Without a manual anchor the global hotkey follows the pointer.
+  Manual placement does not yet persist across application restarts.
 - Windows-wide shortcut opens the expanded panel and **requests** dictation
   with Win+H. The microphone must be enabled; Swedish input language needed.
 - Minimal chat composer: **Prata** and **Skicka** are the only buttons below
@@ -101,6 +109,7 @@ cd apps/nova-desktop
 python -m unittest discover -s tests -p "test_*.py" -v
 python tests/smoke_overlay.py
 python tests/geometry_overlay.py
+python tests/smoke_reposition.py  # ultrawide, resize and drag verification
 python tests/smoke_relay_ui.py  # synthetic/local test, no Atlas API
 node tests/check_web_syntax.cjs  # existing TypeScript compiler required
 ```

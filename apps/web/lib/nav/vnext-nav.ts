@@ -4,6 +4,7 @@ import {
   CalendarRange,
   Cpu,
   Orbit,
+  Building2,
   Lightbulb,
   MessageSquare,
   Megaphone,
@@ -54,7 +55,7 @@ export type VNextNavGroupId = 'atlas' | 'arbete' | 'intelligens' | 'system'
 
 export interface VNextNavItem {
   /** Stable identity, and the registry destination where one exists. */
-  id: DestinationId | 'system' | 'planning' | 'projects'
+  id: DestinationId | 'system' | 'planning' | 'projects' | 'office'
   label: string
   href: string
   icon: LucideIcon
@@ -83,6 +84,7 @@ export const VNEXT_NAV: readonly VNextNavGroup[] = [
     items: [
       { id: 'overview', label: 'Översikt', href: '/dashboard', icon: LayoutDashboard, desktop: true, mobile: true, primary: true },
       { id: 'atlas', label: 'Atlas', href: '/atlas', icon: Sparkles, desktop: true, mobile: true },
+      { id: 'office', label: 'Omnira Office', href: '/atlas/office', icon: Building2, desktop: true, mobile: true },
       { id: 'chat', label: 'Chat', href: '/chat', icon: MessageSquare, desktop: true, mobile: true },
       { id: 'build', label: 'Bygg med Atlas', href: '/build', icon: PanelsTopLeft, desktop: true, mobile: true },
       // Andre → Atlas → projects → agents. It belongs to the Atlas group rather

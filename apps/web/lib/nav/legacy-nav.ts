@@ -2,6 +2,7 @@ import {
   Activity,
   LayoutDashboard,
   Bot,
+  Building2,
   FileOutput,
   FileText,
   GitBranch,
@@ -52,6 +53,7 @@ export interface LegacyNavItem {
 export const LEGACY_GLOBAL_NAV: readonly LegacyNavItem[] = [
   { href: '/dashboard', label: 'Översikt', icon: LayoutDashboard, primary: true },
   { href: '/atlas', label: 'Atlas', icon: Sparkles },
+  { href: '/atlas/office', label: 'Omnira Office', icon: Building2 },
   // Explicit owner-approved studio entry; existing legacy destinations keep order.
   { href: '/build', label: 'Bygg med Atlas', icon: PanelsTopLeft },
   { href: '/atlas/marketing', label: 'Marknadsgranskning', icon: Megaphone },

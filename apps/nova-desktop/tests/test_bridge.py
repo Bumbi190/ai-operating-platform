@@ -3,7 +3,7 @@ import unittest
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from nova_bridge import NovaBridge, PROD_ORIGIN
+from nova_bridge import NovaBridge, PROD_ORIGIN, validate_pairing_origin
 
 
 class BridgeTests(unittest.TestCase):
@@ -51,6 +51,35 @@ class BridgeTests(unittest.TestCase):
         self.assertNotIn("key=", url.split("#")[0])
         with self.assertRaises(ValueError):
             self.bridge.pairing_url("https://attacker.invalid")
+
+    def test_exact_preview_origin_and_token_rotation(self):
+        preview = "https://ai-operating-platform-35zto91g0-bumbi190s-projects.vercel.app"
+        self.assertEqual(validate_pairing_origin(preview), preview)
+        self.assertEqual(validate_pairing_origin(PROD_ORIGIN), PROD_ORIGIN)
+        for invalid in (
+            "http://ai-operating-platform-35zto91g0-bumbi190s-projects.vercel.app",
+            "https://ai-operating-platform-35zto91g0-bumbi190s-projects.vercel.app.attacker.test",
+            "https://attacker.invalid",
+            "https://omniraos.se.attacker.test",
+            "https://omniraos.se@attacker.invalid",
+            "https://omniraos.se/path",
+            "https://ai-operating-platform-35zto91g0-bumbi190s-projects.vercel.app/#key=steal",
+            "https://ai-operating-platform-35zto91g0-bumbi190s-projects.vercel.app:443",
+        ):
+            with self.subTest(origin=invalid):
+                with self.assertRaises(ValueError):
+                    validate_pairing_origin(invalid)
+        previous = self.bridge.state.key
+        self.assertEqual(self.bridge.state.switch_origin(preview), preview)
+        self.assertNotEqual(self.bridge.state.key, previous)
+        self.assertFalse(self.bridge.state.online())
+        self.assertEqual(self.request("/next", headers=self.good)[0], 403)
+        rotated = {"Origin": preview, "X-Nova-Token": self.bridge.state.key}
+        self.assertEqual(self.request("/connect", "POST", rotated, {"protocol": 1})[0], 200)
+        self.assertEqual(self.request("/next", headers=rotated)[0], 200)
+        self.assertTrue(self.bridge.pairing_url().startswith(preview + "/nova-bridge#"))
+        with self.assertRaises(ValueError):
+            self.bridge.pairing_url(PROD_ORIGIN)
 
     def test_readonly_task_lifecycle(self):
         self.assertFalse(self.bridge.state.online())

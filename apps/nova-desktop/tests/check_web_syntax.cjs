@@ -76,3 +76,14 @@ const route = fs.readFileSync(path.join(root, 'apps/web/app/api/chat/route.ts'),
 assert.ok(route.includes('shouldExposeAtlasTools(mode, { fastPath, staticConversation })'));
 assert.ok(route.includes("send('error', { code: 'NOVA_READONLY_TOOL_BLOCKED' })"));
 console.log('nova-readonly: tool gate and memory rendering OK');
+const browserPage = fs.readFileSync(
+  path.join(root, 'apps/web/app/(platform)/nova-bridge/page.tsx'), 'utf8');
+assert.ok(browserPage.includes("'/status?' + encodeURIComponent(task.id)"),
+  'Long-running requests must monitor desktop cancellation');
+assert.ok(browserPage.includes('window.clearInterval(statusTimer)'),
+  'Status monitor must be cleaned up');
+assert.ok(browserPage.includes("if (!sawDone) throw new Error("),
+  'Incomplete streams cannot be reported as successful');
+assert.ok(browserPage.includes("targetAddressSpace: 'loopback'"),
+  'Preview must declare Chrome loopback permission target');
+console.log('nova-preview: cancel, done receipt and loopback contract present');

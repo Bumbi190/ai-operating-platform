@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import queue
+import re
 import secrets
 import threading
 import time
@@ -26,6 +27,27 @@ MAX_PROMPT_CHARS = 3_000
 STALE_AFTER = 12
 TASK_TIMEOUT = 150
 MAX_REQUESTS_PER_5_MIN = 10
+# Only this team's Omnira Vercel preview addresses, not arbitrary web origins.
+PREVIEW_HOST = re.compile(
+    r"^ai-operating-platform-[a-z0-9-]+-bumbi190s-projects\.vercel\.app$"
+)
+
+
+def validate_pairing_origin(origin: str) -> str:
+    """Allow the production site or explicitly selected protected Omnira previews."""
+    if not isinstance(origin, str):
+        raise ValueError("Invalid pairing origin")
+    parsed = urlsplit(origin.strip())
+    if (parsed.scheme != "https" or not parsed.hostname or parsed.username
+            or parsed.password or parsed.port is not None or parsed.path not in ("", "/")
+            or parsed.query or parsed.fragment):
+        raise ValueError("Pairing needs a bare HTTPS origin with no path or token")
+    hostname = parsed.hostname
+    if origin.strip().rstrip("/") == PROD_ORIGIN:
+        return PROD_ORIGIN
+    if PREVIEW_HOST.fullmatch(hostname):
+        return "https://" + hostname
+    raise ValueError("Not an authorized Omnira preview domain")
 
 
 @dataclass
@@ -47,6 +69,23 @@ class BridgeState:
         self.connected_at = 0.0
         self.last_seen = 0.0
         self.requests_at: list[float] = []
+
+    def switch_origin(self, origin: str) -> str:
+        """Explicit preview selection invalidates the previous browser pairing."""
+        approved = validate_pairing_origin(origin)
+        with self.lock:
+            self.origins = frozenset((approved,))
+            self.key = secrets.token_urlsafe(32)
+            self.connected_at = 0.0
+            self.last_seen = 0.0
+            self.task = None
+            # Drop stale events that belonged to the earlier pairing.
+            while not self.events.empty():
+                try:
+                    self.events.get_nowait()
+                except queue.Empty:
+                    break
+        return approved
 
     def online(self) -> bool:
         with self.lock:
@@ -259,8 +298,10 @@ class NovaBridge:
     def start(self):
         self.thread.start()
 
-    def pairing_url(self, base_origin=PROD_ORIGIN):
-        if base_origin not in self.state.origins:
+    def pairing_url(self, base_origin=None):
+        if base_origin is None:
+            base_origin = next(iter(self.state.origins))
+        if validate_pairing_origin(base_origin) not in self.state.origins:
             raise ValueError("Invalid Atlas origin")
         # URL fragment is NOT sent to Omnira's server. Browser relay immediately
         # removes it from history after reading and never persists the key.

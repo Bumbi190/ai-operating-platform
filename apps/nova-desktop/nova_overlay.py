@@ -11,11 +11,11 @@ import math
 import os
 import queue
 import tkinter as tk
-from tkinter import font as tkfont
+from tkinter import font as tkfont, simpledialog
 import webbrowser
 
 from nova_core import HotkeyListener, URLS, APP_SHORTCUTS, route, normalized
-from nova_bridge import NovaBridge
+from nova_bridge import NovaBridge, PROD_ORIGIN
 from nova_windows import list_known_windows, focus_known_window
 
 
@@ -159,6 +159,8 @@ class NovaOverlay:
     def _bubble_menu(self, event):
         menu = tk.Menu(self.root, tearoff=0)
         menu.add_command(label="Öppna Nova", command=lambda: self.expand(False))
+        menu.add_command(label="Anslut Atlas", command=self.connect_atlas)
+        menu.add_command(label="Välj skyddad testmiljö", command=self.choose_preview)
         menu.add_command(label="Öppna Atlas", command=lambda: self._open_url(
             URLS["atlas"], "Öppnar Atlas i webbläsaren"))
         menu.add_separator()
@@ -332,9 +334,36 @@ class NovaOverlay:
             self._append("warn", "Nova: " + self.listener.error +
                          " Jag fungerar fortfarande med musen.")
 
+    def choose_preview(self):
+        """Explicitly approve one protected preview origin for the current session."""
+        self.expand(False)
+        preview = simpledialog.askstring(
+            "Omnira — skyddad testmiljö",
+            "Klistra in exakt HTTPS-adress till Omniras Vercel-preview. "
+            "Inga andra domäner accepteras.",
+            parent=self.root,
+        )
+        if not preview:
+            self._append("step", "Nova: Inget byte av testmiljö gjordes.")
+            return
+        try:
+            approved = self.bridge.state.switch_origin(preview)
+        except ValueError as exc:
+            self._append("warn", "Nova: Testadressen avvisades: " + str(exc))
+            self._phase("godkannande", "Ange en godkänd Omnira-preview")
+            return
+        self._append("ok", "Nova: Testmiljö vald: " + approved + ". Tidigare parning återkallad.")
+        self.connect_atlas()
+
     def connect_atlas(self):
         """Pair through the authenticated Omnira browser, not via stored cookies."""
-        self._append("step", "Nova: Öppnar webbläsarparning (läsläge).")
+        target = next(iter(self.bridge.state.origins))
+        if target == PROD_ORIGIN:
+            self._append("warn", "Nova: Webbdelen är ännu inte publicerad på omniraos.se. "
+                         "Välj först en skyddad Vercel-preview för att inte öppna en saknad sida.")
+            self.choose_preview()
+            return
+        self._append("step", "Nova: Öppnar skyddad webbläsarparning (läsläge).")
         self._phase("godkannande", "Klicka Anslut i Omnira-fliken. Webbdelen kräver publicerad preview.")
         try:
             # Only the exact trusted Omnira origin receives the link. Ephemeral

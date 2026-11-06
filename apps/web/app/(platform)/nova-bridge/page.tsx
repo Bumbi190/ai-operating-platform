@@ -96,6 +96,27 @@ export default function NovaBridgePage() {
     const turns: ChatTurn[] = [...turnsRef.current.slice(-10), { role: 'user', content: task.text }]
     const atlasAbort = new AbortController()
     atlasAbortRef.current = atlasAbort
+    // Poll task state during the model stream: this keeps the local session
+    // alive and makes the desktop Stop button abort browser-side work.
+    let statusBusy = false
+    let statusFailures = 0
+    const statusTimer = window.setInterval(() => {
+      if (stoppedRef.current || statusBusy) return
+      statusBusy = true
+      void local<{ state: string }>('/status?' + encodeURIComponent(task.id))
+        .then(({ state }) => {
+          statusFailures = 0
+          if (state !== 'executing' && state !== 'done') {
+            atlasAbort.abort()
+          }
+        })
+        .catch(() => {
+          statusFailures += 1
+          if (statusFailures >= 3) atlasAbort.abort()
+        })
+        .finally(() => { statusBusy = false })
+    }, 2500)
+    try {
     const response = await fetch('/api/chat', {
       method: 'POST',
       credentials: 'same-origin',
@@ -111,6 +132,7 @@ export default function NovaBridgePage() {
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
+    let sawDone = false
     try {
       while (!stoppedRef.current) {
         const { done, value } = await reader.read()
@@ -130,6 +152,8 @@ export default function NovaBridgePage() {
               await push(task.id, 'text', part)
               setLastAnswer(answer)
             }
+          } else if (data.event === 'done') {
+            sawDone = true
           } else if (data.event === 'error') {
             throw new Error('Atlas rapporterade ett tjänstefel: ' + (data.code ?? 'okänt'))
           } else if (data.event === 'tool_call' || data.event === 'navigate') {
@@ -141,10 +165,14 @@ export default function NovaBridgePage() {
       try { await reader.cancel() } catch { /* stream finished */ }
     }
     if (stoppedRef.current) return
-    atlasAbortRef.current = null
+    if (!sawDone) throw new Error('Atlas avbröt strömmen innan svarskvittot kom fram.')
     turnsRef.current = [...turns, { role: 'assistant', content: answer }].slice(-12)
     await push(task.id, 'done')
     setMessage('Atlas svarade. Inget exekveringsverktyg kördes.')
+    } finally {
+      window.clearInterval(statusTimer)
+      if (atlasAbortRef.current === atlasAbort) atlasAbortRef.current = null
+    }
   }
 
   async function pollingLoop() {

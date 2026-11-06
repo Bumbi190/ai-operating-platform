@@ -1,4 +1,4 @@
-# Nova Desktop — Windows bubble + Atlas read-only relay (pilot v3)
+# Nova Desktop — Omnira Premium bubble + Atlas read-only relay (pilot v4)
 
 Windows-native companion **to the existing Omnira/Atlas**, not a separate
 AI, memory database, workflow engine or agent. It runs in the logged-in
@@ -6,7 +6,14 @@ Windows session and is available via **Ctrl+Alt+Space**.
 
 ## Tested now on stationära Hultgren
 
-- Transparent key + 96% opacity; round Nova bubble near the lower-right of
+- Omnira Premium glass theme: dark navy-violet layered gradient, subtle cyan
+  highlights, softly glowing borders, animated Nova orbit, premium pill buttons,
+  a narrow dark scrollbar and an illuminated focused text composer.
+- Default window opacity is **88%** (12% background transparency), down from
+  96%. Change it during the session under **⋯ → Glas-effekt**: 6/12/16/22%
+  background transparency. Tkinter opacity applies to the whole window,
+  including text. This is simulated glass, **not genuine Windows Acrylic blur**.
+- Transparent keyed corners; round Nova bubble near the lower-right of
   the **current pointer work zone**. On 5120px ultra-wide screens this uses a
   1440x960 visible zone instead of snapping to the absolute monitor edge, so
   the entire chat panel remains reachable even with a cropped work viewport.
@@ -108,7 +115,8 @@ Or double-click `start-nova.cmd`.
 cd apps/nova-desktop
 python -m unittest discover -s tests -p "test_*.py" -v
 python tests/smoke_overlay.py
-python tests/geometry_overlay.py
+python tests/geometry_overlay.py  # includes button bounds, opacity and hidden menu
+python tests/preview_overlay.py  # optional Pillow for visual QA only
 python tests/smoke_reposition.py  # ultrawide, resize and drag verification
 python tests/smoke_relay_ui.py  # synthetic/local test, no Atlas API
 node tests/check_web_syntax.cjs  # existing TypeScript compiler required

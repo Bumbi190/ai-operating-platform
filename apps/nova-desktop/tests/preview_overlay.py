@@ -3,7 +3,7 @@ import os
 import sys
 from PIL import ImageGrab
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from nova_overlay import NovaOverlay
+from nova_overlay import NovaOverlay, PANEL_W, PANEL_H
 
 app = NovaOverlay()
 app.expand(False)
@@ -21,7 +21,8 @@ def capture():
     x, y = app.root.winfo_rootx(), app.root.winfo_rooty()
     output = os.path.join(os.path.dirname(__file__), "nova-overlay-preview.jpg")
     # Sample strictly from inside the opaque Nova surface, never the desktop around it.
-    ImageGrab.grab(bbox=(x+20, y+20, x+421, y+577)).convert("RGB").save(output, quality=84)
+    ImageGrab.grab(bbox=(x + 1, y + 1, x + PANEL_W - 1,
+                         y + PANEL_H - 1)).convert("RGB").save(output, quality=88)
     print("PREVIEW", output, os.stat(output).st_size, flush=True)
     app.quit()
 

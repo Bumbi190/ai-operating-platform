@@ -5,6 +5,7 @@ import tkinter as tk
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from nova_overlay import NovaOverlay
+from nova_theme import PremiumButton, SlimScrollbar, INITIAL_OPACITY
 
 a = NovaOverlay()
 a.expand()
@@ -22,16 +23,22 @@ def check():
     try:
         a.root.update_idletasks()
         limit = a.root.winfo_rooty() + a.root.winfo_height()
+        all_buttons = [w for w in descendants(a.root)
+                       if isinstance(w, PremiumButton)]
+        primary = {w.label: w for w in all_buttons}
         for label, widget in (("Chat", a.chat), ("Input", a.command),
-                              ("More", a.more_button)):
+                              ("More", a.more_button),
+                              ("Prata", primary["🎙 Prata"]),
+                              ("Skicka", primary["➤ Skicka"])):
             y = widget.winfo_rooty()
             h = widget.winfo_height()
             assert y >= a.root.winfo_rooty(), (label, y)
-            assert y + h <= limit, (label, y + h, limit)
+            assert y + h <= limit - 8, (label, y + h, limit)
             print(label, "BOTTOM", y + h, "LIMIT", limit, flush=True)
 
-        button_labels = [w.cget("text") for w in descendants(a.root)
-                         if isinstance(w, tk.Button)]
+        button_labels = [w.label for w in all_buttons]
+        assert any(isinstance(w, SlimScrollbar) for w in descendants(a.root))
+        assert abs(float(a.root.attributes("-alpha")) - INITIAL_OPACITY) < 0.01
         assert "🎙 Prata" in button_labels, button_labels
         assert "➤ Skicka" in button_labels, button_labels
         assert "⋯" in button_labels, button_labels
@@ -48,6 +55,10 @@ def check():
                       "Stoppa pågående uppdrag (Ctrl+.)"):
             assert label in menu_labels, (label, menu_labels)
         menu.destroy()
+        a._set_opacity(84)
+        assert abs(float(a.root.attributes("-alpha")) - 0.84) < 0.01
+        a._set_opacity(88)
+        assert a.opacity_percent.get() == 88
 
         class Event:
             state = 0

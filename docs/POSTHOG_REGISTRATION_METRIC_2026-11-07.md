@@ -24,3 +24,8 @@ Independent read-only review: no Critical/Important findings. Minor zero-pagevie
 Reproduce in apps/web: node node_modules/vitest/vitest.mjs run lib/qa/handlarborsen-posthog-registration.test.ts lib/qa/handlarborsen-posthog-traffic.test.ts lib/qa/handlarborsen-posthog-sessions.test.ts ; node node_modules/typescript/bin/tsc --noEmit -p tsconfig.registration.verify.json. Existing owned dependency directory was linked, no package or lockfile changes. Final log: %TEMP%/omnira-registration-metric-final-20261107.log.
 
 Subsequent integration check: full Omnira Vitest was attempted and is NOT green (1,022 failed, 12,714 passed, 1,308 skipped; 4 unhandled errors). All 37 PostHog tests still pass. This supersedes the earlier statement that the full suite was not run. See POSTHOG_REGISTRATION_RELEASE_CHECK_2026-11-07.md for environment prerequisites and release block; no production-ready claim.
+
+
+## Superseding matched-baseline evidence — 2026-11-07
+
+The missing dependency prerequisites have now been resolved in an isolated complete lockfile install. Full main and candidate runs were performed with identical dependencies, Windows host, child grep PATH and four-worker settings. Main: 15030 passed/410 failed; candidate: 15045 passed/408 failed. Every candidate failure is also a baseline failure; zero new failed assertions/files and zero removed assertions. All13 new assertions and all37 PostHog tests pass, focused TypeScript passes. Earlier whole-suite uncertainty about new analytics regressions is resolved by this comparison. The whole repository suite remains red; no all-green or live-release claim, and no production action was taken. See POSTHOG_REGISTRATION_BASELINE_2026-11-07.md and posthog-registration-baseline-20261107.json.

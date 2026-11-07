@@ -14,6 +14,7 @@ ui.expand(False)
 events = []
 failure = []
 completed = [False]
+active_session = [None]  # ephemeral, per-test browser session; never persisted
 
 
 def request(path, method='GET', body=None):
@@ -23,6 +24,8 @@ def request(path, method='GET', body=None):
         'X-Nova-Token': ui.bridge.state.key,
         'Content-Type': 'application/json',
     }
+    if active_session[0] is not None and path != '/connect':
+        headers['X-Nova-Session'] = active_session[0]
     data = json.dumps(body).encode('utf-8') if body is not None else None
     with urlopen(Request(url, method=method, headers=headers, data=data), timeout=2) as r:
         return json.loads(r.read())
@@ -32,6 +35,9 @@ def fake_browser():
     try:
         result = request('/connect', 'POST', {'protocol': 1})
         assert result['connected'] is True
+        assert result['mode'] == 'read_only'
+        assert len(result['session']) >= 32
+        active_session[0] = result['session']
         deadline = time.monotonic() + 4
         while time.monotonic() < deadline:
             task = request('/next')['task']

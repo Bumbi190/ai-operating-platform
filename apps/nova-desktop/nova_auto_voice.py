@@ -12,6 +12,7 @@ import re
 
 from nova_core import Action, NAV, normalized, route
 from nova_browser_nav import safe_browser_command
+from nova_native_tasks import safe_native_voice_action
 
 VOICE_QUIET_SECONDS = 3.0
 
@@ -135,7 +136,8 @@ class AutoVoiceState:
             text=cleaned,
             safe_navigation=(safe_auto_navigation(cleaned)
                              or safe_browser_command(cleaned)
-                             or safe_window_focus(cleaned)),
+                             or safe_window_focus(cleaned)
+                             or safe_native_voice_action(cleaned)),
         )
         self.cancel()
         return decision

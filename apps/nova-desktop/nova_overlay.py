@@ -24,6 +24,9 @@ from nova_placement import (
     read_saved_anchor, save_anchor, clear_anchor,
 )
 from nova_auto_voice import AutoVoiceState, safe_auto_navigation, safe_window_focus
+from nova_native_tasks import (
+    TaskPlan, parse_native_task, safe_native_voice_action, execute_native_step,
+)
 from nova_browser_nav import BrowserNavigator, safe_browser_command
 from nova_bridge import NovaBridge, PROD_ORIGIN, read_saved_preview_origin
 from nova_windows import list_known_windows, focus_known_window
@@ -195,6 +198,8 @@ class NovaOverlay:
         self.last_transcript = ""
         self.pending = ""
         self.pending_choices = []  # only visible inside the ⋯ menu
+        self.pending_native_plan: TaskPlan | None = None
+        self.native_task_epoch = 0
         self.history: list[tuple[str, str]] = []  # session UI trace, not AI memory
         self._atlas_login_opened = False  # explicit SSO sign-in before pairing key
         self._voice_request_id = 0
@@ -808,7 +813,13 @@ class NovaOverlay:
                     if (self._focus_guard.has_focus(self.root, self.command)
                             and self.command.get("1.0", "end-1c").strip() == decision.text):
                         if decision.safe_navigation is not None:
-                            self._append("step", "Nova: Röstkommando mottaget · öppnar godkänd sida.")
+                            if decision.safe_navigation.kind == "native_read":
+                                note = "Nova: Röstkommando mottaget · läser lokal projektinformation."
+                            elif decision.safe_navigation.kind == "native_preview":
+                                note = "Nova: Röstkommando mottaget · visar plan för godkännande."
+                            else:
+                                note = "Nova: Röstkommando mottaget · kontrollerar navigering."
+                            self._append("step", note)
                         else:
                             self._append("step", "Nova: Röstkommando mottaget automatiskt · granskar behörighet.")
                         self.send(from_voice=True, safe_voice_action=decision.safe_navigation)
@@ -1010,6 +1021,70 @@ class NovaOverlay:
             ])
             self._phase("godkannande", "Kommandot mottaget · kräver en separat behörighet")
 
+    def _present_native_plan(self, plan: TaskPlan):
+        """Review multi-step navigation; read-only local diagnostics run directly.
+
+        This never interprets Atlas prose as an executable command. Only the
+        strict native parser may create these allowlisted steps.
+        """
+        if not plan.steps:
+            return
+        if plan.requires_approval:
+            self.pending_native_plan = plan
+            lines = "\n".join(
+                f"  {i}. {step.description}" for i, step in enumerate(plan.steps, 1)
+            )
+            self._append("nova",
+                         "Nova: Jag har förberett en lokal navigeringsplan. "
+                         "Jag gör inget förrän du godkänner den via ⋯:\n" + lines)
+            self._choices([
+                (f"Godkänn {len(plan.steps)} öppningar", self._approve_native_plan),
+                ("Avbryt planen", self._cancel_native_plan),
+            ])
+            self._phase("godkannande", "Plan klar · välj Godkänn via ⋯")
+        else:
+            self._execute_native_plan(plan)
+
+    def _cancel_native_plan(self):
+        self.native_task_epoch += 1
+        self.pending_native_plan = None
+        self._choices([])
+        self._append("warn", "Nova: Planen avbröts innan nästa steg. "
+                            "Redan öppnade fönster ändras inte tillbaka.")
+        self._phase("stoppad", "Lokal arbetsplan avbruten")
+
+    def _approve_native_plan(self):
+        plan = self.pending_native_plan
+        if plan is None:
+            return
+        self.pending_native_plan = None
+        self._choices([])
+        self._execute_native_plan(plan)
+
+    def _execute_native_plan(self, plan: TaskPlan):
+        self.native_task_epoch += 1
+        epoch = self.native_task_epoch
+        self._phase("navigerar", "Nova arbetar · enbart godkända lokala steg")
+        self._execute_native_step(plan, 0, epoch)
+
+    def _execute_native_step(self, plan: TaskPlan, index: int, epoch: int):
+        if self.closed or epoch != self.native_task_epoch:
+            return
+        step = plan.steps[index]
+        self._append("step", f"  ↳ Steg {index + 1}/{len(plan.steps)}: {step.description}")
+        result = execute_native_step(step)
+        self._append("ok" if result.success else "warn", "Nova: " + result.text)
+        if not result.success:
+            self._phase("godkannande", "Steget misslyckades · inga fler steg")
+            return
+        if index + 1 < len(plan.steps):
+            # Each dispatch is visible; Stop cancels only not-yet-issued steps.
+            self.root.after(
+                500, lambda: self._execute_native_step(plan, index + 1, epoch)
+            )
+        else:
+            self._phase("klar", "Lokal arbetsplan färdig · resultat redovisat")
+
     def send(self, *, from_voice: bool = False, safe_voice_action=None):
         if not self.expanded:
             self.expand(False)
@@ -1018,6 +1093,9 @@ class NovaOverlay:
             self._phase("redo", "Skriv eller diktera vad jag ska göra")
             return
         self.task_epoch += 1
+        # A new user instruction cancels only steps not yet dispatched.
+        self.native_task_epoch += 1
+        self.pending_native_plan = None
         # Manual or automatic Send must clear the one-shot voice state.
         self._auto_voice.cancel()
         # A quick Enter must not start dictation later from a pending shortcut.
@@ -1033,11 +1111,24 @@ class NovaOverlay:
             # never reach arbitrary local UI or shell execution.
             if (safe_voice_action is None or
                     (safe_auto_navigation(text) or safe_browser_command(text)
-                     or safe_window_focus(text)) != safe_voice_action):
+                     or safe_window_focus(text)
+                     or safe_native_voice_action(text)) != safe_voice_action):
                 self._received_voice_without_navigation(text)
+                return
+            if safe_voice_action.kind in ("native_read", "native_preview"):
+                plan = parse_native_task(text)
+                if plan is None or (plan.requires_approval !=
+                                    (safe_voice_action.kind == "native_preview")):
+                    self._received_voice_without_navigation(text)
+                    return
+                self._present_native_plan(plan)
                 return
             action = safe_voice_action
         else:
+            plan = parse_native_task(text)
+            if plan is not None:
+                self._present_native_plan(plan)
+                return
             folder = public_project_command(text)
             if folder:
                 self._open_project_folder(folder)
@@ -1120,6 +1211,8 @@ class NovaOverlay:
     def stop(self):
         self._voice_request_id += 1
         self._auto_voice.cancel()
+        self.native_task_epoch += 1
+        self.pending_native_plan = None
         self.bridge.state.cancel()
         self.task_epoch += 1
         self._choices([])
@@ -1130,6 +1223,8 @@ class NovaOverlay:
 
     def quit(self):
         self.closed = True
+        self.native_task_epoch += 1
+        self.pending_native_plan = None
         self._auto_voice.cancel()
         self.listener.stop()
         self.bridge.stop()

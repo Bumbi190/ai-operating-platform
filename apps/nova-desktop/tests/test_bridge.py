@@ -1,9 +1,11 @@
 import json
+from pathlib import Path
+import tempfile
 import unittest
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from nova_bridge import NovaBridge, PROD_ORIGIN, validate_pairing_origin
+from nova_bridge import NovaBridge, PROD_ORIGIN, validate_pairing_origin, read_saved_preview_origin
 
 
 class BridgeTests(unittest.TestCase):
@@ -23,7 +25,13 @@ class BridgeTests(unittest.TestCase):
         try:
             with urlopen(req, timeout=2) as response:
                 value = response.read()
-                return response.status, json.loads(value) if value else {}, dict(response.headers)
+                payload = json.loads(value) if value else {}
+                # Protocol v2: only explicitly paired browser sessions can
+                # consume tasks or send responses. Keep the original test
+                # coverage while adopting the new client handshake.
+                if path == "/connect" and method == "POST" and response.status == 200 and headers is self.good:
+                    self.good["X-Nova-Session"] = payload["session"]
+                return response.status, payload, dict(response.headers)
         except HTTPError as e:
             value = e.read()
             return e.code, json.loads(value) if value else {}, dict(e.headers)
@@ -75,11 +83,28 @@ class BridgeTests(unittest.TestCase):
         self.assertFalse(self.bridge.state.online())
         self.assertEqual(self.request("/next", headers=self.good)[0], 403)
         rotated = {"Origin": preview, "X-Nova-Token": self.bridge.state.key}
-        self.assertEqual(self.request("/connect", "POST", rotated, {"protocol": 1})[0], 200)
+        pairing = self.request("/connect", "POST", rotated, {"protocol": 1})
+        self.assertEqual(pairing[0], 200)
+        rotated["X-Nova-Session"] = pairing[1]["session"]
         self.assertEqual(self.request("/next", headers=rotated)[0], 200)
         self.assertTrue(self.bridge.pairing_url().startswith(preview + "/nova-bridge#"))
         with self.assertRaises(ValueError):
             self.bridge.pairing_url(PROD_ORIGIN)
+
+    def test_locally_saved_preview_is_validated_without_secrets(self):
+        preview = "https://ai-operating-platform-web-git-feat-no-74f42c-bumbi190s-projects.vercel.app"
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "preview-origin.txt"
+            self.assertIsNone(read_saved_preview_origin(str(path)))
+            for rejected in (
+                "https://attacker.invalid", "http://omniraos.se",
+                "https://omniraos.se", preview + "/nova-bridge#key=secret",
+                "x" * 513,
+            ):
+                path.write_text(rejected, encoding="utf-8")
+                self.assertIsNone(read_saved_preview_origin(str(path)))
+            path.write_text(preview + "\n", encoding="utf-8")
+            self.assertEqual(read_saved_preview_origin(str(path)), preview)
 
     def test_readonly_task_lifecycle(self):
         self.assertFalse(self.bridge.state.online())

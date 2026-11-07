@@ -50,6 +50,23 @@ def validate_pairing_origin(origin: str) -> str:
     raise ValueError("Not an authorized Omnira preview domain")
 
 
+def read_saved_preview_origin(path: str) -> str | None:
+    """Load a locally approved preview host, never a key or account credential.
+
+    Invalid, missing, oversized or production-only values are ignored. The
+    operator still has to authenticate and click Connect in the browser.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as stream:
+            value = stream.read(512)
+        if len(value) > 255:
+            return None
+        approved = validate_pairing_origin(value.strip())
+        return approved if approved != PROD_ORIGIN else None
+    except (OSError, UnicodeError, ValueError):
+        return None
+
+
 @dataclass
 class Task:
     id: str
@@ -68,6 +85,7 @@ class BridgeState:
         self.task: Task | None = None
         self.connected_at = 0.0
         self.last_seen = 0.0
+        self.session: str | None = None  # independent random token for one active browser tab
         self.requests_at: list[float] = []
 
     def switch_origin(self, origin: str) -> str:
@@ -78,6 +96,7 @@ class BridgeState:
             self.key = secrets.token_urlsafe(32)
             self.connected_at = 0.0
             self.last_seen = 0.0
+            self.session = None
             self.task = None
             # Drop stale events that belonged to the earlier pairing.
             while not self.events.empty():
@@ -87,19 +106,58 @@ class BridgeState:
                     break
         return approved
 
+    def _expire_stale_locked(self, now: float) -> None:
+        """Fail an orphaned task once when the browser heartbeat disappears.
+
+        Called under self.lock by all session entry points. Otherwise an
+        executing task could remain stuck forever after its browser tab closes.
+        """
+        if not self.connected_at or now - self.last_seen < STALE_AFTER:
+            return
+        self.connected_at = 0.0
+        self.session = None
+        if self.task and self.task.state in ("pending", "executing"):
+            self.task.state = "failed"
+            self.events.put({
+                "kind": "error",
+                "id": self.task.id,
+                "text": "Atlas-kopplingen försvann. Anslut webbläsaren igen.",
+            })
+
     def online(self) -> bool:
         with self.lock:
-            return self.connected_at > 0 and (time.monotonic() - self.last_seen) < STALE_AFTER
+            self._expire_stale_locked(time.monotonic())
+            return self.connected_at > 0
 
     def heartbeat(self):
         with self.lock:
             self.last_seen = time.monotonic()
 
-    def connect(self):
+    def connect(self) -> str:
+        """Explicit browser pairing returns a new one-tab session capability.
+
+        The shared URL fragment key alone cannot read tasks or post results
+        after pairing. A later explicit pairing invalidates this session.
+        """
         with self.lock:
-            self.connected_at = time.monotonic()
-            self.last_seen = self.connected_at
+            now = time.monotonic()
+            self._expire_stale_locked(now)
+            if self.task and self.task.state in ("pending", "executing"):
+                # A new browser pairing replaces the former one. Any text
+                # arriving from the former task is rejected by add_event.
+                self.task.state = "canceled"
+                self.events.put({"kind": "canceled", "id": self.task.id})
+            self.session = secrets.token_urlsafe(32)
+            self.connected_at = now
+            self.last_seen = now
             self.events.put({"kind": "connected"})
+            return self.session
+
+    def valid_session(self, value: str | None) -> bool:
+        with self.lock:
+            if not self.online() or not self.session or not isinstance(value, str):
+                return False
+            return secrets.compare_digest(value, self.session)
 
     def enqueue(self, text: str) -> tuple[str | None, str]:
         if not isinstance(text, str) or not 0 < len(text.strip()) <= MAX_PROMPT_CHARS:
@@ -120,6 +178,8 @@ class BridgeState:
 
     def next(self) -> dict:
         with self.lock:
+            if not self.online():
+                return {}
             self.heartbeat()
             t = self.task
             if t and t.state == "pending":
@@ -170,7 +230,9 @@ class BridgeState:
 
     def task_state(self, task_id: str) -> str:
         with self.lock:
-            self.heartbeat()
+            connected = self.online()
+            if connected:
+                self.heartbeat()
             if not self.task or self.task.id != task_id:
                 return "unknown"
             if self.task.state == "executing" and time.monotonic() - self.task.issued > TASK_TIMEOUT:
@@ -198,7 +260,7 @@ def create_handler(state: BridgeState):
             if self.origin_ok():
                 self.send_header("Access-Control-Allow-Origin", self.headers["Origin"])
                 self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-                self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Nova-Token")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Nova-Token, X-Nova-Session")
                 self.send_header("Vary", "Origin")
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
@@ -216,6 +278,11 @@ def create_handler(state: BridgeState):
             return (self.host_ok() and self.origin_ok()
                     and secrets.compare_digest(self.headers.get("X-Nova-Token", ""), state.key))
 
+        def paired(self) -> bool:
+            return self.authorized() and state.valid_session(
+                self.headers.get("X-Nova-Session")
+            )
+
         def endpoint(self):
             return urlsplit(self.path).path
 
@@ -232,13 +299,21 @@ def create_handler(state: BridgeState):
             if not self.authorized():
                 self.send_json(403, {"error": "Not authorized"})
                 return
-            if self.endpoint() == "/next":
-                self.send_json(200, {"task": state.next()})
-            elif self.endpoint() == "/status":
-                task_id = urlsplit(self.path).query
-                self.send_json(200, {"state": state.task_state(task_id)})
-            else:
+            endpoint = self.endpoint()
+            if endpoint not in ("/next", "/status"):
                 self.send_json(404, {"error": "Unknown route"})
+                return
+            # Hold the SAME lock for authentication and the state operation:
+            # a replacement tab cannot rotate session between the two.
+            with state.lock:
+                if not state.valid_session(self.headers.get("X-Nova-Session")):
+                    response = (403, {"error": "Browser session expired or replaced"})
+                elif endpoint == "/next":
+                    response = (200, {"task": state.next()})
+                else:
+                    task_id = urlsplit(self.path).query
+                    response = (200, {"state": state.task_state(task_id)})
+            self.send_json(*response)
 
         def read_data(self, limit: int) -> dict | None:
             try:
@@ -275,14 +350,24 @@ def create_handler(state: BridgeState):
                 if data.get("protocol") != 1:
                     self.send_json(400, {"error": "Unsupported protocol"})
                     return
-                state.connect()
-                self.send_json(200, {"connected": True, "mode": "read_only"})
+                session = state.connect()
+                self.send_json(200, {
+                    "connected": True, "mode": "read_only", "session": session,
+                })
             else:
-                if not state.online():
-                    self.send_json(409, {"error": "Not connected"})
-                    return
-                accepted, message = state.add_event(data)
-                self.send_json(200 if accepted else 409, {"ok": accepted, "message": message})
+                # Validate the browser session atomically with accepting a
+                # chunk. No stale session can sneak a late reply through
+                # while a second browser tab takes ownership.
+                with state.lock:
+                    if not state.valid_session(self.headers.get("X-Nova-Session")):
+                        response = (403, {"error": "Browser session expired or replaced"})
+                    else:
+                        accepted, message = state.add_event(data)
+                        response = (
+                            200 if accepted else 409,
+                            {"ok": accepted, "message": message},
+                        )
+                self.send_json(*response)
 
     return RelayHandler
 

@@ -13,15 +13,19 @@ ui = NovaOverlay()
 ui.expand(False)
 events = []
 failure = []
+completed = [False]
+active_session = [None]  # ephemeral, per-test browser session; never persisted
 
 
 def request(path, method='GET', body=None):
     url = 'http://127.0.0.1:' + str(ui.bridge.port) + path
     headers = {
-        'Origin': 'https://omniraos.se',
+        'Origin': next(iter(ui.bridge.state.origins)),
         'X-Nova-Token': ui.bridge.state.key,
         'Content-Type': 'application/json',
     }
+    if active_session[0] is not None and path != '/connect':
+        headers['X-Nova-Session'] = active_session[0]
     data = json.dumps(body).encode('utf-8') if body is not None else None
     with urlopen(Request(url, method=method, headers=headers, data=data), timeout=2) as r:
         return json.loads(r.read())
@@ -31,6 +35,9 @@ def fake_browser():
     try:
         result = request('/connect', 'POST', {'protocol': 1})
         assert result['connected'] is True
+        assert result['mode'] == 'read_only'
+        assert len(result['session']) >= 32
+        active_session[0] = result['session']
         deadline = time.monotonic() + 4
         while time.monotonic() < deadline:
             task = request('/next')['task']
@@ -71,7 +78,11 @@ def check():
         ui.expand(False)
         assert any('Simulerat Atlas-svar utan verktyg.' in msg
                    for _kind, msg in ui.history)
+        completed[0] = True
         print('LOCAL_RELAY_UI_PASS: paired / queued / text / done / history', flush=True)
+    except Exception as exc:
+        failure.append('UI assertion failed: ' + repr(exc))
+        print('LOCAL_RELAY_UI_FAIL: ' + repr(exc), file=sys.stderr, flush=True)
     finally:
         ui.quit()
 
@@ -81,3 +92,5 @@ ui.root.after(1500, check)
 ui.root.after(3500, lambda: ui.quit() if not ui.closed else None)
 ui.root.mainloop()
 worker.join(timeout=1)
+if failure or not completed[0]:
+    raise SystemExit(1)

@@ -88,6 +88,21 @@ Windows session and is available via **Ctrl+Alt+Space**.
 - For review, the local client does not call an arbitrary code agent, shell,
   LLM service, social API or email API.
 
+## Verified preview selection (Windows)
+
+The protected and READY Vercel build for commit `bea226e` is:
+`https://ai-operating-platform-2vteosw04-bumbi190s-projects.vercel.app`.
+
+On the stationära PC the **origin only** may be stored at
+`%LOCALAPPDATA%\Omnira\Nova\preview-origin.txt`; no tokens or account
+credentials belong in that file. Nova validates it against the Omnira
+preview hostname allowlist before using it. The browser must still sign in
+and the operator must click **Anslut** for each fresh desktop session.
+
+Use the right-click bubble menu `Välj skyddad testmiljö` to switch
+to a different verified build. Switching rotates the temporary pairing
+key and invalidates the previous browser session.
+
 ## Run / test
 
 Desktop shortcut: `Nova Desktop (Pilot).lnk`, on user's OneDrive desktop.

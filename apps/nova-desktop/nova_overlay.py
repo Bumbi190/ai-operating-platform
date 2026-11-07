@@ -9,13 +9,14 @@ import ctypes
 from ctypes import wintypes
 import math
 import os
+from pathlib import Path
 import queue
 import tkinter as tk
 from tkinter import font as tkfont, simpledialog
 import webbrowser
 
 from nova_core import HotkeyListener, URLS, APP_SHORTCUTS, route, normalized
-from nova_bridge import NovaBridge, PROD_ORIGIN
+from nova_bridge import NovaBridge, PROD_ORIGIN, read_saved_preview_origin
 from nova_windows import list_known_windows, focus_known_window
 
 
@@ -98,6 +99,15 @@ class NovaOverlay:
         self.events: queue.Queue[str] = queue.Queue()
         self.listener = HotkeyListener(self.events)
         self.bridge = NovaBridge()
+        # Only a verified local HTTPS preview host is persisted (never tokens).
+        # A missing or invalid preference keeps Nova disconnected by default.
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        self.preview_file = (Path(local_app_data) / "Omnira" / "Nova" / "preview-origin.txt"
+                             if local_app_data else None)
+        approved_preview = (read_saved_preview_origin(str(self.preview_file))
+                            if self.preview_file else None)
+        if approved_preview:
+            self.bridge.state.switch_origin(approved_preview)
         self.bridge.start()
         self.live_reply_id = None
         self.live_reply_text = ''
@@ -352,6 +362,13 @@ class NovaOverlay:
             self._append("warn", "Nova: Testadressen avvisades: " + str(exc))
             self._phase("godkannande", "Ange en godkänd Omnira-preview")
             return
+        # The origin only is safe to save locally. Never persist the key.
+        if self.preview_file:
+            try:
+                self.preview_file.parent.mkdir(parents=True, exist_ok=True)
+                self.preview_file.write_text(approved + "\n", encoding="utf-8")
+            except OSError:
+                self._append("warn", "Nova: Testmiljön valdes, men kunde inte sparas för nästa start.")
         self._append("ok", "Nova: Testmiljö vald: " + approved + ". Tidigare parning återkallad.")
         self.connect_atlas()
 
@@ -371,8 +388,8 @@ class NovaOverlay:
             if not webbrowser.open(self.bridge.pairing_url(), new=2):
                 self._append("warn", "Nova: Webbläsaren kunde inte öppna parningssidan.")
             else:
-                self._append("warn", "Obs: parningssidan finns just nu endast i utvecklingsbranch. " +
-                             "Om du ser en saknad sida måste ändringen publiceras först.")
+                self._append("step", "Nova: Skyddad preview öppnad. Logga in och välj Anslut. " +
+                             "Novas lokala parningsnyckel sparas inte på disk.")
         except Exception as exc:
             self._append("warn", "Nova: Kopplingen kunde inte initieras: " + str(exc))
 

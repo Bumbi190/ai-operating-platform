@@ -30,6 +30,8 @@ URLS = {
 }
 # Verified on the Windows PC 2026-11-06. Missing shortcuts fail closed.
 APP_SHORTCUTS = {
+    "brave": os.path.join(os.environ.get("PROGRAMDATA", ""), "Microsoft",
+                          "Windows", "Start Menu", "Programs", "Brave.lnk"),
     "vscode": os.path.join(os.environ.get("APPDATA", ""), "Microsoft", "Windows",
                            "Start Menu", "Programs", "Visual Studio Code", "Visual Studio Code.lnk"),
     "chrome": os.path.join(os.environ.get("PROGRAMDATA", ""), "Microsoft", "Windows",
@@ -97,6 +99,7 @@ def route(text: str) -> Action:
                 return Action("focus", key, "Växlar till " + label)
     if NAV.search(value):
         for pattern, key, description in (
+            (r"\bbrave\b", "brave", "Startar Brave."),
             (r"\b(visual studio code|vs ?code|kodredigerare)\b", "vscode", "Startar Visual Studio Code."),
             (r"\bfilezilla\b", "filezilla", "Startar FileZilla."),
             (r"\b(epic|epic games)\b", "epic", "Startar Epic Games Launcher."),

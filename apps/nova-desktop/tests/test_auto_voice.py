@@ -1,4 +1,4 @@
-"""One-shot speech auto-dispatch: ONLY exact allowlisted safe navigation."""
+"""Voice auto-SEND after 3s: only exact allowlisted navigation may execute."""
 import unittest
 
 from nova_auto_voice import AutoVoiceState, safe_auto_navigation
@@ -78,6 +78,35 @@ class AutoVoiceTests(unittest.TestCase):
         self.assertTrue(state.armed)
         self.assertIsNone(state.observe("Öppna Facebook", 101))  # changed, reset
         self.assertIsNotNone(state.observe("Öppna Facebook", 102.2))
+
+    def test_auto_submits_general_phrase_after_three_seconds_for_review(self):
+        state = AutoVoiceState()
+        self.assertEqual(state.quiet_seconds, 3.0)
+        state.arm("")
+        self.assertIsNone(state.observe_submission("Öppna Handlarbörsens preview", 1.0))
+        self.assertIsNone(state.observe_submission("Öppna Handlarbörsens preview", 3.99))
+        decision = state.observe_submission("Öppna Handlarbörsens preview", 4.01)
+        self.assertIsNotNone(decision)
+        self.assertIsNone(decision.safe_navigation)
+        self.assertEqual(decision.text, "Öppna Handlarbörsens preview")
+        self.assertFalse(state.armed)
+        self.assertIsNone(state.observe_submission("Öppna Handlarbörsens preview", 300))
+
+    def test_auto_submits_mutation_as_review_only(self):
+        state = AutoVoiceState()
+        state.arm("")
+        self.assertIsNone(state.observe_submission("Publicera på Facebook", 1.0))
+        decision = state.observe_submission("Publicera på Facebook", 5.0)
+        self.assertIsNone(decision.safe_navigation)
+        self.assertEqual(decision.text, "Publicera på Facebook")
+
+    def test_auto_navigation_decision_is_one_shot(self):
+        state = AutoVoiceState()
+        state.arm("")
+        state.observe_submission("Nova öppna Facebook", 1.0)
+        decision = state.observe_submission("Nova öppna Facebook", 4.02)
+        self.assertEqual(decision.safe_navigation.url, URLS["facebook"])
+        self.assertIsNone(state.observe_submission("Nova öppna Facebook", 9.0))
 
     def test_cancel_drops_pending_work(self):
         state = AutoVoiceState(quiet_seconds=0.3)

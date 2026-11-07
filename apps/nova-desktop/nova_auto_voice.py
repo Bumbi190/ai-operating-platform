@@ -12,7 +12,7 @@ import re
 
 from nova_core import Action, NAV, normalized, route
 
-VOICE_QUIET_SECONDS = 2.6
+VOICE_QUIET_SECONDS = 3.0
 
 # Deliberately tiny, explicit utterance grammar. A command with conjunctions,
 # secondary instructions, or arbitrary URL text will not match in full.
@@ -48,9 +48,16 @@ def safe_auto_navigation(text: str) -> Action | None:
     return selected
 
 
+@dataclass(frozen=True)
+class VoiceDecision:
+    """Receiving speech is automatic; executing any side effect is separate."""
+    text: str
+    safe_navigation: Action | None
+
+
 @dataclass
 class AutoVoiceState:
-    """State machine: arm -> observe changes -> silence -> one safe action."""
+    """State machine: arm -> observe changes -> quiet text -> one submission."""
 
     quiet_seconds: float = VOICE_QUIET_SECONDS
     armed: bool = False
@@ -72,23 +79,44 @@ class AutoVoiceState:
         self.armed = False
         self.completed = True
 
-    def observe(self, text: str, now: float) -> Action | None:
+    def _stabilized(self, text: str, now: float) -> bool:
         if not self.armed or self.completed:
-            return None
+            return False
         if text != self.latest:
             self.latest = text
             self.last_change_at = now
             self.saw_new_text = self.saw_new_text or text != self.baseline
-            return None
-        if not self.saw_new_text or self.last_change_at is None:
-            return None
-        if now - self.last_change_at < self.quiet_seconds:
+            return False
+        return bool(
+            self.saw_new_text
+            and self.last_change_at is not None
+            and now - self.last_change_at >= self.quiet_seconds
+        )
+
+    def observe(self, text: str, now: float) -> Action | None:
+        """Compatibility: previous safe-navigation-only interface."""
+        if not self._stabilized(text, now):
             return None
         action = safe_auto_navigation(text)
-        if action is None:
-            # Do not arm a general chat/agent executor. The operator can
-            # manually submit this complex or unrecognized request.
-            return None
-        self.completed = True
-        self.armed = False
+        if action is not None:
+            self.cancel()
         return action
+
+    def observe_submission(self, text: str, now: float) -> VoiceDecision | None:
+        """Auto-SEND one transcribed phrase after ~3s, but never auto-authorize.
+
+        A safe navigation is eligible for local execution. Other phrases are
+        only passed to a read-only Atlas question or a pending/manual review
+        state. No tools, email sends or publishing are granted here.
+        """
+        if not self._stabilized(text, now):
+            return None
+        cleaned = text.strip()
+        if len(cleaned) < 3:
+            return None
+        decision = VoiceDecision(
+            text=cleaned,
+            safe_navigation=safe_auto_navigation(cleaned),
+        )
+        self.cancel()
+        return decision

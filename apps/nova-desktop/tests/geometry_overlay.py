@@ -51,7 +51,7 @@ def check():
                        if menu.type(i) == "command"]
         for label in ("Öppna Atlas", "Kopiera igen", "Avbryt",
                       "Projektmappar", "Öppna fönster", "Anslut Atlas",
-                      "Flytta Nova nära muspekaren",
+                      "Flytta Nova till aktivt program",
                       "Stoppa pågående uppdrag (Ctrl+.)"):
             assert label in menu_labels, (label, menu_labels)
         menu.destroy()

@@ -1,4 +1,4 @@
-# Nova Desktop — Omnira Premium + one-shot voice commands (pilot v6)
+# Nova Desktop — Omnira Premium + auto-Send and app-aware positioning (pilot v7)
 
 Windows-native companion **to the existing Omnira/Atlas**, not a separate
 AI, memory database, workflow engine or agent. It runs in the logged-in
@@ -13,16 +13,17 @@ Windows session and is available via **Ctrl+Alt+Space**.
   96%. Change it during the session under **⋯ → Glas-effekt**: 6/12/16/22%
   background transparency. Tkinter opacity applies to the whole window,
   including text. This is simulated glass, **not genuine Windows Acrylic blur**.
-- Transparent keyed corners; round Nova bubble near the lower-right of
-  the **current pointer work zone**. On 5120px ultra-wide screens this uses a
-  1440x960 visible zone instead of snapping to the absolute monitor edge, so
-  the entire chat panel remains reachable even with a cropped work viewport.
-  Click the N bubble to expand. The whole 442x600 panel is monitor-clamped.
-- Drag the N bubble or the expanded chat's title/header to reposition it.
-  Its right/bottom anchor survives collapse and expand during the current
-  session. From the ⋯ or right-click menu choose *Flytta Nova nära muspekaren*
-  to reset it. Without a manual anchor the global hotkey follows the pointer.
-  Manual placement does not yet persist across application restarts.
+- The 94px orb and 442x600 chat panel now dock relative to the **active
+  application window**, not the 5120px desktop's far-right edge.
+  Nova only inspects window rectangle/process ID (no window content).
+  The app-relative zone is at most 520x720; fallback is the mouse's monitor.
+  Reposition via **⋯ → Flytta Nova till aktivt program** or the bubble's
+  right-click menu.
+- Drag the N orb or title/header to manually pin Nova. Only the two numeric
+  coordinates are stored under %LOCALAPPDATA%/Omnira/Nova/position.json to
+  preserve the position across app restarts; explicit redocking clears it.
+  No screenshots, window titles, credentials or sensitive data are persisted.
+  Display coordinates are clamped to Windows' work area.
 - **Ctrl+Alt+Space** opens the panel and attempts Windows voice typing
   (Win+H) after Ctrl/Alt/Space have been released. Before sending Win+H,
   Nova MUST verify both that her own window is the Windows foreground window
@@ -34,37 +35,39 @@ Windows session and is available via **Ctrl+Alt+Space**.
   Already-running Windows dictation may still follow later focus changes;
   stop dictation if you switch apps. Windows must display **Lyssnar**
   before speaking; a microphone and Swedish online recognition are required.
-  Hands-free wake-word and auto-submit-on-silence are NOT implemented.
+  Wake-word activation and microphone-based end-of-speech events are NOT
+  implemented. The automatic submission timer uses text stability only.
 - Minimal chat composer: **Prata** and **Skicka** are the only buttons below
   the text field. Enter sends, Shift+Enter creates a newline.
-- **Hands-free submission of safe voice navigation**: after a voice typing
-  session begins, Nova polls her own text widget (because Win+H dictation may
-  not generate Tk key events). If an exact allowlisted spoken navigation command
-  remains unchanged for **2.6 seconds**, Nova opens it once without Enter/Skicka.
-  Examples: `Hej Nova vill du öppna Facebook`, `Öppna Instagram`,
-  `Nova öppna Chrome`. This is *text stability*, not microphone audio silence
-  detection, and does not guarantee that Windows dictation has stopped.
-- Auto-open is voice-session-only, one-shot and available under
-  **⋯ → Auto-öppna säkra röstkommandon** (enabled by default).
-  General requests, social publishing, sending email, destructive actions,
-  unknown destinations, and multi-step instructions are NEVER auto-executed.
-  Review them and use explicit Send/Atlas approval instead. Closing Nova,
-  stopping a task, or pressing Send cancels the pending voice auto-open.
+- **Voice auto-Send**: once Win+H has started a voice session, Nova polls
+  her own text field and, after **3 seconds** of unchanged transcribed text,
+  automatically submits the utterance exactly once. No Enter/Skicka needed.
+  This is *text stability*, not true detected silence. Every new voice
+  session must be explicitly started with Ctrl+Alt+Space/Prata.
+- **Separation of send and execute:** exact allowlisted navigation requests
+  may immediately open a site/app. All other spoken tasks are submitted into
+  Nova for review (or forwarded to authenticated Atlas **read-only** when
+  connected). Unknown/multi-step, social publishing, email sending, payments,
+  and destructive requests **never auto-execute or write to the clipboard**.
+  Offline Atlas does not secretly gain Windows control. The ⋯ option
+  **Skicka röstkommandon efter 3 sekunder** can be disabled.
+  Closing Nova, stopping or manually sending cancels pending auto-Send.
 - Windows Win+H is an OS-wide online dictation service. If its microphone
   remains active after navigation, pause it with the Windows voice typing
   toolbar or a supported voice command. Nova cannot confirm microphone state
   from the standard-library Tk text widget.
 - Project folders, open windows, stop/cancel, Atlas pairing and contextual
   choices are behind the top-right **⋯** menu; Ctrl+. also stops a pending task.
-- The talk button opens Windows voice typing; review the transcript and press
-  Enter or Skicka. Voice typing is not a continuous hands-free agent yet.
+- The talk button starts Windows voice typing; when auto-Send is enabled
+  the one-shot transcript is submitted after the pause. Voice typing may
+  remain active afterward. It is NOT continuous hands-free conversation.
 - Visible text, replies and activity state. Stop cannot undo prior steps.
 - Known browser destinations: Omnira Atlas/planning/projects, Gmail,
   Handlarbörsen, Familje-Stunden, Outlook Web plus Facebook, Instagram,
   LinkedIn and Pinterest. Recognizes spoken requests such as "Nova kan du
   navigera mig till Facebook" and "Hej Nova, vill du öppna Facebook?".
-  The recognized text must still be sent with Enter/Skicka. Opening a page
-  does NOT grant general GUI
+  Text is auto-submitted after the three-second pause in voice mode. Opening a
+  page does NOT grant general GUI
   click/scroll control or permission to post/send anything.
 - Local program starts: Chrome, VS Code, Outlook Classic, FileZilla, Epic.
 - Explorer opens one of three verified project roots: Omnira, Handlarborsen,
@@ -73,8 +76,11 @@ Windows session and is available via **Ctrl+Alt+Space**.
   and can try to focus one of those windows (Windows can reject focus changes).
 - Session-only activity history survives collapse/expand, but is NOT a
   separate knowledge memory. All account access remains in Atlas or the browser.
-- Before browser pairing/deployment, complex instructions are copied to the
-  clipboard with an explicit option to open Atlas: manually paste and submit.
+- Unknown/complex commands are acknowledged within Nova. They do NOT
+  automatically copy to Windows clipboard or open Atlas. Use the explicit
+  **⋯ → Kopiera begäran** action if you want to transfer a pending request.
+  Atlas can advise via its authenticated read-only bridge but currently cannot
+  control arbitrary desktop apps outside Omnira.
 - A browser relay can stream authenticated Atlas replies back into the bubble.
   A READY, SSO-protected preview of the compatible web half is available from
   the separate `feat/nova-main-integration-20261106` branch. Live Atlas replies
@@ -145,9 +151,10 @@ Windows session and is available via **Ctrl+Alt+Space**.
 - Whitelisted app names only; window titles are never read.
 - Windows 11 dictation uses Microsoft's *online* speech service (Azure);
   it is **not** local/offline transcription. Windows controls microphone access.
-- Before pairing, complex text is temporarily copied to Windows clipboard
-  for manual Atlas paste. When paired, prompts are relayed via a local token
-  protected interface; cookies and Supabase tokens stay in the browser.
+- Pending complex commands are kept in Nova's session memory only; no
+  clipboard write happens without the operator explicitly choosing Copy.
+  When paired, queries are relayed read-only through the browser via a token
+  protected interface; account cookies and Supabase tokens stay in the browser.
 - The session key is in a temporary URL fragment for explicit browser pairing;
   this fragment is cleared from browser history by the bridge page. Browser
   extensions or other local processes may still see it. Do not dictate passwords.
@@ -176,7 +183,8 @@ python tests/smoke_close_keeps_hotkey.py  # X collapses, toggle reopens
 python tests/smoke_voice_atlas_ui.py  # mocked Win+H, static status, two-stage pairing
 python tests/smoke_focus_voice_safety.py  # foreground fail-closed; no real audio
 python tests/smoke_spoken_navigation.py  # allowlisted Facebook mock
-python tests/smoke_auto_voice_ui.py  # auto-submit after quiet text, unsafe stays manual
+python tests/smoke_auto_voice_ui.py  # 3-second auto-send, unsafe stays unexecuted
+python tests/smoke_app_docking.py  # actual 5120px/app bounds geometry fixture
 python -m unittest discover -s tests -p 'test_hotkey_host.py' -v
 python tests/geometry_overlay.py  # includes button bounds, opacity and hidden menu
 python tests/preview_overlay.py  # optional Pillow for visual QA only

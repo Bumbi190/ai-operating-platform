@@ -1,0 +1,9 @@
+{
+  "viewport": 390,
+  "before": 2,
+  "after": 1,
+  "sourceOnlyChanges": [
+    "apps/web/components/platform/vnext/HandlarborsenPosthogTraffic.tsx",
+    "apps/web/components/platform/vnext/HandlarborsenPosthogTraffic.module.css"
+  ]
+}

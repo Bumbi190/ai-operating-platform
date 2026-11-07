@@ -15,6 +15,7 @@ from tkinter import font as tkfont, simpledialog
 import webbrowser
 
 from nova_core import HotkeyListener, URLS, APP_SHORTCUTS, route, normalized
+from nova_hotkey_host import HostEventListener
 from nova_bridge import NovaBridge, PROD_ORIGIN
 from nova_windows import list_known_windows, focus_known_window
 from nova_theme import (
@@ -161,7 +162,9 @@ class NovaOverlay:
         self.root.protocol("WM_DELETE_WINDOW", self.collapse)
 
         self.events: queue.Queue[str] = queue.Queue()
-        self.listener = HotkeyListener(self.events)
+        self.listener = (HostEventListener(self.events)
+                         if os.environ.get("NOVA_EXTERNAL_HOTKEY") == "1"
+                         else HotkeyListener(self.events))
         self.bridge = NovaBridge()
         self.bridge.start()
         self.live_reply_id = None
@@ -190,6 +193,8 @@ class NovaOverlay:
         self.root.after(900, self._show_bridge_status)
         self.root.deiconify()
         self.root.lift()
+        if os.environ.get("NOVA_START_EXPANDED") == "1":
+            self.root.after(180, lambda: self.expand(listen=True))
 
     def _setup_fonts(self):
         self.h = ("Segoe UI Semibold", 12)
@@ -631,9 +636,12 @@ class NovaOverlay:
         try:
             while True:
                 event = self.events.get_nowait()
-                if event == "toggle":
-                    # Shortcuts open the bubble; already-expanded shortcut
-                    # intentionally returns to collapsed bubble.
+                if event == "open":
+                    if self._manual_anchor is None:
+                        self._redock_near_pointer()
+                    self.expand(listen=False)
+                elif event == "toggle":
+                    # A resident hotkey host survives even if the GUI exits.
                     if self.expanded:
                         self.collapse()
                     else:

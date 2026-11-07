@@ -1,4 +1,4 @@
-# Nova Desktop — Omnira Premium bubble + Atlas read-only relay (pilot v4)
+# Nova Desktop — Omnira Premium + Always-On Windows hotkey host (pilot v5)
 
 Windows-native companion **to the existing Omnira/Atlas**, not a separate
 AI, memory database, workflow engine or agent. It runs in the logged-in
@@ -46,9 +46,14 @@ Windows session and is available via **Ctrl+Alt+Space**.
 - A new *branch-only* browser relay can stream authenticated Atlas replies back
   into the bubble. Until the web half is deployed and paired, that capability
   is not operational on the live site.
-- Both **×** and **–** collapse the chat to the corner bubble and keep
-  the Windows-wide hotkey listener running. Full termination is only in
-  **⋯ → Avsluta Nova** or the bubble's right-click menu.
+- Both **×** and **–** collapse the chat to the corner bubble. An explicit
+  **⋯ → Avsluta Nova** closes the GUI, but the small resident hotkey host
+  stays alive. The NEXT Ctrl+Alt+Space relaunches Nova; there is no
+  requirement to use the desktop shortcut after closing the GUI.
+- A separate `nova_hotkey_host.py` owns the global Windows hotkey, and
+  `nova_desktop.py` receives safe open/toggle events. The two processes
+  are session-scoped (not a Windows system service or administrator task).
+  If Windows is locked/sleeping, desktop hotkeys do not work until unlocked.
 
 ## Atlas read-only relay (built in branch, not deployed)
 
@@ -103,12 +108,15 @@ Windows session and is available via **Ctrl+Alt+Space**.
 - The session key is in a temporary URL fragment for explicit browser pairing;
   this fragment is cleared from browser history by the bridge page. Browser
   extensions or other local processes may still see it. Do not dictate passwords.
-- Starts automatically when the operator logs in to Windows through a
-  per-user Startup shortcut (no elevated permissions or scheduled task).
-  The desktop shortcut starts the same premium script. If intentionally
-  terminated via **⋯ → Avsluta Nova**, restart from the desktop shortcut.
-  To disable autostart: Win+R → `shell:startup`, then remove
-  `Nova Desktop (Pilot).lnk`. No extra subscription installed.
+- The background **Nova Hotkey Host** starts automatically after Windows
+  login via a per-user Startup shortcut (no elevated permissions or scheduled
+  task). It launches the premium GUI once, then remains available even if
+  the GUI process exits. The desktop shortcut invokes the SAME singleton host
+  and opens Nova without spawning multiple copies.
+- To disable autostart: Win+R → `shell:startup`, remove
+  `Nova Desktop (Pilot).lnk`. To stop the guardian during this Windows session,
+  it must also be ended separately (for example in Task Manager), and then
+  Ctrl+Alt+Space will not work until it is restarted. No subscription installed.
 - For review, the local client does not call an arbitrary code agent, shell,
   LLM service, social API or email API.
 
@@ -121,7 +129,8 @@ Or double-click `start-nova.cmd`.
 cd apps/nova-desktop
 python -m unittest discover -s tests -p "test_*.py" -v
 python tests/smoke_overlay.py
-python tests/smoke_close_keeps_hotkey.py  # X collapses, listener stays alive
+python tests/smoke_close_keeps_hotkey.py  # X collapses, toggle reopens
+python -m unittest discover -s tests -p 'test_hotkey_host.py' -v
 python tests/geometry_overlay.py  # includes button bounds, opacity and hidden menu
 python tests/preview_overlay.py  # optional Pillow for visual QA only
 python tests/smoke_reposition.py  # ultrawide, resize and drag verification

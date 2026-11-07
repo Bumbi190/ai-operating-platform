@@ -3,6 +3,7 @@
 **Arbetsgren:** `feat/nova-main-integration-20261106`  
 **Bas:** senaste `origin/main` vid skapandet (2026-11-06).  
 **Miljö:** Endast stationära Hultgren; Mac orörd.
+**Skyddad preview:** `https://ai-operating-platform-2vteosw04-bumbi190s-projects.vercel.app` (Vercel READY, commit `bea226e`, SSO-skydd enligt projektinställningen).
 
 ## Genomfört lokalt
 
@@ -16,7 +17,7 @@
   Därför valideras hela Nova-requesten strikt *före* detta flöde.
 - Projektminne går genom Atlas befintliga tillståndsflaggor och projektisolering;
   saknas de ska Nova inte hitta på information.
-- Testat med 22 Python-funktionstester, browser-transportmock, TS-syntaxkontroll,
+- Testat med 23 Python-funktionstester, browser-transportmock, TS-syntaxkontroll,
   kontrollerade guardfunktioner och geometrikontroll av chattpanel.
 - `max_tokens` 900 för Nova-anslutningen; lokal gräns 10 frågor/5 minuter.
 
@@ -24,13 +25,15 @@
 
 1. Kontrollera enbart Nova-diffen mot senaste main; ingen ändring av andra
    pågående brancher och inga migreringar eller hemligheter i commit.
-2. Push enbart `feat/nova-main-integration-20261106` till GitHub.
-3. Vercel ska skapa en **preview** och aldrig lägga ut den på
-   `omniraos.se` eller `main`.
+2. Genomfört: featurebranchen `feat/nova-main-integration-20261106` pushad; ingen ändring i main.
+3. Genomfört: Vercel har skapat en **READY preview** av `bea226e`, separat
+   från `omniraos.se` och `main`.
 4. Kontrollera att den nya deploymenten visar rätt SHA, korrekt Vercel-projekt
    `ai-operating-platform-web`, status READY och aktivt SSO-skydd.
-5. Ange exakt HTTPS-preview-URL i Novas `Välj skyddad testmiljö`.
-   Tidigare lokal parning återkallas och nyckeln byts.
+5. På stationära sparas endast exakt HTTPS-preview-origin i
+   `%LOCALAPPDATA%\Omnira\Nova\preview-origin.txt`. Nova läser den efter
+   omstart och roterar sin parningsnyckel. Använd `Välj skyddad testmiljö`
+   endast om en ny testdeployment senare ska väljas.
 6. Logga in i förhandsversionen med ditt Omnira-konto och klicka **Anslut**.
    Ge enbart den verifierade preview-domänen Chromes `loopback-network`-tillstånd.
 7. Testa en ren läsfråga i Nova-bubblan och verifiera svaret i både

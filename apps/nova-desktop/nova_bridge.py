@@ -50,6 +50,23 @@ def validate_pairing_origin(origin: str) -> str:
     raise ValueError("Not an authorized Omnira preview domain")
 
 
+def read_saved_preview_origin(path: str) -> str | None:
+    """Load a locally approved preview host, never a key or account credential.
+
+    Invalid, missing, oversized or production-only values are ignored. The
+    operator still has to authenticate and click Connect in the browser.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as stream:
+            value = stream.read(512)
+        if len(value) > 255:
+            return None
+        approved = validate_pairing_origin(value.strip())
+        return approved if approved != PROD_ORIGIN else None
+    except (OSError, UnicodeError, ValueError):
+        return None
+
+
 @dataclass
 class Task:
     id: str

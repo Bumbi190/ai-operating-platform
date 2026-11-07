@@ -1,9 +1,11 @@
 import json
+from pathlib import Path
+import tempfile
 import unittest
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from nova_bridge import NovaBridge, PROD_ORIGIN, validate_pairing_origin
+from nova_bridge import NovaBridge, PROD_ORIGIN, validate_pairing_origin, read_saved_preview_origin
 
 
 class BridgeTests(unittest.TestCase):
@@ -80,6 +82,21 @@ class BridgeTests(unittest.TestCase):
         self.assertTrue(self.bridge.pairing_url().startswith(preview + "/nova-bridge#"))
         with self.assertRaises(ValueError):
             self.bridge.pairing_url(PROD_ORIGIN)
+
+    def test_locally_saved_preview_is_validated_without_secrets(self):
+        preview = "https://ai-operating-platform-web-git-feat-no-74f42c-bumbi190s-projects.vercel.app"
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "preview-origin.txt"
+            self.assertIsNone(read_saved_preview_origin(str(path)))
+            for rejected in (
+                "https://attacker.invalid", "http://omniraos.se",
+                "https://omniraos.se", preview + "/nova-bridge#key=secret",
+                "x" * 513,
+            ):
+                path.write_text(rejected, encoding="utf-8")
+                self.assertIsNone(read_saved_preview_origin(str(path)))
+            path.write_text(preview + "\n", encoding="utf-8")
+            self.assertEqual(read_saved_preview_origin(str(path)), preview)
 
     def test_readonly_task_lifecycle(self):
         self.assertFalse(self.bridge.state.online())

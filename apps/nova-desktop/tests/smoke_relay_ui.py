@@ -13,12 +13,13 @@ ui = NovaOverlay()
 ui.expand(False)
 events = []
 failure = []
+completed = [False]
 
 
 def request(path, method='GET', body=None):
     url = 'http://127.0.0.1:' + str(ui.bridge.port) + path
     headers = {
-        'Origin': 'https://omniraos.se',
+        'Origin': next(iter(ui.bridge.state.origins)),
         'X-Nova-Token': ui.bridge.state.key,
         'Content-Type': 'application/json',
     }
@@ -71,7 +72,11 @@ def check():
         ui.expand(False)
         assert any('Simulerat Atlas-svar utan verktyg.' in msg
                    for _kind, msg in ui.history)
+        completed[0] = True
         print('LOCAL_RELAY_UI_PASS: paired / queued / text / done / history', flush=True)
+    except Exception as exc:
+        failure.append('UI assertion failed: ' + repr(exc))
+        print('LOCAL_RELAY_UI_FAIL: ' + repr(exc), file=sys.stderr, flush=True)
     finally:
         ui.quit()
 
@@ -81,3 +86,5 @@ ui.root.after(1500, check)
 ui.root.after(3500, lambda: ui.quit() if not ui.closed else None)
 ui.root.mainloop()
 worker.join(timeout=1)
+if failure or not completed[0]:
+    raise SystemExit(1)

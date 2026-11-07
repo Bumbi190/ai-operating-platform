@@ -33,9 +33,13 @@ export default function NovaBridgePage() {
   const [lastPrompt, setLastPrompt] = useState('')
   const [lastAnswer, setLastAnswer] = useState('')
   const pairingRef = useRef<Pair | null>(null)
+  // A per-tab session returned only after explicit Connect. The URL-fragment
+  // key alone cannot consume tasks or publish results to the local bridge.
+  const sessionRef = useRef<string | null>(null)
   const stoppedRef = useRef(true)
   const turnsRef = useRef<ChatTurn[]>([])
   const pollRef = useRef(false)
+  const connectingRef = useRef(false)
   const abortRef = useRef<AbortController | null>(null)
   const atlasAbortRef = useRef<AbortController | null>(null)
 
@@ -50,6 +54,7 @@ export default function NovaBridgePage() {
       stoppedRef.current = true
       abortRef.current?.abort()
       atlasAbortRef.current?.abort()
+      sessionRef.current = null
     }
   }, [])
 
@@ -65,6 +70,9 @@ export default function NovaBridgePage() {
       headers: {
         'Content-Type': 'application/json',
         'X-Nova-Token': pairing.key,
+        ...(method === 'POST' && path === '/connect'
+          ? {}
+          : { 'X-Nova-Session': sessionRef.current ?? '' }),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     }
@@ -207,30 +215,48 @@ export default function NovaBridgePage() {
   }
 
   async function connect() {
-    if (!pairingRef.current) {
-      setPhase('failed')
-      setMessage('Ingen giltig parning. Klicka Koppla Atlas i Nova på din dator.')
-      return
-    }
-    if (pollRef.current) return
-    stoppedRef.current = false
-    setPhase('connecting')
-    setMessage('Ansluter till den lokala Nova-bubblan ...')
+    if (connectingRef.current) return
+    connectingRef.current = true
     try {
-      const result = await local<{ connected: boolean; mode: string }>(
-        '/connect', 'POST', { protocol: 1 })
-      if (!result.connected || result.mode !== 'read_only') {
-        throw new Error('Fel protokoll från lokal Nova')
+      if (!pairingRef.current) {
+        setPhase('failed')
+        setMessage('Ingen giltig parning. Klicka Koppla Atlas i Nova på din dator.')
+        return
       }
+      if (pollRef.current && !stoppedRef.current) return
+
+      setPhase('connecting')
+      setMessage('Ansluter till den lokala Nova-bubblan ...')
+
+      // After Pause, the previous polling loop may still be finishing a
+      // canceled network request. Do not silently discard an immediate
+      // reconnect click, or let two loops race for /next.
+      for (let i = 0; pollRef.current && i < 40; i += 1) {
+        await new Promise<void>(resolve => window.setTimeout(resolve, 100))
+      }
+      if (pollRef.current) {
+        throw new Error('Föregående koppling avslutas fortfarande. Försök igen.')
+      }
+      stoppedRef.current = false
+      const result = await local<{ connected: boolean; mode: string; session?: string }>(
+        '/connect', 'POST', { protocol: 1 })
+      if (!result.connected || result.mode !== 'read_only' ||
+          typeof result.session !== 'string' || !SAFE_PAIR.test(result.session)) {
+        throw new Error('Fel protokoll eller saknad sessionsnyckel från Nova')
+      }
+      sessionRef.current = result.session
       setPhase('paired')
       setMessage('Ansluten! Låt fliken vara öppen. Atlas kan svara i Nova-bubblan i läsläge.')
       void pollingLoop()
     } catch (error) {
       stoppedRef.current = true
+      sessionRef.current = null
       setPhase('failed')
       setMessage('Kopplingen misslyckades: ' +
                  (error instanceof Error ? error.message : 'okänt fel') +
                  '. Tillåt åtkomst till lokalt nätverk om Chrome frågar.')
+    } finally {
+      connectingRef.current = false
     }
   }
 
@@ -238,6 +264,7 @@ export default function NovaBridgePage() {
     stoppedRef.current = true
     abortRef.current?.abort()
     atlasAbortRef.current?.abort()
+    sessionRef.current = null
     setPhase('paused')
     setMessage('Kopplingen pausad. Inga nya frågor behandlas från bubblan.')
   }

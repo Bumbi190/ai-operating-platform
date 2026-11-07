@@ -25,7 +25,13 @@ class BridgeTests(unittest.TestCase):
         try:
             with urlopen(req, timeout=2) as response:
                 value = response.read()
-                return response.status, json.loads(value) if value else {}, dict(response.headers)
+                payload = json.loads(value) if value else {}
+                # Protocol v2: only explicitly paired browser sessions can
+                # consume tasks or send responses. Keep the original test
+                # coverage while adopting the new client handshake.
+                if path == "/connect" and method == "POST" and response.status == 200 and headers is self.good:
+                    self.good["X-Nova-Session"] = payload["session"]
+                return response.status, payload, dict(response.headers)
         except HTTPError as e:
             value = e.read()
             return e.code, json.loads(value) if value else {}, dict(e.headers)
@@ -77,7 +83,9 @@ class BridgeTests(unittest.TestCase):
         self.assertFalse(self.bridge.state.online())
         self.assertEqual(self.request("/next", headers=self.good)[0], 403)
         rotated = {"Origin": preview, "X-Nova-Token": self.bridge.state.key}
-        self.assertEqual(self.request("/connect", "POST", rotated, {"protocol": 1})[0], 200)
+        pairing = self.request("/connect", "POST", rotated, {"protocol": 1})
+        self.assertEqual(pairing[0], 200)
+        rotated["X-Nova-Session"] = pairing[1]["session"]
         self.assertEqual(self.request("/next", headers=rotated)[0], 200)
         self.assertTrue(self.bridge.pairing_url().startswith(preview + "/nova-bridge#"))
         with self.assertRaises(ValueError):

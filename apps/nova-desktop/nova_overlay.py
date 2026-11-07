@@ -23,7 +23,8 @@ from nova_placement import (
     foreground_window_rectangle, choose_working_zone,
     read_saved_anchor, save_anchor, clear_anchor,
 )
-from nova_auto_voice import AutoVoiceState, safe_auto_navigation
+from nova_auto_voice import AutoVoiceState, safe_auto_navigation, safe_window_focus
+from nova_browser_nav import BrowserNavigator, safe_browser_command
 from nova_bridge import NovaBridge, PROD_ORIGIN, read_saved_preview_origin
 from nova_windows import list_known_windows, focus_known_window
 from nova_theme import (
@@ -198,6 +199,7 @@ class NovaOverlay:
         self._atlas_login_opened = False  # explicit SSO sign-in before pairing key
         self._voice_request_id = 0
         self._auto_voice = AutoVoiceState()
+        self._browser = BrowserNavigator()
         self.auto_voice_enabled = tk.BooleanVar(value=True)
         self._focus_guard = ForegroundFocusGuard()
         self._last_context_rect = None
@@ -236,10 +238,9 @@ class NovaOverlay:
             child.destroy()
 
     def _remember_active_window(self):
-        """Remember the last other foreground app, even if Nova gains focus
-        before the hotkey event reaches the overlay process.
-        """
+        """Remember the last active browser HWND and work area without reading its content."""
         try:
+            self._browser.remember_foreground()
             candidate = foreground_window_rectangle()
             if candidate is not None:
                 cl, ct, cr, cb = candidate
@@ -761,8 +762,14 @@ class NovaOverlay:
                         self._redock_near_pointer()
                     self.expand(listen=False)
                 elif event == "toggle":
-                    # A resident hotkey host survives even if the GUI exits.
-                    if self.expanded:
+                    # After navigating in Brave, the browser (not Nova) has
+                    # focus. The NEXT hotkey must bring Nova back to listen,
+                    # not just collapse the still-visible overlay.
+                    nova_has_focus = (
+                        self.expanded and
+                        self._focus_guard.has_focus(self.root, self.command)
+                    )
+                    if nova_has_focus:
                         self.collapse()
                     else:
                         if self._manual_anchor is None:
@@ -1024,7 +1031,9 @@ class NovaOverlay:
         if from_voice:
             # A transcript that was not an exact allowlisted navigation must
             # never reach arbitrary local UI or shell execution.
-            if safe_voice_action is None or safe_auto_navigation(text) != safe_voice_action:
+            if (safe_voice_action is None or
+                    (safe_auto_navigation(text) or safe_browser_command(text)
+                     or safe_window_focus(text)) != safe_voice_action):
                 self._received_voice_without_navigation(text)
                 return
             action = safe_voice_action
@@ -1033,8 +1042,10 @@ class NovaOverlay:
             if folder:
                 self._open_project_folder(folder)
                 return
-            action = route(text)
-        if action.kind == "open":
+            action = safe_browser_command(text) or safe_window_focus(text) or route(text)
+        if action.kind in ("browser_control", "browser_focus"):
+            self._navigate_browser(action)
+        elif action.kind == "open":
             self._open_url(action.url, action.description)
         elif action.kind == "app":
             self._start_app(action)
@@ -1055,6 +1066,18 @@ class NovaOverlay:
                 self._handoff(text)
         else:
             self._phase("redo", "Skriv eller diktera ett kommando")
+
+    def _navigate_browser(self, action):
+        """Only allow safe, fixed browser shortcuts to a verified browser HWND."""
+        self._phase("navigerar", "Söker verifierat webbläsarfönster")
+        self._append("step", "  ↳ " + action.description)
+        try:
+            outcome = self._browser.execute(action)
+            self._append("ok" if outcome.accepted else "warn", "Nova: " + outcome.message)
+            self._phase("klar" if outcome.accepted else "godkannande", outcome.message)
+        except (OSError, ValueError, AttributeError) as exc:
+            self._append("warn", "Nova: Webbläsarnavigeringen misslyckades: " + str(exc))
+            self._phase("godkannande", "Ingen navigeringsåtgärd utförd")
 
     def show_windows(self):
         self.expand(False) if not self.expanded else None

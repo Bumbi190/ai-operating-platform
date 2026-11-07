@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import re
 
 from nova_core import Action, NAV, normalized, route
+from nova_browser_nav import safe_browser_command
 
 VOICE_QUIET_SECONDS = 3.0
 
@@ -19,7 +20,7 @@ VOICE_QUIET_SECONDS = 3.0
 SAFE_NAV_TARGETS = frozenset((
     "facebook", "fb", "instagram", "insta", "linkedin", "pinterest",
     "gmail", "min gmail", "min mejl", "mejl", "mail", "min mail",
-    "hotmail", "outlook", "chrome", "google chrome", "vs code",
+    "hotmail", "outlook", "brave", "chrome", "google chrome", "vs code",
     "visual studio code", "filezilla", "epic", "epic games",
     "atlas", "omnira", "handlarborsen", "familje stunden",
     "familje-stunden", "familjestunden", "webbuilder",
@@ -28,6 +29,22 @@ SAFE_NAV_TARGETS = frozenset((
 # Spoken command punctuation may be recognized, but ignore it only at the
 # *end* of the full sentence. Middle punctuation is not a target alias.
 _TRAILING_PUNCT = re.compile(r"[.!,?:;]+$")
+_DIRECT_FOCUS = re.compile(
+    r"^(?:hej\s+)?(?:nova[,\s:]+)?"
+    r"(?:kan\s+du\s+)?(?:byt\s+till|vaxla\s+till)\s+"
+    r"(?:vs\s*code|visual\s+studio\s+code|outlook|filezilla|epic|epic\s+games)$"
+)
+
+
+def safe_window_focus(text: str) -> Action | None:
+    """Only a small named group of non-destructive application switches."""
+    cleaned = _TRAILING_PUNCT.sub("", normalized(text)).strip()
+    if not _DIRECT_FOCUS.fullmatch(cleaned):
+        return None
+    action = route(cleaned)
+    return action if action.kind == "focus" and action.url in {
+        "vscode", "outlook", "filezilla", "epic"
+    } else None
 
 
 def safe_auto_navigation(text: str) -> Action | None:
@@ -116,7 +133,9 @@ class AutoVoiceState:
             return None
         decision = VoiceDecision(
             text=cleaned,
-            safe_navigation=safe_auto_navigation(cleaned),
+            safe_navigation=(safe_auto_navigation(cleaned)
+                             or safe_browser_command(cleaned)
+                             or safe_window_focus(cleaned)),
         )
         self.cancel()
         return decision

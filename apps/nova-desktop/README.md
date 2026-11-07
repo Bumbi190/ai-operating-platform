@@ -1,4 +1,4 @@
-# Nova Desktop — Omnira Premium + auto-Send and app-aware positioning (pilot v7)
+# Nova Desktop — Omnira Premium + safe local browser navigation (pilot v8)
 
 Windows-native companion **to the existing Omnira/Atlas**, not a separate
 AI, memory database, workflow engine or agent. It runs in the logged-in
@@ -61,6 +61,26 @@ Windows session and is available via **Ctrl+Alt+Space**.
 - The talk button starts Windows voice typing; when auto-Send is enabled
   the one-shot transcript is submitted after the pause. Voice typing may
   remain active afterward. It is NOT continuous hands-free conversation.
+- **Local browser controls (new):** Brave, Chrome, Edge and Firefox are
+  recognized by their Windows executable name (no tab titles).
+  Saying e.g. "Nova nästa flik", "Nova föregående flik", "Nova gå tillbaka",
+  "Nova gå framåt", "Nova scrolla ner/upp" or "Nova byt till Brave"
+  selects an existing verified browser window and sends only a fixed,
+  small, Windows keyboard shortcut. Exact voice phrases are eligible for
+  auto-Send after 3 seconds; typed commands still require Enter/Skicka.
+  Nova remembers the last browser HWND she observed as foreground. If she
+  cannot distinguish among multiple Brave windows, she refuses to guess.
+  No arbitrary clicks, text entry, URLs, form submission, shell commands or
+  external AI tool execution are added.
+- **Native program switching:** exact requests such as "Nova växla till
+  VS Code" or "Nova byt till Outlook" may focus a single allowlisted open
+  program. Multiple matching windows require a prior selection; nothing
+  is changed on an ambiguous match. After browser navigation moves focus
+  away from Nova, the next Ctrl+Alt+Space brings Nova back for dictation
+  rather than just hiding the panel.
+- Browser navigation is bound by Win32 SetForegroundWindow restrictions and
+  the SendInput integrity boundary. A successful SendInput means Windows
+  accepted the chord – it does NOT prove a website successfully navigated.
 - Visible text, replies and activity state. Stop cannot undo prior steps.
 - Known browser destinations: Omnira Atlas/planning/projects, Gmail,
   Handlarbörsen, Familje-Stunden, Outlook Web plus Facebook, Instagram,
@@ -69,7 +89,7 @@ Windows session and is available via **Ctrl+Alt+Space**.
   Text is auto-submitted after the three-second pause in voice mode. Opening a
   page does NOT grant general GUI
   click/scroll control or permission to post/send anything.
-- Local program starts: Chrome, VS Code, Outlook Classic, FileZilla, Epic.
+- Local program starts: Brave, Chrome, VS Code, Outlook Classic, FileZilla, Epic.
 - Explorer opens one of three verified project roots: Omnira, Handlarborsen,
   Familje-Stunden. No arbitrary paths or command execution.
 - Enumerates allowlisted open programs without reading any window titles,
@@ -184,6 +204,8 @@ python tests/smoke_voice_atlas_ui.py  # mocked Win+H, static status, two-stage p
 python tests/smoke_focus_voice_safety.py  # foreground fail-closed; no real audio
 python tests/smoke_spoken_navigation.py  # allowlisted Facebook mock
 python tests/smoke_auto_voice_ui.py  # 3-second auto-send, unsafe stays unexecuted
+python tests/smoke_browser_nav_ui.py  # mock navigation, no real tab changes
+python tests/smoke_hotkey_browser_focus.py  # re-listen after browser focus
 python tests/smoke_app_docking.py  # actual 5120px/app bounds geometry fixture
 python -m unittest discover -s tests -p 'test_hotkey_host.py' -v
 python tests/geometry_overlay.py  # includes button bounds, opacity and hidden menu

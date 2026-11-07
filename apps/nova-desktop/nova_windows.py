@@ -13,6 +13,9 @@ import sys
 
 ALLOWLIST = {
     "chrome": ("chrome.exe", "Google Chrome"),
+    "brave": ("brave.exe", "Brave"),
+    "edge": ("msedge.exe", "Microsoft Edge"),
+    "firefox": ("firefox.exe", "Mozilla Firefox"),
     "vscode": ("code.exe", "Visual Studio Code"),
     "outlook": ("outlook.exe", "Outlook"),
     "filezilla": ("filezilla.exe", "FileZilla"),
@@ -84,15 +87,30 @@ def list_known_windows() -> list[WindowRef]:
     return result
 
 
+def choose_focus_target(candidates: list[WindowRef], current: int) -> WindowRef | None:
+    """Never guess between several same-app windows, such as Explorer folders."""
+    for window in candidates:
+        if window.handle == current:
+            return window
+    return candidates[0] if len(candidates) == 1 else None
+
+
 def focus_known_window(key: str) -> tuple[bool, str]:
-    """Foreground a matching existing window; no uncontrolled target path."""
+    """Foreground one matching verified window; do not choose an ambiguous HWND."""
     if key not in ALLOWLIST:
         return False, "Programmet är inte godkänt för fönsterväxling."
     candidates = [w for w in list_known_windows() if w.key == key]
     if not candidates:
         return False, "Inget öppet fönster hittades för " + ALLOWLIST[key][1] + "."
-    window = candidates[0]
     u = ctypes.WinDLL("user32", use_last_error=True)
+    u.GetForegroundWindow.argtypes = []
+    u.GetForegroundWindow.restype = wintypes.HWND
+    window = choose_focus_target(candidates, int(u.GetForegroundWindow() or 0))
+    if window is None:
+        return False, (
+            "Flera fönster för " + ALLOWLIST[key][1] +
+            " är öppna. Välj rätt fönster först och upprepa kommandot."
+        )
     u.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
     u.SetForegroundWindow.argtypes = [wintypes.HWND]
     u.SetForegroundWindow.restype = wintypes.BOOL

@@ -1,7 +1,7 @@
 """Voice auto-SEND after 3s: only exact allowlisted navigation may execute."""
 import unittest
 
-from nova_auto_voice import AutoVoiceState, safe_auto_navigation
+from nova_auto_voice import AutoVoiceState, safe_auto_navigation, safe_window_focus
 from nova_core import URLS
 
 
@@ -42,6 +42,22 @@ class AutoVoiceTests(unittest.TestCase):
         ):
             with self.subTest(utterance=utterance):
                 self.assertIsNone(safe_auto_navigation(utterance))
+
+    def test_exact_safe_program_focus(self):
+        for utterance, program in (
+            ("Nova växla till VS Code", "vscode"),
+            ("Hej Nova byt till Outlook", "outlook"),
+            ("Byt till FileZilla", "filezilla"),
+            ("Nova byt till Epic Games", "epic"),
+        ):
+            with self.subTest(utterance=utterance):
+                action = safe_window_focus(utterance)
+                self.assertIsNotNone(action)
+                self.assertEqual((action.kind, action.url), ("focus", program))
+        for unsafe in ("Byt till cmd.exe", "Byt till PowerShell",
+                       "Växla till Outlook och skicka mejl",
+                       "Nova växla till Utforskaren och radera filen"):
+            self.assertIsNone(safe_window_focus(unsafe))
 
     def test_requires_new_text_after_arming(self):
         state = AutoVoiceState(quiet_seconds=2.6)

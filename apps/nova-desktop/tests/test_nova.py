@@ -18,7 +18,8 @@ class NovaRouterTests(unittest.TestCase):
         self.assertEqual(route("Öppna WebBuilder").url, URLS["projects"])
 
     def test_allowed_installed_programs(self):
-        for name, shortcut in (("Öppna VS Code", "vscode"),
+        for name, shortcut in (("Öppna Brave", "brave"),
+                               ("Öppna VS Code", "vscode"),
                                ("Öppna FileZilla", "filezilla"),
                                ("Öppna Chrome", "chrome"),
                                ("Öppna Epic", "epic")):

@@ -13,6 +13,7 @@ import re
 from nova_core import Action, NAV, normalized, route
 from nova_browser_nav import safe_browser_command
 from nova_native_tasks import safe_native_voice_action
+from nova_campaign_review import campaign_review_intent
 
 VOICE_QUIET_SECONDS = 3.0
 
@@ -25,6 +26,12 @@ SAFE_NAV_TARGETS = frozenset((
     "visual studio code", "filezilla", "epic", "epic games",
     "atlas", "omnira", "handlarborsen", "familje stunden",
     "familje-stunden", "familjestunden", "webbuilder",
+    "strato", "strato mail", "strato webmail", "min strato",
+    "kalender", "kalendern", "kalendern i omnira", "omnirakalendern",
+    "omnirakalender", "omniras kalender",
+    "marknadsplanering", "marknadsforing", "sociala medier",
+    "contentcenter", "content center", "innehallscenter",
+    "innehallsoversikt", "omniras innehallsoversikt", "content",
 ))
 
 # Spoken command punctuation may be recognized, but ignore it only at the
@@ -137,7 +144,8 @@ class AutoVoiceState:
             safe_navigation=(safe_auto_navigation(cleaned)
                              or safe_browser_command(cleaned)
                              or safe_window_focus(cleaned)
-                             or safe_native_voice_action(cleaned)),
+                             or safe_native_voice_action(cleaned)
+                             or campaign_review_intent(cleaned)),
         )
         self.cancel()
         return decision

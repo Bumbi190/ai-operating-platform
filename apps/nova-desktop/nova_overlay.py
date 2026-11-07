@@ -27,6 +27,7 @@ from nova_auto_voice import AutoVoiceState, safe_auto_navigation, safe_window_fo
 from nova_native_tasks import (
     TaskPlan, parse_native_task, safe_native_voice_action, execute_native_step,
 )
+from nova_campaign_review import campaign_review_intent, campaign_review_url
 from nova_browser_nav import BrowserNavigator, safe_browser_command
 from nova_bridge import NovaBridge, PROD_ORIGIN, read_saved_preview_origin
 from nova_windows import list_known_windows, focus_known_window
@@ -186,6 +187,12 @@ class NovaOverlay:
                             if self.preview_file else None)
         if approved_preview:
             self.bridge.state.switch_origin(approved_preview)
+        # Dedicated marketing preview, independent of the Atlas bridge version.
+        # File contains only a verified HTTPS preview origin, never credentials.
+        self.campaign_preview_file = (
+            Path(local_app_data) / "Omnira" / "Nova" / "campaign-preview-origin.txt"
+            if local_app_data else None
+        )
         self.bridge.start()
         self.live_reply_id = None
         self.live_reply_text = ''
@@ -1112,7 +1119,8 @@ class NovaOverlay:
             if (safe_voice_action is None or
                     (safe_auto_navigation(text) or safe_browser_command(text)
                      or safe_window_focus(text)
-                     or safe_native_voice_action(text)) != safe_voice_action):
+                     or safe_native_voice_action(text)
+                     or campaign_review_intent(text)) != safe_voice_action):
                 self._received_voice_without_navigation(text)
                 return
             if safe_voice_action.kind in ("native_read", "native_preview"):
@@ -1133,8 +1141,11 @@ class NovaOverlay:
             if folder:
                 self._open_project_folder(folder)
                 return
-            action = safe_browser_command(text) or safe_window_focus(text) or route(text)
-        if action.kind in ("browser_control", "browser_focus"):
+            action = (safe_browser_command(text) or safe_window_focus(text)
+                      or campaign_review_intent(text) or route(text))
+        if action.kind == "campaign_review":
+            self._open_campaign_review(action.url)
+        elif action.kind in ("browser_control", "browser_focus"):
             self._navigate_browser(action)
         elif action.kind == "open":
             self._open_url(action.url, action.description)
@@ -1157,6 +1168,40 @@ class NovaOverlay:
                 self._handoff(text)
         else:
             self._phase("redo", "Skriv eller diktera ett kommando")
+
+    def _open_campaign_review(self, month: str):
+        """GET-only handoff to an authenticated human-approval surface.
+
+        If the dedicated protected preview is missing, open the already
+        deployed Marketing Review instead and do not pretend to start agents.
+        """
+        approved = (
+            read_saved_preview_origin(str(self.campaign_preview_file))
+            if self.campaign_preview_file else None
+        )
+        if approved:
+            try:
+                url = campaign_review_url(approved, month)
+                self._append(
+                    "nova",
+                    "Nova: Jag öppnar Campaign Planner i en skyddad testversion. "
+                    "Inga agenter startar förrän du loggat in, granskat och "
+                    "tryckt Godkänn på Omniras sida."
+                )
+                self._open_url(url, "Öppnar Campaign Planner-granskning utan att köa uppdrag")
+                return
+            except ValueError:
+                pass
+        self._append(
+            "warn",
+            "Nova: Den nya beställningssidan är inte aktiverad i denna "
+            "Nova-version. Jag öppnar den befintliga marknadsgranskningen. "
+            "Inga agenter har beställts."
+        )
+        self._open_url(
+            URLS["marketing"],
+            "Öppnar Omniras marknadsgranskning (ingen agentkörning skapad)"
+        )
 
     def _navigate_browser(self, action):
         """Only allow safe, fixed browser shortcuts to a verified browser HWND."""

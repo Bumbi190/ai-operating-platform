@@ -9,6 +9,7 @@ import ctypes
 from ctypes import wintypes
 import math
 import os
+from pathlib import Path
 import queue
 import tkinter as tk
 from tkinter import font as tkfont, simpledialog
@@ -16,7 +17,7 @@ import webbrowser
 
 from nova_core import HotkeyListener, URLS, APP_SHORTCUTS, route, normalized
 from nova_hotkey_host import HostEventListener
-from nova_bridge import NovaBridge, PROD_ORIGIN
+from nova_bridge import NovaBridge, PROD_ORIGIN, read_saved_preview_origin
 from nova_windows import list_known_windows, focus_known_window
 from nova_theme import (
     TRANSPARENT, SURFACE, PANEL, INPUT, ACCENT, CYAN, TEXT, MUTED,
@@ -166,6 +167,14 @@ class NovaOverlay:
                          if os.environ.get("NOVA_EXTERNAL_HOTKEY") == "1"
                          else HotkeyListener(self.events))
         self.bridge = NovaBridge()
+        # The approved preview host may persist; per-session pairing keys never do.
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        self.preview_file = (Path(local_app_data) / "Omnira" / "Nova" / "preview-origin.txt"
+                             if local_app_data else None)
+        approved_preview = (read_saved_preview_origin(str(self.preview_file))
+                            if self.preview_file else None)
+        if approved_preview:
+            self.bridge.state.switch_origin(approved_preview)
         self.bridge.start()
         self.live_reply_id = None
         self.live_reply_text = ''
@@ -558,6 +567,13 @@ class NovaOverlay:
             self._append("warn", "Nova: Testadressen avvisades: " + str(exc))
             self._phase("godkannande", "Ange en godkänd Omnira-preview")
             return
+        # Store only the immutable HTTPS host, never a cookie, key or token.
+        if self.preview_file:
+            try:
+                self.preview_file.parent.mkdir(parents=True, exist_ok=True)
+                self.preview_file.write_text(approved + "\n", encoding="utf-8")
+            except OSError:
+                self._append("warn", "Nova: Testmiljön valdes men kunde inte sparas.")
         self._append("ok", "Nova: Testmiljö vald: " + approved + ". Tidigare parning återkallad.")
         self.connect_atlas()
 
@@ -570,15 +586,15 @@ class NovaOverlay:
             self.choose_preview()
             return
         self._append("step", "Nova: Öppnar skyddad webbläsarparning (läsläge).")
-        self._phase("godkannande", "Klicka Anslut i Omnira-fliken. Webbdelen kräver publicerad preview.")
+        self._phase("godkannande", "Logga in via Vercel och Omnira, klicka sedan Anslut i webbläsaren.")
         try:
             # Only the exact trusted Omnira origin receives the link. Ephemeral
             # secret is in the fragment, never in the HTTP request or cookies.
             if not webbrowser.open(self.bridge.pairing_url(), new=2):
                 self._append("warn", "Nova: Webbläsaren kunde inte öppna parningssidan.")
             else:
-                self._append("warn", "Obs: parningssidan finns just nu endast i utvecklingsbranch. " +
-                             "Om du ser en saknad sida måste ändringen publiceras först.")
+                self._append("step", "Nova: Den skyddade förhandsversionen har öppnats. " +
+                             "Logga in i Omnira där och klicka Anslut. Nyckeln sparas inte.")
         except Exception as exc:
             self._append("warn", "Nova: Kopplingen kunde inte initieras: " + str(exc))
 

@@ -50,6 +50,19 @@ def validate_pairing_origin(origin: str) -> str:
     raise ValueError("Not an authorized Omnira preview domain")
 
 
+def read_saved_preview_origin(path: str) -> str | None:
+    """Read only a previously verified HTTPS origin, never credentials or tokens."""
+    try:
+        with open(path, "r", encoding="utf-8") as source:
+            value = source.read(512)
+        if len(value) > 255:
+            return None
+        result = validate_pairing_origin(value.strip())
+        return result if result != PROD_ORIGIN else None
+    except (OSError, UnicodeError, ValueError):
+        return None
+
+
 @dataclass
 class Task:
     id: str

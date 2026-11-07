@@ -27,6 +27,10 @@ URLS = {
     "instagram": "https://www.instagram.com/",
     "linkedin": "https://www.linkedin.com/",
     "pinterest": "https://www.pinterest.com/",
+    # Official Swedish STRATO Webmail sign-in, no credentials stored in Nova.
+    "strato": "https://webmail.strato.com/appsuite/signin",
+    "marketing": "https://omniraos.se/atlas/marketing",
+    "content": "https://omniraos.se/atlas/content",
 }
 # Verified on the Windows PC 2026-11-06. Missing shortcuts fail closed.
 APP_SHORTCUTS = {
@@ -109,6 +113,16 @@ def route(text: str) -> Action:
             if re.search(pattern, value):
                 return Action("app", APP_SHORTCUTS[key], description)
         for pattern, key, description in (
+            # Keep STRATO above generic e-mail words so "Strato mail" cannot
+            # accidentally route to Gmail.
+            (r"\b(strato|stratos|strato webmail)\b", "strato",
+             "Öppnar STRATO Webmail. Inget mejl läses eller skickas."),
+            (r"\b(omnir.*(kalender|kalendervy)|kalender.*omnira|kalendern|kalender)\b",
+             "planning", "Öppnar Omniras planeringsöversikt; det är inte en separat kalender med händelser."),
+            (r"\b(marknadsplanering|marknadsforing|marknadsgranskning|sociala medier|contentplanering)\b",
+             "marketing", "Öppnar Omniras marknadsgranskning; inget inlägg skapas eller publiceras."),
+            (r"\b(contentcenter|content center|innehallscenter|innehallsoversikt|content|innehall)\b",
+             "content", "Öppnar Omniras innehållsöversikt."),
             (r"\b(facebook|fb)\b", "facebook", "Öppnar Facebook i webbläsaren."),
             (r"\b(instagram|insta)\b", "instagram", "Öppnar Instagram i webbläsaren."),
             (r"\blinkedin\b", "linkedin", "Öppnar LinkedIn i webbläsaren."),

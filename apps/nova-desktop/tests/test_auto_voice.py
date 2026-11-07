@@ -1,0 +1,92 @@
+"""One-shot speech auto-dispatch: ONLY exact allowlisted safe navigation."""
+import unittest
+
+from nova_auto_voice import AutoVoiceState, safe_auto_navigation
+from nova_core import URLS
+
+
+class AutoVoiceTests(unittest.TestCase):
+    def test_explicit_safe_open_commands(self):
+        for utterance, expected in (
+            ("Hej Nova, vill du öppna Facebook?", URLS["facebook"]),
+            ("Nova öppna Instagram.", URLS["instagram"]),
+            ("Hej Nova kan du gå till LinkedIn", URLS["linkedin"]),
+            ("Öppna Gmail", URLS["gmail"]),
+            ("Nova öppna Handlarbörsen!", URLS["handlarborsen"]),
+        ):
+            with self.subTest(utterance=utterance):
+                action = safe_auto_navigation(utterance)
+                self.assertIsNotNone(action)
+                self.assertEqual(action.kind, "open")
+                self.assertEqual(action.url, expected)
+
+    def test_all_extra_instructions_fail_closed(self):
+        for utterance in (
+            "",
+            "Facebook",
+            "Nova öppna",
+            "Hej Nova berätta om Facebook",
+            "Öppna Facebook och skriv ett inlägg",
+            "Öppna Facebook och publicera inlägg",
+            "Öppna Facebook sedan skicka meddelande",
+            "Öppna Facebook och radera allt",
+            "Öppna https://evil.example.com",
+            "Nova öppna en terminal och kör curl",
+            "Nova öppna Facebook och mejla kunder",
+            "Hej Nova vill du öppna Facebook hej vill du öppna Facebook",
+            "Läs det senaste mejlet och svara",
+            "Skapa en ny kampanj till Familje-Stunden",
+            "Starta en ny betalning",
+            "Hur går det för Omnira?",
+            "Öppna Facebook med lösenordet 123",
+        ):
+            with self.subTest(utterance=utterance):
+                self.assertIsNone(safe_auto_navigation(utterance))
+
+    def test_requires_new_text_after_arming(self):
+        state = AutoVoiceState(quiet_seconds=2.6)
+        state.arm("Nova öppna Facebook")
+        self.assertIsNone(state.observe("Nova öppna Facebook", 1.0))
+        self.assertIsNone(state.observe("Nova öppna Facebook", 6.0))
+        self.assertFalse(state.saw_new_text)
+
+    def test_executes_once_after_stable_text(self):
+        state = AutoVoiceState(quiet_seconds=2.6)
+        state.arm("")
+        self.assertIsNone(state.observe("Hej Nova vill du öppna", 1.0))
+        self.assertIsNone(state.observe("Hej Nova vill du öppna Facebook", 1.5))
+        self.assertIsNone(state.observe("Hej Nova vill du öppna Facebook", 3.8))
+        action = state.observe("Hej Nova vill du öppna Facebook", 4.11)
+        self.assertEqual(action.url, URLS["facebook"])
+        self.assertFalse(state.armed)
+        self.assertTrue(state.completed)
+        self.assertIsNone(state.observe("Hej Nova vill du öppna Facebook", 20.0))
+
+    def test_late_dictation_updates_restart_quiet_window(self):
+        state = AutoVoiceState(quiet_seconds=2.6)
+        state.arm("")
+        self.assertIsNone(state.observe("Öppna Face", 10.0))
+        self.assertIsNone(state.observe("Öppna Facebook", 11.0))
+        self.assertIsNone(state.observe("Öppna Facebook", 13.5))
+        self.assertIsNotNone(state.observe("Öppna Facebook", 13.7))
+
+    def test_no_auto_send_for_sensitive_or_unknown_text(self):
+        state = AutoVoiceState(quiet_seconds=1.0)
+        state.arm("")
+        self.assertIsNone(state.observe("Öppna Facebook och publicera inlägg", 1))
+        self.assertIsNone(state.observe("Öppna Facebook och publicera inlägg", 100))
+        self.assertTrue(state.armed)
+        self.assertIsNone(state.observe("Öppna Facebook", 101))  # changed, reset
+        self.assertIsNotNone(state.observe("Öppna Facebook", 102.2))
+
+    def test_cancel_drops_pending_work(self):
+        state = AutoVoiceState(quiet_seconds=0.3)
+        state.arm("")
+        state.observe("Öppna Facebook", 1)
+        state.cancel()
+        self.assertIsNone(state.observe("Öppna Facebook", 99))
+        self.assertFalse(state.armed)
+
+
+if __name__ == "__main__":
+    unittest.main()

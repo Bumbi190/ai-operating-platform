@@ -11,6 +11,7 @@ import math
 import os
 from pathlib import Path
 import queue
+import time
 import tkinter as tk
 from tkinter import font as tkfont, simpledialog
 import webbrowser
@@ -18,6 +19,7 @@ import webbrowser
 from nova_core import HotkeyListener, URLS, APP_SHORTCUTS, route, normalized
 from nova_hotkey_host import HostEventListener
 from nova_focus import ForegroundFocusGuard
+from nova_auto_voice import AutoVoiceState, safe_auto_navigation
 from nova_bridge import NovaBridge, PROD_ORIGIN, read_saved_preview_origin
 from nova_windows import list_known_windows, focus_known_window
 from nova_theme import (
@@ -191,6 +193,8 @@ class NovaOverlay:
         self.history: list[tuple[str, str]] = []  # session UI trace, not AI memory
         self._atlas_login_opened = False  # explicit SSO sign-in before pairing key
         self._voice_request_id = 0
+        self._auto_voice = AutoVoiceState()
+        self.auto_voice_enabled = tk.BooleanVar(value=True)
         self._focus_guard = ForegroundFocusGuard()
         self._dock_area = self._area_near_pointer()
         self._manual_anchor: tuple[int, int] | None = None
@@ -203,6 +207,7 @@ class NovaOverlay:
         self.root.after(450, self._hotkey_check)
         self.root.after(170, self._animate)
         self.root.after(150, self._poll_bridge)
+        self.root.after(160, self._poll_voice_auto)
         self.root.after(900, self._show_bridge_status)
         self.root.deiconify()
         self.root.lift()
@@ -482,6 +487,11 @@ class NovaOverlay:
         menu.add_command(label="Öppna fönster", command=self.show_windows)
         menu.add_separator()
         menu.add_command(label="Stoppa pågående uppdrag (Ctrl+.)", command=self.stop)
+        menu.add_checkbutton(
+            label="Auto-öppna säkra röstkommandon",
+            variable=self.auto_voice_enabled,
+            command=self._on_auto_voice_toggle,
+        )
         menu.add_separator()
         opacity = tk.Menu(menu, tearoff=0, bg="#172135", fg=TEXT,
                           activebackground="#363560", activeforeground=TEXT)
@@ -495,6 +505,13 @@ class NovaOverlay:
         menu.add_cascade(label="Glas-effekt", menu=opacity)
         menu.add_command(label="Avsluta Nova", command=self.quit)
         return menu
+
+    def _on_auto_voice_toggle(self):
+        if not self.auto_voice_enabled.get():
+            self._auto_voice.cancel()
+            self._phase("redo", "Automatisk röstnavigering avstängd")
+        else:
+            self._phase("redo", "Automatisk röstnavigering tillåten för säkra kommandon")
 
     def _set_opacity(self, percent: int):
         """User preference is session-local; no account settings are modified."""
@@ -557,8 +574,9 @@ class NovaOverlay:
             self.root.after(600, lambda: self._voice_after_hotkey(request_id))
 
     def collapse(self):
-        # Cancel any delayed voice launch if the panel was closed quickly.
+        # Cancel any delayed voice launch or auto-run if the chat closes.
         self._voice_request_id += 1
+        self._auto_voice.cancel()
         if self.expanded:
             self.draft = self.command.get("1.0", "end-1c")
         self._draw_collapsed()
@@ -721,6 +739,31 @@ class NovaOverlay:
         if not self.closed:
             self.root.after(170, self._animate)
 
+    def _poll_voice_auto(self):
+        """Inspect the text widget, not key events (Windows dictation can bypass them).
+
+        One-shot and restricted to a complete, allowlisted command. An ordinary
+        keyboard-edited message is NOT auto-sent outside a voice session.
+        """
+        try:
+            if self.expanded and self.auto_voice_enabled.get() and self._auto_voice.armed:
+                spoken = self.command.get("1.0", "end-1c").strip()
+                action = self._auto_voice.observe(spoken, time.monotonic())
+                if action is not None:
+                    # Abort if the editable field/foreground changed meanwhile.
+                    if (self._focus_guard.has_focus(self.root, self.command)
+                            and self.command.get("1.0", "end-1c").strip() == spoken):
+                        self._append("step", "Nova: Röstkommando klart · öppnar säkert mål automatiskt.")
+                        self.send()
+                    else:
+                        self._auto_voice.cancel()
+                        self._phase("godkannande", "Fönsterfokus ändrades · tryck Skicka manuellt")
+        except (tk.TclError, AttributeError):
+            self._auto_voice.cancel()
+        finally:
+            if not self.closed:
+                self.root.after(160, self._poll_voice_auto)
+
     def _on_input(self, _e=None):
         text = self.command.get("1.0", "end-1c").strip()
         self.draft = text
@@ -801,7 +844,16 @@ class NovaOverlay:
             for code, flags in ((0x5B, 0), (0x48, 0),
                                 (0x48, 0x0002), (0x5B, 0x0002)):
                 user32.keybd_event(code, 0, flags, 0)
+            if self.auto_voice_enabled.get():
+                current = self.command.get("1.0", "end-1c")
+                if not current.strip():
+                    self._auto_voice.arm(current)
+                    self._phase("lyssnar", "Säg öppna-kommando · Nova skickar själv")
+                else:
+                    self._auto_voice.cancel()
+                    self._phase("godkannande", "Töm skrivfältet för automatisk röstnavigering")
         except Exception as exc:
+            self._auto_voice.cancel()
             self._phase("godkannande", "Windows kunde inte starta röstinmatning")
             self._append("warn", f"Nova: Röstinmatning misslyckades: {exc}")
 
@@ -887,6 +939,8 @@ class NovaOverlay:
             self._phase("redo", "Skriv eller diktera vad jag ska göra")
             return
         self.task_epoch += 1
+        # Manual or automatic Send must clear the one-shot voice state.
+        self._auto_voice.cancel()
         # A quick Enter must not start dictation later from a pending shortcut.
         self._voice_request_id += 1
         self._choices([])
@@ -962,6 +1016,7 @@ class NovaOverlay:
 
     def stop(self):
         self._voice_request_id += 1
+        self._auto_voice.cancel()
         self.bridge.state.cancel()
         self.task_epoch += 1
         self._choices([])
@@ -972,6 +1027,7 @@ class NovaOverlay:
 
     def quit(self):
         self.closed = True
+        self._auto_voice.cancel()
         self.listener.stop()
         self.bridge.stop()
         self.root.destroy()

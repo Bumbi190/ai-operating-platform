@@ -1,4 +1,4 @@
-# Nova Desktop — Omnira Premium + Always-On Windows hotkey host (pilot v5)
+# Nova Desktop — Omnira Premium + one-shot voice commands (pilot v6)
 
 Windows-native companion **to the existing Omnira/Atlas**, not a separate
 AI, memory database, workflow engine or agent. It runs in the logged-in
@@ -37,6 +37,23 @@ Windows session and is available via **Ctrl+Alt+Space**.
   Hands-free wake-word and auto-submit-on-silence are NOT implemented.
 - Minimal chat composer: **Prata** and **Skicka** are the only buttons below
   the text field. Enter sends, Shift+Enter creates a newline.
+- **Hands-free submission of safe voice navigation**: after a voice typing
+  session begins, Nova polls her own text widget (because Win+H dictation may
+  not generate Tk key events). If an exact allowlisted spoken navigation command
+  remains unchanged for **2.6 seconds**, Nova opens it once without Enter/Skicka.
+  Examples: `Hej Nova vill du öppna Facebook`, `Öppna Instagram`,
+  `Nova öppna Chrome`. This is *text stability*, not microphone audio silence
+  detection, and does not guarantee that Windows dictation has stopped.
+- Auto-open is voice-session-only, one-shot and available under
+  **⋯ → Auto-öppna säkra röstkommandon** (enabled by default).
+  General requests, social publishing, sending email, destructive actions,
+  unknown destinations, and multi-step instructions are NEVER auto-executed.
+  Review them and use explicit Send/Atlas approval instead. Closing Nova,
+  stopping a task, or pressing Send cancels the pending voice auto-open.
+- Windows Win+H is an OS-wide online dictation service. If its microphone
+  remains active after navigation, pause it with the Windows voice typing
+  toolbar or a supported voice command. Nova cannot confirm microphone state
+  from the standard-library Tk text widget.
 - Project folders, open windows, stop/cancel, Atlas pairing and contextual
   choices are behind the top-right **⋯** menu; Ctrl+. also stops a pending task.
 - The talk button opens Windows voice typing; review the transcript and press
@@ -159,6 +176,7 @@ python tests/smoke_close_keeps_hotkey.py  # X collapses, toggle reopens
 python tests/smoke_voice_atlas_ui.py  # mocked Win+H, static status, two-stage pairing
 python tests/smoke_focus_voice_safety.py  # foreground fail-closed; no real audio
 python tests/smoke_spoken_navigation.py  # allowlisted Facebook mock
+python tests/smoke_auto_voice_ui.py  # auto-submit after quiet text, unsafe stays manual
 python -m unittest discover -s tests -p 'test_hotkey_host.py' -v
 python tests/geometry_overlay.py  # includes button bounds, opacity and hidden menu
 python tests/preview_overlay.py  # optional Pillow for visual QA only

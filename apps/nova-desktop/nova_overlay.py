@@ -19,6 +19,10 @@ import webbrowser
 from nova_core import HotkeyListener, URLS, APP_SHORTCUTS, route, normalized
 from nova_hotkey_host import HostEventListener
 from nova_focus import ForegroundFocusGuard
+from nova_placement import (
+    foreground_window_rectangle, choose_working_zone,
+    read_saved_anchor, save_anchor, clear_anchor,
+)
 from nova_auto_voice import AutoVoiceState, safe_auto_navigation
 from nova_bridge import NovaBridge, PROD_ORIGIN, read_saved_preview_origin
 from nova_windows import list_known_windows, focus_known_window
@@ -196,8 +200,14 @@ class NovaOverlay:
         self._auto_voice = AutoVoiceState()
         self.auto_voice_enabled = tk.BooleanVar(value=True)
         self._focus_guard = ForegroundFocusGuard()
+        self._last_context_rect = None
         self._dock_area = self._area_near_pointer()
-        self._manual_anchor: tuple[int, int] | None = None
+        self._placement_file = (Path(local_app_data) / "Omnira" / "Nova" / "position.json"
+                                if local_app_data and os.environ.get("NOVA_NO_PLACEMENT_SAVE") != "1"
+                                else None)
+        self._manual_anchor: tuple[int, int] | None = (
+            read_saved_anchor(str(self._placement_file)) if self._placement_file else None
+        )
         self._drag_origin = None
         self._dragged = False
         self._setup_fonts()
@@ -208,6 +218,7 @@ class NovaOverlay:
         self.root.after(170, self._animate)
         self.root.after(150, self._poll_bridge)
         self.root.after(160, self._poll_voice_auto)
+        self.root.after(400, self._remember_active_window)
         self.root.after(900, self._show_bridge_status)
         self.root.deiconify()
         self.root.lift()
@@ -224,13 +235,35 @@ class NovaOverlay:
         for child in self.root.winfo_children():
             child.destroy()
 
+    def _remember_active_window(self):
+        """Remember the last other foreground app, even if Nova gains focus
+        before the hotkey event reaches the overlay process.
+        """
+        try:
+            candidate = foreground_window_rectangle()
+            if candidate is not None:
+                cl, ct, cr, cb = candidate
+                if cr - cl >= 500 and cb - ct >= 650:
+                    self._last_context_rect = candidate
+        finally:
+            if not self.closed:
+                self.root.after(400, self._remember_active_window)
+
     def _area_near_pointer(self) -> tuple[int, int, int, int]:
         pointer = cursor_position()
-        return visible_dock_area(work_area(pointer), pointer)
+        foreground = foreground_window_rectangle()
+        if foreground is not None:
+            self._last_context_rect = foreground
+        return choose_working_zone(
+            work_area(pointer), pointer,
+            foreground if foreground is not None else self._last_context_rect,
+        )
 
     def _redock_near_pointer(self):
-        """Explicit reset: relocate to the working area around the pointer."""
+        """Explicit reset: relocate to the active app and clear pinned position."""
         self._manual_anchor = None
+        if self._placement_file:
+            clear_anchor(str(self._placement_file))
         self._dock_area = self._area_near_pointer()
         self._place(PANEL_W if self.expanded else BUBBLE_W,
                     PANEL_H if self.expanded else BUBBLE_H)
@@ -268,13 +301,25 @@ class NovaOverlay:
         self.root.geometry(f"+{x}+{y}")
         self._manual_anchor = (x + width, y + height)
 
+    def _save_dragged_position(self):
+        if not self._dragged or self._manual_anchor is None or not self._placement_file:
+            return
+        try:
+            save_anchor(str(self._placement_file), self._manual_anchor)
+        except OSError:
+            # The UI remains usable even if AppData is not writable.
+            pass
+
     def _end_bubble_drag(self, _event):
         self._drag_origin = None
-        if not self._dragged:
+        if self._dragged:
+            self._save_dragged_position()
+        else:
             self.expand(False)
 
     def _end_header_drag(self, _event):
         self._drag_origin = None
+        self._save_dragged_position()
 
     def _bind_drag(self, widget, finish=None):
         widget.bind("<ButtonPress-1>", self._begin_drag)
@@ -303,7 +348,7 @@ class NovaOverlay:
                        activebackground="#363560", activeforeground=TEXT,
                        bd=1, relief="flat")
         menu.add_command(label="Öppna Nova", command=lambda: self.expand(False))
-        menu.add_command(label="Flytta Nova nära muspekaren", command=self._redock_near_pointer)
+        menu.add_command(label="Flytta Nova till aktivt program", command=self._redock_near_pointer)
         menu.add_command(label="Anslut Atlas", command=self.connect_atlas)
         menu.add_command(label="Välj skyddad testmiljö", command=self.choose_preview)
         menu.add_command(label="Öppna Atlas", command=lambda: self._open_url(
@@ -478,7 +523,7 @@ class NovaOverlay:
                 menu.add_command(label=label, command=callback)
             menu.add_separator()
         menu.add_command(label="Anslut Atlas", command=self.connect_atlas)
-        menu.add_command(label="Flytta Nova nära muspekaren", command=self._redock_near_pointer)
+        menu.add_command(label="Flytta Nova till aktivt program", command=self._redock_near_pointer)
         menu.add_command(label="Välj skyddad testmiljö", command=self.choose_preview)
         menu.add_command(label="Öppna Atlas i webbläsaren",
                          command=lambda: self._open_url(URLS["atlas"], "Öppnar Atlas"))
@@ -488,7 +533,7 @@ class NovaOverlay:
         menu.add_separator()
         menu.add_command(label="Stoppa pågående uppdrag (Ctrl+.)", command=self.stop)
         menu.add_checkbutton(
-            label="Auto-öppna säkra röstkommandon",
+            label="Skicka röstkommandon efter 3 sekunder",
             variable=self.auto_voice_enabled,
             command=self._on_auto_voice_toggle,
         )
@@ -509,9 +554,9 @@ class NovaOverlay:
     def _on_auto_voice_toggle(self):
         if not self.auto_voice_enabled.get():
             self._auto_voice.cancel()
-            self._phase("redo", "Automatisk röstnavigering avstängd")
+            self._phase("redo", "Automatisk inskickning av röstkommandon avstängd")
         else:
-            self._phase("redo", "Automatisk röstnavigering tillåten för säkra kommandon")
+            self._phase("redo", "Röstkommandon skickas efter 3 sekunders paus")
 
     def _set_opacity(self, percent: int):
         """User preference is session-local; no account settings are modified."""
@@ -742,19 +787,24 @@ class NovaOverlay:
     def _poll_voice_auto(self):
         """Inspect the text widget, not key events (Windows dictation can bypass them).
 
-        One-shot and restricted to a complete, allowlisted command. An ordinary
-        keyboard-edited message is NOT auto-sent outside a voice session.
+        One-shot voice submissions after a text pause. Only exact allowlisted
+        navigation may execute; everything else is sent for review/read-only
+        analysis. Typed text outside voice mode is never auto-sent.
         """
         try:
             if self.expanded and self.auto_voice_enabled.get() and self._auto_voice.armed:
                 spoken = self.command.get("1.0", "end-1c").strip()
-                action = self._auto_voice.observe(spoken, time.monotonic())
-                if action is not None:
-                    # Abort if the editable field/foreground changed meanwhile.
+                decision = self._auto_voice.observe_submission(spoken, time.monotonic())
+                if decision is not None:
+                    # Verify that the original, unmodified transcript is still
+                    # in Nova's own focused text field.
                     if (self._focus_guard.has_focus(self.root, self.command)
-                            and self.command.get("1.0", "end-1c").strip() == spoken):
-                        self._append("step", "Nova: Röstkommando klart · öppnar säkert mål automatiskt.")
-                        self.send()
+                            and self.command.get("1.0", "end-1c").strip() == decision.text):
+                        if decision.safe_navigation is not None:
+                            self._append("step", "Nova: Röstkommando mottaget · öppnar godkänd sida.")
+                        else:
+                            self._append("step", "Nova: Röstkommando mottaget automatiskt · granskar behörighet.")
+                        self.send(from_voice=True, safe_voice_action=decision.safe_navigation)
                     else:
                         self._auto_voice.cancel()
                         self._phase("godkannande", "Fönsterfokus ändrades · tryck Skicka manuellt")
@@ -848,10 +898,10 @@ class NovaOverlay:
                 current = self.command.get("1.0", "end-1c")
                 if not current.strip():
                     self._auto_voice.arm(current)
-                    self._phase("lyssnar", "Säg öppna-kommando · Nova skickar själv")
+                    self._phase("lyssnar", "Tala klart · Nova skickar efter 3 sekunder")
                 else:
                     self._auto_voice.cancel()
-                    self._phase("godkannande", "Töm skrivfältet för automatisk röstnavigering")
+                    self._phase("godkannande", "Töm skrivfältet för automatisk röstinskickning")
         except Exception as exc:
             self._auto_voice.cancel()
             self._phase("godkannande", "Windows kunde inte starta röstinmatning")
@@ -909,19 +959,10 @@ class NovaOverlay:
             self._phase("godkannande", "Navigeringen misslyckades")
 
     def _handoff(self, text: str):
-        self._phase("godkannande", "Atlas krävs för projektminne och avancerat arbete")
-        self.root.clipboard_clear()
-        self.root.clipboard_append(text)
-        self.root.update()
-        self._append("nova", "Nova: Det här kräver Atlas och dess behörigheter. "
-                     "Jag har kopierat din begäran och kan öppna Atlas. "
-                     "Klistra in med Ctrl+V och godkänn åtgärder där.")
-        self._append("warn", "Mejl, sociala inlägg, filer och konton har inte ändrats.")
-        self.pending = text
-        self._choices([("Öppna Atlas", lambda: self._open_url(URLS["atlas"],
-                                                            "Öppnar Atlas för granskning")),
-                       ("Kopiera igen", self.copy_pending), ("Avbryt", self.stop)])
-        self._phase("godkannande", "Kopierat till urklipp · välj Öppna Atlas")
+        # Native Windows navigation is Nova's responsibility, not something
+        # Atlas can magically do through an unconnected web tool.
+        # No automatic clipboard transfer or remote execution.
+        self._received_voice_without_navigation(text)
 
     def copy_pending(self):
         if not self.pending:
@@ -929,9 +970,40 @@ class NovaOverlay:
         self.root.clipboard_clear()
         self.root.clipboard_append(self.pending)
         self.root.update()
-        self._append("step", "  ↳ Uppdraget kopierades igen, ingen åtgärd skickad.")
+        self._append("step", "  ↳ Kommandot kopierades till urklipp på din begäran.")
 
-    def send(self):
+    def _received_voice_without_navigation(self, text: str):
+        """Deliver a spoken command to Nova, not a powerful OS executor.
+
+        Atlas is an AI backend; without a tool-enabled native Windows agent
+        it cannot open arbitrary desktop applications or press UI controls.
+        No implicit clipboard copy, email, publishing or changes occur here.
+        """
+        if self.bridge.state.online():
+            task_id, detail = self.bridge.state.enqueue(text)
+            if task_id:
+                self._append("step", "  ↳ Fråga skickad till Atlas i läsläge.")
+                self._phase("tolkar", "Atlas förbereder svar (kan inte styra Windows)")
+            else:
+                self._append("warn", "Nova: " + detail)
+                self._phase("godkannande", detail)
+        else:
+            self.pending = text
+            self._append(
+                "nova",
+                "Nova: Jag har tagit emot kommandot. "
+                "Jag kan öppna godkända sidor och program lokalt, men mer "
+                "avancerad Windows-styrning är ännu inte inkopplad. "
+                "Atlas ger projektkunskap och svar, inte fri datornavigering. "
+                "Inget har ändrats eller skickats."
+            )
+            self._choices([
+                ("Anslut Atlas för rådgivning", self.connect_atlas),
+                ("Kopiera begäran", self.copy_pending),
+            ])
+            self._phase("godkannande", "Kommandot mottaget · kräver en separat behörighet")
+
+    def send(self, *, from_voice: bool = False, safe_voice_action=None):
         if not self.expanded:
             self.expand(False)
         text = self.command.get("1.0", "end-1c").strip()
@@ -949,11 +1021,19 @@ class NovaOverlay:
         self.command.delete("1.0", "end")
         self.draft = ""
         self.transcript_var.set(text[:180])
-        folder = public_project_command(text)
-        if folder:
-            self._open_project_folder(folder)
-            return
-        action = route(text)
+        if from_voice:
+            # A transcript that was not an exact allowlisted navigation must
+            # never reach arbitrary local UI or shell execution.
+            if safe_voice_action is None or safe_auto_navigation(text) != safe_voice_action:
+                self._received_voice_without_navigation(text)
+                return
+            action = safe_voice_action
+        else:
+            folder = public_project_command(text)
+            if folder:
+                self._open_project_folder(folder)
+                return
+            action = route(text)
         if action.kind == "open":
             self._open_url(action.url, action.description)
         elif action.kind == "app":

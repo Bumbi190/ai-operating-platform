@@ -28,7 +28,7 @@ def verify():
         assert opened == ["https://www.facebook.com/"], opened
         assert not app._auto_voice.armed
         assert app.command.get("1.0", "end-1c").strip() == ""
-        assert any("Röstkommando klart" in msg for _, msg in app.history)
+        assert any("Röstkommando mottaget" in msg for _, msg in app.history)
         assert any("Öppningen skickad" in msg for _, msg in app.history)
         print("AUTO_VOICE_ONE_SHOT_UI_PASS", flush=True)
         app._auto_voice.arm("")
@@ -44,8 +44,12 @@ def verify():
 def verify_unsafe():
     try:
         assert opened == ["https://www.facebook.com/"], opened
-        assert app.command.get("1.0", "end-1c").strip()
-        print("UNSAFE_VOICE_NEVER_AUTOSENT_PASS", flush=True)
+        assert app.command.get("1.0", "end-1c").strip() == ""
+        assert any("DU: Öppna Facebook och publicera ett inlägg" in msg
+                   for _, msg in app.history)
+        assert any("ännu inte inkopplad" in msg for _, msg in app.history)
+        assert not app._auto_voice.armed
+        print("UNSAFE_VOICE_AUTO_SENT_FOR_REVIEW_BUT_NEVER_EXECUTED_PASS", flush=True)
     finally:
         guard.stop()
         app.quit()

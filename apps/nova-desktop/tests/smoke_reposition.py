@@ -1,5 +1,6 @@
 """Visible monitor containment and drag persistence test (no external I/O)."""
 import os
+os.environ["NOVA_NO_PLACEMENT_SAVE"] = "1"  # never change the real user layout
 import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))

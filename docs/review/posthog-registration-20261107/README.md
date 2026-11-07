@@ -9,3 +9,5 @@ An initial visual helper used an ambiguous region locator; it was corrected to t
 Screenshots: desktop-populated.png, mobile-populated.png, mobile-populated-last-column.png and mobile-zero.png. Machine evidence: visual-check.json and date-wrapping-check.json.
 
 PR preflight returned review_required/matching_local_branch with no matching open PR (121 inspected). Existing nearby journey/KPI branches were inspected read-only and contain no registration_submitted event in apps/web. Current purpose-specific branch was already approved and owns this implementation; continue it, create no new branch/worktree and do not overwrite those older workstreams. Receipt: ../../posthog-registration-release-preflight-20261107.json.
+
+Final full-source comparison and timeout qualifications are recorded in ../../POSTHOG_REGISTRATION_RELEASE_CHECK_2026-11-07.md and ../../posthog-registration-release-baseline-20261107.json. The additional first-render timeout passed a selected unchanged diagnostic; the complete suite is still red.

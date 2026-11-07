@@ -44,6 +44,38 @@ class HotkeyHostTests(unittest.TestCase):
             host.K.CloseHandle(toggle)
             host.K.CloseHandle(open_)
 
+    def test_desktop_shortcut_reopens_without_voice_autostart(self):
+        mutex_name = self.unique("Mutex")
+        toggle_name = self.unique("Toggle")
+        open_name = self.unique("Open")
+        request_name = self.unique("Request")
+        with patch.object(host, "MUTEX_NAME", mutex_name), \
+             patch.object(host, "HOTKEY_NAME", toggle_name), \
+             patch.object(host, "OPEN_NAME", open_name), \
+             patch.object(host, "REQUEST_NAME", request_name):
+            guardian = host.Guardian(start_gui=False)
+            calls = []
+
+            class Dummy:
+                def poll(self):
+                    return None
+
+            try:
+                with patch.object(host.subprocess, "Popen",
+                                  side_effect=lambda args, **kwargs: (
+                                      calls.append((args, kwargs)), Dummy())[1]):
+                    guardian.handle_shortcut("open")
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(calls[0][1]["env"]["NOVA_START_EXPANDED"], "0")
+                host.K.WaitForSingleObject.argtypes = [
+                    host.wintypes.HANDLE, host.wintypes.DWORD]
+                host.K.WaitForSingleObject.restype = host.wintypes.DWORD
+                self.assertEqual(
+                    host.K.WaitForSingleObject(guardian.open_handle, 100),
+                    host.WAIT_OBJECT_0)
+            finally:
+                guardian.close()
+
     def test_guardian_single_instance_and_safe_launch(self):
         mutex_name = self.unique("Mutex")
         toggle_name = self.unique("Toggle")

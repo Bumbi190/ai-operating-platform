@@ -59,6 +59,8 @@ if sys.platform == "win32":
     U.RegisterHotKey.restype = wintypes.BOOL
     U.UnregisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int]
     U.UnregisterHotKey.restype = wintypes.BOOL
+    U.AllowSetForegroundWindow.argtypes = [wintypes.DWORD]
+    U.AllowSetForegroundWindow.restype = wintypes.BOOL
     U.PeekMessageW.argtypes = [
         ctypes.POINTER(wintypes.MSG), wintypes.HWND, wintypes.UINT,
         wintypes.UINT, wintypes.UINT
@@ -139,15 +141,21 @@ class Guardian:
 
     def handle_shortcut(self, event: str):
         if not self.gui_running():
-            # The keyboard shortcut wakes listening mode. A desktop shortcut
-            # wakes the chat without unexpectedly activating dictation.
+            # A Windows global hotkey was received by this host, but the GUI
+            # is a child process. Grant it foreground rights when permitted.
             launched = self.launch_gui(expanded=(event != "open"))
+            if launched and self.process is not None and getattr(self.process, 'pid', None):
+                U.AllowSetForegroundWindow(self.process.pid)
             if launched and event == "open":
                 # Named auto-reset events keep this signal until the UI binds.
                 K.SetEvent(self.open_handle)
         elif event == "open":
+            if self.process is not None and getattr(self.process, 'pid', None):
+                U.AllowSetForegroundWindow(self.process.pid)
             K.SetEvent(self.open_handle)
         else:
+            if self.process is not None and getattr(self.process, 'pid', None):
+                U.AllowSetForegroundWindow(self.process.pid)
             K.SetEvent(self.toggle_handle)
 
     def run(self):

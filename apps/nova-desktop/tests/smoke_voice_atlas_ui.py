@@ -65,7 +65,7 @@ def after_auto_voice():
 
 
 # Intercept just the actual Win+H delivery, not the dictation scheduler.
-app._send_windows_voice_typing_shortcut = lambda: voice_shortcuts.append("win+h")
+app._send_windows_voice_typing_shortcut = lambda *_args: voice_shortcuts.append("win+h")
 app.collapse()
 app.events.put("toggle")
 app._process_events()

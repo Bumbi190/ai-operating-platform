@@ -33,6 +33,9 @@ class NovaRouterTests(unittest.TestCase):
     def test_spoken_social_navigation(self):
         cases = {
             "Är Nova kan du navigera mig till Facebook": "facebook",
+            "Hej Nova vill du öppna Facebook": "facebook",
+            "Hej vill du öppna Facebook": "facebook",
+            "Hej Nova vill du öppna Facebook hej vill du öppna Facebook": "facebook",
             "Nova, öppna Facebook": "facebook",
             "Nova kan du navigera mig till Instagram": "instagram",
             "Nova, gå till LinkedIn": "linkedin",

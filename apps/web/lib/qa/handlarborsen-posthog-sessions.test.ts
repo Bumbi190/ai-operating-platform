@@ -15,6 +15,7 @@ const trends = { results: [
   { order: 0, days, data: [0,0,0,0,0,2,0] },
   { order: 1, days, data: [0,0,0,0,0,1,0] },
   { order: 2, days, data: [0,0,0,0,0,0,0] },
+  { order: 3, days, data: [0,0,0,0,0,0,0] },
 ] }
 function reader(sessionResponse: () => Response | Promise<Response>) {
   const fetcher = vi.fn(async (_url: string | URL | Request, options?: RequestInit) => {

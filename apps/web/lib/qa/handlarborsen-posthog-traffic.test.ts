@@ -40,6 +40,7 @@ const response = (obj: unknown, ok = true) => Response.json(obj,{status:ok?200:5
 const series = (views: number[], visitors: number[]) => ({results:[
  {order:0,days:dates,data:views},{order:1,days:dates,data:visitors},
  {order:2,days:dates,data:views.map((n) => Math.min(n,2))},
+ {order:3,days:dates,data:views.map(() => 0)},
 ]});
 
 describe("Omnira project-scoped PostHog traffic", () => {
@@ -133,7 +134,12 @@ describe("Omnira project-scoped PostHog traffic", () => {
     expect(query.kind).toBe("TrendsQuery");
     expect(query.filterTestAccounts).toBe(false);
     expect(query.dateRange).toEqual({date_from:"2026-10-06",date_to:"2026-10-12"});
-    expect(query.series).toEqual([{kind:"EventsNode",event:"$pageview",math:"total"},{kind:"EventsNode",event:"$pageview",math:"dau"},{kind:"EventsNode",event:"$pageview",math:"total",properties:[{key:"$pathname",type:"event",operator:"exact",value:["/registrera"]}]}]);
+    expect(query.series).toEqual([
+      {kind:"EventsNode",event:"$pageview",math:"total"},
+      {kind:"EventsNode",event:"$pageview",math:"dau"},
+      {kind:"EventsNode",event:"$pageview",math:"total",properties:[{key:"$pathname",type:"event",operator:"exact",value:["/registrera"]}]},
+      {kind:"EventsNode",event:"registration_submitted",math:"total",properties:[{key:"$pathname",type:"event",operator:"exact",value:["/registrera"]}]},
+    ]);
     expect(query.properties).toEqual([{key:"$host",type:"event",operator:"exact",value:["handlarborsen.se","www.handlarborsen.se"]}]);
     expect(traffic).toMatchObject({visitorsToday:2});
   });

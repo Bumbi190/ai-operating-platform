@@ -768,3 +768,47 @@ describe('Phase 3B1B2 M3 — DB_INTERNAL is judged on the FINAL replayed grant s
     expect(FULL.findings.filter(f => f.rule === 'DB_INTERNAL_DIRECT_GRANT_REMAINS')).toEqual([])
   })
 })
+
+// Exact security checks reused from PR386; registry capture and current ledger are distinct evidence.
+describe('Reconciled discovery history retains its intended server-only boundary', () => {
+  const names = ['sales_discovery_batches', 'sales_discovery_candidates'] as const
+
+  it.each(names)('retains the later observed server-only %s classification without duplicate pending entries', table => {
+    // Main records the later catalog observation, independently rechecked read-only on2026-11-01.
+    expect(REGISTRY.tables[table]).toEqual({class:'SERVER_ONLY',rls:true,policies:0,anon_grants:false,authenticated_grants:false,service_role:true})
+    expect(REGISTRY._meta.created_not_live?.tables ?? []).not.toContain(table)
+    expect(REGISTRY._meta.created_not_live?.classes?.[table]).toBeUndefined()
+    expect(tableClass(REGISTRY, table)).toBe('SERVER_ONLY')
+  })
+
+  it.each(names)('replays RLS and zero client access for %s', table => {
+    const key = `public.${table}`
+    const relation = FULL.model.rels.get(key)
+    expect(relation).toBeDefined()
+    expect(relation!.rls).toBe(true)
+    expect([...FULL.model.pols.values()].filter(policy => policy.table === key)).toEqual([])
+    for (const role of ['public', 'anon', 'authenticated']) {
+      expect([...(relation!.grants.get(role) ?? [])], `${table}: ${role}`).toEqual([])
+    }
+    expect(relation!.grants.get('service_role')?.has('select')).toBe(true)
+  })
+
+  it.each(names)('refuses future client grants on %s', table => {
+    for (const role of ['anon', 'authenticated']) {
+      expect(probe(`grant select on public.${table} to ${role};`).blocking)
+        .toContain('CLIENT_GRANT_ON_SERVER_ONLY')
+    }
+  })
+
+  it('requires both additive sales migrations to pass without a new security exception', () => {
+    for (const name of [
+      '20261031100000_sales_b2b_offers.sql',
+      '20261031110000_sales_discovery_candidates.sql',
+    ]) {
+      const path = `apps/web/supabase/migrations/${name}`
+      expect(CORPUS.filter(file => file.relPath === path)).toHaveLength(1)
+      expect(FULL.findings.filter(finding => finding.migration === path && finding.blocking)).toEqual([])
+      expect(ALLOWLIST.exceptions.filter(exception => exception.migration === path)).toEqual([])
+    }
+  })
+})

@@ -3,11 +3,36 @@ import { testSql } from '../lib/website-build/test-db'
 import { loadBuildSnapshot } from '../lib/website-build/store'
 let template: 'default' | 'tabs' | 'forms' | 'anchors' = 'default'
 export function setFixtureTemplate(value: typeof template) { template = value }
-export async function runStep(input: { runId: string; cost: { operation: string } }) {
+export async function runStep(input: { runId: string; cost: { operation: string }; userMessage?: string }) {
   if (!/^[0-9a-f-]{36}$/.test(input.runId)) throw Error('Invalid fixture run')
   const writer = JSON.parse(testSql(`select jsonb_build_object('projectId',s.project_id,'sessionId',s.id,'runId',r.id,'claimId',r.claim_id,'generation',s.generation) from website_build_sessions s join runs r on r.id=s.current_run_id where r.id='${input.runId}';`))
   const snapshot = await loadBuildSnapshot(createAdminClient(), writer)
   const text = snapshot.feedback.at(-1)?.text || 'Välkommen till vårt café'
+  if(snapshot.designReference?.canonicalDraft.includes('"cinematicPreset"')){
+    if(!snapshot.feedback.every(item=>item.text.includes('Boka en visning')))throw Error('Unsupported cinematic fixture edit')
+    const content=input.cost.operation.includes('interpret')?{items:snapshot.feedback.map(item=>({feedbackId:item.id,summary:'Ändrar knapptexten.',disposition:'apply',changeKey:'roadster.cta',supersedesFeedbackIds:[]}))}:{roadsterCta:'Boka en visning'}
+    return {content:JSON.stringify(content),tokensIn:0,tokensOut:0,durationMs:1,authorityRefreshRequired:false}
+  }
+  const customShowroom=snapshot.brief.includes('premium-dealer-showroom-v2')
+  if((customShowroom||snapshot.brief.includes('premium-dealer-demo-v1'))&&snapshot.designReference){
+    // Exercise the actual worker's compact request and output resolver, not a bypass commit.
+    const request=JSON.parse(input.userMessage??'{}')
+    // The original demo has 18 references; the v2 fixture explicitly supplies two cars.
+    // Never accept raw raster bytes or silently weaken the pinned media contract.
+    if(input.userMessage?.includes('base64,')||request.assets?.length!==(customShowroom?2:18))throw Error('Invalid showroom fixture media input')
+    let output:unknown
+    if(input.cost.operation.includes('interpret'))output={items:snapshot.feedback.map(item=>({feedbackId:item.id,summary:'Ändrar endast accentfärgen och bevarar bilderna.',disposition:'apply',changeKey:'theme.accent',supersedesFeedbackIds:[]}))}
+    else{
+      if(!request.designReference?.draft)throw Error('Reviewed showroom draft missing from actual worker input')
+      const source=structuredClone(request.designReference.draft)
+      if(snapshot.feedback.length){
+        if(!snapshot.feedback.every(item=>item.text.includes('#71d7ba')))throw Error('Unsupported authored fixture edit')
+        source.css=source.css.replaceAll(customShowroom?'#a9e4bf':'#efb563','#71d7ba')
+      }
+      output=source
+    }
+    return {content:JSON.stringify(output),tokensIn:0,tokensOut:0,durationMs:1,authorityRefreshRequired:false}
+  }
   const content: Record<string, unknown> = input.cost.operation.includes('interpret') ? { items: snapshot.feedback.map(item => ({ feedbackId: item.id, summary: 'Jag ändrar hemsidan: ' + item.text, disposition: 'apply', changeKey: 'title', supersedesFeedbackIds: [] })) } : { format: 'static-website.v1', title: 'Café', pages: [
     { key: 'index', title: 'Hem', bodyHtml: `<h1>${text.replace(/[<>&]/g, '')}</h1><button id="menu" aria-expanded="false">Meny</button><nav id="nav" hidden><a href="/contact">Kontakt</a></nav>`, css: 'body{font-family:system-ui;padding:32px;background:#fff8ef}h1{font-size:42px}button{padding:12px}', behaviors: [{ kind: 'toggle', triggerId: 'menu', targetIds: ['nav'] }] },
     { key: 'contact', title: 'Kontakt', bodyHtml: '<h1>Kontakta caféet</h1><a href="/">Hem</a>', css: 'body{font-family:system-ui;padding:32px}', behaviors: [] },

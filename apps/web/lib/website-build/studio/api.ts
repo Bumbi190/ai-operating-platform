@@ -9,6 +9,7 @@ import {loadStudioView} from './loader'
 import type {EnsureStudioInput,StudioSelection,WorkspaceRequestInput} from './types'
 import {setStudioProjectBudget,type StudioBudgetInput} from './budget'
 import {readStudioCosts,stopStudioProject,studioCostProject} from './costs'
+import {acceptanceTargetDenial} from '../acceptance-target'
 const headers={'cache-control':'private, no-store'}
 export function studioSelection(params:URLSearchParams):{selection:StudioSelection;include:'active'|'archived'|'trashed'}{
   const allowed=['project','conversation','session','include']
@@ -18,6 +19,8 @@ export function studioSelection(params:URLSearchParams):{selection:StudioSelecti
   return {selection:{...(params.has('project')?{projectSlug:params.get('project')!}:{}),...(params.has('conversation')?{conversationId:params.get('conversation')!}:{}),...(params.has('session')?{sessionId:params.get('session')!}:{})},include:include as 'active'|'archived'|'trashed'}
 }
 export async function studioApi(action:'get'|'ensure'|'workspace-request'|'budget'|'costs'|'stop',request:Request):Promise<Response>{
+  // Keep read-only and emergency stop reachable; refuse workspace/budget writes on an unsafe preview.
+  if(action!=='get'&&action!=='costs'&&action!=='stop'){const blocked=acceptanceTargetDenial('studio-'+action);if(blocked)return blocked}
   const access=await resolveProjectAccess()
   if(!access.ok){access.response.headers.set('cache-control',headers['cache-control']);return access.response}
   try{

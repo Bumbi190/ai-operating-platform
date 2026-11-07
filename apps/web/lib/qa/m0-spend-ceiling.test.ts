@@ -56,7 +56,8 @@ async function reservedOf() { return (await import('@/lib/cost/spend-ceiling')).
 let reserved: (sek: number) => number = () => Number.NaN
 beforeEach(async () => { reserved = await reservedOf() })
 
-const WINDOW = { 'claude-sonnet-4-6': 200_000, 'claude-haiku-4-5-20251001': 200_000, 'claude-opus-4-6': 200_000,
+// Published default input bounds, independently pinned from Anthropic context-window docs (2026-11-05).
+const WINDOW = { 'claude-sonnet-4-6': 1_000_000, 'claude-haiku-4-5-20251001': 200_000, 'claude-opus-4-6': 1_000_000,
   'gpt-4o': 128_000, 'gpt-4o-mini': 128_000, 'gpt-5.4-mini':400_000 } as const
 
 // ── Hard-bound proofs ────────────────────────────────────────────────────────

@@ -1,0 +1,637 @@
+{
+  "schema": "omnira.website-real-auth-local.v1",
+  "startedAt": "2026-11-05T12:45:03.006Z",
+  "images": {
+    "db": "public.ecr.aws/supabase/postgres@sha256:06ddc7962e11ab0f4f0334fd05671e97c30ea202f6e6a7113800bd3d6e416108",
+    "auth": "public.ecr.aws/supabase/gotrue@sha256:1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b",
+    "rest": "public.ecr.aws/supabase/postgrest@sha256:1347d7552b88f17832912c06afbf7c43209af6eeeb60834b04aae12c9bd9d5cc",
+    "client": "node@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914",
+    "browserProxy": "node@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914"
+  },
+  "checks": [
+    {
+      "name": "local_docker_only",
+      "passed": true
+    },
+    {
+      "name": "network_has_no_external_gateway",
+      "passed": true
+    },
+    {
+      "name": "database_ready",
+      "passed": true
+    },
+    {
+      "name": "managed_auth_uid_available",
+      "passed": true
+    },
+    {
+      "name": "auth_internal_network",
+      "passed": true
+    },
+    {
+      "name": "auth_no_published_ports",
+      "passed": true
+    },
+    {
+      "name": "real_auth_health",
+      "passed": true
+    },
+    {
+      "name": "create_one",
+      "passed": true
+    },
+    {
+      "name": "password_login_one",
+      "passed": true
+    },
+    {
+      "name": "create_two",
+      "passed": true
+    },
+    {
+      "name": "password_login_two",
+      "passed": true
+    },
+    {
+      "name": "wrong_password_denied",
+      "passed": true
+    },
+    {
+      "name": "server_validates_user_token",
+      "passed": true
+    },
+    {
+      "name": "refresh_session",
+      "passed": true
+    },
+    {
+      "name": "application_target_has_no_public_tables",
+      "passed": true
+    },
+    {
+      "name": "two_real_auth_accounts_before_schema",
+      "passed": true
+    },
+    {
+      "name": "application_replay_complete",
+      "passed": true
+    },
+    {
+      "name": "managed_auth_uid_unchanged",
+      "passed": true
+    },
+    {
+      "name": "real_auth_accounts_preserved",
+      "passed": true
+    },
+    {
+      "name": "rest_internal_network",
+      "passed": true
+    },
+    {
+      "name": "rest_no_published_ports",
+      "passed": true
+    },
+    {
+      "name": "real_postgrest_health",
+      "passed": true
+    },
+    {
+      "name": "owner_one_sees_only_own_row",
+      "passed": true
+    },
+    {
+      "name": "owner_two_sees_only_own_row",
+      "passed": true
+    },
+    {
+      "name": "foreign_read_hidden",
+      "passed": true
+    },
+    {
+      "name": "foreign_update_no_rows",
+      "passed": true
+    },
+    {
+      "name": "owner_reassignment_denied",
+      "passed": true
+    },
+    {
+      "name": "foreign_insert_denied",
+      "passed": true
+    },
+    {
+      "name": "anonymous_denied",
+      "passed": true
+    },
+    {
+      "name": "service_sees_two_fictional_rows",
+      "passed": true
+    },
+    {
+      "name": "application_principal_validated_by_auth",
+      "passed": true
+    },
+    {
+      "name": "canonical_projects_owner_a_only",
+      "passed": true
+    },
+    {
+      "name": "canonical_projects_owner_b_only",
+      "passed": true
+    },
+    {
+      "name": "server_rpc_builder_selected",
+      "passed": true
+    },
+    {
+      "name": "canonical_plan_saved_via_postgrest",
+      "passed": true
+    },
+    {
+      "name": "canonical_plan_save_idempotent",
+      "passed": true
+    },
+    {
+      "name": "canonical_plan_owner_can_read",
+      "passed": true
+    },
+    {
+      "name": "canonical_plan_foreign_user_sees_none",
+      "passed": true
+    },
+    {
+      "name": "authenticated_cannot_invoke_server_rpc",
+      "passed": true
+    },
+    {
+      "name": "canonical_write_checks_owner_even_with_both_project_ids",
+      "passed": true
+    },
+    {
+      "name": "canonical_build_requires_plan_approval",
+      "passed": true
+    },
+    {
+      "name": "no_unapproved_build_jobs",
+      "passed": true
+    },
+    {
+      "name": "application_no_cron_runs",
+      "passed": true
+    },
+    {
+      "name": "local_worker_authority_available",
+      "passed": true
+    },
+    {
+      "name": "actual_routes_with_real_cookie_sessions",
+      "passed": true
+    },
+    {
+      "name": "original_projects_have_no_build_jobs",
+      "passed": true
+    },
+    {
+      "name": "one_worker_run_completed_preview",
+      "passed": true
+    },
+    {
+      "name": "worker_created_no_cost_events",
+      "passed": true
+    },
+    {
+      "name": "actual_browser_ui_acceptance",
+      "passed": true
+    },
+    {
+      "name": "signout",
+      "passed": true
+    },
+    {
+      "name": "refresh_after_signout_denied",
+      "passed": true
+    },
+    {
+      "name": "cron_launching_off",
+      "passed": true
+    }
+  ],
+  "completed": true,
+  "cleanup": {
+    "browserProxy": "removed",
+    "rest": "removed",
+    "auth": "removed",
+    "client": "removed",
+    "db": "removed",
+    "network": "removed",
+    "browserNetwork": "removed"
+  },
+  "limitations": [
+    "Actual Chromium login and Studio components in minimal Next shell with real Auth/SQL and preset worker. Loopback-only temporary browser ports. No full platform shell, chat generation, provider spend, complete media/export or hosted target."
+  ],
+  "authPortMetadata": {
+    "state": "running",
+    "requested": {},
+    "mapped": {}
+  },
+  "application": {
+    "applied": 189,
+    "planned": 189,
+    "authPreserved": true
+  },
+  "restPortMetadata": {
+    "state": "running",
+    "requested": {},
+    "mapped": {
+      "3000/tcp": null
+    }
+  },
+  "browserPortBindings": {
+    "54393/tcp": [
+      {
+        "HostIp": "127.0.0.1",
+        "HostPort": "54393"
+      }
+    ],
+    "54394/tcp": [
+      {
+        "HostIp": "127.0.0.1",
+        "HostPort": "54394"
+      }
+    ]
+  },
+  "browser": {
+    "completed": true,
+    "checks": [
+      {
+        "name": "unauthenticated_redirect",
+        "passed": true
+      },
+      {
+        "name": "incorrect_password",
+        "passed": true
+      },
+      {
+        "name": "password_login",
+        "passed": true
+      },
+      {
+        "name": "browser_received_auth_cookie",
+        "passed": true
+      },
+      {
+        "name": "browser_studio_model_ready",
+        "passed": true
+      },
+      {
+        "name": "owner_studio_state",
+        "passed": true
+      },
+      {
+        "name": "owner_reload",
+        "passed": true
+      },
+      {
+        "name": "studio_viewport_1440",
+        "passed": true
+      },
+      {
+        "name": "studio_viewport_390",
+        "passed": true
+      },
+      {
+        "name": "browser_refresh_cookie_rotated",
+        "passed": true
+      },
+      {
+        "name": "browser_refreshed_session_survives_reload",
+        "passed": true
+      },
+      {
+        "name": "foreign_browser_login",
+        "passed": true
+      },
+      {
+        "name": "foreign_studio_hidden",
+        "passed": true
+      }
+    ]
+  },
+  "routes": {
+    "completed": true,
+    "checks": [
+      {
+        "name": "next_http_server_ready",
+        "passed": true
+      },
+      {
+        "name": "next_middleware_redirects_missing_session",
+        "passed": true
+      },
+      {
+        "name": "ssr_session_owner_a",
+        "passed": true
+      },
+      {
+        "name": "ssr_session_owner_b",
+        "passed": true
+      },
+      {
+        "name": "route_response_private_4",
+        "passed": true
+      },
+      {
+        "name": "route_no_session_401",
+        "passed": true
+      },
+      {
+        "name": "route_response_private_6",
+        "passed": true
+      },
+      {
+        "name": "route_invalid_cookie_401",
+        "passed": true
+      },
+      {
+        "name": "real_resolver_owner_a",
+        "passed": true
+      },
+      {
+        "name": "real_resolver_owner_b",
+        "passed": true
+      },
+      {
+        "name": "route_response_private_10",
+        "passed": true
+      },
+      {
+        "name": "route_own_setting_read",
+        "passed": true
+      },
+      {
+        "name": "route_response_private_12",
+        "passed": true
+      },
+      {
+        "name": "route_foreign_setting_hidden",
+        "passed": true
+      },
+      {
+        "name": "route_response_private_14",
+        "passed": true
+      },
+      {
+        "name": "route_cross_origin_refused",
+        "passed": true
+      },
+      {
+        "name": "route_response_private_16",
+        "passed": true
+      },
+      {
+        "name": "route_builder_selected",
+        "passed": true
+      },
+      {
+        "name": "route_response_private_18",
+        "passed": true
+      },
+      {
+        "name": "route_foreign_agent_refused",
+        "passed": true
+      },
+      {
+        "name": "route_response_private_20",
+        "passed": true
+      },
+      {
+        "name": "route_body_cannot_override_identity",
+        "passed": true
+      },
+      {
+        "name": "route_response_private_22",
+        "passed": true
+      },
+      {
+        "name": "route_cross_project_save_refused",
+        "passed": true
+      },
+      {
+        "name": "route_response_private_24",
+        "passed": true
+      },
+      {
+        "name": "route_plan_saved",
+        "passed": true
+      },
+      {
+        "name": "route_generated_three_mockups",
+        "passed": true
+      },
+      {
+        "name": "route_response_private_27",
+        "passed": true
+      },
+      {
+        "name": "route_plan_save_idempotent",
+        "passed": true
+      },
+      {
+        "name": "route_response_private_29",
+        "passed": true
+      },
+      {
+        "name": "route_plan_read",
+        "passed": true
+      },
+      {
+        "name": "route_response_private_31",
+        "passed": true
+      },
+      {
+        "name": "route_foreign_plan_hidden",
+        "passed": true
+      },
+      {
+        "name": "route_response_private_33",
+        "passed": true
+      },
+      {
+        "name": "route_mockup_approval_required",
+        "passed": true
+      },
+      {
+        "name": "route_response_private_35",
+        "passed": true
+      },
+      {
+        "name": "route_mockup_approved",
+        "passed": true
+      },
+      {
+        "name": "route_response_private_37",
+        "passed": true
+      },
+      {
+        "name": "route_plan_approved_by_session_user",
+        "passed": true
+      },
+      {
+        "name": "worker_http_private_studio",
+        "passed": true
+      },
+      {
+        "name": "worker_studio_created",
+        "passed": true
+      },
+      {
+        "name": "worker_http_private_website-build-settings?projectId=3ed48e7d-7381-4afd-90e7-e7c6820449c1",
+        "passed": true
+      },
+      {
+        "name": "worker_factory_builder_exists",
+        "passed": true
+      },
+      {
+        "name": "worker_http_private_website-build-plans",
+        "passed": true
+      },
+      {
+        "name": "worker_cinematic_plan_saved",
+        "passed": true
+      },
+      {
+        "name": "worker_http_private_approve",
+        "passed": true
+      },
+      {
+        "name": "worker_mockup_approved",
+        "passed": true
+      },
+      {
+        "name": "worker_http_private_approve",
+        "passed": true
+      },
+      {
+        "name": "worker_plan_approved",
+        "passed": true
+      },
+      {
+        "name": "worker_http_private_start",
+        "passed": true
+      },
+      {
+        "name": "worker_missing_budget_is_actionable",
+        "passed": true
+      },
+      {
+        "name": "worker_missing_budget_creates_no_job",
+        "passed": true
+      },
+      {
+        "name": "worker_http_private_budget",
+        "passed": true
+      },
+      {
+        "name": "worker_zero_budget_recorded",
+        "passed": true
+      },
+      {
+        "name": "worker_http_private_start",
+        "passed": true
+      },
+      {
+        "name": "worker_foreign_start_refused",
+        "passed": true
+      },
+      {
+        "name": "worker_http_private_start",
+        "passed": true
+      },
+      {
+        "name": "worker_http_private_start",
+        "passed": true
+      },
+      {
+        "name": "worker_approved_plan_queued",
+        "passed": true
+      },
+      {
+        "name": "worker_start_idempotent",
+        "passed": true
+      },
+      {
+        "name": "worker_one_real_pending_run",
+        "passed": true
+      },
+      {
+        "name": "worker_canonical_claim_rpc",
+        "passed": true
+      },
+      {
+        "name": "worker_claim_matches_approved_run",
+        "passed": true
+      },
+      {
+        "name": "worker_wrong_claim_refused",
+        "passed": true
+      },
+      {
+        "name": "worker_preset_makes_no_paid_step",
+        "passed": true
+      },
+      {
+        "name": "worker_http_private_7a8e265e-89f9-4a09-915b-612650cee956?projectId=3ed48e7d-7381-4afd-90e7-e7c6820449c1",
+        "passed": true
+      },
+      {
+        "name": "worker_first_preview_ready",
+        "passed": true
+      },
+      {
+        "name": "worker_http_private_d237815c-7b1b-4e0f-a735-108f2feeae72?projectId=3ed48e7d-7381-4afd-90e7-e7c6820449c1",
+        "passed": true
+      },
+      {
+        "name": "worker_preset_has_five_pages",
+        "passed": true
+      },
+      {
+        "name": "worker_preview_preserves_reviewed_binding",
+        "passed": true
+      },
+      {
+        "name": "worker_http_private_7a8e265e-89f9-4a09-915b-612650cee956?projectId=3ed48e7d-7381-4afd-90e7-e7c6820449c1",
+        "passed": true
+      },
+      {
+        "name": "worker_preview_hidden_from_other_user",
+        "passed": true
+      },
+      {
+        "name": "next_middleware_refresh_preserves_owner",
+        "passed": true
+      },
+      {
+        "name": "next_middleware_called_real_refresh_endpoint",
+        "passed": true
+      },
+      {
+        "name": "next_middleware_returns_refreshed_cookie",
+        "passed": true
+      },
+      {
+        "name": "refreshed_route_response_private",
+        "passed": true
+      },
+      {
+        "name": "host_browser_completed",
+        "passed": true
+      }
+    ]
+  },
+  "finishedAt": "2026-11-05T12:46:30.761Z",
+  "mode": "real-browser"
+}

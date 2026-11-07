@@ -1,0 +1,93 @@
+{
+  "source": "Omnira original concept car generated in isolated Claude Opus 5.5 + Blender 5.2.2 LTS proof, 2026-10-30",
+  "sourceBlend": "TEMP proof showroom.blend (not shipped)",
+  "operations": "12 deterministic camera-angle renders; 320x180; WebP compression only after render",
+  "truthClass": "fictional_concept",
+  "notRealVehicle": true,
+  "frames": [
+    {
+      "file": "concept-spin-00.webp",
+      "width": 320,
+      "height": 180,
+      "bytes": 4628,
+      "sha256": "f152468f39a68478dfbb935312beb8e3972003a0d57d2242b9304b9dad0867e1"
+    },
+    {
+      "file": "concept-spin-01.webp",
+      "width": 320,
+      "height": 180,
+      "bytes": 2982,
+      "sha256": "346a6ade85417e44701f289853d2f4fb274b374897c4afc2e7322397ab1913fd"
+    },
+    {
+      "file": "concept-spin-02.webp",
+      "width": 320,
+      "height": 180,
+      "bytes": 2964,
+      "sha256": "eb0c568d8c5d750fb5162d30d0dae19bbf3455c2353c32610afa16766ef6cb9d"
+    },
+    {
+      "file": "concept-spin-03.webp",
+      "width": 320,
+      "height": 180,
+      "bytes": 3154,
+      "sha256": "827be7b37bad3188aea94bee8747783405d2d1149828d604479c5d6b2feb20e0"
+    },
+    {
+      "file": "concept-spin-04.webp",
+      "width": 320,
+      "height": 180,
+      "bytes": 3062,
+      "sha256": "edcd3b739c26c77a4986138d5730eb04d827537dde8253447a8bfce7a995b0ab"
+    },
+    {
+      "file": "concept-spin-05.webp",
+      "width": 320,
+      "height": 180,
+      "bytes": 3588,
+      "sha256": "00d2b6b59ab659cb65a0e193653e3203ec6d3c926189acd206a4cda3c02da374"
+    },
+    {
+      "file": "concept-spin-06.webp",
+      "width": 320,
+      "height": 180,
+      "bytes": 3990,
+      "sha256": "c844577329b26640049b811a3b603bda997c4963863ac545dd992f8b327fcfed"
+    },
+    {
+      "file": "concept-spin-07.webp",
+      "width": 320,
+      "height": 180,
+      "bytes": 2826,
+      "sha256": "af37e1ee8cf508eada96a8dcfefdc9d875cb94607a6a8d60982f9fc4098175b3"
+    },
+    {
+      "file": "concept-spin-08.webp",
+      "width": 320,
+      "height": 180,
+      "bytes": 2956,
+      "sha256": "767adb216747e9aca98ca9039f86d1ccf5212c8056c5ad84ab098c7228b93de3"
+    },
+    {
+      "file": "concept-spin-09.webp",
+      "width": 320,
+      "height": 180,
+      "bytes": 3210,
+      "sha256": "4e2025ed1cd64c80e7af8aa4100454557b4da0d0c1ea7a26ab882bcfccdb8c75"
+    },
+    {
+      "file": "concept-spin-10.webp",
+      "width": 320,
+      "height": 180,
+      "bytes": 2970,
+      "sha256": "ddfefe836b3428ecf24422df3675f577100554cf833138358227a9b2d0786b48"
+    },
+    {
+      "file": "concept-spin-11.webp",
+      "width": 320,
+      "height": 180,
+      "bytes": 3652,
+      "sha256": "0a9d52a7dce1aee0a8b4d552830bf6b7a5cc1bb98e99535caba78a6701800ee9"
+    }
+  ]
+}

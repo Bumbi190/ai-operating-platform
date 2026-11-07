@@ -1,0 +1,10 @@
+{
+  "projectId": "e6cf9349-4967-441c-a2bd-5778eec974b3",
+  "observedOn": "2026-11-04",
+  "executionPaused": true,
+  "totalUsdLimitMicros": 10000000,
+  "totalUsdCommittedMicros": 0,
+  "totalApprovalSha256": "ecc80389a7b35a344416146b3b9fc94f6e097845bedcddbf1e4671237a3d8385",
+  "method": "budget_set_total_allowance",
+  "paidRunStarted": false
+}

@@ -4,10 +4,12 @@ import {createAdminClient} from '@/lib/supabase/admin'
 import {assertSameOrigin} from '@/lib/atlas/executive/http'
 import {buildErrorResponse,readWebsiteBuildBody} from '../api'
 import {WebsiteBuildError} from '../store'
+import {acceptanceTargetDenial} from '../acceptance-target'
 import {approveWebsiteMockup,readWebsiteMockupArtifact} from './store'
 import type {MockupApprovalInput} from './types'
 const headers={'cache-control':'private, no-store'}
 export async function websiteMockupApi(action:'get'|'approve',request:Request,params:{planId:string;mockupId?:string}):Promise<Response>{
+ if(action==='approve'){const blocked=acceptanceTargetDenial('mockup-approve');if(blocked)return blocked}
  const access=await resolveProjectAccess()
  if(!access.ok){access.response.headers.set('cache-control',headers['cache-control']);return access.response}
  if(action==='approve'){const denied=assertSameOrigin(request);if(denied){denied.headers.set('cache-control',headers['cache-control']);return denied}}

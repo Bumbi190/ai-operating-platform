@@ -1,4 +1,5 @@
 import 'server-only'
+import {cinematicReference,compileCinematicArtifact} from '../studio/cinematic-binding'
 import type { createAdminClient } from '@/lib/supabase/admin'
 import { WebsiteBuildError, validateBuildUuid } from '../store'
 import type { BuildPrincipal, BuildSessionView } from '../types'
@@ -18,7 +19,7 @@ async function call<T>(db:Db,name:string,p:BuildPrincipal,input:unknown,allowNul
  const invoke=db as unknown as {rpc(n:string,args:Record<string,unknown>):Promise<{data:unknown;error:{code?:string;message?:string}|null}>}
  const {data,error}=await invoke.rpc(name,{p_principal:p,p_input:input})
  if(error){
-  const known=['MOCKUP_REVIEW_REQUIRED','MOCKUP_STALE','MOCKUP_LOCKED','INVALID_MOCKUP','PLAN_REVIEW_REQUIRED','PLAN_STALE','BUILD_AGENT_REQUIRED','PROJECT_LOCATION_LOCKED','PLAN_REVISION_IMMUTABLE','PLAN_DECISION_IMMUTABLE','INVALID_PLAN','INVALID_PROJECT_ROOT','INVALID_IDEMPOTENCY_KEY'].find(c=>error.message?.includes(c))
+  const known=['PROJECT_BUDGET_REQUIRED','MOCKUP_REVIEW_REQUIRED','MOCKUP_STALE','MOCKUP_LOCKED','INVALID_MOCKUP','PLAN_REVIEW_REQUIRED','PLAN_STALE','BUILD_AGENT_REQUIRED','PROJECT_LOCATION_LOCKED','PLAN_REVISION_IMMUTABLE','PLAN_DECISION_IMMUTABLE','INVALID_PLAN','INVALID_PROJECT_ROOT','INVALID_IDEMPOTENCY_KEY'].find(c=>error.message?.includes(c))
   const code=known??(error.code==='23505'?'CONFLICT':error.code==='P0002'||error.code==='42501'?'NOT_FOUND':'BUILD_UNAVAILABLE')
   throw new WebsiteBuildError(code,code==='NOT_FOUND'?404:code.startsWith('INVALID_')?400:code==='BUILD_UNAVAILABLE'?503:409)
  }
@@ -73,5 +74,5 @@ export async function readWebsiteMockupArtifact(db:Db,p:BuildPrincipal,i:Omit<Mo
  allowed(p,i.projectId);revision(i);validateBuildUuid(i.mockupId)
  if(typeof i.mockupSha256!=='string'||!hash.test(i.mockupSha256))throw new WebsiteBuildError('INVALID_MOCKUP')
  const reference=await call<{canonicalDraft:string;sha256:string}>(db,'website_build_mockup_read',p,i)
- try{return compileWebsiteArtifact(validateMockupReference(reference))}catch{throw new WebsiteBuildError('INVALID_MOCKUP',409)}
+ try{const binding=cinematicReference(reference);return binding?compileCinematicArtifact(binding):compileWebsiteArtifact(validateMockupReference(reference))}catch{throw new WebsiteBuildError('INVALID_MOCKUP',409)}
 }

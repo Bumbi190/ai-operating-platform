@@ -1,11 +1,13 @@
 import { spawnSync, spawn } from 'node:child_process'
 import { readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
+import {resolveWebsiteTestTarget,assertWebsiteTestTarget} from './website-test-target.mjs'
 
 const root = resolve(import.meta.dirname, '../../..')
 const target = new URL(process.env.WEBSITE_BUILD_TEST_DATABASE_URL || 'http://missing.invalid')
 if (target.protocol !== 'postgresql:' || target.hostname !== '127.0.0.1' || target.port !== '54389' || target.pathname !== '/omnira_website_test') throw Error('Set WEBSITE_BUILD_TEST_DATABASE_URL to the explicit isolated local test target; cloud and arbitrary databases are refused')
-const container = 'omnira-website-build-test-20261014'
+const fixtureTarget=resolveWebsiteTestTarget()
+const container=fixtureTarget.container
 const testNotices = []
 function docker(args, input) {
   const result = spawnSync('docker', args, { input, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 })
@@ -15,7 +17,7 @@ function docker(args, input) {
 }
 const context = docker(['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}'])
 if (!/^(npipe:\/\/|unix:\/\/)/.test(context)) throw Error('Remote Docker context refused')
-if (docker(['inspect', '--format', '{{index .Config.Labels "com.omnira.testplan"}}', container]) !== 'atlas-live-build-20261014') throw Error('Test container ownership label missing')
+assertWebsiteTestTarget(JSON.parse(docker(['inspect',container]))[0],fixtureTarget)
 const database = 'website_test_' + Date.now()
 docker(['exec', container, 'createdb', '-U', 'postgres', database])
 const psqlArgs = ['exec', '-i', container, 'psql', '-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', database]

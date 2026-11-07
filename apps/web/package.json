@@ -53,8 +53,10 @@
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "sharp": "0.34.4",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
+    "three": "0.187.0",
     "ws": "8.21.0"
   },
   "devDependencies": {
@@ -63,6 +65,7 @@
     "@types/pngjs": "^6.0.5",
     "@types/react": "^18.3.21",
     "@types/react-dom": "^18.3.5",
+    "@types/three": "0.187.0",
     "@types/ws": "^8.18.1",
     "autoprefixer": "^10.4.21",
     "dotenv": "^17.4.2",

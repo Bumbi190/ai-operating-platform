@@ -15,6 +15,7 @@ export default defineConfig({
   css: { postcss: {} },
   test: {
     environment: "node",
+    exclude: ["lib/qa/website-reference-auth.integration.test.ts", "**/node_modules/**"],
     include: [
       'lib/calendar/**/*.test.{ts,tsx}',
       'lib/review-content/**/*.test.{ts,tsx}',

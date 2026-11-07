@@ -18,3 +18,13 @@ it('sends the displayed design receipt with typed approval',async()=>{
  await controller.sendTurn({conversationId,text:'jag godkänner',inputSource:'text'})
  expect(body.websitePlanRef).toMatchObject({revisionId,sha256:plan.currentRevision.sha256,mockupDecisionId:approved.id})
 })
+
+it('preserves only a valid cinematic binding through plan review updates',()=>{
+ const cinematic={id:'demo-motors-cinematic-v1',sha256:'c'.repeat(64)}
+ const bound={...plan,currentRevision:{...plan.currentRevision,content:{...plan.currentRevision.content,design:{style:'Bevara',reference:'demo',cinematic}}}}
+ const decode=(value:unknown)=>decodeWebsiteEffect({event:'website_plan',conversationId,plan:value} as any,context)
+ expect(decode(bound)?.plan?.currentRevision.content.design.cinematic).toEqual(cinematic)
+ for(const bad of [{...cinematic,id:'arbitrary-script'},{...cinematic,sha256:'invalid'},{...cinematic,html:'<script>x</script>'}]){
+  expect(decode({...bound,currentRevision:{...bound.currentRevision,content:{...bound.currentRevision.content,design:{...bound.currentRevision.content.design,cinematic:bad}}}})).toBeNull()
+ }
+})

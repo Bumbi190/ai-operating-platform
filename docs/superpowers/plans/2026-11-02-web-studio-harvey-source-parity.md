@@ -1,0 +1,13 @@
+# Restore protected Web Studio preview through exact applied-source reconciliation
+
+Continue existing Draft PR368 / codex/atlas-builder-references-20261017, base950b9e3. Reuse decision after read-only preflight WEBSTUDIO-368-MIGRATION-PARITY-20261102 returned review_required (metadata matches other reconciliation PRs); actual scope belongs to this existing preview and no new branch/worktree/PR is created. Never mutate Harvey's active worktree.
+
+Cause: two owner-applied Harvey migrations exist in production's194-name ledger but not this branch's169 canonical /155 enforced source inventory. PR386 head ea01a65f7f08250bcef341728b3fb474590636ec records the source and owner approval. Read-only current ledger proves source parity: SCB source final newline omitted in stored body; editorial body retains CRLF and exact two timeout lines (5s lock,60s statement) before source. After those explicit representation differences, SHA256 matches Git content. Store both raw/normalized digests and exact rule. No broad SQL normalization.
+
+Fix: copy exactly the two committed SQL blobs, preserving upstream filenames and bytes, into this branch; -text attributes preserve hashes on Windows. Counts advance171/157; frozen14grandfathered/30legacy histories and all guard algorithms stay unchanged. No allowlist growth, override, DB application or feature-code merge.
+
+Tests: new nine-case contract suite observed RED (six failures before source import). Verify exact hashes/bytes,194-name acceptance, each missing/duplicate migration, unrelated unknown names and preserved192-name historical snapshot failing for missing source. Update existing inventory fixtures and distinguish old192-name evidence from current194-name evidence. Add suite to required Migration Guard Integrity and ensure its cases ran without skips. Run complete configured guard suite, TypeScript, independent review, normal push existingPR, inspect actual new Vercel logs/state and GitHub checks.
+
+Done requires a READY protected preview for exact newhead or a concrete remaining build error; then test anonymous/session access appropriately without bypassing auth. Public dealer activation, main merge, production flags, live inference and customer outreach remain outside this repair. Existing approved Higgsfield media reused at zero incremental generation cost.
+
+Alternative rejected: expanding legacy/grandfathered allowlists or overriding the guard hides a real source-history gap. Merging all Harvey feature code is unnecessary and would mix active workstreams. Source-only reconciliation is sufficient and has precedent in this branch's existing tests/reports.

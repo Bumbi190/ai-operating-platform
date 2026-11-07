@@ -75,7 +75,16 @@ const VETOES: ReadonlyArray<readonly [string, RegExp]> = [
 ]
 
 /** Trailing/leading noise that never changes meaning. */
-const EDGE_PUNCTUATION = /^[\s"'“”«»¡¿(\[]+|[\s"'“”«»!?.,…:;)\]]+$/gu
+const LEADING_PUNCTUATION = /[\s"'“”«»¡¿(\[]/u
+const TRAILING_PUNCTUATION = /[\s"'“”«»!?.,…:;)\]]/u
+function stripEdgePunctuation(text: string): string {
+  let start = 0, end = text.length
+  // Examine each edge character once; a suffix regex would retry long internal
+  // whitespace runs whenever the last character is not punctuation.
+  while (start < end && LEADING_PUNCTUATION.test(text[start])) start++
+  while (end > start && TRAILING_PUNCTUATION.test(text[end - 1])) end--
+  return text.slice(start, end)
+}
 
 /**
  * The complete set of utterances provable to need nothing but Atlas's identity.
@@ -116,10 +125,7 @@ const STATIC_UTTERANCES: ReadonlySet<string> = new Set([
  * preserved — å/ä/ö are letters here, not noise.
  */
 function normalize(text: string): string {
-  return text
-    .normalize('NFC')
-    .toLowerCase()
-    .replace(EDGE_PUNCTUATION, '')
+  return stripEdgePunctuation(text.normalize('NFC').toLowerCase())
     .replace(/[’'`]/gu, '')
     .replace(/\s+/gu, ' ')
     .trim()

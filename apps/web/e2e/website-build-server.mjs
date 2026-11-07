@@ -44,9 +44,17 @@ const server = httpServer(async (req, res) => {
     }
     const mockupRoute=url.pathname.match(/^\/api\/website-build-plans\/([0-9a-f-]{36})\/mockups\/(approve|[0-9a-f-]{36})$/)
     if(mockupRoute){const api=await vite.ssrLoadModule('/lib/website-build/planning/mockup-api.ts'),chunks=[];for await(const chunk of req)chunks.push(chunk);const action=mockupRoute[2]==='approve'?'approve':'get',response=await api.websiteMockupApi(action,new Request(url,{method:req.method,headers:req.headers,body:req.method==='POST'?Buffer.concat(chunks):undefined}),{planId:mockupRoute[1],mockupId:action==='get'?mockupRoute[2]:undefined});res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));return}
+    if(url.pathname==='/api/website-build/studio/cinematic-plan'){
+      const api=await vite.ssrLoadModule('/app/api/website-build/studio/cinematic-plan/route.ts'),chunks=[];for await(const chunk of req)chunks.push(chunk);
+      const response=await api[req.method](new Request(url,{method:req.method,headers:req.headers,body:req.method==='POST'?Buffer.concat(chunks):undefined}));res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));return;
+    }
+    if(url.pathname.startsWith('/assets/')){
+      const api=await vite.ssrLoadModule('/app/assets/[...path]/route.ts'),response=await api.GET(new Request(url,{headers:req.headers}),{params:{path:url.pathname.slice('/assets/'.length).split('/')}});
+      res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));return;
+    }
     if(url.pathname.startsWith('/api/website-build/studio')){
       const api=await vite.ssrLoadModule('/lib/website-build/studio/api.ts');const chunks=[];for await(const chunk of req){chunks.push(chunk);if(chunks.reduce((n,c)=>n+c.length,0)>70000)throw Error('Fixture body too large')}
-      const action=url.pathname.endsWith('/budget')?'budget':url.pathname.endsWith('/workspace-request')?'workspace-request':req.method==='POST'?'ensure':'get';
+      const action=url.pathname.endsWith('/costs')?'costs':url.pathname.endsWith('/stop')?'stop':url.pathname.endsWith('/budget')?'budget':url.pathname.endsWith('/workspace-request')?'workspace-request':req.method==='POST'?'ensure':'get';
       const response=await api.studioApi(action,new Request(url,{method:req.method,headers:req.headers,body:req.method==='POST'?Buffer.concat(chunks):undefined}));res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));return;
     }
     const lifecycle=url.pathname.match(/^\/api\/projects\/by-id\/([0-9a-f-]{36})\/lifecycle$/)
@@ -55,9 +63,11 @@ const server = httpServer(async (req, res) => {
       const response=await api.lifecycleApi(req.method==='POST'?'change':'get',new Request(url,{method:req.method,headers:req.headers,body:req.method==='POST'?Buffer.concat(chunks):undefined}),lifecycle[1]);res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));return
     }
     if (url.pathname.startsWith('/__fixture/')) {
+      if(url.pathname.startsWith('/__fixture/step/'))console.log('[fixture-step] admitted '+url.pathname)
       const fixture = await vite.ssrLoadModule('/e2e/website-build-fixture.ts')
       const parts = url.pathname.split('/')
       const result = parts[2] === 'setup-conversation' ? await fixture.setupConversation({missingBuilder:url.searchParams.get('builder')==='missing',historical:url.searchParams.get('historical')==='1',multiple:url.searchParams.get('multiple')==='1'}) : parts[2] === 'conversation' ? await fixture.loadConversation(parts[3],url.searchParams.get('viewSession')??undefined) : parts[2] === 'setup' ? await fixture.setup() : parts[2] === 'session' ? { session: await fixture.snapshot(parts[3]),...await fixture.conversation(await fixture.snapshot(parts[3])), userId: '20000000-0000-4000-8000-000000000001', projectSlug: 'test-project', brief: 'En hemsida för vårt svenska café' } : await fixture.step(parts[3], parts[4])
+      if(url.pathname.startsWith('/__fixture/step/'))console.log('[fixture-step] completed '+url.pathname)
       res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(result)); return
     }
     if(url.pathname==='/api/website-build-readiness'){
@@ -83,6 +93,9 @@ const server = httpServer(async (req, res) => {
 // Prepare the real SQL fixture before the readiness URL reports success.
 // Cold module compilation/database bootstrap is server startup, not UI latency.
 await vite.ssrLoadModule('/e2e/website-build-fixture.ts')
+// Blocking local PostgreSQL fixture calls must not expire idle Playwright HTTP connections.
+server.keepAliveTimeout=120_000
+server.headersTimeout=121_000
 server.listen(port, '127.0.0.1')
 async function close() { server.close(); await vite.close(); process.exit(0) }
 process.on('SIGTERM', close); process.on('SIGINT', close)

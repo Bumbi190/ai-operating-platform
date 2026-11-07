@@ -101,3 +101,15 @@ describe('collaborator middleware HTTP isolation', () => {
     expect((await middleware(req('/atlas'))).status).toBe(200)
   })
 })
+
+it('opens only the dealer pilot read paths for anonymous visitors',async()=>{
+ state.user=null
+ for(const p of ['/bilhandlare','/bilhandlare/bilhall','/bilhandlare/bilhall/assets/reel.0123456789abcdef.mp4','/bilhandlare/assets/3d/'+'a'.repeat(64)+'.glb']){
+  expect((await middleware(req(p,'GET'))).status).toBe(200)
+  expect((await middleware(req(p,'HEAD'))).status).toBe(200)
+ }
+ for(const p of ['/build/demo-motors/cinematic','/build/demo-motors/cinematic/assets/private.mp4','/bilhandlare/admin','/bilhandlare-other']){
+  expect((await middleware(req(p))).headers.get('location')).toContain('/login')
+ }
+ expect((await middleware(req('/bilhandlare','POST'))).headers.get('location')).toContain('/login')
+})

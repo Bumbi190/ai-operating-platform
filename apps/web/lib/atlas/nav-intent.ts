@@ -22,7 +22,7 @@ const DIRECT_NAV = /^(öppna|open|gå till|go to|navigera till|navigate to|ta mi
 const SHOW_NAV = /^(visa|show)\b/
 // Natural spoken collaborative requests are still explicit navigation commands.
 // E.g. "Jag vill att vi går in på Handlarbörsen och analyserar statistiken".
-const COLLABORATIVE_NAV = /^(?:jag vill(?: gärna)? att vi|jag skulle vilja att vi|kan vi|ska vi|låt oss)\s+(?:gå|går|öppna|öppnar)\s+(?:in\s+)?(?:på|till)?\s*\S+/i
+const COLLABORATIVE_NAV = /^(?:jag vill(?: gärna)? att vi|jag skulle vilja att vi|kan vi|ska vi|låt oss)\s+(?:gå|går|öppna|öppnar)\s+\S/i
 const SHOW_NOT_NAV = /^(visa|show)\s+(me\s+how|how|hur|mig\s+hur)\b/
 
 /**

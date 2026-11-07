@@ -1,0 +1,17 @@
+{
+    "guardCases":  [
+                       {
+                           "label":  "empty",
+                           "passed":  true
+                       },
+                       {
+                           "label":  "nonempty",
+                           "passed":  true
+                       },
+                       {
+                           "label":  "existing_kind",
+                           "passed":  true
+                       }
+                   ],
+    "enqueue":  true
+}

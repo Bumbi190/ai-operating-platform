@@ -310,7 +310,7 @@ describe('M0: advisory overrides are accounted; replays never release another ca
     reserveSpend.mockResolvedValue({ ...ALLOWED, wouldAllow: false, advisoryOverride: true,
       reason: 'budget_exceeded', reservationId: 'res-refused' })
     await withGovernedSpend(input(), async () => 'ok')
-    expect(markSpendDispatchIntent).toHaveBeenCalledWith('res-override', expect.any(String), 'token_window')
+    expect(markSpendDispatchIntent).toHaveBeenCalledWith('res-override', expect.any(String), 'token_window', {usd_sek:10})
     expect(settleSpend).toHaveBeenCalledWith('res-override', expect.anything())
   })
 

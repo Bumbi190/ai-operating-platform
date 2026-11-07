@@ -189,7 +189,7 @@ export async function loadChatConversation(id: string): Promise<ChatConversation
 
   const messages = await read(
     db.from('conversation_messages')
-      .select('role, content, tool_data, created_at')
+      .select('id, role, content, tool_data, created_at')
       .eq('conversation_id', id)
       .order('created_at', { ascending: true }),
   )

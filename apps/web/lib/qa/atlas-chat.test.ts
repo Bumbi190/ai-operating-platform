@@ -666,7 +666,7 @@ describe('atlas chat · reads', () => {
     const { mod, calls } = await mount()
     const proj = await mod.loadChatConversation('k-proj')
     expect(calls.map((c) => c.table)).toEqual(['conversations', 'conversation_messages'])
-    expect(calls[1].ops).toEqual(['select:role, content, tool_data, created_at', 'eq:conversation_id=k-proj', 'order:created_at:asc'])
+    expect(calls[1].ops).toEqual(['select:id, role, content, tool_data, created_at', 'eq:conversation_id=k-proj', 'order:created_at:asc'])
     expect(proj).toMatchObject({ id: 'k-proj', title: 'Projektfråga', projectName: 'The Prompt', state: 'ok', saved: [], chatBase: '/chat' })
     const mine = (await mod.loadChatConversation('k-mine')) as ChatConversationModel
     expect(mine.saved.map((m) => m.content)).toEqual(['Hej'])
@@ -731,6 +731,13 @@ describe('atlas chat · rendering', () => {
     expect(html).toContain('data-intro')
     for (const starter of CONVERSATION_STARTERS) expect(textOf(html)).toContain(starter)
     expect(html).not.toMatch(/<ol[^>]*aria-label="Konversation"/)
+  })
+
+  it('studio · offers the branded dealer template among the editable suggestions', () => {
+    const model=conversation({saved:[]})
+    const html=renderToStaticMarkup(React.createElement(AtlasChatConversation,{model,mode:'studio'}))
+    expect(textOf(html)).toContain('Bilhandlarmall')
+    expect(textOf(renderConversation(model))).not.toContain('Bilhandlarmall')
   })
 
   it('conversation · a launcher’s question does not flash the empty state first', () => {

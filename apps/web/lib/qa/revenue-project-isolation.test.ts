@@ -32,7 +32,7 @@
  * the render process. `!inner` is what actually removes them.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as React from 'react'
 import { IMPOSSIBLE_PROJECT_ID } from '@/lib/atlas/isolation'
 import { calculateCost, formatCost } from '@/lib/ai/pricing'
@@ -646,5 +646,37 @@ describe('9N · revenue — the vNext surface keeps the boundary', () => {
     const page = readFileSync(resolve(__dirname, '../../app/(platform)/revenue/page.tsx'), 'utf8')
     expect(page).toMatch(/<RevenueLegacy \/>/)
     expect(page).toMatch(/<MoneyOverview model=/)
+  })
+})
+
+// Freeze only Date, not timers, so page/component work and test deadlines stay real.
+describe('calendar-month revenue window regression', () => {
+  afterEach(() => vi.useRealTimers())
+  it.each(['2026-10-31T15:04:00','2026-10-31T23:59:59','2026-01-31T23:59:59',
+    '2026-04-30T23:59:59','2024-02-29T23:59:59','2026-02-28T23:59:59',
+    '2026-11-01T15:04:00','2026-10-01T00:00:00'])('includes the complete owned calendar month at %s', async instant => {
+    vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date(instant))
+    const now=new Date(),start=new Date(now.getFullYear(),now.getMonth(),1).toISOString()
+    const tables=seedTables()
+    // The first event is exactly on the existing calendar boundary, not at noon.
+    tables.revenue_events.forEach(r=>r.occurred_at=start)
+    tables.run_logs.forEach(r=>r.created_at=start)
+    const earlier=new Date(new Date(start).getTime()-1).toISOString()
+    tables.revenue_events.push({...tables.revenue_events[0],id:'previous-month',amount_sek:777777,occurred_at:earlier})
+    tables.run_logs.push({...tables.run_logs[0],tokens_in:777777,created_at:earlier})
+    CURRENT=fakeDb(tables)
+    const {text,parts,seen}=await renderRevenue()
+    expect(text).toContain(sek(REVENUE_OWNED))
+    expect(text).not.toContain(sek(REVENUE_OWNED+REVENUE_FOREIGN))
+    expect(text).not.toContain(sek(777777))
+    expect(text).toContain(formatCost(calculateCost(MODEL_MINE,TOKENS_OWNED.in,TOKENS_OWNED.out)))
+    expect(parts).toContain(String(TOKENS_OWNED.in))
+    expect(parts).not.toContain('777777')
+    for(const [table,column,owner] of [['revenue_events','occurred_at','project_id'],['run_logs','created_at','runs.project_id']]){
+      const query=dataQuery(seen,table)!
+      expect(query.ops.find(([op,col])=>op==='gte'&&col===column)?.[2]).toBe(start)
+      expect(scopeArg(query,owner)).toEqual([MINE])
+      expect(query.ops.findIndex(([op])=>op==='in')).toBeLessThan(query.ops.findIndex(([op])=>op==='gte'))
+    }
   })
 })

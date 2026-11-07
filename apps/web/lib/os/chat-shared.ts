@@ -61,6 +61,8 @@ export type SectionState = 'ok' | 'error'
 
 /** A `conversation_messages` row, as the conversation page reads it. */
 export interface SavedMessage {
+  /** Canonical row identity when supplied by the authenticated conversation read. */
+  id?: string
   role: string
   content: string | null
   tool_data: unknown

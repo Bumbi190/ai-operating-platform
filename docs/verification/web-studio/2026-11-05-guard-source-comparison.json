@@ -1,0 +1,30 @@
+[
+  {
+    "name": "runs_action_binding_guard",
+    "reconstructedMatchesLocalHash": true,
+    "tokenEqual": true,
+    "lfBodyEqual": false,
+    "rawBodyEqual": false
+  },
+  {
+    "name": "runs_action_outcome_guard",
+    "reconstructedMatchesLocalHash": true,
+    "tokenEqual": true,
+    "lfBodyEqual": false,
+    "rawBodyEqual": false
+  },
+  {
+    "name": "runs_human_story_binding_guard",
+    "reconstructedMatchesLocalHash": true,
+    "tokenEqual": true,
+    "lfBodyEqual": true,
+    "rawBodyEqual": false
+  },
+  {
+    "name": "runs_require_bind_provenance",
+    "reconstructedMatchesLocalHash": true,
+    "tokenEqual": true,
+    "lfBodyEqual": true,
+    "rawBodyEqual": false
+  }
+]

@@ -1,0 +1,226 @@
+{
+  "schema": "omnira.website-real-auth-local.v1",
+  "startedAt": "2026-11-05T11:42:21.156Z",
+  "images": {
+    "db": "public.ecr.aws/supabase/postgres@sha256:06ddc7962e11ab0f4f0334fd05671e97c30ea202f6e6a7113800bd3d6e416108",
+    "auth": "public.ecr.aws/supabase/gotrue@sha256:1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b",
+    "rest": "public.ecr.aws/supabase/postgrest@sha256:1347d7552b88f17832912c06afbf7c43209af6eeeb60834b04aae12c9bd9d5cc",
+    "client": "node@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914"
+  },
+  "checks": [
+    {
+      "name": "local_docker_only",
+      "passed": true
+    },
+    {
+      "name": "network_has_no_external_gateway",
+      "passed": true
+    },
+    {
+      "name": "database_ready",
+      "passed": true
+    },
+    {
+      "name": "managed_auth_uid_available",
+      "passed": true
+    },
+    {
+      "name": "auth_internal_network",
+      "passed": true
+    },
+    {
+      "name": "auth_no_published_ports",
+      "passed": true
+    },
+    {
+      "name": "real_auth_health",
+      "passed": true
+    },
+    {
+      "name": "create_one",
+      "passed": true
+    },
+    {
+      "name": "password_login_one",
+      "passed": true
+    },
+    {
+      "name": "create_two",
+      "passed": true
+    },
+    {
+      "name": "password_login_two",
+      "passed": true
+    },
+    {
+      "name": "wrong_password_denied",
+      "passed": true
+    },
+    {
+      "name": "server_validates_user_token",
+      "passed": true
+    },
+    {
+      "name": "refresh_session",
+      "passed": true
+    },
+    {
+      "name": "application_target_has_no_public_tables",
+      "passed": true
+    },
+    {
+      "name": "two_real_auth_accounts_before_schema",
+      "passed": true
+    },
+    {
+      "name": "application_replay_complete",
+      "passed": true
+    },
+    {
+      "name": "managed_auth_uid_unchanged",
+      "passed": true
+    },
+    {
+      "name": "real_auth_accounts_preserved",
+      "passed": true
+    },
+    {
+      "name": "rest_internal_network",
+      "passed": true
+    },
+    {
+      "name": "rest_no_published_ports",
+      "passed": true
+    },
+    {
+      "name": "real_postgrest_health",
+      "passed": true
+    },
+    {
+      "name": "owner_one_sees_only_own_row",
+      "passed": true
+    },
+    {
+      "name": "owner_two_sees_only_own_row",
+      "passed": true
+    },
+    {
+      "name": "foreign_read_hidden",
+      "passed": true
+    },
+    {
+      "name": "foreign_update_no_rows",
+      "passed": true
+    },
+    {
+      "name": "owner_reassignment_denied",
+      "passed": true
+    },
+    {
+      "name": "foreign_insert_denied",
+      "passed": true
+    },
+    {
+      "name": "anonymous_denied",
+      "passed": true
+    },
+    {
+      "name": "service_sees_two_fictional_rows",
+      "passed": true
+    },
+    {
+      "name": "application_principal_validated_by_auth",
+      "passed": true
+    },
+    {
+      "name": "canonical_projects_owner_a_only",
+      "passed": true
+    },
+    {
+      "name": "canonical_projects_owner_b_only",
+      "passed": true
+    },
+    {
+      "name": "server_rpc_builder_selected",
+      "passed": true
+    },
+    {
+      "name": "canonical_plan_saved_via_postgrest",
+      "passed": true
+    },
+    {
+      "name": "canonical_plan_save_idempotent",
+      "passed": true
+    },
+    {
+      "name": "canonical_plan_owner_can_read",
+      "passed": true
+    },
+    {
+      "name": "canonical_plan_foreign_user_sees_none",
+      "passed": true
+    },
+    {
+      "name": "authenticated_cannot_invoke_server_rpc",
+      "passed": true
+    },
+    {
+      "name": "canonical_write_checks_owner_even_with_both_project_ids",
+      "passed": true
+    },
+    {
+      "name": "canonical_build_requires_plan_approval",
+      "passed": true
+    },
+    {
+      "name": "no_unapproved_build_jobs",
+      "passed": true
+    },
+    {
+      "name": "application_no_cron_runs",
+      "passed": true
+    },
+    {
+      "name": "signout",
+      "passed": true
+    },
+    {
+      "name": "refresh_after_signout_denied",
+      "passed": true
+    },
+    {
+      "name": "cron_launching_off",
+      "passed": true
+    }
+  ],
+  "completed": true,
+  "cleanup": {
+    "rest": "removed",
+    "auth": "removed",
+    "client": "removed",
+    "db": "removed",
+    "network": "removed"
+  },
+  "limitations": [
+    "Real local Auth and canonical application SQL through PostgREST only; no Next.js UI/cookies, application route/context resolver, worker, hosted acceptance, Storage HTTP or paid model calls."
+  ],
+  "authPortMetadata": {
+    "state": "running",
+    "requested": {},
+    "mapped": {}
+  },
+  "application": {
+    "applied": 189,
+    "planned": 189,
+    "authPreserved": true
+  },
+  "restPortMetadata": {
+    "state": "running",
+    "requested": {},
+    "mapped": {
+      "3000/tcp": null
+    }
+  },
+  "finishedAt": "2026-11-05T11:43:19.215Z",
+  "mode": "canonical-application"
+}

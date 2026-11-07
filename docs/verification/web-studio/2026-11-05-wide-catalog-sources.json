@@ -1,0 +1,17 @@
+[
+    {
+        "name":  "webbuilder-production-wide-catalog-20261105.json",
+        "bytes":  288429,
+        "sha256":  "b8c89c2aec51c2f2f788ba8d00c6387e05c8383a888b50a019b61fb48e2a06ee"
+    },
+    {
+        "name":  "webbuilder-local-wide-catalog-20261105.json",
+        "bytes":  369282,
+        "sha256":  "f497f9f98ffb37547642a15b6e39ba58eda8b69ae9590edb790748b13220faa7"
+    },
+    {
+        "name":  "webbuilder-production-guard-functions-20261105.json",
+        "bytes":  7610,
+        "sha256":  "9fbb5274d2ddf5253e554c1ec9c491c46ecfcc146f1ac29e7199cc4d4cb8db21"
+    }
+]

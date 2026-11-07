@@ -1,0 +1,43 @@
+import {test,expect} from '@playwright/test'
+const root='/__showroom-export/'
+test('portable full showroom retains catalog, both 3D models and the complete Roadster film',async({page})=>{
+ test.setTimeout(90000)
+ const broken:string[]=[],external:string[]=[],errors:string[]=[]
+ page.on('response',r=>{if(r.status()>=400)broken.push(r.url())})
+ page.on('request',r=>{if(!new URL(r.url()).origin.match(/^http:\/\/(127\.0\.0\.1|localhost):[0-9]+$/))external.push(r.url())})
+ page.on('pageerror',e=>errors.push(e.message))
+ await page.emulateMedia({reducedMotion:'reduce'})
+ await page.goto(root+'index.html')
+ await expect(page.locator('#count')).toContainText('7')
+ await page.locator('#lot-open').click()
+ await page.locator('#lot-orbit').click()
+ await expect(page.frameLocator('#lot-stage iframe').locator('#vehicle-stage')).toHaveAttribute('data-model3d-state','ready',{timeout:30000})
+ await page.locator('#lot-close').click()
+ await page.locator('#concept-07 a[href="roadster.html"]').click()
+ await expect(page).toHaveURL(/\/roadster.html$/)
+ await page.getByRole('button',{name:'Film',exact:true}).click()
+ const video=page.locator('#screen video')
+ await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.readyState)).toBeGreaterThanOrEqual(2)
+ await page.locator('#timeline').focus();await page.keyboard.press('End')
+ await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(15)
+ await page.getByRole('button',{name:'3D-vy',exact:true}).click()
+ await expect(page.frameLocator('#screen iframe').locator('#vehicle-stage')).toHaveAttribute('data-model3d-state','ready',{timeout:30000})
+ await page.getByRole('link',{name:/Till bilhallen/}).click()
+ await expect(page).toHaveURL(/\/index.html$/)
+ await page.locator('a[href="visning.html"]').click()
+ await expect(page.locator('#reel')).toBeVisible()
+ await page.locator('#play').click()
+ await expect.poll(()=>page.locator('#reel').evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(.1)
+ expect(broken).toEqual([]);expect(external).toEqual([]);expect(errors).toEqual([])
+})
+for(const width of [390,1440]){
+ test('review package is clear and fits '+width+'px',async({page})=>{
+  await page.setViewportSize({width,height:900})
+  await page.goto('/__build-review')
+  await expect(page.getByRole('heading',{level:1})).toContainText('Den godkända bilhallen')
+  await expect(page.getByText(/ännu inte en godkänd byggplan/)).toBeVisible()
+  await expect(page.getByRole('link',{name:'Hämta hela visningspaketet'})).toHaveAttribute('href',/sha256=[a-f0-9]{64}/)
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+  await page.screenshot({path:'../../.superpowers/cinematic-pilot/package-review-'+width+'.png',fullPage:true})
+ })
+}

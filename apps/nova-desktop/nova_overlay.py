@@ -329,7 +329,9 @@ class NovaOverlay:
                  font=("Segoe UI", 8), anchor="w").pack(anchor="w")
         for child in labels.winfo_children():
             self._bind_drag(child)
-        self._btn(top, "×", self.quit, width=3, surface=True).pack(side="right")
+        # Standard window close must NOT shut down the global hotkey listener.
+        # Full termination remains available only through the explicit ⋯ menu.
+        self._btn(top, "×", self.collapse, width=3, surface=True).pack(side="right")
         self._btn(top, "–", self.collapse, width=3, surface=True).pack(side="right", padx=(0, 5))
         self.more_button = self._btn(top, "⋯", self._show_more_menu,
                                      width=3, surface=True)

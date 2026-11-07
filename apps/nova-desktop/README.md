@@ -46,8 +46,9 @@ Windows session and is available via **Ctrl+Alt+Space**.
 - A new *branch-only* browser relay can stream authenticated Atlas replies back
   into the bubble. Until the web half is deployed and paired, that capability
   is not operational on the live site.
-- Closing the window with the X exits the process; click "–" to shrink
-  back to the corner bubble; right-click bubble for the quit menu.
+- Both **×** and **–** collapse the chat to the corner bubble and keep
+  the Windows-wide hotkey listener running. Full termination is only in
+  **⋯ → Avsluta Nova** or the bubble's right-click menu.
 
 ## Atlas read-only relay (built in branch, not deployed)
 
@@ -102,7 +103,12 @@ Windows session and is available via **Ctrl+Alt+Space**.
 - The session key is in a temporary URL fragment for explicit browser pairing;
   this fragment is cleared from browser history by the bridge page. Browser
   extensions or other local processes may still see it. Do not dictate passwords.
-- Nothing starts automatically at Windows login. No extra subscription installed.
+- Starts automatically when the operator logs in to Windows through a
+  per-user Startup shortcut (no elevated permissions or scheduled task).
+  The desktop shortcut starts the same premium script. If intentionally
+  terminated via **⋯ → Avsluta Nova**, restart from the desktop shortcut.
+  To disable autostart: Win+R → `shell:startup`, then remove
+  `Nova Desktop (Pilot).lnk`. No extra subscription installed.
 - For review, the local client does not call an arbitrary code agent, shell,
   LLM service, social API or email API.
 
@@ -115,6 +121,7 @@ Or double-click `start-nova.cmd`.
 cd apps/nova-desktop
 python -m unittest discover -s tests -p "test_*.py" -v
 python tests/smoke_overlay.py
+python tests/smoke_close_keeps_hotkey.py  # X collapses, listener stays alive
 python tests/geometry_overlay.py  # includes button bounds, opacity and hidden menu
 python tests/preview_overlay.py  # optional Pillow for visual QA only
 python tests/smoke_reposition.py  # ultrawide, resize and drag verification

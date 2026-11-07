@@ -1,9 +1,11 @@
 import json
+import tempfile
+from pathlib import Path
 import unittest
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from nova_bridge import NovaBridge, PROD_ORIGIN, validate_pairing_origin
+from nova_bridge import NovaBridge, PROD_ORIGIN, validate_pairing_origin, read_saved_preview_origin
 
 
 class BridgeTests(unittest.TestCase):
@@ -80,6 +82,24 @@ class BridgeTests(unittest.TestCase):
         self.assertTrue(self.bridge.pairing_url().startswith(preview + "/nova-bridge#"))
         with self.assertRaises(ValueError):
             self.bridge.pairing_url(PROD_ORIGIN)
+
+    def test_persisted_preview_origin_is_only_allowlisted_host(self):
+        preview = "https://ai-operating-platform-2vteosw04-bumbi190s-projects.vercel.app"
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "preview-origin.txt"
+            self.assertIsNone(read_saved_preview_origin(str(path)))
+            path.write_text(preview + "\n", encoding="utf-8")
+            self.assertEqual(read_saved_preview_origin(str(path)), preview)
+            for invalid in (
+                PROD_ORIGIN,
+                "https://attacker.invalid",
+                preview + "/login",
+                "https://omniraos.se@attacker.invalid",
+                "A" * 600,
+            ):
+                with self.subTest(value=invalid[:30]):
+                    path.write_text(invalid, encoding="utf-8")
+                    self.assertIsNone(read_saved_preview_origin(str(path)))
 
     def test_readonly_task_lifecycle(self):
         self.assertFalse(self.bridge.state.online())

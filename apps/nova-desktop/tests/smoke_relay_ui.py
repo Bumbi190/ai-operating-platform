@@ -17,8 +17,10 @@ failure = []
 
 def request(path, method='GET', body=None):
     url = 'http://127.0.0.1:' + str(ui.bridge.port) + path
+    # Simulate the exact currently approved browser origin; the pilot may
+    # already be paired with the SSO-protected preview rather than production.
     headers = {
-        'Origin': 'https://omniraos.se',
+        'Origin': next(iter(ui.bridge.state.origins)),
         'X-Nova-Token': ui.bridge.state.key,
         'Content-Type': 'application/json',
     }

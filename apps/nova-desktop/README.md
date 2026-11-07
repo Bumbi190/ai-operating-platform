@@ -43,9 +43,11 @@ Windows session and is available via **Ctrl+Alt+Space**.
   separate knowledge memory. All account access remains in Atlas or the browser.
 - Before browser pairing/deployment, complex instructions are copied to the
   clipboard with an explicit option to open Atlas: manually paste and submit.
-- A new *branch-only* browser relay can stream authenticated Atlas replies back
-  into the bubble. Until the web half is deployed and paired, that capability
-  is not operational on the live site.
+- A browser relay can stream authenticated Atlas replies back into the bubble.
+  A READY, SSO-protected preview of the compatible web half is available from
+  the separate `feat/nova-main-integration-20261106` branch. Live Atlas replies
+  are **not verified** until the operator signs in and explicitly pairs Chrome.
+  `main` and production remain unaffected.
 - Both **×** and **–** collapse the chat to the corner bubble. An explicit
   **⋯ → Avsluta Nova** closes the GUI, but the small resident hotkey host
   stays alive. The NEXT Ctrl+Alt+Space relaunches Nova; there is no
@@ -55,16 +57,19 @@ Windows session and is available via **Ctrl+Alt+Space**.
   are session-scoped (not a Windows system service or administrator task).
   If Windows is locked/sleeping, desktop hotkeys do not work until unlocked.
 
-## Atlas read-only relay (built in branch, not deployed)
+## Atlas read-only relay (SSO-protected preview; production unchanged)
 
 - Local stdlib HTTP server at random 127.0.0.1 port with strict Host, Origin,
   expiring in-memory pairing key and no persisted credentials.
 - Browser half: authenticated Omnira `/nova-bridge` page, explicitly paired by
   clicking **Anslut**. Browsers may request Loopback network permission.
-- The **Anslut Atlas** button no longer opens the missing production route:
-  select an exact SSO-protected Omnira Vercel preview first. Its short-lived
-  local key is rotated when the selected preview changes. Arbitrary domains
-  are refused. Preview remains undeployed until separate approval/verification.
+- The **Anslut Atlas** button uses only the saved, verified Omnira HTTPS
+  preview origin (from `%LOCALAPPDATA%\Omnira\Nova\preview-origin.txt`).
+  If missing, an exact protected preview URL must be selected manually.
+  This file stores **only the origin**, never a pairing key or login cookie.
+  The key rotates on every application restart or origin switch. Arbitrary
+  domains are rejected. The preview exists but authenticated live-pairing
+  still requires a browser sign-in and explicit user consent.
 - The browser calls existing `/api/chat` with `mode=nova_readonly`. Server removes
   every executable LLM tool schema, enforces a second hard stop on unexpected
   tool use and caps replies to 900 output tokens.
@@ -77,13 +82,14 @@ Windows session and is available via **Ctrl+Alt+Space**.
   before Nova claims completion. Already spent model tokens cannot be refunded.
 - Genuine **local UI-to-HTTP-to-synthetic-browser-to-UI** proof passed.
   This does NOT prove production authentication or an actual AI response.
-- The `/nova-bridge` web route is not yet in production; clicking its link
-  may lead to the existing login screen or a missing-page error until reviewed
-  and deployed. Do NOT say this is connected end-to-end to live Atlas yet.
+- `/nova-bridge` exists on the SSO-protected Vercel preview, but **not** on
+  production. Do NOT claim real Atlas AI responses or full memory access until
+  the logged-in browser → local relay → UI test actually succeeds.
 
 ## NOT yet working
 
-- Fully verified production browser pairing and live Atlas AI response.
+- Authenticated live pairing and real Atlas AI response from the protected
+  preview. Production still intentionally has no `/nova-bridge` route.
 - Guaranteed complete/fresh Atlas project memory; recall/injection are
   server-side feature flags and have not been changed.
 - Automatically reading, drafting/sending replies in email, creating or posting

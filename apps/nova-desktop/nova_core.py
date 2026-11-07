@@ -23,6 +23,10 @@ URLS = {
     "planning": "https://omniraos.se/planning",
     "handlarborsen": "https://handlarborsen.se/",
     "familjestunden": "https://familje-stunden.se/",
+    "facebook": "https://www.facebook.com/",
+    "instagram": "https://www.instagram.com/",
+    "linkedin": "https://www.linkedin.com/",
+    "pinterest": "https://www.pinterest.com/",
 }
 # Verified on the Windows PC 2026-11-06. Missing shortcuts fail closed.
 APP_SHORTCUTS = {
@@ -59,7 +63,15 @@ SENSITIVE = re.compile(
     r"ta bort|publicera|posta|publicering|betala|kop|and(r|ra)|"
     r"skriv|skapa|planera|generera|analysera|bygg|fixa|utfor|gor)\b"
 )
-NAV = re.compile(r"^(?:hej\s+)?(?:nova[,:]?\s+)?(?:oppna|visa|ga till|starta|ta mig till)\b")
+# Natural spoken Swedish requests are normalized first. Only explicit
+# navigation intents can open allowlisted sites; arbitrary URLs and shell
+# instructions remain unavailable.
+NAV = re.compile(
+    r"^(?:(?:ar|hej|halla)\s+)?(?:nova[,:]?\s+)?"
+    r"(?:(?:kan|skulle)\s+du\s+)?"
+    r"(?:oppna|visa|ga\s+till|starta|ta\s+mig\s+till|"
+    r"navigera(?:\s+mig)?(?:\s+till)?)\b"
+)
 
 
 def route(text: str) -> Action:
@@ -94,6 +106,10 @@ def route(text: str) -> Action:
             if re.search(pattern, value):
                 return Action("app", APP_SHORTCUTS[key], description)
         for pattern, key, description in (
+            (r"\b(facebook|fb)\b", "facebook", "Öppnar Facebook i webbläsaren."),
+            (r"\b(instagram|insta)\b", "instagram", "Öppnar Instagram i webbläsaren."),
+            (r"\blinkedin\b", "linkedin", "Öppnar LinkedIn i webbläsaren."),
+            (r"\bpinterest\b", "pinterest", "Öppnar Pinterest i webbläsaren."),
             (r"\bhotmail\b", "outlook", "Öppnar Outlook i webbläsaren."),
             (r"\b(gmail|mejl|mail|epost|e-post|inkorg)\b", "gmail", "Öppnar Gmail i webbläsaren."),
             (r"\b(handlarborsen|handlarborsens)\b", "handlarborsen", "Öppnar Handlarbörsen."),

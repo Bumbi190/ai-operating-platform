@@ -188,6 +188,8 @@ class NovaOverlay:
         self.pending = ""
         self.pending_choices = []  # only visible inside the ⋯ menu
         self.history: list[tuple[str, str]] = []  # session UI trace, not AI memory
+        self._atlas_login_opened = False  # explicit SSO sign-in before pairing key
+        self._voice_request_id = 0
         self._dock_area = self._area_near_pointer()
         self._manual_anchor: tuple[int, int] | None = None
         self._drag_origin = None
@@ -338,11 +340,16 @@ class NovaOverlay:
                  font=("Segoe UI Semibold", 7), anchor="w").pack(anchor="w")
         # Activity strip below already shows task state; avoid repeating it here.
         self.phase_var = tk.StringVar(value="● Redo att hjälpa")
-        self.bridge_var = tk.StringVar(value="Atlas  ·  inte ansluten")
-        tk.Label(labels, textvariable=self.bridge_var, bg=SURFACE, fg=MUTED,
-                 font=("Segoe UI", 8), anchor="w").pack(anchor="w")
+        self.bridge_var = tk.StringVar(value="Atlas offline · klicka för att ansluta")
+        self.bridge_status = tk.Label(
+            labels, textvariable=self.bridge_var, bg=SURFACE, fg=CYAN,
+            font=("Segoe UI", 8, "underline"), anchor="w", cursor="hand2",
+        )
+        self.bridge_status.pack(anchor="w")
         for child in labels.winfo_children():
-            self._bind_drag(child)
+            if child is not self.bridge_status:
+                self._bind_drag(child)
+        self.bridge_status.bind("<Button-1>", lambda _e: self.connect_atlas())
         # Standard window close must NOT shut down the global hotkey listener.
         # Full termination remains available only through the explicit ⋯ menu.
         self._btn(top, "×", self.collapse, width=3, surface=True).pack(side="right")
@@ -527,7 +534,10 @@ class NovaOverlay:
             "stoppad": ("● Stoppad", WARNING),
         }.get(state, ("● Aktiv", MUTED))
         self.phase_var.set(label)
-        self.activity.itemconfigure(self.activity_text, text=detail[:90], fill=color)
+        # The status strip is 35px high. Never let a long sentence run into
+        # the right-hand edge; only the readable short status is displayed.
+        short = detail if len(detail) <= 45 else detail[:44] + "…"
+        self.activity.itemconfigure(self.activity_text, text=short, fill=color)
 
     def expand(self, listen=False):
         if not self.expanded:
@@ -537,9 +547,16 @@ class NovaOverlay:
         self.root.attributes("-topmost", True)
         self.command.focus_force()
         if listen:
-            self.root.after(280, self.dictate)
+            # RegisterHotKey fires while Ctrl+Alt+Space may still be held.
+            # Win+H issued immediately then becomes Win+Ctrl+Alt+H and can
+            # silently fail. Wait for release before requesting dictation.
+            self._voice_request_id += 1
+            request_id = self._voice_request_id
+            self.root.after(600, lambda: self._voice_after_hotkey(request_id))
 
     def collapse(self):
+        # Cancel any delayed voice launch if the panel was closed quickly.
+        self._voice_request_id += 1
         if self.expanded:
             self.draft = self.command.get("1.0", "end-1c")
         self._draw_collapsed()
@@ -574,34 +591,56 @@ class NovaOverlay:
                 self.preview_file.write_text(approved + "\n", encoding="utf-8")
             except OSError:
                 self._append("warn", "Nova: Testmiljön valdes men kunde inte sparas.")
+        self._atlas_login_opened = False
         self._append("ok", "Nova: Testmiljö vald: " + approved + ". Tidigare parning återkallad.")
         self.connect_atlas()
 
     def connect_atlas(self):
-        """Pair through the authenticated Omnira browser, not via stored cookies."""
+        """First sign in without key, then explicitly pair with a short-lived key.
+
+        A key-bearing fragment must not cross Vercel SSO redirects.
+        """
+        if self.bridge.state.online():
+            self._phase("klar", "Atlas är redan ansluten (enbart läsning)")
+            return
         target = next(iter(self.bridge.state.origins))
         if target == PROD_ORIGIN:
-            self._append("warn", "Nova: Webbdelen är ännu inte publicerad på omniraos.se. "
-                         "Välj först en skyddad Vercel-preview för att inte öppna en saknad sida.")
+            self._append("warn", "Atlas är ännu inte ansluten i produktion. "
+                         "Välj först den skyddade Omnira-testmiljön.")
             self.choose_preview()
             return
-        self._append("step", "Nova: Öppnar skyddad webbläsarparning (läsläge).")
-        self._phase("godkannande", "Logga in via Vercel och Omnira, klicka sedan Anslut i webbläsaren.")
         try:
-            # Only the exact trusted Omnira origin receives the link. Ephemeral
-            # secret is in the fragment, never in the HTTP request or cookies.
-            if not webbrowser.open(self.bridge.pairing_url(), new=2):
-                self._append("warn", "Nova: Webbläsaren kunde inte öppna parningssidan.")
+            if not self._atlas_login_opened:
+                # Open the SSO-protected preview WITHOUT any pairing fragment.
+                if webbrowser.open(target + "/nova-bridge", new=2):
+                    self._atlas_login_opened = True
+                    self._append("nova", "Atlas steg 1/2: Omniras skyddade testmiljö öppnades. " +
+                                 "Logga in där, klicka sedan på Atlas-statusen i Nova igen.")
+                    self._phase("godkannande", "Atlas steg 1/2 · logga in och klicka Atlas igen")
+                else:
+                    self._append("warn", "Nova: Webbläsaren kunde inte öppna testmiljön.")
             else:
-                self._append("step", "Nova: Den skyddade förhandsversionen har öppnats. " +
-                             "Logga in i Omnira där och klicka Anslut. Nyckeln sparas inte.")
+                # Only after manual SSO login do we send the in-memory fragment.
+                if webbrowser.open(self.bridge.pairing_url(), new=2):
+                    self._append("nova", "Atlas steg 2/2: Klicka Anslut i webbläsaren. " +
+                                 "Därefter kan Atlas svara här i läsläge.")
+                    self._phase("godkannande", "Atlas steg 2/2 · klicka Anslut i webbläsaren")
+                else:
+                    self._append("warn", "Nova: Parningssidan kunde inte öppnas.")
         except Exception as exc:
-            self._append("warn", "Nova: Kopplingen kunde inte initieras: " + str(exc))
+            self._append("warn", "Nova: Atlas-kopplingen kunde inte öppnas: " + str(exc))
 
     def _show_bridge_status(self):
         if self.expanded and hasattr(self, "bridge_var"):
-            self.bridge_var.set("Atlas: kopplad (enbart läsning)" if self.bridge.state.online()
-                                else "Atlas: ej ansluten")
+            if self.bridge.state.online():
+                self.bridge_var.set("Atlas ansluten · läsläge")
+                self.bridge_status.configure(fg=SUCCESS)
+            elif self._atlas_login_opened:
+                self.bridge_var.set("Atlas · klicka för att slutföra anslutningen")
+                self.bridge_status.configure(fg=CYAN)
+            else:
+                self.bridge_var.set("Atlas offline · klicka för att ansluta")
+                self.bridge_status.configure(fg=CYAN)
         if not self.closed:
             self.root.after(900, self._show_bridge_status)
 
@@ -670,21 +709,10 @@ class NovaOverlay:
             self.root.after(100, self._process_events)
 
     def _animate(self):
-        # Low-frequency, decorative presence animation: no mic is sampled
-        # and no background agent execution is implied by the visual.
+        # Only the small collapsed Nova orb animates. The expanded status strip
+        # stays completely static: no fake audio level and no overlapping bars.
         self.anim_tick = (self.anim_tick + 1) % 720
-        if self.expanded and self.phase == "lyssnar":
-            w = PANEL_W - 36
-            self.activity.delete("pulse")
-            for i in range(7):
-                h = 4 + 17 * abs(math.sin(self.anim_tick / 5 + i * .66))
-                x = w - 95 + i * 12
-                self.activity.create_rectangle(x, 21-h/2, x+6, 21+h/2,
-                                               fill=ACCENT if i % 2 else CYAN,
-                                               outline="", tags="pulse")
-        elif self.expanded:
-            self.activity.delete("pulse")
-        elif hasattr(self, "bubble_canvas"):
+        if not self.expanded and hasattr(self, "bubble_canvas"):
             self.bubble_canvas.itemconfigure(
                 "nova-orbit", start=(215 + self.anim_tick * 2) % 360
             )
@@ -696,23 +724,55 @@ class NovaOverlay:
         self.draft = text
         self.transcript_var.set(text[-180:] if text else "—")
         if self.phase == "lyssnar" and text:
-            self.activity.itemconfigure(self.activity_text,
-                                        text="Text mottagen · granska och tryck Enter")
+            self.activity.itemconfigure(
+                self.activity_text, text="Text mottagen · tryck Enter"
+            )
 
-    def dictate(self):
-        self.expand(False) if not self.expanded else None
-        self.command.focus_force()
-        self._phase("lyssnar", "Försöker öppna Windows röstinmatning · ljudnivå mäts inte")
-        self._append("step", "Nova · Startar Windows röstinmatning (Win+H).")
+    def _voice_after_hotkey(self, request_id: int, attempts: int = 0):
+        """Automatically request Win+H after the initiating hotkey is released."""
+        if self.closed or not self.expanded or request_id != self._voice_request_id:
+            return
         try:
             user32 = ctypes.windll.user32
-            # Win+H launches the operating system's voice input into the focused text field.
+            busy = any(user32.GetAsyncKeyState(code) & 0x8000
+                       for code in (0x11, 0x12, 0x20))  # Ctrl, Alt, Space
+        except (AttributeError, OSError):
+            busy = False
+        if busy:
+            if attempts < 20:
+                self.root.after(
+                    100, lambda: self._voice_after_hotkey(request_id, attempts + 1)
+                )
+            else:
+                self._phase("godkannande", "Släpp Ctrl + Alt + Space och försök igen")
+            return
+        self.dictate()
+
+    def dictate(self):
+        """Start Windows voice typing. Windows listens when its toolbar is ready.
+
+        No second click on Nova's Prata button is needed after the global
+        shortcut. No always-on microphone is activated by this application.
+        """
+        if not self.expanded:
+            self.expand(False)
+        self.command.focus_force()
+        self._phase("lyssnar", "Säg ditt kommando när Windows lyssnar")
+        self.root.after(110, self._send_windows_voice_typing_shortcut)
+
+    def _send_windows_voice_typing_shortcut(self):
+        if self.closed or not self.expanded:
+            return
+        try:
+            user32 = ctypes.windll.user32
+            # Windows voice typing: Win+H. It is the OS, not Nova, which
+            # controls whether the mic and online speech recognizer are ready.
             for code, flags in ((0x5B, 0), (0x48, 0),
                                 (0x48, 0x0002), (0x5B, 0x0002)):
                 user32.keybd_event(code, 0, flags, 0)
         except Exception as exc:
-            self._phase("godkannande", "Windows-diktering kunde inte öppnas")
-            self._append("warn", f"Nova: Diktering misslyckades: {exc}. Skriv istället.")
+            self._phase("godkannande", "Windows kunde inte starta röstinmatning")
+            self._append("warn", f"Nova: Röstinmatning misslyckades: {exc}")
 
     def _open_url(self, url: str, caption: str):
         self._phase("navigerar", caption)
@@ -796,6 +856,8 @@ class NovaOverlay:
             self._phase("redo", "Skriv eller diktera vad jag ska göra")
             return
         self.task_epoch += 1
+        # A quick Enter must not start dictation later from a pending shortcut.
+        self._voice_request_id += 1
         self._choices([])
         self._append("you", "DU: " + text)
         self._phase("tolkar", "Avgör vilken godkänd åtgärd som passar")
@@ -868,6 +930,7 @@ class NovaOverlay:
         self._phase("godkannande", "Exempel: Öppna Omniras projektmapp")
 
     def stop(self):
+        self._voice_request_id += 1
         self.bridge.state.cancel()
         self.task_epoch += 1
         self._choices([])

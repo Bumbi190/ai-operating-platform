@@ -30,6 +30,27 @@ class NovaRouterTests(unittest.TestCase):
     def test_direct_atlas(self):
         self.assertEqual(route("Nova öppna Atlas").url, URLS["atlas"])
 
+    def test_spoken_social_navigation(self):
+        cases = {
+            "Är Nova kan du navigera mig till Facebook": "facebook",
+            "Nova, öppna Facebook": "facebook",
+            "Nova kan du navigera mig till Instagram": "instagram",
+            "Nova, gå till LinkedIn": "linkedin",
+            "Kan du ta mig till Pinterest": "pinterest",
+        }
+        for spoken, destination in cases.items():
+            with self.subTest(spoken=spoken):
+                action = route(spoken)
+                self.assertEqual(action.kind, "open")
+                self.assertEqual(action.url, URLS[destination])
+
+    def test_social_content_changes_require_atlas(self):
+        for text in ("Öppna Facebook och publicera ett inlägg",
+                     "Nova skicka DM till kund på Instagram",
+                     "Planera social content till Facebook"):
+            with self.subTest(text=text):
+                self.assertEqual(route(text).kind, "handoff")
+
     def test_read_email_cannot_execute(self):
         for request in [
             "Läs mitt senaste mejl och svara",

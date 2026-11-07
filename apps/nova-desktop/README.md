@@ -23,8 +23,12 @@ Windows session and is available via **Ctrl+Alt+Space**.
   session. From the ⋯ or right-click menu choose *Flytta Nova nära muspekaren*
   to reset it. Without a manual anchor the global hotkey follows the pointer.
   Manual placement does not yet persist across application restarts.
-- Windows-wide shortcut opens the expanded panel and **requests** dictation
-  with Win+H. The microphone must be enabled; Swedish input language needed.
+- **Ctrl+Alt+Space** opens the panel and automatically requests Windows
+  voice typing (Win+H), waiting for Ctrl/Alt/Space to be released first.
+  No second click on Prata should be needed. Windows must show **Lyssnar**
+  before speech transcription starts, and a functioning microphone plus
+  Swedish input language/online recognition are required. This is not
+  hands-free always-on wake-word listening and not verified mic capture.
 - Minimal chat composer: **Prata** and **Skicka** are the only buttons below
   the text field. Enter sends, Shift+Enter creates a newline.
 - Project folders, open windows, stop/cancel, Atlas pairing and contextual
@@ -33,7 +37,10 @@ Windows session and is available via **Ctrl+Alt+Space**.
   Enter or Skicka. Voice typing is not a continuous hands-free agent yet.
 - Visible text, replies and activity state. Stop cannot undo prior steps.
 - Known browser destinations: Omnira Atlas/planning/projects, Gmail,
-  Handlarbörsen, Familje-Stunden, Outlook Web.
+  Handlarbörsen, Familje-Stunden, Outlook Web plus Facebook, Instagram,
+  LinkedIn and Pinterest. Recognizes spoken requests such as "Nova kan du
+  navigera mig till Facebook". Opening a page does NOT grant general GUI
+  click/scroll control or permission to post/send anything.
 - Local program starts: Chrome, VS Code, Outlook Classic, FileZilla, Epic.
 - Explorer opens one of three verified project roots: Omnira, Handlarborsen,
   Familje-Stunden. No arbitrary paths or command execution.
@@ -63,13 +70,18 @@ Windows session and is available via **Ctrl+Alt+Space**.
   expiring in-memory pairing key and no persisted credentials.
 - Browser half: authenticated Omnira `/nova-bridge` page, explicitly paired by
   clicking **Anslut**. Browsers may request Loopback network permission.
-- The **Anslut Atlas** button uses only the saved, verified Omnira HTTPS
-  preview origin (from `%LOCALAPPDATA%\Omnira\Nova\preview-origin.txt`).
+- The clickable **Atlas offline · klicka för att ansluta** status in
+  the title bar (and **⋯ → Anslut Atlas**) uses only the saved, verified
+  Omnira HTTPS preview origin (from `%LOCALAPPDATA%\Omnira\Nova\preview-origin.txt`).
   If missing, an exact protected preview URL must be selected manually.
   This file stores **only the origin**, never a pairing key or login cookie.
   The key rotates on every application restart or origin switch. Arbitrary
-  domains are rejected. The preview exists but authenticated live-pairing
-  still requires a browser sign-in and explicit user consent.
+  domains are rejected. Pairing is two-stage: **first click opens the
+  SSO-protected preview WITHOUT any pairing key**; sign in. The **second
+  click** on Atlas status opens the local-key pairing page and asks for
+  explicit **Anslut** approval in the browser. This avoids sending the
+  pairing fragment through Vercel's initial SSO redirect. Live-pairing
+  still requires browser sign-in and explicit user consent.
 - The browser calls existing `/api/chat` with `mode=nova_readonly`. Server removes
   every executable LLM tool schema, enforces a second hard stop on unexpected
   tool use and caps replies to 900 output tokens.
@@ -136,6 +148,7 @@ cd apps/nova-desktop
 python -m unittest discover -s tests -p "test_*.py" -v
 python tests/smoke_overlay.py
 python tests/smoke_close_keeps_hotkey.py  # X collapses, toggle reopens
+python tests/smoke_voice_atlas_ui.py  # mocked Win+H, static status, two-stage pairing
 python -m unittest discover -s tests -p 'test_hotkey_host.py' -v
 python tests/geometry_overlay.py  # includes button bounds, opacity and hidden menu
 python tests/preview_overlay.py  # optional Pillow for visual QA only

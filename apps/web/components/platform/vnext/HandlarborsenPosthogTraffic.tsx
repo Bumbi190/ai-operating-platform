@@ -187,8 +187,9 @@ export function HandlarborsenPosthogTraffic({
       {connected && traffic.days.some(row => row.visitors !== undefined) && (
         <div className={styles.chartSurface}>
           <h3>Daglig trafik · UTC</h3>
-          <div style={{overflowX:"auto"}}>
-          <table style={{width:"100%",textAlign:"left"}}>
+          <p className={styles.tableHint}>Rulla i sidled för fler kolumner på en liten skärm.</p>
+          <div style={{overflowX:"auto"}} role="region" aria-label="Daglig trafik, rulla i sidled för fler kolumner" tabIndex={0}>
+          <table className={styles.trafficTable}>
             <thead><tr><th>Datum</th><th>Sidvisningar</th><th>Dagliga unika besökare</th><th>Visningar /registrera</th><th>Inskick (analys)</th></tr></thead>
             <tbody>{traffic.days.map(row => <tr key={row.date}><td>{row.date}</td><td>{number(row.pageviews)}</td><td>{row.visitors === undefined ? "—" : number(row.visitors)}</td><td>{row.registrationPageviews === undefined ? "—" : number(row.registrationPageviews)}</td><td>{row.registrationSubmissions === undefined ? "—" : number(row.registrationSubmissions)}</td></tr>)}</tbody>
           </table>

@@ -23,12 +23,18 @@ Windows session and is available via **Ctrl+Alt+Space**.
   session. From the ⋯ or right-click menu choose *Flytta Nova nära muspekaren*
   to reset it. Without a manual anchor the global hotkey follows the pointer.
   Manual placement does not yet persist across application restarts.
-- **Ctrl+Alt+Space** opens the panel and automatically requests Windows
-  voice typing (Win+H), waiting for Ctrl/Alt/Space to be released first.
-  No second click on Prata should be needed. Windows must show **Lyssnar**
-  before speech transcription starts, and a functioning microphone plus
-  Swedish input language/online recognition are required. This is not
-  hands-free always-on wake-word listening and not verified mic capture.
+- **Ctrl+Alt+Space** opens the panel and attempts Windows voice typing
+  (Win+H) after Ctrl/Alt/Space have been released. Before sending Win+H,
+  Nova MUST verify both that her own window is the Windows foreground window
+  and that her own text field holds Tk keyboard focus. The host asks Windows
+  to permit focus transfer, but Windows can reject it. If Nova cannot obtain
+  or keep the focus, **no Win+H is sent**: the chat displays a warning and
+  you can click Nova's input then Prata instead. This prevents initiating
+  dictation into ChatGPT, email, or another window while it owns focus.
+  Already-running Windows dictation may still follow later focus changes;
+  stop dictation if you switch apps. Windows must display **Lyssnar**
+  before speaking; a microphone and Swedish online recognition are required.
+  Hands-free wake-word and auto-submit-on-silence are NOT implemented.
 - Minimal chat composer: **Prata** and **Skicka** are the only buttons below
   the text field. Enter sends, Shift+Enter creates a newline.
 - Project folders, open windows, stop/cancel, Atlas pairing and contextual
@@ -39,7 +45,9 @@ Windows session and is available via **Ctrl+Alt+Space**.
 - Known browser destinations: Omnira Atlas/planning/projects, Gmail,
   Handlarbörsen, Familje-Stunden, Outlook Web plus Facebook, Instagram,
   LinkedIn and Pinterest. Recognizes spoken requests such as "Nova kan du
-  navigera mig till Facebook". Opening a page does NOT grant general GUI
+  navigera mig till Facebook" and "Hej Nova, vill du öppna Facebook?".
+  The recognized text must still be sent with Enter/Skicka. Opening a page
+  does NOT grant general GUI
   click/scroll control or permission to post/send anything.
 - Local program starts: Chrome, VS Code, Outlook Classic, FileZilla, Epic.
 - Explorer opens one of three verified project roots: Omnira, Handlarborsen,
@@ -149,6 +157,8 @@ python -m unittest discover -s tests -p "test_*.py" -v
 python tests/smoke_overlay.py
 python tests/smoke_close_keeps_hotkey.py  # X collapses, toggle reopens
 python tests/smoke_voice_atlas_ui.py  # mocked Win+H, static status, two-stage pairing
+python tests/smoke_focus_voice_safety.py  # foreground fail-closed; no real audio
+python tests/smoke_spoken_navigation.py  # allowlisted Facebook mock
 python -m unittest discover -s tests -p 'test_hotkey_host.py' -v
 python tests/geometry_overlay.py  # includes button bounds, opacity and hidden menu
 python tests/preview_overlay.py  # optional Pillow for visual QA only

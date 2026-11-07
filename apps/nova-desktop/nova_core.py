@@ -68,7 +68,7 @@ SENSITIVE = re.compile(
 # instructions remain unavailable.
 NAV = re.compile(
     r"^(?:(?:ar|hej|halla)\s+)?(?:nova[,:]?\s+)?"
-    r"(?:(?:kan|skulle)\s+du\s+)?"
+    r"(?:(?:kan|skulle|vill)\s+du\s+)?"
     r"(?:oppna|visa|ga\s+till|starta|ta\s+mig\s+till|"
     r"navigera(?:\s+mig)?(?:\s+till)?)\b"
 )

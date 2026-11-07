@@ -17,6 +17,7 @@ import webbrowser
 
 from nova_core import HotkeyListener, URLS, APP_SHORTCUTS, route, normalized
 from nova_hotkey_host import HostEventListener
+from nova_focus import ForegroundFocusGuard
 from nova_bridge import NovaBridge, PROD_ORIGIN, read_saved_preview_origin
 from nova_windows import list_known_windows, focus_known_window
 from nova_theme import (
@@ -190,6 +191,7 @@ class NovaOverlay:
         self.history: list[tuple[str, str]] = []  # session UI trace, not AI memory
         self._atlas_login_opened = False  # explicit SSO sign-in before pairing key
         self._voice_request_id = 0
+        self._focus_guard = ForegroundFocusGuard()
         self._dock_area = self._area_near_pointer()
         self._manual_anchor: tuple[int, int] | None = None
         self._drag_origin = None
@@ -728,7 +730,8 @@ class NovaOverlay:
                 self.activity_text, text="Text mottagen · tryck Enter"
             )
 
-    def _voice_after_hotkey(self, request_id: int, attempts: int = 0):
+    def _voice_after_hotkey(self, request_id: int, attempts: int = 0,
+                            focus_attempts: int = 0):
         """Automatically request Win+H after the initiating hotkey is released."""
         if self.closed or not self.expanded or request_id != self._voice_request_id:
             return
@@ -741,10 +744,23 @@ class NovaOverlay:
         if busy:
             if attempts < 20:
                 self.root.after(
-                    100, lambda: self._voice_after_hotkey(request_id, attempts + 1)
+                    100, lambda: self._voice_after_hotkey(
+                        request_id, attempts + 1, focus_attempts
+                    )
                 )
             else:
                 self._phase("godkannande", "Släpp Ctrl + Alt + Space och försök igen")
+            return
+        if not self._focus_guard.ensure_focus(self.root, self.command):
+            # Keep all speech away from ChatGPT, email, or other windows.
+            if focus_attempts < 4:
+                self.root.after(170, lambda: self._voice_after_hotkey(
+                    request_id, attempts, focus_attempts + 1
+                ))
+            else:
+                self._phase("godkannande", "Klicka i Novas skrivfält för att prata")
+                self._append("warn", "Nova: Windows gav inte Nova tangentbordsfokus. " +
+                             "Röstinmatningen startades inte i ett annat program.")
             return
         self.dictate()
 
@@ -756,12 +772,27 @@ class NovaOverlay:
         """
         if not self.expanded:
             self.expand(False)
-        self.command.focus_force()
+        if not self._focus_guard.ensure_focus(self.root, self.command):
+            self._phase("godkannande", "Klicka i Novas skrivfält och tryck Prata")
+            self._append("warn", "Nova: Ingen diktering – ett annat program har fokus.")
+            return
         self._phase("lyssnar", "Säg ditt kommando när Windows lyssnar")
-        self.root.after(110, self._send_windows_voice_typing_shortcut)
+        # Cancel stale injection if the user sends, stops or collapses Nova
+        # during the short gap before Windows voice typing is requested.
+        self._voice_request_id += 1
+        request_id = self._voice_request_id
+        self.root.after(110, lambda: self._send_windows_voice_typing_shortcut(request_id))
 
-    def _send_windows_voice_typing_shortcut(self):
+    def _send_windows_voice_typing_shortcut(self, request_id: int | None = None):
         if self.closed or not self.expanded:
+            return
+        if request_id is not None and request_id != self._voice_request_id:
+            return
+        # Final check immediately before Win+H. Never type into ChatGPT,
+        # an email editor or whatever window happened to steal focus.
+        if not self._focus_guard.has_focus(self.root, self.command):
+            self._phase("godkannande", "Nova saknar fokus · klicka i skrivfältet")
+            self._append("warn", "Nova: Röststart avbruten eftersom fokus flyttades.")
             return
         try:
             user32 = ctypes.windll.user32

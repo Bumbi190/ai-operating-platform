@@ -92,8 +92,16 @@ vi.mock('@/lib/ai/anthropic', () => ({
     },
   }),
 }))
-vi.mock('@/lib/media/quality', () => ({
-  scoreScript: async () => { CALLS.push('scoreScript'); return { overall: 9, hook_strength: 9, verdict: 'ok', weak_spots: [] } },
+vi.mock('@/lib/media/quality', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/media/quality')>()),
+  scoreScript: async () => {
+    CALLS.push('scoreScript')
+    return {
+      hook_strength: 9, retention_score: 9, visual_relevance: 9,
+      shareability: 9, discussion_potential: 9, hallucination_risk: 9,
+      overall: 9, passed: true, verdict: 'Source-grounded in the test fixture.', weak_spots: [],
+    }
+  },
 }))
 vi.mock('@/lib/media/news-hunter', () => ({
   runNewsHunter: async () => { CALLS.push('news-hunter'); return { candidates: [] } },

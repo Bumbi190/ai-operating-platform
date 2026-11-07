@@ -139,7 +139,12 @@ class Guardian:
 
     def handle_shortcut(self, event: str):
         if not self.gui_running():
-            self.launch_gui(expanded=True)
+            # The keyboard shortcut wakes listening mode. A desktop shortcut
+            # wakes the chat without unexpectedly activating dictation.
+            launched = self.launch_gui(expanded=(event != "open"))
+            if launched and event == "open":
+                # Named auto-reset events keep this signal until the UI binds.
+                K.SetEvent(self.open_handle)
         elif event == "open":
             K.SetEvent(self.open_handle)
         else:

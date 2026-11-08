@@ -212,12 +212,13 @@ export async function openOverrideReservation(input: ReserveInput): Promise<stri
  * not be durably recorded — the caller must then not dispatch. Never throws.
  */
 export async function markSpendDispatchIntent(
-  reservationId: string, dispatchToken: string, ceilingBasis: CeilingBasis,
+  reservationId: string, dispatchToken: string, ceilingBasis: CeilingBasis, rates?: RateSnapshot,
 ): Promise<boolean> {
   try {
     const db = createAdminClient() as any
     const { data, error } = await db.rpc('budget_mark_dispatch_intent', {
       p_reservation_id: reservationId, p_dispatch_token: dispatchToken, p_ceiling_basis: ceilingBasis,
+      p_usd_sek: typeof rates?.usd_sek === 'number' && Number.isFinite(rates.usd_sek) && rates.usd_sek > 0 ? rates.usd_sek : null,
     })
     return !error && data === true
   } catch {

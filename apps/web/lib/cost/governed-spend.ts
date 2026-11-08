@@ -396,7 +396,7 @@ export async function withGovernedSpend<T>(
   // intent, nothing can have been dispatched (and if the mark did commit, the
   // database refuses the release and the reservation stays counted).
   const dispatchToken = randomUUID()
-  if (!(await markSpendDispatchIntent(accountedId, dispatchToken, input.ceilingBasis))) {
+  if (!(await markSpendDispatchIntent(accountedId, dispatchToken, input.ceilingBasis, input.rates))) {
     await releaseSpend(accountedId)
     throw new SpendRefusedError({
       reason: 'unavailable', provider, operation,

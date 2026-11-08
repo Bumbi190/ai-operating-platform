@@ -20,6 +20,7 @@ import { fencedRunUpdate, isFencedError } from '@/lib/ai/fencing'
 import { isCancelledError } from '@/lib/ai/cancel'
 import { MARKETING_HANDLERS, isMarketingRun } from '@/lib/marketing/workflows'
 import { executeWebsiteBuildRun, isWebsiteBuildRun, isWebsiteBuildPermanentError } from '@/lib/website-build/worker'
+import { acceptanceTargetDenial } from '@/lib/website-build/acceptance-target'
 import {
   checkpointClaimedRun, settleRefusal, terminalizeCancelledRun, recordDispatchUnknown,
   isRunCheckpointRefusal, isRunLifecycleWriteError, checkOwnedFinalization,
@@ -33,6 +34,7 @@ import { isMemoryEnabled, recordMemoryEvent } from '@/lib/atlas/memory/record-ev
 import { executeWorkflowAction, isWorkflowActionRun } from '@/lib/workflows/action-executor'
 import { isPhysicalAdmissionRefusal, isGovernanceDispatchUnknown } from '@/lib/governance/execution-signal'
 import { ExecutionStoppedError } from '@/lib/governance/execution-stop'
+import { SpendRefusedError } from '@/lib/cost/governed-spend'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
@@ -159,6 +161,11 @@ export async function GET(request: Request) {
   if (!cronSecret || request.headers.get('authorization') !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  // Studio acceptance preview only: refuse BEFORE claim_runs so a preview still
+  // wired to the production database can never claim or execute a run. Every
+  // other deployment is out of scope and drains exactly as before.
+  const acceptanceBlocked = acceptanceTargetDenial('runs-drain')
+  if (acceptanceBlocked) return acceptanceBlocked
 
   const db = createAdminClient()
   try{await reconcileLocalTextHealth(db,new Date());await purgeExpiredLocalText(db,new Date())}catch{console.warn('[local-text] maintenance unavailable')}
@@ -693,7 +700,9 @@ export async function GET(request: Request) {
       // attempts är redan inkrementerad av claim_runs → willRetry om vi inte nått taket.
       const willRetry = (run.attempts ?? 0) < (run.max_attempts ?? 3)
         && !isCampaignRun(run.kind)
-        && !(isWebsiteBuildRun(run.kind) && isWebsiteBuildPermanentError(e))
+        // A refused spend requires an explicit owner decision before another build attempt.
+        // Preserve the existing fenced failure write and all other run families' retry policy.
+        && !(isWebsiteBuildRun(run.kind) && (isWebsiteBuildPermanentError(e) || e instanceof SpendRefusedError))
       const history = [
         ...(Array.isArray(run.error_history) ? run.error_history : []),
         { at: new Date().toISOString(), attempt: run.attempts, error: msg },

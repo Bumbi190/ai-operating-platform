@@ -1,0 +1,11 @@
+# Cinematic package through Studio
+
+Scope: continue owned PR368 at 362fa01, work ID WEB-STUDIO-PRESET-BIND-20261104. Read-only preflight receipt ../omnira-pr-preflight-WEB-STUDIO-PRESET-BIND-20261104-resume.json returned review_required: PR368 owns these Studio files; PR511 owns creative launcher qualification. Continue the clean, unlocked existing Studio worktree; no new branch.
+
+Implement a source-pinned, fictional package constructor alongside the generic compiler. Only known package bytes and a bounded plain-text Roadster CTA are accepted. Preserve generic markup restrictions and opaque-origin iframe sandbox. Existing plan, mockup, approval, worker, claim, pause and history RPCs remain authoritative. Three review entries show different portions of the same frozen package and are labelled as such, not new design alternatives. Initial construction is deterministic and costs no model call; later bounded text edits use the existing governed model path.
+
+Add an explicit Studio import control: save a new ordinary plan revision using expected-revision concurrency, never fabricate design/plan approval. Package changes invalidate the binding before paid work. Export all pinned binary dependencies. Review via sandboxed documents and public immutable fictional assets only; no customer media or credentials in that public registry.
+
+Acceptance: exact package preservation; forged/stale binding refused; arbitrary model HTML still refused; plan save and review use owner checks; initial worker assembly and scoped text edit retain media; pause/claim gates preserved; old artifact can be reread; desktop/mobile sandbox navigation and both 3D models load. Fix the 3D idle test to wait for actual damping settlement on software-rendered CI, then prove a bounded period of no further drawing. No weakened idle assertion or arbitrary fixed GPU timing assumption.
+
+Second-pass author review: no schema migration is required if existing mockup draft constraints remain satisfied by a server-authored one-page review descriptor. Worker admission must use the immutable design reference, not a user prompt claiming approval. No production budget change, automatic approval, release or paid execution is included in implementation tests.

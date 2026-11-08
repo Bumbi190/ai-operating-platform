@@ -1,4 +1,5 @@
 import 'server-only'
+import {cinematicReference,compileCinematicArtifact,parseCinematicCopy,DEFAULT_CINEMATIC_COPY} from './studio/cinematic-binding'
 import type { createAdminClient } from '@/lib/supabase/admin'
 import type { Run } from '@/lib/supabase/types'
 import { runStep } from '@/lib/ai/runner'
@@ -11,6 +12,7 @@ import { projectScope } from '@/lib/governance/execution-stop'
 import { composeAgentDesignSkills } from '@/lib/skills/compose-agent-skills'
 import { compileWebsiteArtifact, WebsiteArtifactError } from './artifact'
 import { rejectedDraftLog } from './rejected-draft'
+import {resolveWebsiteModelRasters} from './model-rasters'
 import { recoverWebsiteArtifact } from './recovery'
 import { commitBuildRevision, loadBuildSnapshot, parkBuildSession, recordBuildInterpretation, saveBuildCandidate, setBuildStage, WebsiteBuildError } from './store'
 import { interpretBuildFeedback, parseWebsiteModelJson, WebsiteBuildPermanentError } from './feedback-interpretation'
@@ -18,8 +20,13 @@ import {assertApprovedWebsiteScope} from './planning/design-reference'
 import { FEEDBACK_CONTRACT, WEBSITE_OUTPUT_CONTRACT, websiteUserMessage } from './prompt'
 import type { WriterRef } from './types'
 export { isWebsiteBuildPermanentError } from './feedback-interpretation'
+export type WebsiteBuildPaidStep={
+  projectId:string;sessionId:string;runId:string;claimId:string;generation:number
+  operation:string;model:string;maxTokens:number;temperature:number;systemPrompt:string;userMessage:string
+}
+export type WebsiteBuildWorkerHooks={beforePaidStep?:(step:WebsiteBuildPaidStep)=>void|Promise<void>}
 export function isWebsiteBuildRun(kind: unknown): boolean { return kind === 'website.static.build.v1' }
-export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminClient>, run: Run, claimId: string): Promise<void> {
+export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminClient>, run: Run, claimId: string, hooks:WebsiteBuildWorkerHooks={}): Promise<void> {
   if (!isWebsiteBuildRun(run.kind)) throw new WebsiteBuildPermanentError('INVALID_BUILD_RUN')
   const input = run.input as Record<string, unknown> | null
   if (!input || input.projectId !== run.project_id || typeof input.sessionId !== 'string' || !Number.isSafeInteger(input.generation)) throw new WebsiteBuildPermanentError('INVALID_BUILD_BINDING')
@@ -47,6 +54,9 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
     await gate('website:entry')
     if ((run.context as Record<string, unknown> | null)?.websiteBuildCompleted === true) return
     let snapshot = await loadBuildSnapshot(db, writer)
+    let cinematic:ReturnType<typeof cinematicReference>
+    try{cinematic=cinematicReference(snapshot.designReference)}catch{throw new WebsiteBuildPermanentError('INVALID_DESIGN_REFERENCE')}
+    if(cinematic&&Object.hasOwn(input,'recovery'))throw new WebsiteBuildPermanentError('INVALID_RECOVERY')
     const recovering = Object.hasOwn(input, 'recovery')
     const noPaid = recovering || Object.hasOwn(input, 'recoveryNoPaid')
     if (noPaid && (snapshot.feedback.length || snapshot.previousArtifact)) throw new WebsiteBuildPermanentError('INVALID_RECOVERY')
@@ -74,7 +84,15 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
       await gate('website:before:' + operation)
       snapshot = await loadBuildSnapshot(db, writer)
       if (snapshot.controlRequested === 'pause') { await parkBuildSession(db, writer); return null }
-      const result = await runStep({ execution: { context: 'AUTONOMOUS', scope: projectScope({ projectId: writer.projectId }) }, authority: { kind: 'RUN_BOUND', runId: run.id, claimId }, runId: run.id, cost: { projectId: writer.projectId, agent: agent.name, operation }, model: executionModel, systemPrompt, userMessage, maxTokens, temperature: config?.temperature ?? 0.7 })
+      const temperature=config?.temperature ?? 0.7
+      if(hooks.beforePaidStep){
+        await hooks.beforePaidStep({projectId:writer.projectId,sessionId:writer.sessionId,runId:run.id,claimId,generation:writer.generation,operation,model:executionModel,maxTokens,temperature,systemPrompt,userMessage})
+        // The attended hook may take time. Re-establish stop/claim authority immediately before the governed provider path.
+        await gate('website:after-owner-allowance:' + operation)
+        snapshot=await loadBuildSnapshot(db,writer)
+        if(snapshot.controlRequested==='pause'){await parkBuildSession(db,writer);return null}
+      }
+      const result = await runStep({ execution: { context: 'AUTONOMOUS', scope: projectScope({ projectId: writer.projectId }) }, authority: { kind: 'RUN_BOUND', runId: run.id, claimId }, runId: run.id, cost: { projectId: writer.projectId, agent: agent.name, operation }, model: executionModel, systemPrompt, userMessage, maxTokens, temperature })
       // Always re-establish; also satisfies a sticky authorityRefreshRequired latch.
       await gate('website:after:' + operation)
       if(['max_tokens','model_context_window_exceeded','length'].includes(result.stopReason??''))throw new WebsiteBuildPermanentError('MODEL_OUTPUT_TRUNCATED','Byggsvaret nådde sin längdgräns innan paketet var färdigt. Ingen automatisk betald omkörning görs.')
@@ -83,9 +101,10 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
     let interpretation = snapshot.interpretation
     if (snapshot.feedback.length && !interpretation) {
       await setBuildStage(db, writer, 'interpreting')
-      const result = await paid(FEEDBACK_CONTRACT, websiteUserMessage(snapshot, null, false), 2000, 'website.feedback.interpret')
+      const result = await paid(FEEDBACK_CONTRACT, cinematic?JSON.stringify({allowedChange:'Only Roadster contact button text with changeKey roadster.cta; any other request requires a decision',feedback:snapshot.feedback}):websiteUserMessage(snapshot, null, false), 2000, 'website.feedback.interpret')
       if (!result) return
       interpretation = interpretBuildFeedback(parseWebsiteModelJson(result.content), snapshot.feedback)
+      if(cinematic)interpretation={...interpretation,items:interpretation.items.map(item=>item.disposition==='apply'&&item.changeKey!=='roadster.cta'?{...item,disposition:'decision' as const,summary:'Den här visningen stöder just nu endast ändring av Roadsterns knapptext. Övriga ändringar behöver planeras separat.'}:item)}
       await recordBuildInterpretation(db, writer, interpretation)
       snapshot = await loadBuildSnapshot(db, writer)
     }
@@ -98,10 +117,21 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
     if (!artifact) {
       await setBuildStage(db, writer, 'building')
       if (recovering) artifact = await recoverWebsiteArtifact(db, writer, input.recovery)
-      else {
+      else if(cinematic){
+       const prior=snapshot.previousArtifact
+       if(prior)assertApprovedWebsiteScope(prior,snapshot.designReference)
+       if(prior&&(!prior.cinematicPreset||prior.cinematicPreset.binding.sha256!==cinematic.sha256))throw new WebsiteBuildPermanentError('CINEMATIC_BINDING_STALE')
+       let copy=prior?.cinematicPreset?.copy??DEFAULT_CINEMATIC_COPY
+       if(effectiveItems?.some(item=>item.disposition==='apply')){
+        const result=await paid('Return JSON only: {"roadsterCta":"plain text, 1–80 characters"}. Only change the Roadster contact button label as requested. No HTML, scripts, media changes or new fields.',JSON.stringify({current:copy,requests:snapshot.feedback.filter(f=>effectiveItems?.some(i=>i.feedbackId===f.id&&i.disposition==='apply')).map(f=>f.text)}),300,'website.cinematic.copy')
+        if(!result)return
+        try{copy=parseCinematicCopy(parseWebsiteModelJson(result.content))}catch{throw new WebsiteBuildPermanentError('CINEMATIC_COPY_INVALID')}
+       }
+       artifact=compileCinematicArtifact(cinematic,copy)
+      }else {
       const result = await paid(knowledge.systemPrompt + '\n\n' + WEBSITE_OUTPUT_CONTRACT, websiteUserMessage(snapshot, interpretation), config?.max_tokens ?? 12000, 'website.artifact.generate')
       if (!result) return
-      try { artifact = compileWebsiteArtifact(parseWebsiteModelJson(result.content));assertApprovedWebsiteScope(artifact,snapshot.designReference) }
+      try { artifact = compileWebsiteArtifact(resolveWebsiteModelRasters(parseWebsiteModelJson(result.content),snapshot));assertApprovedWebsiteScope(artifact,snapshot.designReference) }
       catch (error) {
         if (error instanceof WebsiteArtifactError || error instanceof WebsiteBuildPermanentError) {
           // This response already failed permanently. Finalization checks claim

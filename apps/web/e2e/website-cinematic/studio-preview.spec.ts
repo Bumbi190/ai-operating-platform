@@ -1,0 +1,48 @@
+import {test,expect} from '@playwright/test'
+test('normal opaque Studio preview keeps film, embedded 3D and page navigation',async({page},info)=>{
+ const errors:string[]=[]
+ page.on('console',m=>{if(m.type()==='error'&&!m.text().includes('Blocked autofocusing'))errors.push(m.text())})
+ page.on('pageerror',e=>errors.push(e.message))
+ await page.goto('/__studio-preview?page=roadster')
+ const frame=page.frameLocator('iframe[title="Studio preview"]')
+ await expect(frame.getByRole('heading',{name:'Roadster',exact:true})).toBeVisible()
+ await expect(page.locator('body')).toHaveAttribute('data-ready','roadster')
+ const inner=page.frames().find(f=>f.url()==='about:srcdoc')!
+ expect(await inner.evaluate(()=>{try{return !!parent.document}catch{return false}})).toBe(false)
+ await frame.getByRole('button',{name:'3D-vy',exact:true}).click()
+ const viewer=frame.frameLocator('#screen iframe')
+ await expect(viewer.locator('#vehicle-stage')).toHaveAttribute('data-model3d-state','ready',{timeout:30000})
+ await frame.locator('#screen').screenshot({path:info.outputPath('studio-roadster-3d.png')})
+ await frame.getByRole('button',{name:'Film',exact:true}).click()
+ const video=frame.locator('#screen video')
+ await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.readyState)).toBeGreaterThanOrEqual(2)
+ await inner.evaluate(()=>scrollTo(0,document.documentElement.scrollHeight))
+ await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.currentTime),{timeout:25000}).toBeGreaterThan(15)
+ await frame.getByRole('link',{name:'Till bilhallen',exact:false}).click()
+ await expect(page.locator('body')).toHaveAttribute('data-ready','index')
+ expect(await frame.locator('[id^="concept-"]').evaluateAll(nodes=>nodes.filter(n=>/^concept-\d\d$/.test(n.id)).length)).toBe(7)
+ expect(errors).toEqual([])
+})
+test('mobile Studio preview keeps media inside the viewport',async({page})=>{
+ await page.setViewportSize({width:390,height:844})
+ await page.goto('/__studio-preview?page=roadster')
+ const frame=page.frameLocator('iframe[title="Studio preview"]')
+ await expect(frame.getByRole('heading',{name:'Roadster',exact:true})).toBeVisible()
+ expect(await frame.locator('html').evaluate(el=>el.scrollWidth<=innerWidth)).toBe(true)
+ await frame.getByRole('button',{name:'Film',exact:true}).click()
+ await expect(frame.locator('#screen video')).toHaveAttribute('controls','')
+})
+
+test('Studio catalog opens Nord R film and its pinned embedded model',async({page})=>{
+ const errors:string[]=[]
+ page.on('pageerror',e=>errors.push(e.message))
+ page.on('console',m=>{if(m.type()==='error'&&!m.text().includes('Blocked autofocusing'))errors.push(m.text())})
+ await page.goto('/__studio-preview')
+ const frame=page.frameLocator('iframe[title="Studio preview"]')
+ await frame.locator('#lot-open').click()
+ const dialog=frame.locator('#lot-dialog')
+ await expect(dialog.locator('#lot-film')).toBeVisible()
+ await dialog.locator('#lot-orbit').click()
+ await expect(dialog.frameLocator('iframe').locator('#vehicle-stage')).toHaveAttribute('data-model3d-state','ready',{timeout:30000})
+ expect(errors).toEqual([])
+})

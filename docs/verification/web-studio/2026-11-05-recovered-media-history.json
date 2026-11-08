@@ -1,0 +1,21 @@
+{
+  "projectRef": "iboepohjwrhtgshrqaol",
+  "observedAt": "2026-11-05T09:45:39.734Z",
+  "note": "Read-only migration history export; statements preserved exactly as returned, including literal backslash-n sequences. Not executable migration input.",
+  "records": [
+    {
+      "version": "20260605071529",
+      "name": "media_insights_multiplatform",
+      "statements": [
+        "-- Make media_insights multi-platform (YouTube + Facebook per-post), additive & non-destructive.\nalter table public.media_insights\n  add column if not exists youtube_video_id text,\n  add column if not exists facebook_post_id text;\n\n-- Allow per-platform upserts keyed on (script_id, platform).\n-- Existing data: 14 rows, 0 null script_id, all distinct on (script_id, platform) — safe.\ncreate unique index if not exists media_insights_script_platform_key\n  on public.media_insights (script_id, platform);\n\ncomment on column public.media_insights.youtube_video_id is 'YouTube video id for platform=youtube rows (null otherwise).';\ncomment on column public.media_insights.facebook_post_id  is 'Facebook post id for platform=facebook rows (null otherwise).';"
+      ]
+    },
+    {
+      "version": "20260605213648",
+      "name": "media_insights_retention",
+      "statements": [
+        "-- Genomtittnings-% (retention) per video. Numerisk 0–100. Additivt.\nalter table public.media_insights\n  add column if not exists avg_view_pct numeric;\ncomment on column public.media_insights.avg_view_pct is 'YouTube averageViewPercentage (0-100) via Analytics API. Null tills yt-analytics.readonly-scope finns.';"
+      ]
+    }
+  ]
+}

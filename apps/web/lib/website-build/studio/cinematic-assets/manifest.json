@@ -1,0 +1,176 @@
+{
+  "version": 3,
+  "truthClass": "fictional_marketing",
+  "qualityStatus": "motion-revised_owner-visual-acceptance-pending",
+  "previousPilot": {
+    "version": 1,
+    "truthClass": "fictional_marketing",
+    "imageJob": "3a820ee0-88e2-4f70-a27c-964666420923",
+    "videoJob": "71441e43-4fd2-4f2f-b8b5-2b293eb64fbb",
+    "imageModel": "nano_banana_2_1",
+    "videoModel": "kling3_0",
+    "quotedCredits": {
+      "image": 1.5,
+      "video": 7.5,
+      "total": 9
+    },
+    "imagePrompt": "Photorealistic cinematic establishing frame for a fictional Scandinavian premium used-car dealership website, widescreen 16:9. Original architecture: low modern charcoal brick and glass showroom with warm amber interior light, northern birch and pine trees behind, Nordic blue-hour sky, recently damp asphalt with subtle realistic reflections, tasteful low landscape lights. Camera elevated about 6 meters, looking diagonally down across a compact clean forecourt. Main subject: one unbranded deep metallic midnight-blue modern SUV on the right half, visible complete from front three-quarter, all four wheels grounded, convincing precise geometry and restrained road-car proportions, charcoal multi-spoke wheels. Five smaller parked cars spaced naturally near the building in the middle distance. Broad quiet darker asphalt area in the left third for later website typography. The camera has a clear unobstructed diagonal approach toward the hero SUV. Luxury automotive photography, believable Swedish small business, natural perspective, realistic glass, paint and tires, detailed but clean composition. No text, no signage lettering, no logos, no brands, no watermarks, no UI, no people, no license plate characters. This is a fictional marketing scene, not a photograph of any real dealership or listed vehicle.",
+    "videoPrompt": "A single continuous five-second premium automotive camera move starting exactly from the supplied frame. The same fictional Scandinavian showroom at blue hour, same warm interior lights, trees, damp forecourt and exactly the same parked midnight-blue SUV. Camera glides slowly forward and descends from its elevated viewpoint toward a clean front three-quarter hero view of that SUV, ending around two metres above the asphalt. Smooth physically plausible dolly, no cuts, no teleportation, no whip pan. All cars remain parked and solid; preserve their silhouettes, paint, wheels, windows and proportions from first frame to last. Reflections change naturally only with the camera. Keep the quiet left area suitable for separately overlaid website text. No people, no text, no logos, no new vehicles, no changing car parts, no wheel morphing, no generated UI. Stable photographic realism, restrained luxury, a controlled shot designed to scrub forward and backward with website scrolling.",
+    "poster": {
+      "filename": "hero.webp",
+      "bytes": 215304,
+      "sha256": "78a03cf38f0fed584fb6cdb969cc8bbbbbf7a345dbd9be99198b6838b72820c6",
+      "contentType": "image/webp"
+    },
+    "video": {
+      "filename": "showroom.mp4",
+      "bytes": 1800939,
+      "sha256": "6979b137e822b8a827a10a392a68256536e75e91d0e16e1e756c6c64b01cde24",
+      "contentType": "video/mp4",
+      "encoding": "H264 720p 24fps CRF23 keyframe interval6 faststart; silent",
+      "sourceSha256": "42e01ece86310b6d4883aae279e1a5be86927860721fa238471fc58b4e64cea6"
+    }
+  },
+  "imageModel": "gpt_image_2_5 high2k",
+  "videoModels": [
+    "wan3_0"
+  ],
+  "imageJobs": [
+    {
+      "index": 0,
+      "jobId": "799a09bf-bec3-48ca-b881-d7f23bf8d046",
+      "prompt": "Original premium automotive campaign photograph, frame 1 of a fictional Scandinavian dealership website tour. Use the reference ONLY to preserve the SAME modern charcoal brick and glass showroom, warm amber windows, northern trees, blue hour, damp asphalt and the SAME unbranded deep midnight-blue SUV with charcoal multi-spoke wheels. Redesign camera/composition for a professional launch film: genuinely elevated wide establishing view from about 14 metres high and 25 metres back, entire low showroom clearly visible, foreground dark forecourt as leading lines, SUV clearly recognizable parked at lower right but occupying at most 20% of width. Other parked cars subdued small background elements. Sophisticated photographic realism, straight architectural lines, subtle reflections, controlled natural dynamic range, restrained premium color grading, no fantasy. Widescreen 16:9, leave quiet dark LEFT THIRD for separately added typography. No text, no letters, no logos, no license plate characters, no people, no watermark, no UI. No customer or real dealership is represented."
+    },
+    {
+      "index": 1,
+      "jobId": "7791c922-b988-49f4-affc-035e49d05743",
+      "prompt": "Original premium automotive campaign photograph, frame 2 of a fictional dealership website tour. Match the reference's exact unbranded midnight-blue SUV design, glass shape, grille, headlights, charcoal multi-spoke wheels and proportions, and the same warm-lit charcoal glass showroom at Scandinavian blue hour. Camera is now LOW at 1.0m above the damp forecourt, near the car, dramatic front-left three-quarter hero view. The SUV occupies about 60 percent of frame, fully visible with grounded wheels and nose pointing left. Place vehicle in RIGHT two-thirds, keep LEFT third quiet dark negative space. Crisp real automotive photography with beautiful paint and glass reflections, warm showroom bokeh behind, precise physically plausible body panels and wheel geometry, 50mm-equivalent lens, authentic materials. This is a NEW CAMERA ANGLE, not a crop or digital zoom of the reference. No branding, no text, no license plate lettering, no people, no watermark, no UI; fictional concept marketing only."
+    },
+    {
+      "index": 2,
+      "jobId": "d29478e5-8456-4279-b205-c0c7a2a21117",
+      "prompt": "Original premium automotive campaign photograph, frame 3 of the SAME fictional unbranded midnight-blue SUV from the reference. Same exact design language, charcoal multi-spoke wheels, body proportions, glass shape, same warm glass showroom and wet Nordic blue-hour setting. Camera at 1.2m, near-side SIDE PROFILE with a slight rear three-quarter angle, body stretching elegantly across RIGHT two-thirds, entire vehicle visible, physically parked. Intentional view from roughly 70 degrees further around the vehicle than the front three-quarter reference; do not duplicate front view. Paint reflections of the warm showroom and precise tactile seams; genuinely high-end editorial automotive lighting, polished but photographic. Leave quiet darker LEFT third for HTML copy. No brands, no text, no plate letters, no people, no watermark, no UI. Fictional concept only."
+    },
+    {
+      "index": 3,
+      "jobId": "cbddde52-9643-4c61-83f4-83b2f6552f65",
+      "prompt": "Premium automotive interior campaign photograph for the fictional unbranded midnight-blue SUV in the reference, same Nordic blue-hour world with warm showroom reflections outside. Editorial view through an OPEN front passenger doorway into the cockpit, left-hand-drive steering wheel at the FAR RIGHT of composition, sculpted warm graphite leather seats and softly stitched dashboard, subtle champagne metal trim, elegant minimal controls with all screens OFF and black, convincing continuous materials and realistic reflections. Cabin fills RIGHT two-thirds; leave LEFT third dark softly blurred door-frame foreground for HTML typography. Balanced restrained amber ambient lighting; tactile leather texture, no plastic CGI look, 35mm lens, photorealistic dealership film keyframe. No badge, no logo, no screen UI or text, no plate, no people, no watermark. An invented concept interior, not evidence of equipment in any real vehicle."
+    }
+  ],
+  "interiorCorrection": {
+    "jobId": "9545370f-f73e-4d37-8df8-4051aba75f97",
+    "prompt": "Premium photorealistic cockpit film keyframe for the same fictional midnight-blue SUV and blue-hour showroom in the reference. Correct the driving layout for Sweden: LEFT-HAND DRIVE. Place the camera inside at the CENTRE of the rear seat looking STRAIGHT FORWARD through the front seats toward the dashboard. The steering wheel and driver instruments are on the LEFT SIDE OF THE IMAGE and on the VEHICLE'S LEFT. The passenger dashboard is on the RIGHT. Symmetric cabin perspective makes this unmistakable. Keep graphite stitched leather, subtle champagne metal trim, dark screens switched OFF with no UI, accurate straight dashboard, elegant restrained warm amber ambient light, blue-hour glow through windshield, believable soft reflections. Foreground seat silhouettes softly blurred. Authentic premium commercial photography, not CGI. No brands, no logos, no text, no people, no watermark. An invented concept interior, not a real vehicle equipment claim.",
+    "reason": "Initial interior rejected for driving-side ambiguity"
+  },
+  "selectedVideoJobs": [
+    {
+      "index": 0,
+      "job_id": "d8e2dbcf-f7bb-42b6-9c49-1c8d5049169d",
+      "status": "completed",
+      "model": "wan3_0",
+      "duration": 5,
+      "result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_3F5uWSZoLFyQDgEUf7iFynsm4Sc/hf_20261102_182336_d8e2dbcf-f7bb-42b6-9c49-1c8d5049169d.mp4",
+      "sourceSha256": "74085c3f7a42e96a4ffc5f0b8e14bafafeae3b687c20fb46d5628be79eb10716",
+      "prompt": "Five seconds in a single uninterrupted real-time Steadicam shot, starting on the supplied elevated dealership establishing frame. Descend and move forward on a shallow diagonal toward the stationary blue SUV, ending with its front three-quarter filling more of the right side. Stay outside the building. Camera is already moving in frame one; one steady gliding speed with visible foreground parallax, level horizon, constant exposure and focal length. Wheels planted, solid car geometry, building lines stay rigid. No cuts, no dissolves, no ghosted trees, no time ramps, no pulse or shake, no lens zoom, no motion graphics or lettering. Preserve the reference architectural materials, muted warm light, blue paint, reflections, and proportions. Silent luxury Scandinavian showroom commercial.",
+      "startImage": "799a09bf-bec3-48ca-b881-d7f23bf8d046"
+    },
+    {
+      "index": 1,
+      "job_id": "2ccc60a2-8d3c-46d5-8c89-6e43584b3f01",
+      "status": "completed",
+      "model": "wan3_0",
+      "duration": 4,
+      "result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_3F5uWSZoLFyQDgEUf7iFynsm4Sc/hf_20261102_165515_2ccc60a2-8d3c-46d5-8c89-6e43584b3f01.mp4",
+      "sourceSha256": "2e5eb968e15e4e51d87bff11e089f97e752aa262e8f8d0b840fed81a75db78bb"
+    },
+    {
+      "index": 2,
+      "job_id": "f7cb7c5c-ea7f-4f03-8945-6ff638cdef9d",
+      "status": "completed",
+      "model": "wan3_0",
+      "duration": 4,
+      "result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_3F5uWSZoLFyQDgEUf7iFynsm4Sc/hf_20261102_165520_f7cb7c5c-ea7f-4f03-8945-6ff638cdef9d.mp4",
+      "sourceSha256": "ef74377b6e96e03c3231d80dfae0446db1a3c9017c90de2732f18fb9a60a0d25"
+    }
+  ],
+  "quotedCredits": {
+    "imagesIncludingRejected": 13.75,
+    "originalKlingClips": 26.25,
+    "selectedWanClips": 58,
+    "totalNew": 98,
+    "previousPilot": 9,
+    "projectTotal": 107
+  },
+  "balanceBefore": 1191,
+  "balanceAfter": 1093,
+  "chapterStarts": [
+    0,
+    5,
+    9
+  ],
+  "video": {
+    "filename": "showroom.mp4",
+    "bytes": 3970838,
+    "sha256": "c0adba58371d084bd6c4148627d4f067a02bf82a81a7d139d8eb0023055b2113",
+    "contentType": "video/mp4",
+    "encoding": "H264 High yuv420p, 1600x900, 30fps, faststart, silent, GOP12, CRF21 maxrate2400k. Native-speed shots; cuts at 5s and 9s.",
+    "sourceJobs": [
+      "d8e2dbcf-f7bb-42b6-9c49-1c8d5049169d",
+      "2ccc60a2-8d3c-46d5-8c89-6e43584b3f01",
+      "f7cb7c5c-ea7f-4f03-8945-6ff638cdef9d"
+    ],
+    "durationSec": 13,
+    "width": 1600,
+    "height": 900
+  },
+  "poster": {
+    "filename": "hero.webp",
+    "bytes": 365274,
+    "sha256": "52a0d9fe30e62bde49fb5cb7eb12bc30baed405522d927fbcc9c3638143fdc8a",
+    "contentType": "image/webp",
+    "width": 2048,
+    "height": 1152,
+    "sourceJob": "799a09bf-bec3-48ca-b881-d7f23bf8d046"
+  },
+  "previousOpening": {
+    "source": {
+      "index": 0,
+      "job_id": "1ea312f2-e067-48a5-aa24-8170b566db1d",
+      "status": "completed",
+      "model": "wan3_0_prime",
+      "duration": 5,
+      "result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_3F5uWSZoLFyQDgEUf7iFynsm4Sc/hf_20261102_165121_1ea312f2-e067-48a5-aa24-8170b566db1d.mp4",
+      "sourceSha256": "e10fe5a82121909ff402e0acbab213fe4e955e701609412c60ad70d6c6ab3f1f"
+    },
+    "reason": "Owner reported jerky motion. Half-speed edit repeated opening frames and cut at 2.5s.",
+    "previousMasterSha256": "aacb55af0698294c941ba0e59ae12ef3d86993b818c4a7e0bcb0f1393813ef6c"
+  },
+  "failedUnselectedVideoJobs": [
+    {
+      "index": 0,
+      "job_id": "a8b9ec39-d172-46db-aecf-7c9fd9b47fcc",
+      "prompt": "Five-second continuous premium automotive camera approach. Use the supplied exact first and last frames as camera endpoints in the SAME scene. Camera travels decisively from the elevated wide dealership view toward the parked midnight-blue SUV, descending smoothly to the final low front three-quarter hero view. This is a real 3D-feeling dolly through space with strong foreground/background parallax, not a slow digital zoom. Preserve the car's solid grille, headlights, doors, roofline, wheels and body proportions throughout; ALL cars remain parked, wheels never rotate. Preserve the charcoal glass showroom, amber windows, wet asphalt and blue-hour light. No cuts, no dissolves, no time lapse, no added cars, no people, no text, no logo, no new lettering. Photographic realism and controlled premium camera work. End exactly at the supplied low car frame, at rest. Silent.",
+      "status": "failed"
+    },
+    {
+      "index": 1,
+      "job_id": "015a06e4-b164-41a0-aac4-d82b355e1ad5",
+      "prompt": "Five-second continuous premium automotive orbit. Start exactly on the supplied low front three-quarter close-up of the parked midnight-blue SUV. Camera physically tracks smoothly around the same car toward its near-side/rear three-quarter view, finishing exactly at the supplied end frame. Strong intentional perspective/parallax change, stable vehicle dimensions and fixed wheel locations. The CAR NEVER DRIVES or rotates; only the camera moves. Keep exact blue paint, charcoal multi-spoke wheel design, window shapes, mirror placements, body seams and showroom setting. Photoreal warm amber architectural reflections on blue bodywork at Nordic blue hour. No cuts, no dissolves, no morphing car parts, no doors opening, no people, no logos, no text. Widescreen luxury commercial cinematography. Silent.",
+      "status": "failed"
+    },
+    {
+      "index": 2,
+      "job_id": "b0c93d0e-114e-4fc0-8fd2-2f5fe6bb686b",
+      "prompt": "Five-second restrained premium interior camera study, starting exactly from supplied invented SUV cockpit frame. Camera moves gently forward about 35cm toward the dashboard and slightly right, revealing tactile leather stitching, metal trim and natural amber highlights. Preserve every cockpit surface, wheel placement, controls and straight dashboard lines. Screens stay OFF and completely black. No hands, no passengers, no writing, no logos, no new display graphics, no cockpit morphing, no camera through solid objects. Natural photographic reflections, quiet Nordic blue-hour setting, deliberate elegant film composition. One continuous take. Silent.",
+      "status": "failed"
+    }
+  ],
+  "motionRevisionCredits": {
+    "previousPremiumNetDelta": 71.75,
+    "newOpeningQuoted": 17.5,
+    "priorPilotSeparate": 9,
+    "balanceBeforeRevision": 1119.25,
+    "balanceAfterRevision": 1101.75,
+    "netPremiumTotal": 89.25
+  }
+}

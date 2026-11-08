@@ -1,0 +1,68 @@
+{
+  "front": {
+    "filename": "nord-r-front.webp",
+    "bytes": 210040,
+    "sha256": "12c87f6ec5cf8431f78713da4a8bee4dfa4b6c3aeac8af48d0a01a93e10a1f2d",
+    "contentType": "image/webp",
+    "sourceJob": "7791c922-b988-49f4-affc-035e49d05743"
+  },
+  "rear": {
+    "filename": "nord-r-rear.webp",
+    "bytes": 231272,
+    "sha256": "e16a02060fd6cb1dabf59d2db8895f9ecc43652f5170ad774fd601cbe2345618",
+    "contentType": "image/webp",
+    "sourceJob": "d29478e5-8456-4279-b205-c0c7a2a21117"
+  },
+  "cabin": {
+    "filename": "nord-r-cabin.webp",
+    "bytes": 136282,
+    "sha256": "c62c6dac4b96dfc9e46df4e70bb9a3c5111e34e79755a7d83600a3dce43d0d8c",
+    "contentType": "image/webp",
+    "sourceJob": "9545370f-f73e-4d37-8df8-4051aba75f97"
+  },
+  "model": {
+    "filename": "nord-r.glb",
+    "contentType": "model/gltf-binary",
+    "bytes": 2631508,
+    "sha256": "f925257a0920debec1b2045dcce2681538e2c1a9d586320776979515e6f94ece",
+    "sourceSha256": "e52bae912ecc8dab1c073ae2cddd538598cd4a2f859a1047fd3f189ed391e1e0",
+    "sourceJob": "13dc6c54-08a9-4cdf-b40a-b9e2d2e4626c",
+    "referenceJob": "7791c922-b988-49f4-affc-035e49d05743",
+    "model": "tripo_h3_1_image_to_3d",
+    "quotedCredits": 12,
+    "displayRevision": "Midnight-blue paint clearcoat mask, cool and warm studio reflections"
+  },
+  "film": {
+    "filename": "nord-r.mp4",
+    "contentType": "video/mp4",
+    "bytes": 2196193,
+    "sha256": "d02ce1145a60f8e63e89f9c1c19e68478995ae2d0225c4c94dbc60fb897ad85b",
+    "width": 1280,
+    "height": 720,
+    "durationSeconds": 8,
+    "entryJob": "b533eef5-def0-4a76-9f6d-a2832a92c9bc",
+    "interiorJob": "f7cb7c5c-ea7f-4f03-8945-6ff638cdef9d",
+    "startReference": "d29478e5-8456-4279-b205-c0c7a2a21117",
+    "cabinReference": "9545370f-f73e-4d37-8df8-4051aba75f97",
+    "entryQuotedCredits": 17.5
+  },
+  "studio": {
+    "filename": "nord-r-studio.webp",
+    "bytes": 112862,
+    "sha256": "03769528d7a0faafb986a70a4ac2b6ed59245ce6b634eabe350112fc703d3ff2",
+    "contentType": "image/webp",
+    "width": 1344,
+    "height": 752,
+    "sourceJob": "0c91cb3c-9b50-4fe6-8391-a0c2f360d141"
+  },
+  "orbit": {
+    "filename": "nord-r-orbit.webp",
+    "bytes": 9672,
+    "sha256": "da67547714558cd46b78c643fccc199b0941413224c2f19d61120d2c97f449cb",
+    "contentType": "image/webp",
+    "width": 320,
+    "height": 164,
+    "modelSha256": "f925257a0920debec1b2045dcce2681538e2c1a9d586320776979515e6f94ece",
+    "studioSha256": "03769528d7a0faafb986a70a4ac2b6ed59245ce6b634eabe350112fc703d3ff2"
+  }
+}

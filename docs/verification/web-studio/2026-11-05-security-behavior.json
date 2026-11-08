@@ -1,0 +1,43 @@
+{
+    "guardCases":  [
+                       {
+                           "label":  "empty",
+                           "passed":  true
+                       },
+                       {
+                           "label":  "nonempty",
+                           "passed":  true
+                       },
+                       {
+                           "label":  "existing_kind",
+                           "passed":  true
+                       }
+                   ],
+    "enqueue":  true,
+    "roleCases":  [
+                      {
+                          "label":  "anon_config_hidden",
+                          "passed":  true
+                      },
+                      {
+                          "label":  "authenticated_config_readonly",
+                          "passed":  true
+                      },
+                      {
+                          "label":  "anon_heartbeat_denied",
+                          "passed":  true
+                      },
+                      {
+                          "label":  "authenticated_heartbeat_denied",
+                          "passed":  true
+                      },
+                      {
+                          "label":  "service_direct_stop_change_denied",
+                          "passed":  true
+                      },
+                      {
+                          "label":  "service_access",
+                          "passed":  true
+                      }
+                  ]
+}

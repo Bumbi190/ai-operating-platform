@@ -188,7 +188,9 @@ const VERB_AT_CLAUSE_START = new RegExp(`^(?:${ACTION_VERBS.join('|')})${E}`, 'i
 const OBJECT_ANYWHERE = new RegExp(anyOf(ACTION_OBJECTS), 'iu')
 
 /** Clause boundaries — a description and a command can share one message. */
-const CLAUSE_SPLIT = /[.!?…\n]+|[,;:]\s+|\s+[—–]\s+/
+// A dash separator can start only at the beginning of a whitespace run.
+// Preserve consumed delimiter spacing without retrying every space on a miss.
+const CLAUSE_SPLIT = /[.!?…\n]+|[,;:]\s+|(?<!\s)\s+[—–]\s+/
 
 const RESOLUTION_OBJECT = new RegExp(anyOf([
   ...forms('fynd', 'et', 'en', 'ena'),

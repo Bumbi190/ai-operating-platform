@@ -1,0 +1,14 @@
+{
+  "cover": {
+    "filename": "roadster-cover.webp",
+    "contentType": "image/webp",
+    "bytes": 268374,
+    "sha256": "862773760fa4a37f81b14e795f8b96a4d3a78eb822587a4582c6ec3fab4189aa"
+  },
+  "film": {
+    "filename": "roadster-showcase.mp4",
+    "contentType": "video/mp4",
+    "bytes": 2058820,
+    "sha256": "9c4e0cf08880e0e76bdaf5e6f18ab3a428b43d4693962831742c10986ae08700"
+  }
+}

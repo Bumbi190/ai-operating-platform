@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test'
+export default defineConfig({testDir:'./e2e/website-starter',testMatch:'starter.spec.ts',workers:1,retries:0,timeout:30000,expect:{timeout:6000},use:{baseURL:'http://127.0.0.1:54428',browserName:'chromium',screenshot:'only-on-failure'},outputDir:'../../.superpowers/sdd/2026-10-31-web-studio-starter-flow/browser',webServer:{command:'node e2e/website-starter/server.mjs',url:'http://127.0.0.1:54428/',reuseExistingServer:false,timeout:30000}})

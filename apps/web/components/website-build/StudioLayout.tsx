@@ -1,4 +1,5 @@
 'use client'
+import React from 'react'
 import {useEffect,useId,useRef,useState,type CSSProperties,type ReactNode} from 'react'
 import {Sparkles} from 'lucide-react'
 import styles from './AtlasBuilderStudio.module.css'
@@ -18,7 +19,11 @@ export function StudioLayout({chat,website,desktop,files,tasks,previewRequest=0}
    <div className={styles.divider} role="separator" aria-label="Bredd på Atlas-panelen" aria-orientation="vertical" aria-valuemin={25} aria-valuemax={70} aria-valuenow={split} tabIndex={0} onKeyDown={e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();setSplit(v=>e.key==='Home'?25:e.key==='End'?70:Math.max(25,Math.min(70,v+(e.key==='ArrowRight'?2:-2))))}}} onPointerDown={e=>e.currentTarget.setPointerCapture(e.pointerId)} onPointerMove={e=>{if(e.currentTarget.hasPointerCapture(e.pointerId)&&root.current){const b=root.current.getBoundingClientRect();setSplit(Math.max(25,Math.min(70,100*(e.clientX-b.left)/b.width)))}}} onPointerUp={e=>e.currentTarget.releasePointerCapture(e.pointerId)}/>
    <div id={id+'-work'} className={styles.work} data-mobile-hidden={mobile==='chat'}>
     <div className={styles.areaTabs} role="tablist" aria-label="Arbetsyta">{([['website','Preview'],['desktop','Desktop'],['files','Filer'],['tasks','Uppgifter']] as const).map(([value,label])=><button type="button" key={value} role="tab" aria-selected={area===value} onClick={()=>choose(value)}>{label}</button>)}</div>
-    <div className={[styles.canvas,area==='website'?styles.previewCanvas:''].join(' ')}>{area==='website'?website:area==='desktop'?desktop:area==='files'?files:tasks}</div>
+    <div className={[styles.canvas,area==='website'?styles.previewCanvas:''].join(' ')}>
+      {area==='website'?website:area==='desktop'?desktop:area==='tasks'?tasks:null}
+      {/* Keep file-upload state mounted across chat/preview tab changes. */}
+      <div hidden={area!=='files'}>{files}</div>
+    </div>
    </div>
   </div>
  </div>

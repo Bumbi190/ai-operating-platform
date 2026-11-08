@@ -1,15 +1,15 @@
 import {beforeEach,describe,it,expect,vi} from 'vitest'
 import {studioApi} from './api'
 const PROJECT='10000000-0000-4000-8000-000000000001',OTHER='10000000-0000-4000-8000-000000000002',OWNER='20000000-0000-4000-8000-000000000001'
-const state=vi.hoisted(()=>({signedIn:true,adminReads:0,db:null as any,paused:false,headroomError:false,stopError:false,rows:[] as any[],calls:[] as any[]}))
+const state=vi.hoisted(()=>({signedIn:true,adminReads:0,db:null as any,paused:false,headroomError:false,stopError:false,totalLimit:null as number|null,totalCommitted:0,totalError:false,rows:[] as any[],calls:[] as any[]}))
 vi.mock('@/lib/auth/project-access',()=>({resolveProjectAccess:async()=>state.signedIn?{ok:true,userId:OWNER,allowedProjectIds:[PROJECT,OTHER]}:{ok:false,response:Response.json({error:'Unauthorized'},{status:401})}}))
 vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>{state.adminReads++;return state.db}}))
 vi.mock('@/lib/os/chat',()=>({loadChatConversation:async()=>null}))
 function query(result:()=>any){const filters:Record<string,unknown>={};const q:any={select:()=>q,eq:(key:string,value:unknown)=>{filters[key]=value;return q},maybeSingle:async()=>result().data?.find((row:any)=>Object.entries(filters).every(([key,value])=>row[key]===value))?{data:result().data.find((row:any)=>Object.entries(filters).every(([key,value])=>row[key]===value)),error:null}:{data:null,error:result().error},then:(resolve:any,reject:any)=>Promise.resolve(result()).then(resolve,reject)};return q}
 beforeEach(()=>{
- state.signedIn=true;state.adminReads=0;state.paused=false;state.headroomError=false;state.stopError=false;state.calls=[]
+ state.signedIn=true;state.adminReads=0;state.paused=false;state.headroomError=false;state.stopError=false;state.totalLimit=null;state.totalCommitted=0;state.totalError=false;state.calls=[]
  state.rows=[{project_id:PROJECT,scope:'project_monthly',limit_sek:'100',spent_sek:'7.7880',held_sek:'5',remaining_sek:'87.2120'},{project_id:OTHER,scope:'project_monthly',limit_sek:'999',spent_sek:'888',held_sek:'0',remaining_sek:'111'},{project_id:PROJECT,scope:'global_monthly',limit_sek:'9999',spent_sek:'8888',held_sek:'0',remaining_sek:'1111'}]
- state.db={from:(table:string)=>{state.calls.push({table});return query(()=>({data:[{id:PROJECT,owner_id:OWNER,execution_paused:state.paused}],error:null}))},rpc:(name:string,args:any)=>{
+ state.db={from:(table:string)=>{state.calls.push({table});return query(()=>table==='project_budgets'?{data:state.totalError?[]:[{project_id:PROJECT,total_usd_limit_micros:state.totalLimit,total_usd_committed_micros:state.totalCommitted}],error:state.totalError?{message:'private-total-error'}:null}:{data:[{id:PROJECT,owner_id:OWNER,execution_paused:state.paused}],error:null})},rpc:(name:string,args:any)=>{
   state.calls.push({name,args})
   if(name==='budget_headroom')return query(()=>({data:state.rows,error:state.headroomError?{message:'private-fixture-error'}:null}))
   if(name==='stop_set_project_execution'){if(state.stopError)return Promise.resolve({data:null,error:{message:'private-stop-error'}});const previous=state.paused;state.paused=args.p_paused;return Promise.resolve({data:[{changed:!previous,previous_paused:previous,new_paused:state.paused,event_id:previous?null:'event-1'}],error:null})}
@@ -62,4 +62,17 @@ it('reports the active economy model on the protected cost snapshot',async()=>{
   const response=await studioApi('costs' as any,get())
   expect((await response.json()).modelPolicy).toEqual({profile:'openai_economy',chatModel:'gpt-5.4-mini',buildModel:'gpt-5.4-mini',localAvailable:false})
  }finally{delete process.env.ATLAS_MODEL_PROFILE}
+})
+
+it('reports a non-renewing allowance separately from monthly invoices and holds',async()=>{
+ state.totalLimit=10000000;state.totalCommitted=3500000
+ const response=await studioApi('costs' as any,get());expect(response.status).toBe(200)
+ expect((await response.json()).total).toEqual({currency:'USD',limitMicros:10000000,committedMicros:3500000,remainingMicros:6500000})
+})
+it('does not hide a broken allowance read as no limit',async()=>{
+ state.totalError=true;const response=await studioApi('costs' as any,get());expect(response.status).toBe(503);expect(await response.text()).not.toContain('private-total-error')
+})
+it('rejects corrupt total counters',async()=>{
+ state.totalLimit=100;state.totalCommitted=101
+ expect((await studioApi('costs' as any,get())).status).toBe(503)
 })

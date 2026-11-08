@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "decision": "clarify_existing_nonrenewing_allowance_scope",
+  "recordedOn": "2026-11-04",
+  "projectId": "e6cf9349-4967-441c-a2bd-5778eec974b3",
+  "ownerId": "d63a09fb-448e-41b8-9fb2-9a608f5f1800",
+  "originalApprovalHash": "606c86c5af882e7ec1fc866353567139537eb4ce585b821b01bccbab45ac283e",
+  "originalApprovalFile": "OMNIRA_HB_PREVIEW_BUDGET_10USD_2026-11-01.json",
+  "userPageContext": "f04566e3-4489-455f-bb65-42a52d4fef45",
+  "question": "Ska dina $10 gälla API-anrop för planering, bygge och ändringar, medan redan betalda Higgsfield-krediter redovisas separat?",
+  "reply": "Okej fortsätt då :)",
+  "interpretation": "Yes to the immediately preceding scope clarification; continuation within the existing allowance.",
+  "limitUsdMicros": 10000000,
+  "priorApiCommittedUsdMicros": 0,
+  "scope": [
+    "project API planning",
+    "project website build",
+    "project chat changes",
+    "API retries and uncertain API outcomes"
+  ],
+  "prepaidHiggsfieldCredits": "Accounted separately; historical media subtotal incomplete, no USD conversion asserted.",
+  "renewal": false,
+  "topUp": false,
+  "executionPaused": true,
+  "newMediaAuthorized": false,
+  "productionWebsiteReleaseAuthorized": false,
+  "evidence": {
+    "nativeCostEvents": 0,
+    "nativeReservations": 0,
+    "localAdmissions": 0,
+    "existingTotalLimit": null
+  },
+  "remainingPrerequisites": [
+    "Bind reviewed cinematic preset to current plan and mockup",
+    "Normal plan and design decisions",
+    "Governed per-call cost ceiling and current pricing"
+  ]
+}

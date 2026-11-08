@@ -1,0 +1,665 @@
+{
+  "schema": "omnira.migration-bootstrap-replay.v1",
+  "replayReady": false,
+  "completed": false,
+  "disclaimer": "Local disposable Docker diagnostic only (--pull=never, --network none, no mounts or ports, cron job launching off). Fixtures are untracked test inputs; even a completed run is not clean-bootstrap, hosted parity or production readiness evidence.",
+  "planSha256": "8cc49afef4357f68c567e0d29ac4880a8373a2a85529bdbad3bc2b237c4af608",
+  "planBlockers": [
+    "fixture_interleaved",
+    "fixture_untracked",
+    "fixture_untracked",
+    "fixture_untracked",
+    "fixture_untracked",
+    "fixture_untracked",
+    "fixture_untracked",
+    "fixture_untracked",
+    "fixture_untracked",
+    "execution_not_run"
+  ],
+  "environment": {
+    "image": "public.ecr.aws/supabase/postgres:17.11.0.004",
+    "storageImage": "public.ecr.aws/supabase/storage-api:v1.79.36",
+    "pull": "never",
+    "label": "com.omnira.testplan=migration-bootstrap-replay",
+    "inspected": {
+      "network": "none",
+      "mounts": 0,
+      "publishedPorts": 0,
+      "privileged": false
+    },
+    "cronLaunchActiveJobs": "off",
+    "cronJobRuns": 0
+  },
+  "coverage": {
+    "planned": 182,
+    "verified": 182,
+    "limit": null,
+    "attempted": 99,
+    "applied": 98,
+    "bounded": false
+  },
+  "prerequisites": [
+    {
+      "ref": "platform-stubs",
+      "lfSha256": "7436b9fe08ab4122dad818f777e2ad3d89408c32333cbf68387e3ca3e6f86a88"
+    },
+    {
+      "ref": "public-default-privileges",
+      "lfSha256": "1526995a65eba4b0258aee4b313cd2527509366c62d993883373188295bccd7a"
+    },
+    {
+      "ref": "public.ecr.aws/supabase/storage-api:v1.79.36/0002-storage-schema.sql",
+      "lfSha256": "a6b7d8135524e00f86d53ffef7effef2624bec10c4817b27b10e0eb50c580b85",
+      "sourceSha256": "19562682ff1b77cda9ba096671b873e7e226b10f0b0564bd4823e6c1754393b6"
+    },
+    {
+      "ref": "public.ecr.aws/supabase/storage-api:v1.79.36/0008-add-public-to-buckets.sql",
+      "lfSha256": "71ee004a42546de37c21cc62ef4dd1f14ecf59450f97341709514e75f0b04ca5",
+      "sourceSha256": "1d881092aea62e83493f1a9c4cb4f101f3035a08d62be84a7e7970ee0c6f0f48"
+    }
+  ],
+  "applied": [
+    {
+      "index": 0,
+      "kind": "fixture",
+      "path": "packages/db/full_schema_run_in_supabase.sql",
+      "lfSha256": "986ec4743fb23c2f392fbbb420f12081b2550b02e63d1b203416c75a9a110755"
+    },
+    {
+      "index": 1,
+      "kind": "fixture",
+      "path": "supabase/migrations/20260528_pg_cron_setup.sql",
+      "lfSha256": "22569e22cd61cef171ad3be914a02d3e7d013a787304ce6904f09a24218d0967"
+    },
+    {
+      "index": 2,
+      "kind": "fixture",
+      "path": "supabase/migrations/20260603_cron_heartbeat.sql",
+      "lfSha256": "f3c28dcd9bd031098bed10f86817f7e4bb55d5b03193199e102ffeae9bcbd831"
+    },
+    {
+      "index": 3,
+      "kind": "fixture",
+      "path": "supabase/migrations/20260603_durable_runs.sql",
+      "lfSha256": "a189659945447189022e96bb8a26a5cb4e0e26fb321c9f56a02d0b6e44da7ee4"
+    },
+    {
+      "index": 4,
+      "kind": "fixture",
+      "path": "supabase/migrations/20260609_dream_issues_ledger.sql",
+      "lfSha256": "efc2b09e75c60fb8d14bcafdf4bcf2712e7d28e2107336634487d18fb9510089"
+    },
+    {
+      "index": 5,
+      "kind": "fixture",
+      "path": "supabase/migrations/20260609_manager_task_dream_link.sql",
+      "lfSha256": "c1fb7723f386343e61f9f81297f6e0eb2622dde1d703d348298e7c57b22a767a"
+    },
+    {
+      "index": 6,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260520_media_tables.sql",
+      "lfSha256": "ec1a18ef576352e99d2b38b54da6d2c8db6cb5b409b38e4ece3921135200e07c"
+    },
+    {
+      "index": 7,
+      "kind": "fixture",
+      "path": "supabase/migrations/20260601_media_insights.sql",
+      "lfSha256": "b3cad2590764175d104db1f6f62a48b2b63915e95fc3f0ee4020233e2ee941dd"
+    },
+    {
+      "index": 8,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260520_media_images.sql",
+      "lfSha256": "e1d544a46214f72d09588b66725989c5caf9ef4ce6bb8e53c34c34850264ca58"
+    },
+    {
+      "index": 9,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260525_media_scripts_facebook.sql",
+      "lfSha256": "c819e8016268ba8ab662f2d0bc434c54befe1ab2ab1469bc8363df9322b00aa4"
+    },
+    {
+      "index": 10,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260525_media_scripts_quality_music.sql",
+      "lfSha256": "71b92bb1a1e473b25ab7ac1127652980f640a64175e1d3c87fb232df33949cf6"
+    },
+    {
+      "index": 11,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260527_platform_tokens.sql",
+      "lfSha256": "1dc59764389d9057fdf21e1d1420bce6279c9c6bab77fcf8cefb9b6f1e367272"
+    },
+    {
+      "index": 12,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260528_agent_decisions.sql",
+      "lfSha256": "3de952005933051e4a07ef596a4a65e702116da711a805d1270594d7f22e7482"
+    },
+    {
+      "index": 13,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260601_revenue_os.sql",
+      "lfSha256": "f5313ab84c3588d281695c2c289651489e8636759614dc56bc8f34af9d8d1a41"
+    },
+    {
+      "index": 14,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260602_atlas_bi_foundation.sql",
+      "lfSha256": "82f887b45b6f3791690201e1f0a98ca3e14a2037882f0a9e2f0b988b1cea330a"
+    },
+    {
+      "index": 15,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260602_cost_events.sql",
+      "lfSha256": "5f21c2a1dde3f0b361f83fe853e0c3da4625ba0334a03b18a0063c700ccdf26d"
+    },
+    {
+      "index": 16,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260602_project_budgets.sql",
+      "lfSha256": "06c69818e0878750d6180cb0b43f33ab46828e8fb478994156d11707b54ffe67"
+    },
+    {
+      "index": 17,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260608110948_create_website_content_system_a.sql",
+      "lfSha256": "c2a367c556609673b845776daa4f61e11d3a1ec4d43736740e8d9949d46e9a85"
+    },
+    {
+      "index": 18,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260613_h1p1_execution_policy_foundation.sql",
+      "lfSha256": "c6cc1e9f2061b348606a04c3808e602978e3a1780fa2f578d09ff0754a29fb19"
+    },
+    {
+      "index": 19,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260613_media_rls_hardening.sql",
+      "lfSha256": "d6336e696194465ef4ae5a9d3e31439885a5dcc47dbe07a2ddef0803da681a91"
+    },
+    {
+      "index": 20,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260614090000_h1p5_outputs_run_id_unique.sql",
+      "lfSha256": "44abacbd44715db90bf159b46a5933118766f9f67f9a0337bb89d49ded10b58e"
+    },
+    {
+      "index": 21,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260614091000_h1p5_runs_claim_id.sql",
+      "lfSha256": "86e4b2eb903eb9bac8f3c24c78e2599c83f1aea5d9bf861c092f8e9c499d6e37"
+    },
+    {
+      "index": 22,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260614091500_h1p5_runs_cancel_requested.sql",
+      "lfSha256": "d0911dca00a2d2f93d3d22cd198201005c5dd8c8c8dee602993f3559d7b69e4a"
+    },
+    {
+      "index": 23,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260614_h1p3_run_steps_snapshot.sql",
+      "lfSha256": "5e9927731c1abfe12f2d1a36c94e77388587dafd7694e2279cca8302e1888fe1"
+    },
+    {
+      "index": 24,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260615_migration_guard_fn.sql",
+      "lfSha256": "edd267fb59e1b78fb9919cc1bd1aa05177c57b66138ea8225bc8dc49ebea7b78"
+    },
+    {
+      "index": 25,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260616120000_atlas_schema_init.sql",
+      "lfSha256": "891a24f7a5c5a1a2bd608edc37c201831a517a0c2f5f7621b3acc6227f9f0060"
+    },
+    {
+      "index": 26,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260616120100_atlas_memory_events.sql",
+      "lfSha256": "12d34f8dfe45ad5ddac77dced0789100026ef80ca2240e872cbca6c6abcc119c"
+    },
+    {
+      "index": 27,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260616120200_atlas_memories.sql",
+      "lfSha256": "6639b9da41e49e9d62259caa77753bf334bc613549cda29be44751567b9875c6"
+    },
+    {
+      "index": 28,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260616120300_atlas_memory_rls.sql",
+      "lfSha256": "a789a39e6b1d657be06ab83fc23dc9b1ae09e152d154f4802ad5767b3fb5be8a"
+    },
+    {
+      "index": 29,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260616_h1p4_run_policy_snapshot.sql",
+      "lfSha256": "026166ec765cb0852847af89f0fd31c6e4c1523fb9ee005d167f8c83adb6a16e"
+    },
+    {
+      "index": 30,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260617130000_atlas_record_event_fn.sql",
+      "lfSha256": "371ab79af6ce715c2ed2a09dcb71d3bc838dd2e0e5b0f781c4a1ed5049eace03"
+    },
+    {
+      "index": 31,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260617130100_atlas_salience_fn.sql",
+      "lfSha256": "8628bf272be504e6218bf2d7615ad9de5412280fd095911f95500106d15683ee"
+    },
+    {
+      "index": 32,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260617140000_atlas_event_type_to_class_fn.sql",
+      "lfSha256": "5f812c315b54caa452455384d01e8b085fed7e62c3fe0d0056edee384a15782f"
+    },
+    {
+      "index": 33,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260617140100_atlas_consolidate_fn.sql",
+      "lfSha256": "c39f1a5943c7c2e4d88f7af1cd8b6107fae48b6b54259333a86c9e5e5f17ff0c"
+    },
+    {
+      "index": 34,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260617140200_atlas_memory_cron.sql",
+      "lfSha256": "90855ec2758931ddc062b3cd837902e9e5ff0ffd6d0f6c8a34db874174e422c4"
+    },
+    {
+      "index": 35,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260617150000_atlas_recall_fn.sql",
+      "lfSha256": "a52b0c57ea74da36631bae70e8d189ced1a65882f1bea568d7f3ef5ff4dcc9f7"
+    },
+    {
+      "index": 36,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260617150100_atlas_memory_health.sql",
+      "lfSha256": "2dacfc026f3e969579ceabe1a53539452940d57a6f0c96a38c171e307b5f3d09"
+    },
+    {
+      "index": 37,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260617150200_atlas_recall_pin_focus_ranking.sql",
+      "lfSha256": "879d52d5de95e192f2ab2ca112354b044a57e345a26c02b2fb998022ed0dbc05"
+    },
+    {
+      "index": 38,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260617160000_backfill_platform_memory.sql",
+      "lfSha256": "ce5338b46416c5bcc0bc27391484a4734e83097eb9d4d6996a314f86e7b0f60b"
+    },
+    {
+      "index": 39,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260617160100_backfill_content_feedback.sql",
+      "lfSha256": "490ef972d767f409faa29b1e67622da99951c2884fbbbc0f0eac9f667b243c25"
+    },
+    {
+      "index": 40,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260617160200_backfill_dream_issues.sql",
+      "lfSha256": "8c24978a6d94756b0349531b144c3400c6e407dde8285f53203f2eebe7692ac3"
+    },
+    {
+      "index": 41,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260617160300_backfill_operator_memories.sql",
+      "lfSha256": "33b3c68594da62257447222349d28d9cc5e127e38b4e396478e640f18ae8f6d1"
+    },
+    {
+      "index": 42,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260617_h1p4_pr2_run_rejected_status.sql",
+      "lfSha256": "aa78d52d3a03c2ca18cf27a56f23e32daa0dd21d81c519eac959201d287b17a3"
+    },
+    {
+      "index": 43,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260618_website_content_hero_image.sql",
+      "lfSha256": "ee03b41775eeffafb60dc68b75b0b4df0cef07cb0bd81e9035ea062b3c4306b3"
+    },
+    {
+      "index": 44,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260619_website_content_hero_image_brief.sql",
+      "lfSha256": "cac0ae92ae2fa7daf7ebf01ff82bd6590b7fbc70408e9b48698fcf7b1adbb082"
+    },
+    {
+      "index": 45,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260620_website_content_hero_editor_brief_rename.sql",
+      "lfSha256": "1437091008eacbe8be37a640a197931ce3e57487b96b4ea19d4196599d8c3e8e"
+    },
+    {
+      "index": 46,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260621_website_content_hero_image_observability.sql",
+      "lfSha256": "8d1e06264ec8d5a42593409482b4951261d8bca95f5e34e20380d3676c71b884"
+    },
+    {
+      "index": 47,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260622_atlas_signals.sql",
+      "lfSha256": "061c7911139dbf04215f699ada220e08f7647365b495d5cd81485523057d5b73"
+    },
+    {
+      "index": 48,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260622_h5_atlas_observability.sql",
+      "lfSha256": "50841c21b66b5260e4ca576b7a991b2b2f7c73f5876e62be41d47751b5513cf1"
+    },
+    {
+      "index": 49,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260623_150000_atlas_project_lifecycle.sql",
+      "lfSha256": "f61fc2a2effdadce0087b747aa31488dc4011186ae702b25c80c63add1fae979"
+    },
+    {
+      "index": 50,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260623_150100_atlas_signals_evolution.sql",
+      "lfSha256": "8ac5a0116b6066701c4185f2e59404430800582396520617108326fc03ce4788"
+    },
+    {
+      "index": 51,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260623_150200_collector_runs.sql",
+      "lfSha256": "27b117d293c03e0f20ba06083aaf1cbca5ff1b44ecfd2030858722815f89d635"
+    },
+    {
+      "index": 52,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260623_150300_atlas_collector_cron.sql",
+      "lfSha256": "7521d557756d7739ec48f8ab171b2453a89de410898c444200a0f30b520f3032"
+    },
+    {
+      "index": 53,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260623_h1_episodic_retention.sql",
+      "lfSha256": "08128fed772ed29b455b99d1afe2cef4dd5d5646729b773a6ebaf5ea8c78fec5"
+    },
+    {
+      "index": 54,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260719_publish_channel_state.sql",
+      "lfSha256": "417c18b483c3ba221b4280809403c41843f4c130d52fd1146450dbdbed66a550"
+    },
+    {
+      "index": 55,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260819_atlas_authorizations.sql",
+      "lfSha256": "9c3789b3908f4f6f654c6114829d328e15138f2bc1f1cd9ffc735d4cae972bcc"
+    },
+    {
+      "index": 56,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260819_atlas_decision_ledger.sql",
+      "lfSha256": "67949c6964a249a21ad1dde5f0374bfb89d24fd89f827a8e8e783b8c0827067e"
+    },
+    {
+      "index": 57,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260819_atlas_mission_ledger.sql",
+      "lfSha256": "dc8d39f746066c22cf2dbe94c65dd5176015f4e6c84fda5086f7515b1b5f4083"
+    },
+    {
+      "index": 58,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260820_atlas_delegation_ledger.sql",
+      "lfSha256": "7092eb14bd3e7d7f579b4eb1974dc469b3f73b43dafefcc8f2a5ef367f70da24"
+    },
+    {
+      "index": 59,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260820_manager_tasks_work_packages.sql",
+      "lfSha256": "809cd90d6aa268bca3ea7387cf1a2ef925861af5d4d2ac3ac5c2af729d6ed1b4"
+    },
+    {
+      "index": 60,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260821_atlas_entities.sql",
+      "lfSha256": "7601f3798b267265097654b670c9e6af50f18f2f363fc4ad2bb275d7d7279595"
+    },
+    {
+      "index": 61,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260821_atlas_intelligence.sql",
+      "lfSha256": "fff2ba6968073e95d50d9f0934d15d864bd691100ed9ce87f0c0433f412e40a8"
+    },
+    {
+      "index": 62,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260821_atlas_intelligence_cron.sql",
+      "lfSha256": "daf8b41731480c3c4037aa5daa9051e0226e60965b9ab4e44662c46223aee027"
+    },
+    {
+      "index": 63,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260821_project_api_credentials.sql",
+      "lfSha256": "add4dfe9d238a3ab7b11404dd3e321dc8f1059ad55fc4743deae16d5bc1f787e"
+    },
+    {
+      "index": 64,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260829_workflow_instance_core.sql",
+      "lfSha256": "4354b9e168a974d726d7c5867494fdf49713a48d4535359d76cdfbac096c398a"
+    },
+    {
+      "index": 65,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260829_workflow_attested_evidence.sql",
+      "lfSha256": "325eecc30e7f69430201d4384259b8404165301b3bc461be5f1fa0529b12e5e6"
+    },
+    {
+      "index": 66,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260829_workflow_escalation_index.sql",
+      "lfSha256": "a0aa486b0b95939bb261187cd3edf3829f02db1113f3b00e27d5bd80669606f5"
+    },
+    {
+      "index": 67,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260829_workflow_gate_authorization.sql",
+      "lfSha256": "387c4e8e87f147f2f4435136c1f2300c96131c3e9056a7489f0400354fd40024"
+    },
+    {
+      "index": 68,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260829_workflow_instance_core_hardening.sql",
+      "lfSha256": "b41f28f394b1dc5acbada7aa585cfede52dba8552432d2ceabba12fb571ed476"
+    },
+    {
+      "index": 69,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260829_workflow_scheduled_continuation.sql",
+      "lfSha256": "b493abecd710c6913798c855cc28639e07d72092137b04755272b5bdf4a94240"
+    },
+    {
+      "index": 70,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260829_workflow_scheduler_project_pause.sql",
+      "lfSha256": "d75b73f0aff0cd4a6335683fd4fe60ef57f1a0431703134157b6c2fc0d7769b5"
+    },
+    {
+      "index": 71,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260830_execution_stop_safety.sql",
+      "lfSha256": "df3e7141383f3534c93a927737b4cbab901cb89a9c5680f201801b87ced0f279"
+    },
+    {
+      "index": 72,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260830_workflow_action_binding.sql",
+      "lfSha256": "aae8807b3f1f5c289a9c5e09fb1ffaf436bbb36e676bc46e3070de102ab3fb25"
+    },
+    {
+      "index": 73,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260830_action_failure_model.sql",
+      "lfSha256": "be1e90f6e47fb39328a21853a26c87e9f6b1bcd42338edf5847f8c376ff3b183"
+    },
+    {
+      "index": 74,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260830_readonly_action_authorization.sql",
+      "lfSha256": "85fb5f972e6631322ef24b813112c753e71595fe6b339b9925380e242bf594a3"
+    },
+    {
+      "index": 75,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260830_spend_budget_gate.sql",
+      "lfSha256": "4ff46783ea9c94a01d245ca2d1f8e257b9af7cde00d4fea51bf8b44f74029419"
+    },
+    {
+      "index": 76,
+      "kind": "synthetic",
+      "path": "synthetic/platform_config_table_only",
+      "lfSha256": "8b7a5960642aa6c02b9a0bc192d05c46a1d19f9af90d103f9c0a67455e396355",
+      "sourcePath": "supabase/migrations/20260528_pass_a_safeguards.sql",
+      "sourceLfSha256": "4665ac611487c0d833914c2b2e40de11b2e0433e9ed89d172b9b0e463e4c0c04",
+      "extractedLfSha256": "6d79a5b176cb70f544c6e149693b01f1349262847d27d3c98b5250f22c7bfe18",
+      "limitation": "No row seeding, RLS or explicit ACL reconstruction. Executor default privileges may apply; no production security parity claim."
+    },
+    {
+      "index": 77,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260831_budget_scopes.sql",
+      "lfSha256": "bc88522ad3e95debd4cc8ccef20623e4b3a47ce978b976a8cb89ee2c5778785b"
+    },
+    {
+      "index": 78,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260831_unified_stop_authority.sql",
+      "lfSha256": "0551d2fad50ab20484143198724d6dde4c34c71445afce41492fea465823b5ac"
+    },
+    {
+      "index": 79,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260901110134_workflow_transition_stop_guard.sql",
+      "lfSha256": "466bc1466c441f57e62fec0bf506db7a110221c52513a0fd31f05cce074285c5"
+    },
+    {
+      "index": 80,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260902081500_stop_atomic_execution_admission.sql",
+      "lfSha256": "452e90c1e30159c959cb6ed32fc437843a888d85bdcffcbc99fb994caf87878c"
+    },
+    {
+      "index": 81,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260902_media_asset_foundation.sql",
+      "lfSha256": "7e6054de70046aca46e28de3dfbc0233002e468f7fe19d4311f651884d6c14d7"
+    },
+    {
+      "index": 82,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260903062550_media_job_lifecycle.sql",
+      "lfSha256": "af1957d737a6b195726d82c8421c10ba09f6994d87e5c46dc94f77610ed067a6"
+    },
+    {
+      "index": 83,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260903070644_media_job_lifecycle_repairs.sql",
+      "lfSha256": "40036a4f20c2e38b5d8a88f7ebb6f0c1bdb86388819ff20313c0c2d7cb075a99"
+    },
+    {
+      "index": 84,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260903120000_durable_cancellation_reaper.sql",
+      "lfSha256": "a58f06f87ec982b08414590642007106df23e621abbbb171cd528de696575a56"
+    },
+    {
+      "index": 85,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260904120000_workflow_stories.sql",
+      "lfSha256": "3674669b4bc26771b6b8651fc2dd086b38b6c6742ba32876bc37aa96280087ba"
+    },
+    {
+      "index": 86,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260906_workflow_manual_privileged_provenance.sql",
+      "lfSha256": "98428b62052312cef23040cac9b1d2cb40c08614c1a03493e4ae3ec3cd783493"
+    },
+    {
+      "index": 87,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260907090000_spend_advisory_overrides.sql",
+      "lfSha256": "02b2a0c2ac1844fc4c6a19283ee5a7d83093b12f8e93b0882f82cdc01f301b87"
+    },
+    {
+      "index": 88,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260909120000_workflow_stories_rls.sql",
+      "lfSha256": "38e5d6997a41cf11001dd921b7ce0d6bf6143d45396854b92c6879a28a58e768"
+    },
+    {
+      "index": 89,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260910090000_declarative_rls_parity.sql",
+      "lfSha256": "83550ac63a3ef8727fe07d0dc9d08afb9bf33adcb9373bd23d44ac4b997896c7"
+    },
+    {
+      "index": 90,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260910120000_cost_ledger_rls_isolation.sql",
+      "lfSha256": "460ba95651994cdabc654dd812445b9c5c839bc5f60008cd86881be404e1bbee"
+    },
+    {
+      "index": 91,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260910150000_agent_scorecards_view_isolation.sql",
+      "lfSha256": "0ce248fa0bc63f4ca3d0f0bf8a22a74442595809bb37959a3dfecea5364488f5"
+    },
+    {
+      "index": 92,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260914090000_platform_tokens_client_revoke.sql",
+      "lfSha256": "1cff9de90d12bcab420faac17f8dff96cf317e2fc7e9cd0d0d71c894bee0a06a"
+    },
+    {
+      "index": 93,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260914090100_platform_credential_events.sql",
+      "lfSha256": "0957334a075f763bf71a2c0565e0003a45fac938575aa68563965ac7f97d0331"
+    },
+    {
+      "index": 94,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260914090200_platform_credential_events_search_path.sql",
+      "lfSha256": "4b5b7526eadf9c8c2d8f95f1fa3d8253d2975f50cacec05bd7701991b09ca92d"
+    },
+    {
+      "index": 95,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260914120000_social_account_bindings.sql",
+      "lfSha256": "afaeee6206c9fd159c9c5cffecf86e577147d900c5ae25ac059e7454c90bf22d"
+    },
+    {
+      "index": 96,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260914120100_platform_credential_events_account_binding.sql",
+      "lfSha256": "662aa4a8b5e52fbe2a2bb8bc5bb87f49c082670ec3889757c1b52bba8edd4b12"
+    },
+    {
+      "index": 97,
+      "kind": "canonical",
+      "path": "apps/web/supabase/migrations/20260914120200_social_credential_health.sql",
+      "lfSha256": "31d5384fe216fd40f0847f383a03f1ae5455cac440694fb2115e04873786974c"
+    }
+  ],
+  "failure": {
+    "phase": "sequence",
+    "index": 98,
+    "kind": "canonical",
+    "path": "apps/web/supabase/migrations/20260914120300_platform_tokens_project_binding.sql",
+    "lfSha256": "b6248c226991dc75c9bec928ffbed8c783d8d995e6a7e754605427e96da09efe",
+    "error": "ERROR:  column \"project_id\" of relation \"platform_tokens\" does not exist\n"
+  },
+  "refusal": null,
+  "cleanup": "removed"
+}

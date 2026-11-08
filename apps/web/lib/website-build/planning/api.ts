@@ -4,6 +4,7 @@ import {createAdminClient} from '@/lib/supabase/admin'
 import {assertSameOrigin} from '@/lib/atlas/executive/http'
 import {buildErrorResponse,readWebsiteBuildBody} from '../api'
 import {WebsiteBuildError} from '../store'
+import {acceptanceTargetDenial} from '../acceptance-target'
 import {approveWebsitePlan,readWebsitePlan,saveWebsitePlanRevision,startApprovedWebsitePlan,readProjectWebsiteBuilder,setProjectWebsiteBuilder,readOperatorProjectRoot,setOperatorProjectRoot} from './store'
 import type {SavePlanInput,ProjectRoot} from './types'
 const headers={'cache-control':'private, no-store'}
@@ -15,6 +16,7 @@ async function access(request:Request,write:boolean){
  return a
 }
 export async function websitePlanApi(action:'save'|'get'|'approve'|'start',request:Request,params:{planId?:string}):Promise<Response>{
+ if(action!=='get'){const blocked=acceptanceTargetDenial('plan-'+action);if(blocked)return blocked}
  const a=await access(request,action!=='get');if(!a.ok)return a.response
  try{
   const db=createAdminClient(),body=action==='get'?{}:await readWebsiteBuildBody(request)

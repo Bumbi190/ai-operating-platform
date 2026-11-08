@@ -1,0 +1,77 @@
+{
+  "source": "Approved generated mockup 2026-10-31",
+  "sourceSha256": "b9af8a93fd090bacd499bad965eac72c10c93263506bf291d322c289f5dd2433",
+  "sourceDimensions": [
+    1672,
+    941
+  ],
+  "operations": "Rectangular photo-region extraction and WebP compression only; no new generation or fabricated detail",
+  "not3D": true,
+  "assets": [
+    {
+      "file": "showroom-hero.webp",
+      "crop": [
+        570,
+        102,
+        1533,
+        469
+      ],
+      "width": 963,
+      "height": 367,
+      "bytes": 41798,
+      "sha256": "83a78b27b0538fd2e9b3985948973fc00ca62d798fce2df97c989308b6c316a9"
+    },
+    {
+      "file": "concept-silver.webp",
+      "crop": [
+        138,
+        704,
+        469,
+        844
+      ],
+      "width": 331,
+      "height": 140,
+      "bytes": 6754,
+      "sha256": "f2e174953793b49e93f5a035bc4c06190937f1d27213f9a38f847e77314727b7"
+    },
+    {
+      "file": "concept-green.webp",
+      "crop": [
+        494,
+        704,
+        823,
+        844
+      ],
+      "width": 329,
+      "height": 140,
+      "bytes": 9618,
+      "sha256": "866ced5e26dbc600ef98a4d3c55f8d27aa3bf8f601b1e5a963c790ee7cf63a7f"
+    },
+    {
+      "file": "concept-blue.webp",
+      "crop": [
+        851,
+        704,
+        1173,
+        844
+      ],
+      "width": 322,
+      "height": 140,
+      "bytes": 8018,
+      "sha256": "3e71c9299d514ab88ab0fe009ad8a3c877d006bc731e283b844abfa1c11c8b28"
+    },
+    {
+      "file": "concept-black.webp",
+      "crop": [
+        1203,
+        704,
+        1534,
+        844
+      ],
+      "width": 331,
+      "height": 140,
+      "bytes": 8870,
+      "sha256": "d959ce330f2b6bf490adc032938898589dc24aaa2ad3e1d0e60e42e525b1ab38"
+    }
+  ]
+}

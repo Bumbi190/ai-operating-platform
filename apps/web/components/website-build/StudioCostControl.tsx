@@ -1,10 +1,14 @@
 'use client'
-import {useEffect,useRef,useState} from 'react'
+import React,{useEffect,useRef,useState} from 'react'
 import {Pause} from 'lucide-react'
 import type {StudioCostSnapshot} from '@/lib/website-build/studio/costs'
 import styles from './AtlasBuilderStudio.module.css'
 
 const sek=(value:number)=>new Intl.NumberFormat('sv-SE',{minimumFractionDigits:2,maximumFractionDigits:2}).format(value)
+export function StudioTotalAllowance({total}:{total:NonNullable<StudioCostSnapshot['total']>}){
+ const usd=(micros:number)=>new Intl.NumberFormat('sv-SE',{minimumFractionDigits:2,maximumFractionDigits:6}).format(micros/1000000)
+ return <><strong data-total-allowance>Engångsbudget: {usd(total.remainingMicros)} USD kvar av {usd(total.limitMicros)}</strong><span>Utnyttjad ram: {usd(total.committedMicros)} USD · hård spärr</span><span>Räknar maxbelopp för anrop, inte fakturerad kostnad. Förnyas inte automatiskt.</span></>
+}
 export function StudioCostControl({projectId,projectSlug,paused,onPauseChange}:{projectId:string;projectSlug:string;paused:boolean;onPauseChange:(paused:boolean)=>void}){
  const [snapshot,setSnapshot]=useState<StudioCostSnapshot|null>(null),[stale,setStale]=useState(false)
  const [pending,setPending]=useState(false),[confirmed,setConfirmed]=useState(paused),[stopError,setStopError]=useState('')
@@ -44,11 +48,12 @@ export function StudioCostControl({projectId,projectSlug,paused,onPauseChange}:{
   finally{clearTimeout(timeout);if(generation.current===epoch){stopping.current=false;setPending(false)}}
  }
  const stopped=paused||confirmed,monthly=snapshot?.monthly
- return <section className={styles.costControl} aria-label="Projektets kostnad">
+ return <section className={styles.costControl} data-has-total={Boolean(snapshot?.total)} aria-label="Projektets kostnad">
   <div className={styles.costFigure} aria-live="polite" title={snapshot?'Registrerat '+new Date(snapshot.observedAt).toLocaleTimeString('sv-SE')+'. Uppdateras var femte sekund.':''}>
    {monthly?<><strong>{sek(monthly.spentSek)} / {sek(monthly.limitSek)} kr</strong><span data-cost-detail>denna månad · chatt och bygge</span>{snapshot?.modelPolicy?.profile==='openai_economy'&&<span data-cost-detail>OpenAI-test · GPT-5.4 mini</span>}</>:snapshot?<span>Välj månadsbudget för kostnadsöversikt</span>:<span>{stale?'Kostnaden är inte tillgänglig':'Hämtar kostnad…'}</span>}
    {monthly&&monthly.heldSek>0&&<span title="Reserverat är en säkerhetsmarginal för pågående anrop, inte en redan debiterad kostnad.">Reserverat: {sek(monthly.heldSek)} kr</span>}
-   {snapshot&&!snapshot.enforced&&<span>Budgeten övervakas utan hård spärr</span>}
+   {snapshot?.total&&<StudioTotalAllowance total={snapshot.total}/>}
+   {snapshot&&!snapshot.enforced&&<span>{snapshot.total?'Månadsbudgeten övervakas utan hård spärr':'Budgeten övervakas utan hård spärr'}</span>}
   </div>
   {stale&&<span role="status">Kostnaden kunde inte uppdateras{snapshot?' · senaste värdet visas':''}.</span>}
   {stopped?<><strong role="status">Projektet är pausat</strong><a href={'/projects/'+encodeURIComponent(projectSlug)}>Öppna projektets kontroller</a></>:<button className={styles.costStop} type="button" onClick={()=>void stop()} disabled={pending}><Pause size={13} aria-hidden/>{pending?'Stoppar…':'Stoppa projektet'}</button>}

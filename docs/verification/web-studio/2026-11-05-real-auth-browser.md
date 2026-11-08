@@ -1,0 +1,23 @@
+# Web Studio: Chromium login and Studio acceptance on the real local backend
+
+Command: `node apps/web/scripts/test-website-auth-local.mjs --run --application --routes --next-http --worker --browser`
+
+Browser mode uses the real login page and real build page/Studio components in the minimal Next acceptance shell. The full platform navigation/voice/providers layout is not included. The /dashboard fixture redirects to /build after the unchanged login form's normal destination. CSS comes from the app; login images are copied locally and image optimization is disabled in the fixture. Static Next chunks are copied into standalone output.
+
+The build injects only a synthetic public anon key and local backend URL so browser-side Supabase can run. No production env file or service credential is injected into browser code. Service credentials remain runtime-only inside the owned local target.
+
+This mode alone creates a fifth container: a fixed-upstream Node HTTP proxy. Its own temporary bridge publishes 127.0.0.1:54393 (Auth/REST gateway) and 127.0.0.1:54394 (Next); its second interface joins the owned internal network. Runtime NetworkSettings.Ports must show exactly these loopback bindings. Core DB/Auth/REST/Next/client containers remain internal with no published ports or host mounts. The proxy has no provider/service credentials, dropped capabilities and no caller-selectable upstream: it forwards only to client:54393 or client:3100. Its ingress bridge is not an airgap; proxy destinations are restricted in code. Both proxy and extra network are owned/labelled and removed. Port conflicts fail rather than terminating another process. Earlier modes retain no published ports.
+
+A newly launched local headless Chromium uses isolated contexts and permits application requests only to those two loopback origins. The test submits the real password form, including one incorrect-password attempt, and reads real server-rendered Studio state. It opens the project created/approved/built by the preset-worker test, checks its architecture plan and preview iframe at 1440 and 390 pixels, and reloads with browser-stored cookies. A separately logged-in second owner must receive 404 for that Studio selection.
+
+Refresh coverage ages only SSR cookie expiry metadata, preserving genuine GoTrue JWT and refresh tokens. After navigation, browser cookies must rotate and the refreshed session must survive another reload. The existing internal HTTP test separately proves a real refresh endpoint call. This does not assert behavior for an actually expired signed JWT.
+
+The browser does not call a model or simulate chat generation. The tested project/plan/preview comes from the real HTTP approval/budget/claim/preset-worker path. Media bytes, interactive 3D/scroll behavior, full shell, chat planning, provider-backed generation and hosted acceptance remain outside this browser test.
+
+The route runner keeps its server alive while the host browser runs. Browser results are nonsecret booleans/stage names. Temporary synchronization files exist only inside the owned container. Browser contexts, standalone build, containers and network are closed/removed on completion or failure. Receipt: docs/validation/website-real-auth-browser-20261105.json.
+
+Initial transport failure: publishing the internal-only client did not produce reachable runtime port mappings, despite HostConfig recording requested bindings. The corrected transport keeps that client internal and publishes only the fixed-upstream proxy. The proxy translates only known internal Next redirect origins on port 3100 to the loopback frontend; production-domain redirect hosting is not asserted by this fixture.
+
+Verified run finished 2026-11-05T12:46:30.761Z: completed=true, 13/13 browser checks, 77/77 route/session/worker checks and 52/52 parent checks passed. The browser additionally required Studio state=ok, the expected ready session/project, and a visible h1 inside the rendered preview iframe at both 1440 and 390 pixels. Browser cookie renewal survived reload and the second owner received 404.
+
+Five owned containers and two owned networks were removed. Subsequent labelled-container/network and temporary standalone-build inventories were empty. The same run applied all 189 schema steps with real Auth preserved, built the approved preset through the real claimed worker, and recorded no paid steps or cost events. Syntax/bundle checks and git diff --check passed. No production code changed in this step; the unrelated shared-fixture full app suite was not run. Existing dirty showroom/calendar files were preserved.

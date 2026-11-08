@@ -2,6 +2,7 @@ import { SCB_LIVE_SEARCH_APPROVED } from './readiness'
 import { requireScbApiKey, SCB_LIMITS, ScbHttpError, ScbKeyMissingError } from './scb-source'
 import type { ScbPage, ScbPageFetcher } from './scb-source'
 import type { ScbRegisterRecord } from './types'
+import { parseLegalOrgnr } from './scb-status-policy'
 
 /**
  * Server-only SCB AFR page fetcher. Built strictly from the official OpenAPI
@@ -157,6 +158,8 @@ export interface ScbClientConfig {
   apiKey?: string
   /** Injected in tests. Without it, the live gate must be open. */
   fetchImpl?: typeof fetch
+  /** Narrow caller approval after its own owner/environment gates. */
+  liveApproved?: boolean
 }
 
 export const SCB_LIVE_HOST = 'apiafr.scb.se'
@@ -181,13 +184,77 @@ export function assertScbLiveBaseUrl(baseUrl: string): void {
   }
 }
 
+export interface ScbLegalEntityLookupConfig {
+  orgnr: string
+  baseUrl: string
+  version?: string
+  apiKey?: string
+  fetchImpl?: typeof fetch
+  liveApproved?: boolean
+}
+
+/**
+ * Exact JE lookup from the reviewed SCB AFR v1 contract.
+ * A legal entity path uses PeOrgNr: `16` + the ordinary 10-digit organisation number.
+ * Returns the raw server-only object so scb-status-policy can allowlist fields.
+ */
+export async function fetchScbLegalEntityByOrgnr(config: ScbLegalEntityLookupConfig): Promise<unknown | null> {
+  if (!config.fetchImpl && !SCB_LIVE_SEARCH_APPROVED && config.liveApproved !== true) throw new ScbLiveSearchDisabledError()
+  if (!config.fetchImpl) assertScbLiveBaseUrl(config.baseUrl)
+  const parsed = parseLegalOrgnr(config.orgnr)
+  if (!parsed.ok) throw new RangeError('orgnr must be a supported legal organisation number')
+  const apiKey = config.apiKey === undefined ? requireScbApiKey() : config.apiKey.trim()
+  if (!apiKey) throw new ScbKeyMissingError()
+  const version = config.version ?? '1'
+  if (!/^\d+$/.test(version)) throw new RangeError('version must be numeric')
+  let origin: URL
+  try { origin = new URL(config.baseUrl) } catch { throw new RangeError('baseUrl must be an absolute URL') }
+  if (origin.protocol !== 'https:') throw new RangeError('baseUrl must be https')
+  const url = new URL(`/v${version}/juridiskaenheter/16${parsed.orgnr}`, origin)
+  const doFetch = config.fetchImpl ?? fetch
+  let res: Response
+  try {
+    res = await doFetch(url, {
+      method: 'GET',
+      headers: { 'X-API-Key': apiKey, Accept: 'application/json' },
+      redirect: 'error',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+  } catch {
+    throw new ScbNetworkError()
+  }
+  if (res.status === 404) {
+    await res.body?.cancel()
+    return null
+  }
+  if (!res.ok) throw new ScbHttpError(res.status, retryAfterMs(res.headers.get('retry-after')))
+  try {
+    return await res.json()
+  } catch {
+    throw new ScbContractError('legal entity body is not valid JSON')
+  }
+}
+
 export function createScbPageFetcher(config: ScbClientConfig): ScbPageFetcher {
-  if (!config.fetchImpl && !SCB_LIVE_SEARCH_APPROVED) throw new ScbLiveSearchDisabledError()
+  const code = sniToScbCode(config.sni)
+  if (!code) throw new RangeError('sni must be 2-5 digits')
+  return createScbCollectionPageFetcher(config, 'naringsgren', code)
+}
+
+export type ScbMunicipalityConfig = Omit<ScbClientConfig, 'source' | 'sni'> & { municipalityCode: string }
+
+/** Official SCB AFR v1 municipality endpoint; same AE response and transport guards. */
+export function createScbWorkplaceMunicipalityFetcher(config: ScbMunicipalityConfig): ScbPageFetcher {
+  if (typeof config.municipalityCode !== 'string' || !/^\d{4}$/.test(config.municipalityCode)) throw new RangeError('municipalityCode must be four digits')
+  return createScbCollectionPageFetcher({ ...config, source: 'arbetsstallen' }, 'kommun', config.municipalityCode)
+}
+
+function createScbCollectionPageFetcher(config: Omit<ScbClientConfig, 'sni'>, filter: 'naringsgren' | 'kommun', code: string): ScbPageFetcher {
+  if (!config.fetchImpl && !SCB_LIVE_SEARCH_APPROVED && config.liveApproved !== true) throw new ScbLiveSearchDisabledError()
   if (!config.fetchImpl) assertScbLiveBaseUrl(config.baseUrl)
   const apiKey = config.apiKey === undefined ? requireScbApiKey() : config.apiKey.trim()
   if (!apiKey) throw new ScbKeyMissingError()
-  const code = sniToScbCode(config.sni)
-  if (!code) throw new RangeError('sni must be 2–5 digits')
   const version = config.version ?? '1'
   if (!/^\d+$/.test(version)) throw new RangeError('version must be numeric')
   let origin: URL
@@ -204,7 +271,7 @@ export function createScbPageFetcher(config: ScbClientConfig): ScbPageFetcher {
       throw new RangeError(`pageSize must be an integer 1–${SCB_LIMITS.maxPageSize}`)
     }
     const cursorId = parseCursor(cursor)
-    const url = new URL(`/v${version}/${config.source}/naringsgren/${code}`, origin)
+    const url = new URL(`/v${version}/${config.source}/${filter}/${code}`, origin)
     url.searchParams.set('limit', String(pageSize))
     if (cursorId !== null) url.searchParams.set('cursorId', String(cursorId))
 

@@ -11,12 +11,12 @@ const rates={usd_sek:10.5}
 describe('paid website step quote',()=>{
  it('uses the canonical full-window Sonnet ceiling and converts the quantized SEK hold conservatively to USD micros',()=>{
   const q=quoteWebsitePaidStep(step,rates)
-  expect(q).toMatchObject({basis:'token_window',ceilingSek:8.19,ceilingUsdMicros:780000,model:'claude-sonnet-4-6',maxTokens:12000})
+  expect(q).toMatchObject({basis:'token_window',ceilingSek:33.39,ceilingUsdMicros:3180000,model:'claude-sonnet-4-6',maxTokens:12000})
   expect(q.payloadSha256).toMatch(/^[a-f0-9]{64}$/);expect(q.priceEvidenceSha256).toMatch(/^[a-f0-9]{64}$/)
  })
  it('quotes feedback independently at its smaller output cap',()=>{
   const q=quoteWebsitePaidStep({...step,operation:'website.feedback.interpret',maxTokens:2000},rates)
-  expect(q.ceilingSek).toBe(6.6151);expect(q.ceilingUsdMicros).toBe(630010)
+  expect(q.ceilingSek).toBe(31.815);expect(q.ceilingUsdMicros).toBe(3030001) // Conservative ceil: never round an owner reserve downward.
  })
  it('binds the payload and price evidence separately',()=>{
   const a=quoteWebsitePaidStep(step,rates),b=quoteWebsitePaidStep({...step,userMessage:'different'},rates),c=quoteWebsitePaidStep(step,{usd_sek:11})

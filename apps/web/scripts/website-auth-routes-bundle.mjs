@@ -22,23 +22,27 @@ async function browserPhase({client,browserProxy,fixture,docker,receipt,password
  if(Object.keys(bindings).length!==2||!Object.entries(expected).every(([key,port])=>bindings[key]?.length===1&&bindings[key][0].HostIp==='127.0.0.1'&&bindings[key][0].HostPort===port))throw Error('BROWSER_PORT_BINDING_REFUSED');
  receipt.browserPortBindings=bindings;
  const child=spawn('docker',['exec','-i',client,'node','/tmp/omnira-routes.mjs'],{stdio:['pipe','pipe','pipe']});
- let stdout='',stderr='',ended=false;
- child.stdout.on('data',v=>{stdout+=v;});child.stderr.on('data',v=>{stderr+=v;});
+ let stdout='',stderr='',ended=false,ready=null,result=null,protocolError=false;
+ child.stdout.on('data',v=>{
+  stdout+=v;if(stdout.length>1024*1024){protocolError=true;child.kill();return;}
+  let end;while((end=stdout.indexOf('\n'))>=0){
+   const line=stdout.slice(0,end);stdout=stdout.slice(end+1);if(!line.trim())continue;
+   try{const message=JSON.parse(line);if(message.event==='browser-ready')ready=message.ready;else result=message;}catch{protocolError=true;child.kill();}
+  }
+ });child.stderr.on('data',v=>{stderr=(stderr+v).slice(-8000);});
  const complete=new Promise(resolve=>{child.on('exit',code=>{ended=true;resolve({code});});child.on('error',()=>{ended=true;resolve({code:-1});});});
- child.stdin.end(fixture);
- let ready=null;
+ child.stdin.write(fixture+'\n');
  for(let n=0;n<240&&!ended;n++){
-  ready=JSON.parse(docker(['exec',client,'node','-e',"const f=require('fs'),p='/tmp/omnira-browser-ready.json';process.stdout.write(f.existsSync(p)?f.readFileSync(p,'utf8'):'null')"]));
   if(ready)break;
   await new Promise(r=>setTimeout(r,500));
  }
  if(!ready){child.kill();throw Error('BROWSER_SERVER_NOT_READY');}
  const {runBrowserAcceptance}=await import('./website-auth-browser-local.mjs');
  receipt.browser=await runBrowserAcceptance({password,a,b,ready});
- docker(['exec','-i',client,'node','-e',"require('fs').writeFileSync('/tmp/omnira-browser-done.json',require('fs').readFileSync(0))"],JSON.stringify({completed:receipt.browser.completed}));
+ child.stdin.end(JSON.stringify({event:'browser-done',completed:receipt.browser.completed})+'\n');
  const {code}=await complete;
- if(code!==0)throw Error('BROWSER_CONTAINER_RUNNER_FAILED');
- return JSON.parse(stdout);
+ if(code!==0||protocolError||!result)throw Error('BROWSER_CONTAINER_RUNNER_FAILED');
+ return result;
 }
 export async function runRouteChecks({bundle,nextFixture,withWorker,withFeedback,withSpendGuard,withDrain,withBrowser,password,docker,sql,check,receipt,client,browserProxy,service,anon,a,b,context}){
  if(withWorker){sql('insert into public.platform_config(id,automation_paused) values(1,false) on conflict(id) do nothing;');check('local_worker_authority_available',sql('select automation_paused from public.platform_config where id=1;')==='f');}

@@ -6,31 +6,94 @@ import {readProvenanceInputs} from './migration-baseline-provenance.mjs';
 import {planCanonicalBootstrap} from './migration-bootstrap-plan.mjs';
 import {planProblems,loadVerifiedSequence,STORAGE_IMAGE,STORAGE_PREREQUISITES} from './migration-bootstrap-replay-local.mjs';
 import {sha256} from './migration-replay-preflight.mjs';
+import {prepareAcceptanceStep} from './website-acceptance-transaction.mjs';
 const root=new URL('../../../',import.meta.url);
-export function bootstrapApplication({sql,docker,check,receipt,a,b}){
+export function bootstrapApplication({sql:adminSql,atomicSql,docker,check,receipt,a,b,asPostgres=false,atomicAcceptance=false,storageReady=false}){
+ let sql=adminSql;
  const read=path=>readFileSync(new URL(path,root),'utf8');
  const plan=planCanonicalBootstrap(readProvenanceInputs(fileURLToPath(root)));
  if(planProblems(plan).length)throw Error('APPLICATION_PLAN_REFUSED');
  const steps=loadVerifiedSequence(plan.sequence,read); // Verify every pin before executing application SQL.
+ if(atomicAcceptance&&(!asPostgres||typeof atomicSql!=='function'))throw Error('ATOMIC_EXECUTOR_REQUIRED');
+ const preparedSteps=atomicAcceptance?steps.map(prepareAcceptanceStep):null;
  check('application_target_has_no_public_tables',sql("select count(*) from pg_tables where schemaname='public';")==='0');
  const authFingerprint=sql("select md5(pg_get_functiondef('auth.uid()'::regprocedure));");
  check('two_real_auth_accounts_before_schema',sql('select count(*) from auth.users;')==='2');
  receipt.application={applied:0,planned:steps.length,authPreserved:false};
  sql("create extension if not exists pg_cron;create extension if not exists pg_net;create schema if not exists supabase_migrations;create table if not exists supabase_migrations.schema_migrations(version text primary key,name text,statements text[]);");
  sql("alter default privileges for role supabase_admin in schema public grant all on tables to postgres,anon,authenticated,service_role;alter default privileges for role supabase_admin in schema public grant all on sequences to postgres,anon,authenticated,service_role;alter default privileges for role supabase_admin in schema public grant execute on functions to postgres,anon,authenticated,service_role;grant usage on schema auth to anon,authenticated,service_role;");
- for(const [name,expected] of STORAGE_PREREQUISITES){
+ if(storageReady){
+  check('real_storage_schema_ready',sql("select to_regclass('storage.objects') is not null and to_regclass('storage.buckets') is not null;")==='t');
+  receipt.application.storageSchema='real-local-storage-api';
+ }
+ for(const [name,expected] of storageReady?[]:STORAGE_PREREQUISITES){
   const exact=docker(['run','--rm','--pull=never','--network','none','--entrypoint','cat',STORAGE_IMAGE,'/app/migrations/tenant/'+name],undefined,true);
   if(sha256(exact)!==expected)throw Error('STORAGE_SOURCE_PIN_MISMATCH');
   sql("SET storage.install_roles='false';"+exact);
  }
  sql('grant usage on schema storage to anon,authenticated,service_role;');
+ if(asPostgres){
+  // Explicit local fixture: the managed parent grants these privileges, but the two
+  // pinned old Storage schema files above do not reconstruct managed table ACLs.
+  sql('grant select,insert on storage.buckets to postgres;');
+  sql('grant execute on function cron.alter_job(bigint,text,text,text,text,boolean),cron.schedule(text,text),cron.schedule(text,text,text),cron.unschedule(bigint),cron.unschedule(text) to postgres;');
+  sql('alter default privileges for role postgres in schema public grant all on tables to anon,authenticated,service_role;alter default privileges for role postgres in schema public grant all on sequences to anon,authenticated,service_role;alter default privileges for role postgres in schema public grant execute on functions to anon,authenticated,service_role;');
+  receipt.application.localRoleFixtures=['postgres SELECT,INSERT on storage.buckets','postgres EXECUTE on five observed cron overloads','postgres public default ACLs observed on parent'];
+ }
+ // Legacy mode keeps cron launching off. Atomic mode uses one prepared transaction per step,
+ // with the identity check and schedule deactivation inside that same transaction.
+ check(atomicAcceptance?'application_atomic_launcher_is_active':'application_quiescence_requires_disabled_launcher',sql("select current_setting('cron.launch_active_jobs');")===(atomicAcceptance?'on':'off'));
+ if(asPostgres){
+  sql=body=>adminSql('SET SESSION AUTHORIZATION postgres;\n'+body);
+  receipt.application.executor=JSON.parse(sql("select json_build_object('currentUser',current_user,'sessionUser',session_user,'superuser',rolsuper,'bypassRls',rolbypassrls) from pg_roles where rolname=current_user;"));
+ }
+ if(asPostgres)check('application_executor_is_non_superuser_postgres',sql("select current_user='postgres' and session_user='postgres' and not rolsuper from pg_roles where rolname=current_user;")==='t');
+ const applyAtomic=body=>atomicSql('SET SESSION AUTHORIZATION postgres;\n'+body);
+ if(atomicAcceptance)receipt.application.atomicSteps=[];
+ receipt.application.quiescedSteps=0;
  for(const step of steps){
   receipt.application.currentPath=step.path;
-  sql(step.body);
+  if(atomicAcceptance){
+   const {body,...reference}=preparedSteps[step.index];
+   applyAtomic(body);
+   receipt.application.atomicSteps.push(reference);
+  }else{
+  sql(step.body+`
+;
+DO $quiesce$
+BEGIN
+  PERFORM cron.alter_job(jobid, active := false) FROM cron.job WHERE active;
+  IF EXISTS (SELECT 1 FROM cron.job WHERE active) THEN
+    RAISE EXCEPTION 'ACCEPTANCE_SCHEDULE_STILL_ACTIVE';
+  END IF;
+END;
+$quiesce$;
+`);
+  }
+  receipt.application.quiescedSteps++;
   receipt.application.applied++;
+ }
+ if(atomicAcceptance){
+  // A real failed installation must roll back both its table and registered cron job.
+  const body="BEGIN;CREATE TABLE public.omnira_acceptance_rollback_probe(id integer);"+
+   "SELECT cron.schedule('omnira_acceptance_rollback_probe','1 second','select 1');"+
+   "DO $probe$BEGIN RAISE EXCEPTION 'EXPECTED_ACCEPTANCE_ROLLBACK';END;$probe$;COMMIT;";
+  let failedAsExpected=false;
+  try{applyAtomic(prepareAcceptanceStep({path:'synthetic/rollback-probe',body,lfSha256:sha256(body)}).body);}
+  catch(error){
+   failedAsExpected=String(error.detail??'').includes('EXPECTED_ACCEPTANCE_ROLLBACK');
+   if(!failedAsExpected)receipt.application.rollbackProbeFailure={message:String(error.message),detail:String(error.detail??'')};
+  }
+  check('atomic_probe_fails_for_expected_reason',failedAsExpected);
+  check('atomic_failed_table_is_absent',sql("select to_regclass('public.omnira_acceptance_rollback_probe') is null;")==='t');
+  check('atomic_failed_schedule_is_absent',sql("select count(*) from cron.job where jobname='omnira_acceptance_rollback_probe';")==='0');
  }
  delete receipt.application.currentPath;
  check('application_replay_complete',receipt.application.applied===steps.length);
+ check('application_has_no_active_schedules',sql('select count(*) from cron.job where active;')==='0');
+ receipt.application.installedSchedules=Number(sql('select count(*) from cron.job;'));
+ check('application_preserves_inactive_schedule_definitions',receipt.application.installedSchedules>0);
+ check('application_has_no_queued_network_requests',sql('select count(*) from net.http_request_queue;')==='0');
  check('managed_auth_uid_unchanged',sql("select md5(pg_get_functiondef('auth.uid()'::regprocedure));")===authFingerprint);
  check('real_auth_accounts_preserved',sql('select count(*) from auth.users;')==='2');
  receipt.application.authPreserved=true;

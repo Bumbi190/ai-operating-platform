@@ -4,8 +4,6 @@ import {spawnSync} from 'node:child_process';
 import {createHmac,randomBytes,randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
-import {tmpdir} from 'node:os';
-import {join} from 'node:path';
 if(!process.argv.includes('--run'))throw Error('Explicit --run required');
 const withApplication=process.argv.includes('--application');
 const applicationModule=withApplication?await import('./website-auth-application-local.mjs'):null;
@@ -153,8 +151,9 @@ try{
  receipt.completed=true;
 }catch(error){
  receipt.failure={code:safe(error.message),detail:safe(error.detail??'')};
- const logs={};for(const key of ['db','auth','rest']){const r=spawnSync('docker',['logs','--tail','18',names[key]],{encoding:'utf8',timeout:5000});if(r.status===0)logs[key]=safe(r.stderr||r.stdout);}
- writeFileSync(join(tmpdir(),'omnira-website-auth-local-diagnostics.json'),JSON.stringify(logs,null,2));
+ // Do not persist potentially sensitive GoTrue/PostgREST responses to shared
+ // OS temp paths. Explicit synthetic checks and sanitized failure codes are
+ // retained in the owner-scoped test receipt instead.
 }finally{
  for(const key of (withBrowser?['browserProxy','rest','auth','client','db']:['rest','auth','client','db'])){
   try{const item=JSON.parse(docker(['inspect',names[key]]))[0];if(item.Config.Labels?.[label]!==runId)throw Error('LABEL_MISMATCH');docker(['rm','-f','-v',names[key]]);receipt.cleanup[key]='removed';}catch{const r=spawnSync('docker',['inspect',names[key]],{encoding:'utf8',timeout:5000});receipt.cleanup[key]=r.status!==0?'not_present':'cleanup_failed';}

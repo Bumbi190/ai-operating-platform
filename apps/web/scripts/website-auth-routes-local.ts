@@ -1,7 +1,6 @@
 // Test-only runner: real route exports, SSR cookies, Auth, access resolver and RPC store.
 // In-process mode supplies request storage; HTTP/browser modes use the real standalone Next server.
-import {writeFileSync,existsSync,readFileSync} from 'node:fs'
-import {createServer} from 'node:http'
+import {createServer,request as localRequest} from 'node:http'
 import {spawn} from 'node:child_process'
 import {createServerClient} from '@supabase/ssr'
 import {requestAsyncStorage} from 'next/dist/client/components/request-async-storage.external'
@@ -16,30 +15,68 @@ import {runWorkerAcceptance} from './website-auth-worker-local'
 import {resolveProjectAccess} from '../lib/auth/project-access'
 const checks:{name:string;passed:boolean}[]=[]
 function check(name:string,ok:unknown){checks.push({name,passed:Boolean(ok)});if(!ok)throw Error(name)}
+// Bounded, newline-delimited IPC from the owning test harness. No fixture files
+// or predictable browser handshake files are read from the container filesystem.
+async function* protocolLines(){
+ let buffer='',bytes=0
+ for await(const chunk of process.stdin){
+  bytes+=Buffer.byteLength(chunk);if(bytes>65536)throw Error('FIXTURE_INPUT_LIMIT')
+  buffer+=chunk.toString();let end
+  while((end=buffer.indexOf('\n'))>=0){yield buffer.slice(0,end);buffer=buffer.slice(end+1)}
+ }
+ if(buffer.trim())yield buffer
+}
+function readFixture(line:string|undefined){
+ const f=JSON.parse(line??'null'),uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+ if(!f||Object.keys(f).some(k=>!['drain','spendGuard','feedback','browser','worker','nextServer','service','anon','a','b','context'].includes(k)))throw Error('INVALID_LOCAL_FIXTURE')
+ for(const name of ['drain','spendGuard','feedback','browser','worker'])if(typeof f[name]!=='boolean')throw Error('INVALID_LOCAL_FIXTURE')
+ for(const name of ['service','anon'])if(typeof f[name]!=='string'||!/^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(f[name])||f[name].length>4096)throw Error('INVALID_LOCAL_FIXTURE')
+ for(const user of [f.a,f.b])if(!user||!uuid.test(user.id)||typeof user.access_token!=='string'||!/^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(user.access_token)||typeof user.refresh_token!=='string'||!/^[A-Za-z0-9_-]{1,512}$/.test(user.refresh_token))throw Error('INVALID_LOCAL_FIXTURE')
+ const c=f.context
+ if(!c||Object.keys(c).sort().join(',')!=='agents,conversations,projects,routeConversation'||!uuid.test(c.routeConversation)||['projects','agents','conversations'].some(k=>!Array.isArray(c[k])||c[k].length!==2||c[k].some((v:unknown)=>typeof v!=='string'||!uuid.test(v))))throw Error('INVALID_LOCAL_FIXTURE')
+ if(f.nextServer!==null&&(typeof f.nextServer!=='string'||!/^\/tmp\/omnira-next\/apps\/web\/\.auth-next-[A-Za-z0-9_-]+\/server\.js$/.test(f.nextServer)))throw Error('INVALID_LOCAL_SERVER')
+ return f
+}
 async function main(){
- const f=JSON.parse(readFileSync(0,'utf8')),base=f.browser?'http://127.0.0.1:54393':'http://client:3080',appBase=f.nextServer?'http://client:3100':base
+ const protocol=protocolLines(),first=await protocol.next()
+ if(first.done)throw Error('LOCAL_FIXTURE_REQUIRED')
+ const f=readFixture(first.value),base=f.browser?'http://127.0.0.1:54393':'http://client:3080',appBase=f.nextServer?'http://client:3100':base
  let nextProcess:ReturnType<typeof spawn>|null=null
  let externalAttempts=0
  let refreshRequests=0
  let workerReady:any=null
+ // Fixed hosts within the owned Docker network. Disable redirects so a
+ // malicious local 30x cannot exfiltrate credentials to an external origin.
+ const allowedOrigins=new Set([base,appBase,'http://auth:9999','http://rest:3000'])
+ const allowedFixtureDestination=(url:URL)=>!url.username&&!url.password&&!url.hash&&allowedOrigins.has(url.origin)
  const nativeFetch=globalThis.fetch
  globalThis.fetch=(async(input:any,init:any)=>{
   const url=new URL(typeof input==='string'?input:input instanceof URL?input.href:input.url)
-  if(![base,appBase,'http://auth:9999','http://rest:3000'].includes(url.origin)){externalAttempts++;throw Error('NONLOCAL_FETCH_REFUSED')}
-  return nativeFetch(input,{...init,signal:init?.signal??AbortSignal.timeout(10000)})
+  if(!allowedFixtureDestination(url)){externalAttempts++;throw Error('NONLOCAL_FETCH_REFUSED')}
+  return nativeFetch(input,{...init,redirect:'manual',signal:init?.signal??AbortSignal.timeout(10000)})
  }) as typeof fetch
+ check('test_local_gateway_denies_external_origin',!allowedFixtureDestination(new URL('https://untrusted.example.invalid/')))
+ check('test_local_gateway_denies_userinfo_spoof',!allowedFixtureDestination(new URL('http://auth:9999@untrusted.example.invalid/')))
  // SDK gateway paths only. No fabricated Auth or database responses.
  const server=createServer(async(req,res)=>{
   try{
-   const path=req.url??'/',target=path.startsWith('/auth/v1/')?'http://auth:9999'+path.slice(8):path.startsWith('/rest/v1/')?'http://rest:3000'+path.slice(8):null
-   if(!target){res.writeHead(404).end();return}
+   const path=req.url??'/',auth=path.startsWith('/auth/v1/'),rest=path.startsWith('/rest/v1/')
+   if((!auth&&!rest)||/[\\\r\n#\s]/.test(path)||path.slice(8).startsWith('//')){res.writeHead(404).end();return}
    if(req.method==='POST'&&path.startsWith('/auth/v1/token?grant_type=refresh_token'))refreshRequests++
-   const parts:Buffer[]=[];for await(const part of req)parts.push(Buffer.from(part))
-   const headers={...req.headers};delete headers.host;delete headers.connection;delete headers['content-length']
-   const result=await fetch(target,{method:req.method,headers:headers as any,...(parts.length?{body:Buffer.concat(parts)}:{})})
-   res.statusCode=result.status
-   for(const [name,value] of result.headers)if(!['transfer-encoding','content-encoding','content-length','connection'].includes(name))res.setHeader(name,value)
-   res.end(Buffer.from(await result.arrayBuffer()))
+   const parts:Buffer[]=[];let size=0;for await(const part of req){size+=part.length;if(size>2*1024*1024)throw Error('REQUEST_LIMIT');parts.push(Buffer.from(part))}
+   const headers:Record<string,string|string[]>={}
+   for(const name of ['apikey','authorization','content-type','accept','prefer','accept-profile','content-profile','range','x-client-info','x-supabase-api-version'])if(req.headers[name])headers[name]=req.headers[name]!
+   // The socket destinations are literals on the owned Docker network. A request
+   // path cannot change host/port and the HTTP client does not follow redirects.
+   await new Promise<void>((resolve,reject)=>{
+    const upstream=localRequest({hostname:auth?'auth':'rest',port:auth?9999:3000,path:path.slice(8),method:req.method,headers},result=>{
+     const chunks:Buffer[]=[];let length=0
+     result.on('data',(chunk:Buffer)=>{length+=chunk.length;if(length>8*1024*1024){result.destroy();reject(Error('RESPONSE_LIMIT'))}else chunks.push(chunk)})
+     result.on('error',reject)
+     result.on('end',()=>{res.statusCode=result.statusCode??502;for(const [name,value] of Object.entries(result.headers))if(value!==undefined&&!['transfer-encoding','content-encoding','content-length','connection'].includes(name))res.setHeader(name,value);res.end(Buffer.concat(chunks));resolve()})
+    })
+    upstream.on('error',reject);upstream.setTimeout(10000,()=>upstream.destroy(Error('LOCAL_UPSTREAM_TIMEOUT')));upstream.end(parts.length?Buffer.concat(parts):undefined)
+   })
   }catch{res.writeHead(502).end()}
  })
  await new Promise<void>(r=>server.listen(f.browser?54393:3080,'0.0.0.0',r))
@@ -52,8 +89,16 @@ async function main(){
  try{
   if(f.nextServer){
    nextProcess=spawn(process.execPath,[f.nextServer],{env:{...process.env,NODE_ENV:'production',PORT:'3100',HOSTNAME:'0.0.0.0',NEXT_TELEMETRY_DISABLED:'1'},stdio:'ignore'})
-   let ready=false
-   for(let n=0;n<100;n++){try{const r=await fetch(appBase+'/api/website-build-settings');if(r.status===401){ready=true;break}}catch{}await new Promise(r=>setTimeout(r,100))}
+   let ready=false,lastStatus=0
+   // Cold isolated Node/Next startup can exceed ten seconds on a constrained
+   // local Docker host. Keep the boundary strict, but report HTTP status vs
+   // child-process failure instead of a misleading browser timeout.
+   for(let n=0;n<300;n++){
+    if(nextProcess.exitCode!==null)break
+    try{const r=await fetch(appBase+'/api/website-build-settings');lastStatus=r.status;if(r.status===401){ready=true;break}}catch{}
+    await new Promise(r=>setTimeout(r,100))
+   }
+   if(!ready)throw Error('NEXT_HTTP_NOT_READY_'+lastStatus+'_'+(nextProcess.exitCode===null?'RUNNING':'EXITED'))
    check('next_http_server_ready',ready)
    const redirect=await fetch(appBase+'/',{redirect:'manual'})
    check('next_middleware_redirects_missing_session',redirect.status===307&&new URL(redirect.headers.get('location')??'',appBase).pathname==='/login')
@@ -132,12 +177,20 @@ async function main(){
    check('refreshed_route_response_private',refreshed.headers.get('cache-control')==='private, no-store')
   }
   if(f.browser){
-   writeFileSync('/tmp/omnira-browser-ready.json',JSON.stringify(workerReady));
-   for(let n=0;n<720&&!existsSync('/tmp/omnira-browser-done.json');n++)await new Promise(r=>setTimeout(r,250));
-   check('host_browser_completed',existsSync('/tmp/omnira-browser-done.json')&&JSON.parse(readFileSync('/tmp/omnira-browser-done.json','utf8')).completed===true);
+   process.stdout.write(JSON.stringify({event:'browser-ready',ready:workerReady})+'\n')
+   let timer:ReturnType<typeof setTimeout>|undefined
+   try{
+    const reply=await Promise.race([protocol.next(),new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('BROWSER_COMPLETION_TIMEOUT')),180000)})])
+    const done=JSON.parse(reply.value??'null')
+    check('host_browser_completed',done?.event==='browser-done'&&done.completed===true&&Object.keys(done).length===2)
+   }finally{clearTimeout(timer)}
   }
  }finally{if(nextProcess){nextProcess.kill();await Promise.race([new Promise<void>(r=>nextProcess!.once('exit',()=>r())),new Promise<void>(r=>setTimeout(r,2000))])}await new Promise<void>(r=>server.close(()=>r()))}
 }
-main().then(()=>process.stdout.write(JSON.stringify({completed:true,checks}))).catch(error=>{
- process.stdout.write(JSON.stringify({completed:false,checks,failure:checks.some(c=>!c.passed)?String(error.message):'ROUTE_RUNNER_FAILED'}))
+main().then(()=>process.stdout.write(JSON.stringify({completed:true,checks})+'\n')).catch(error=>{
+ // Allow only non-sensitive, fixed-vocabulary readiness metadata in receipts.
+ // Never echo fixture input, URLs, JWTs, provider responses or process stderr.
+ const message=String(error?.message??'')
+ const readiness=/^NEXT_HTTP_NOT_READY_(?:0|[1-5][0-9][0-9])_(?:RUNNING|EXITED)$/.test(message)?message:null
+ process.stdout.write(JSON.stringify({completed:false,checks,failure:checks.some(c=>!c.passed)?message:readiness??'ROUTE_RUNNER_FAILED'})+'\n')
 })

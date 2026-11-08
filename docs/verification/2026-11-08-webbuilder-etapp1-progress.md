@@ -74,3 +74,31 @@ SCB:s allmänna företagsregister har ett avgiftsfritt API enligt SCB; personlig
 - Från samma syntetiska export med SHA256 `84abe1c6b7d7540b887b5e981767331b607842e93a4f7ecde5e8f71505252c7c` finns ett **endast lokalt** Vercel-förberett paket i `C:\Users\Andre\Projects\Omnira\Administration\WebBuilderEtapp1Local-20261108\vercel-ready-synthetic-84abe1c6b7d7`. Manifest, integritet och paths kontrollerade; webbläsarsmoke `offline-browser-receipt.json` gav HTTP 200, korrekt bredder, bilder och noindex på 1440/390 px. `published:false`, ingen Vercel-deploy.
 - En utökad fristående SQL-regression från tidigare körning nådde tidsgränsen och är fortfarande **inte verifierad**; den lokala PostgreSQL- och RLS-funktionaliteten är dock testad genom den gröna autentiserade kedjan. Bred SQL-/PR-/CI-kvalificering kvarstår.
 - Etapp 1 är fortfarande **inte KLAR**. Säkert stopp: ingen publikation, ingen prod-migrering, ingen kundkontakt, ingen ändring eller merge av PR #368. Behövs fortfarande separat real SCB-prospekt i rätt miljö, manuellt verifierad publik demo efter särskilt godkännande, och GitHub/SQL/CodeQL-avstämning.
+
+## Sista oberoende verifieringen samma dag (Codex + Desktop Commander)
+
+**Arbetsmiljö och behörighet:** fortfarande enbart lokal `feat/webbuilder-etapp1-prospects-20261108`-worktree och den märkta egna lokala teststacken. Codex CLI 0.163.0 användes i *read-only* för oberoende granskning och ändrade inte kod. Fullständig kodgranskning i `C:\Users\Andre\Projects\Omnira\Temp\etapp1-codex-independent-review.txt`. Inga nya betalda tjänster, publika demos, kundutskick, GitHub-pushar, merges eller produktionsmigreringar.
+
+**Granskningens sju P2-fynd och åtgärder:**
+1. Faktiska SCB-arbetsställets SNI-koder följer nu med kandidaten och i SCB-signerat underlag; sökfiltret kopieras inte längre som påstådda företagsfakta.
+2. Okänd/icke bekräftad SCB-aktivitetsstatus markeras nu som `inactive:true` (endast `ACTIVE_PER_SCB` kan räknas aktiv). Varje osäker juridisk enhet kräver extern granskning innan den kan gå vidare.
+3. Read-only webbläsarfångst blockerar alla `wss://` WebSocket-kanaler, utöver tidigare GET/HEAD-grind.
+4. Fångst avbryts vid oväntad main-frame-navigering under observations- eller skärmbildssteg, så URL och bevis inte kan höra till olika dokument.
+5. Demoverifieraren jämför numera även JS-/bild-/mediafiler i ZIP-exporten mot faktisk webbläsarhämtning: path, SHA256 och bytes, inte bara HTML. Ett manipulerat asset-hashvärde avvisas av enhetstest.
+6. Det lokalt staged Vercel-paketet får ett manifest med filhashar. Den lokala verifieraren upptäcker avsiktligt manipulerad HTML och avvisar paketet. Isolerat testpaket `...\vercel-ready-synthetic-84abe1c6b7d7-v2`, publicerat: **false**.
+7. Ursprunglig äldre SQL-fixturetransport i `test-db.ts` har potentiellt oavgränsade synkrona Docker/psql-anrop. Ingen ändring i delad PR #368-fixture utan avgränsat beslut. 240-sekunders bred SQL-körning från tidigare är fortfarande inte grön; specifika Etapp1 SQL- och RLS-kontroller har verifierats i full lokal E2E.
+
+**Extra upptäckt:** Den tidigare Playwright `page.screenshot(clip)`-vägen angav långa bildmått men gav bara första viewporten. Numera används kontrollerad CDP `captureBeyondViewport`, med direkt PNG-IHDR-verifiering av verklig bredd/höjd. Verklig read-only granskning av Edfors Bil: **1440 × 5346 px** och **390 × 6000 px**, riktiga PNG-mått identiska med registrerade. Varning kvarstår för ej laddade bilder i delar av sidan och avklippt mobilmaterial över 6000 px; denna sida är inte godkänd som kundprospekt, och en riktig SCB-API-läsning har inte skett.
+
+**Extra UI-fel upptäckt och rättat:** En gammal prospektlistehämtning från projekt A kunde avslutas efter en hämtning från projekt B och skriva över det nyare resultatet. `ProspectBoard` använder nu ett senaste-anropsversionsnummer; gammalt svar kan inte ändra den valda listan. Den senaste helkörningen bekräftar att det sparade syntetiska prospektet öppnas igen.
+
+**Kontroller efter åtgärder:**
+- Riktade Vitest: **72/72 pass**, åtta testfiler (`Temp\etapp1-hardening-vitest.log`).
+- Node + riktig Chrome: **7/7 pass** inklusive SSRF-skydd, fördröjd SPA-rendering, faktisk PNG-helhöjd och WebSocket-stopp (`Temp\etapp1-hardening-browser.log`).
+- TypeScript: `tsc --noEmit --incremental false` **PASS** efter även UI-rättelsen (`Temp\etapp1-last-typecheck.log`).
+- Full autentiserad lokalkedja: **31/31 PASS, completed=true, production=false, outreach=false**, inklusive koppling av prospekt till bygget, hashbar ZIP-export, desktop/mobile och återöppning i verkligt UI (`Temp\etapp1-final-integration-ui-race-fixed.log` och senaste `Administration\WebBuilderEtapp1Local-20261108\synthetic-integration-receipt.json`).
+- Två mellanliggande retester fångade verkliga observationsfel: en export gav övergående HTTP 503 under samtidig tung belastning, men samma URI gav HTTP 200/ZIP vid senare separat läsning; nästa körning hittade och rättade ovan nämnda out-of-order-prospektlista. Isolerad slutkörning passerade samtliga steg.
+
+**Separat GitHub-beroende:** PR [#368](https://github.com/Bumbi190/ai-operating-platform/pull/368) kvarstår som `OPEN Draft UNSTABLE`. CodeQL-check `127326580831` rapporterar 6 larm (1 critical, 2 high, 3 medium), huvudsakligen i `apps/web/scripts/website-auth-routes-local.ts` och `apps/web/scripts/test-website-auth-local.mjs` (SSRF/temporary-file/network-dataflöden). Detta är en **annan gransknings- och godkännandegrind**, inte ett bevis att Etapp1:s ägarskapsskydd är brutet. Ändra inte PR #368 från Etapp1-branchen utan separat kontroll.
+
+**Kvar före att markera Etapp 1 helt KLAR:** en riktigt SCB-verifierad registerläsning via behörig skyddad preview och verklig, manuellt granskad kundkandidat; användarens separata klartecken för en Vercel-preview med riktig fungerande länk och asset-integritet; hantering av PR368:s CodeQL-fynd och historiska SQL-timeout. Ingen utrullning eller migration gjord. **Etapp 2 får inte startas som om dessa releasegrindar vore färdiga.**

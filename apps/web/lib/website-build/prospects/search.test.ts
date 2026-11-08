@@ -34,3 +34,22 @@ describe('company view uses the qualified SCB preview source',()=>{
  })
 
 })
+
+describe('verified SCB facts are not confused with search filters',()=>{
+ it('keeps only SNI codes actually present on the SCB workplace, not all category filters',async()=>{
+   const r=await searchScbCompanies(query,0,deps([row(1,{sniCodes:['47.811']})]))
+   expect(r.meta.sniCodes).toContain('46.711')
+   expect(r.candidates[0].sniCodes).toEqual(['47.811'])
+ })
+ it('blocks review when SCB cannot establish an active legal entity status',async()=>{
+   const d=deps([row(1)])
+   d.review=vi.fn(async()=>({...review,status:{code:null,class:'UNKNOWN_NEEDS_REVIEW' as const,label:null}}))
+   const r=await searchScbCompanies(query,0,d)
+   expect(r.candidates).toHaveLength(1)
+   expect(r.candidates[0].inactive).toBe(true)
+ })
+ it('does not wrongly mark a positively verified ACTIVE_PER_SCB legal entity inactive',async()=>{
+   const r=await searchScbCompanies(query,0,deps([row(1)]))
+   expect(r.candidates[0].inactive).toBe(false)
+ })
+})

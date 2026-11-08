@@ -9,6 +9,19 @@ const argv=process.argv.slice(2),p=argv.indexOf('--staging')
 if(!argv.includes('--offline-synthetic-only')||p<0||!argv[p+1])throw Error('OFFLINE_SYNTHETIC_PATH_REQUIRED')
 const root=resolve(argv[p+1]),receipt=JSON.parse(readFileSync(join(root,'staging-receipt.json'),'utf8'))
 if(receipt.mode!=='offline-synthetic-only'||receipt.published!==false||receipt.noindex!==true)throw Error('UNSAFE_STAGING_RECEIPT')
+// Reject local edits to a previously approved export instead of relying on
+// only the archive hash recorded in the staging receipt.
+if(!Array.isArray(receipt.fileHashes)||receipt.fileHashes.length<3||receipt.fileHashes.length>40)throw Error('STAGING_FILE_MANIFEST_REQUIRED')
+const entries=new Set()
+for(const item of receipt.fileHashes){
+ if(!item||typeof item.path!=='string'||!item.path.match(/^(?:dist\/[A-Za-z0-9._\/-]+|vercel\.json|README\.md)$/)||item.path.split('/').some(part=>part==='.'||part==='..')||entries.has(item.path)||!/^[a-f0-9]{64}$/.test(item.sha256)||!Number.isInteger(item.bytes)||item.bytes<0)throw Error('STAGING_FILE_MANIFEST_INVALID')
+ entries.add(item.path)
+ const absolute=resolve(root,item.path)
+ if(!absolute.startsWith(root+sep)||!existsSync(absolute))throw Error('STAGING_FILE_MISSING')
+ const bytes=readFileSync(absolute)
+ if(bytes.length!==item.bytes||createHash('sha256').update(bytes).digest('hex')!==item.sha256)throw Error('STAGING_FILE_HASH_MISMATCH')
+}
+for(const mandatory of ['dist/index.html','dist/robots.txt','vercel.json'])if(!entries.has(mandatory))throw Error('STAGING_MANIFEST_INCOMPLETE')
 const directory=join(root,'dist'),index=readFileSync(join(directory,'index.html'))
 if(!index.toString('utf8').includes('SYNTETISKT TEST')||!index.toString('utf8').includes('noindex'))throw Error('NOT_REVIEWABLE_SYNTHETIC')
 const server=createServer((req,res)=>{

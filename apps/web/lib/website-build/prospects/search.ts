@@ -67,7 +67,7 @@ export async function searchScbCompanies(value:CompanySearchQuery,offset=0,deps:
    if(!verified){await(deps.sleep??sleep)(500);if(controller.signal.aborted)throw new Error('deadline');verified=await review(row.orgnr);cache.set(row.orgnr,verified)}
    if(!verified.ok||verified.orgnr!==row.orgnr||!plain(verified.legalName)||!['49','31','96'].includes(verified.legalForm.code??''))continue
    const restricted=verified.marketing.post.code===2||verified.marketing.email.code===2||verified.marketing.phone.code===2||verified.marketing.phone.code===3
-   candidates.push({sourceId:`scb/${row.cfar}`,sourceUrl:SCB_SOURCE_URL,name:verified.legalName.trim(),branchName:plain(row.name)?row.name.trim():'',orgnr:verified.orgnr,cfar:row.cfar!,city:plain(row.city,120)?row.city.trim():null,email:null,websiteUrl:null,restricted,inactive:verified.status.class==='NOT_ACTIVE_PER_SCB'})
+   candidates.push({sourceId:`scb/${row.cfar}`,sourceUrl:SCB_SOURCE_URL,name:verified.legalName.trim(),branchName:plain(row.name)?row.name.trim():'',orgnr:verified.orgnr,cfar:row.cfar!,city:plain(row.city,120)?row.city.trim():null,email:null,websiteUrl:null,restricted,sniCodes:row.sniCodes.filter(code=>sniCodes.includes(code)),inactive:verified.status.class!=='ACTIVE_PER_SCB'})
   }
   if(controller.signal.aborted)throw new Error('deadline')
   diagnostics.returnedInPage=candidates.length

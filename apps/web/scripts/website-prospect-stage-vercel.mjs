@@ -43,7 +43,11 @@ for(const [path,data] of selected){
 writeFileSync(join(output,'robots.txt'),'User-agent: *\nDisallow: /\n',{flag:'wx'})
 writeFileSync(join(directory,'vercel.json'),JSON.stringify({$schema:'https://openapi.vercel.sh/vercel.json',outputDirectory:'dist',headers:[{source:'/(.*)',headers:[{key:'X-Robots-Tag',value:'noindex, nofollow, noarchive'}]}]},null,2)+'\n',{flag:'wx'})
 writeFileSync(join(directory,'README.md'),`# Lokalt Vercel-paket – SYNTHETISKT TEST\n\nDetta är en testfixture, inte en riktig bilhandlare. **Ej publicerat, ej kundmaterial.**\nExport-SHA256: ${sha}\nOriginal-artefakt SHA256: ${manifest.preview?.artifactSha256??'saknas'}\n\nRätt mapp för eventuell senare separat godkänd Vercel-publicering är mappen som innehåller vercel.json och dist/. Den äldre demon svarade 404; denna mappstruktur är till för att undvika en extra src/.vercel/output-nivå.\n`,{flag:'wx'})
-const report={mode:'offline-synthetic-only',published:false,sourceArchiveSha256:sha,artifactSha256:manifest.preview?.artifactSha256??null,fileCount:selected.size,outputDirectory:directory,totalBytes:total,entryPoint:'dist/index.html',vercelConfig:'vercel.json',noindex:true}
+// The offline browser check must verify staged bytes, not merely trust the
+// archive hash recorded when this folder was originally generated.
+const paths=[...selected.keys()].map(path=>'dist/'+path).concat(['dist/robots.txt','vercel.json','README.md'])
+const fileHashes=paths.map(path=>{const bytes=readFileSync(join(directory,path));return {path,sha256:hash(bytes),bytes:bytes.length}}).sort((a,b)=>a.path.localeCompare(b.path))
+const report={mode:'offline-synthetic-only',published:false,sourceArchiveSha256:sha,artifactSha256:manifest.preview?.artifactSha256??null,fileCount:selected.size,outputDirectory:directory,totalBytes:total,entryPoint:'dist/index.html',vercelConfig:'vercel.json',noindex:true,fileHashes}
 writeFileSync(join(directory,'staging-receipt.json'),JSON.stringify(report,null,2)+'\n',{flag:'wx'})
 console.log(JSON.stringify(report))
 function hash(data){return createHash('sha256').update(data).digest('hex')}

@@ -19,7 +19,7 @@ beforeEach(async()=>{
   mocks.read.mockResolvedValue({sha256:artifactSha})
   mocks.plan.mockResolvedValue({})
   mocks.update.mockImplementation((_db,_p,current,content)=>({...current,content}))
-  mocks.capture.mockResolvedValue({finalUrl:'https://fixture.vercel.app/',pages:[1440,390].map(width=>({width,htmlSha256:sha,overflow:false,imagesLoaded:true,scriptsOk:true}))})
+  mocks.capture.mockResolvedValue({finalUrl:'https://fixture.vercel.app/',pages:[1440,390].map(width=>({width,htmlSha256:sha,overflow:false,imagesLoaded:true,scriptsOk:true})),resources:[]})
 })
 describe('demo verification binds the published page to the canonical export',()=>{
   it('records a demo only after both viewports match and assets render',async()=>{
@@ -35,7 +35,7 @@ describe('demo verification binds the published page to the canonical export',()
     {scriptsOk:false},
     {width:400},
   ])('refuses an inconsistent or broken mobile result: %j',async patch=>{
-    mocks.capture.mockResolvedValue({finalUrl:'https://fixture.vercel.app/',pages:[{width:1440,htmlSha256:sha,overflow:false,imagesLoaded:true,scriptsOk:true},{width:390,htmlSha256:sha,overflow:false,imagesLoaded:true,scriptsOk:true,...patch}]})
+    mocks.capture.mockResolvedValue({finalUrl:'https://fixture.vercel.app/',pages:[{width:1440,htmlSha256:sha,overflow:false,imagesLoaded:true,scriptsOk:true},{width:390,htmlSha256:sha,overflow:false,imagesLoaded:true,scriptsOk:true,...patch}],resources:[]})
     await expect(verifyProspectDemo({} as any,principal,current,'https://fixture.vercel.app/','test')).rejects.toThrow('DEMO_VERIFICATION_FAILED')
     expect(mocks.update).not.toHaveBeenCalled()
   })
@@ -43,4 +43,20 @@ describe('demo verification binds the published page to the canonical export',()
     mocks.capture.mockResolvedValue({finalUrl:'https://other.vercel.app/',pages:[]})
     await expect(verifyProspectDemo({} as any,principal,current,'https://fixture.vercel.app/','test')).rejects.toThrow('DEMO_VERIFICATION_FAILED')
   })
+})
+
+describe('deployment asset integrity',()=>{
+ it('refuses replaced exported assets even when HTML and both browser viewports match',async()=>{
+   const data=Buffer.from('the-review-approved-asset-bytes','utf8')
+   const zip=new JSZip();zip.file('fixture/dist/index.html',html);zip.file('fixture/dist/assets/images/fixture.webp',data)
+   mocks.export.mockResolvedValue(await zip.generateAsync({type:'uint8array'}))
+   const expectedAsset={path:'assets/images/fixture.webp',sha256:createHash('sha256').update(data).digest('hex'),bytes:data.length}
+   const pages=[1440,390].map(width=>({width,htmlSha256:sha,overflow:false,imagesLoaded:true,scriptsOk:true}))
+   mocks.capture.mockResolvedValue({finalUrl:'https://fixture.vercel.app/',pages,resources:[{...expectedAsset,sha256:'0'.repeat(64)}]})
+   await expect(verifyProspectDemo({} as any,principal,current,'https://fixture.vercel.app/','tampered')).rejects.toThrow('DEMO_VERIFICATION_FAILED')
+   expect(mocks.update).not.toHaveBeenCalled()
+   expect(mocks.capture).toHaveBeenCalledWith('https://fixture.vercel.app/',[expectedAsset.path])
+   mocks.capture.mockResolvedValue({finalUrl:'https://fixture.vercel.app/',pages,resources:[expectedAsset]})
+   await expect(verifyProspectDemo({} as any,principal,current,'https://fixture.vercel.app/','verified')).resolves.toHaveProperty('content')
+ })
 })

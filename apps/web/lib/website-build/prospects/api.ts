@@ -47,7 +47,7 @@ export async function prospectApi(request: Request,params: {prospectId?:string;a
         fields(body,['action','projectId','municipalityCode','offset'])
         const result=await searchScbCompanies({municipalityCode:body.municipalityCode as string,category:'car_dealer',limit:5},body.offset as number??0)
         return Response.json({...result,candidates:result.candidates.map(candidate=>{
-          const company:ProspectCompany={source:'scb',sourceId:candidate.sourceId,sourceUrl:candidate.sourceUrl,retrievedAt:result.retrievedAt,name:candidate.name,branchName:candidate.branchName,orgnr:candidate.orgnr,cfar:candidate.cfar,city:candidate.city,municipalityCode:result.meta.municipalityCode,sniCodes:result.meta.sniCodes,restricted:candidate.restricted,inactive:candidate.inactive}
+          const company:ProspectCompany={source:'scb',sourceId:candidate.sourceId,sourceUrl:candidate.sourceUrl,retrievedAt:result.retrievedAt,name:candidate.name,branchName:candidate.branchName,orgnr:candidate.orgnr,cfar:candidate.cfar,city:candidate.city,municipalityCode:result.meta.municipalityCode,sniCodes:candidate.sniCodes,restricted:candidate.restricted,inactive:candidate.inactive}
           return {company,receipt:issueSearchReceipt(company,access,projectId,secret())}
         })},{headers})
       }

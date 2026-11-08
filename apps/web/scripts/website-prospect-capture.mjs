@@ -4,9 +4,12 @@ import {createHash} from 'node:crypto'
 import {existsSync} from 'node:fs'
 import {publicTarget, startCaptureProxy} from './website-prospect-network.mjs'
 import {hasMeaningfulRenderedWebsite} from './website-prospect-render-readiness.mjs'
+import {captureDocumentRegion} from './website-prospect-screenshot.mjs'
 
 const input=JSON.parse(await new Promise((resolve,reject)=>{let data='';process.stdin.on('data',chunk=>{data+=chunk;if(data.length>8192)reject(Error('INPUT_LIMIT'))});process.stdin.on('end',()=>resolve(data));process.stdin.on('error',reject)}))
 const target=publicTarget(input.url)
+const assetPaths=input.assetPaths??[]
+if(!Array.isArray(assetPaths)||assetPaths.length>24||new Set(assetPaths).size!==assetPaths.length||assetPaths.some(path=>typeof path!=='string'||path.length>180||!/^(?:website\.js|assets\/(?:images|media)\/[A-Za-z0-9][A-Za-z0-9._\/-]*)$/.test(path)||path.split('/').some(part=>part==='.'||part==='..')))throw Error('INVALID_ASSET_LIST')
 if (process.env.OMNIRA_PROSPECT_CAPTURE_MODE !== 'isolated-local') throw Error('LOCAL_CAPTURE_REQUIRED')
 const proxy=await startCaptureProxy()
 let browser
@@ -14,7 +17,7 @@ const deadline=setTimeout(()=>{void browser?.close();void proxy.close()},70000)
 try {
   const chrome=process.platform==='win32'?'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe':undefined
   browser=await chromium.launch({headless:true,...(chrome&&existsSync(chrome)?{executablePath:chrome}:{}),proxy:{server:proxy.url,bypass:'<-loopback>'},args:['--disable-quic','--force-webrtc-ip-handling-policy=disable_non_proxied_udp']})
-  const images=[],observations=[],warnings=new Set(),pages=[]
+  const images=[],observations=[],warnings=new Set(),pages=[],resources=[]
   let finalUrl
   for(const [viewport,width,height] of [['desktop',1440,900],['mobile',390,844]]) {
     const context=await browser.newContext({viewport:{width,height},locale:'sv-SE',serviceWorkers:'block',acceptDownloads:false,ignoreHTTPSErrors:false})
@@ -26,10 +29,16 @@ try {
         return route.continue()
       } catch {if(warnings.size<10)warnings.add('En begäran utanför tillåten offentlig läsning blockerades.');return route.abort()}
     })
+    // A page may initiate public wss:// writes that bypass HTTP GET/HEAD routing.
+    // Deny all WebSockets in this intentionally read-only capture environment.
+    await context.routeWebSocket('**/*',route=>route.close())
     const page=await context.newPage(),scriptErrors=[]
+    let mainFrameNavigations=0
+    page.on('framenavigated',frame=>{if(frame===page.mainFrame())mainFrameNavigations++})
     page.on('pageerror',()=>{if(scriptErrors.length<10)scriptErrors.push('page-error')})
     const response=await page.goto(target.href,{waitUntil:'domcontentloaded',timeout:35000})
     if(!response||response.status()<200||response.status()>=400)throw Error('SITE_HTTP_ERROR')
+    const initialMainFrameNavigations=mainFrameNavigations
     const htmlSha256=createHash('sha256').update(await response.body()).digest('hex')
     publicTarget(page.url())
     if(finalUrl&&finalUrl!==page.url())throw Error('VIEWPORT_URL_MISMATCH')
@@ -71,16 +80,28 @@ try {
       const relevantImages=[...document.images].filter(image=>{const r=image.getBoundingClientRect(),s=getComputedStyle(image),top=r.top+scrollY;return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'&&top<clipBottom&&top+r.height>0})
       return {observations:obs,pageHeight,title:document.title,overflow:docWidth>width+1,imagesLoaded:relevantImages.every(image=>image.complete&&image.naturalWidth>0)}
     },{viewport,width,height})
+    if(page.url()!==finalUrl||mainFrameNavigations!==initialMainFrameNavigations)throw Error('SITE_NAVIGATED_DURING_EVIDENCE')
     const captureHeight=Math.min(6000,Math.max(height,result.pageHeight))
     if(result.pageHeight>6000)warnings.add('Skärmbilden visar de första 6000 px av sidan.')
     if(!result.imagesLoaded)warnings.add('Minst en synlig bild hann inte laddas i skärmbildsområdet; kontrollera bilden manuellt.')
-    const bytes=await page.screenshot({type:'png',clip:{x:0,y:0,width,height:captureHeight},timeout:15000,animations:'disabled'})
+    const bytes=await captureDocumentRegion(page,context,width,captureHeight)
+    if(page.url()!==finalUrl||mainFrameNavigations!==initialMainFrameNavigations)throw Error('SITE_NAVIGATED_DURING_EVIDENCE')
     images.push({viewport,width,height:captureHeight,png:bytes.toString('base64'),sha256:createHash('sha256').update(bytes).digest('hex')})
     observations.push(...result.observations)
     pages.push({viewport,width,overflow:result.overflow,title:result.title,htmlSha256,imagesLoaded:result.imagesLoaded,scriptsOk:scriptErrors.length===0})
+    if(viewport==='desktop')for(const path of assetPaths){
+      const assetUrl=new URL('/'+path,target.origin).href,assetPage=await context.newPage()
+      try{
+        const result=await assetPage.goto(assetUrl,{waitUntil:'commit',timeout:12000})
+        if(!result||result.status()!==200||result.url()!==assetUrl)throw Error('ASSET_FETCH_FAILED')
+        const body=await result.body()
+        if(body.length>8*1024*1024)throw Error('ASSET_TOO_LARGE')
+        resources.push({path,sha256:createHash('sha256').update(body).digest('hex'),bytes:body.length})
+      } finally {await assetPage.close()}
+    }
     await context.close()
   }
-  const response={sourceUrl:target.href,finalUrl,capturedAt:new Date().toISOString(),engine:'playwright',images,observations,warnings:[...warnings].slice(0,12),pages}
+  const response={sourceUrl:target.href,finalUrl,capturedAt:new Date().toISOString(),engine:'playwright',images,observations,warnings:[...warnings].slice(0,12),pages,resources}
   process.stdout.write(JSON.stringify(response))
 }catch(error){process.stderr.write('CAPTURE_FAILED: '+String(error?.message??'unknown').replace(/https?:\/\/\S+/g,'[site]').slice(0,300));process.exitCode=1}
 finally{clearTimeout(deadline);await browser?.close();await proxy.close()}

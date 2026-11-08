@@ -1,5 +1,5 @@
 'use client'
-import {useCallback,useEffect,useState} from 'react'
+import {useCallback,useEffect,useRef,useState} from 'react'
 import type {ProspectCompany,ProspectImprovement,ProspectView} from '@/lib/website-build/prospects/types'
 import type {PlanView} from '@/lib/website-build/planning/types'
 import {SWEDISH_MUNICIPALITIES as MUNICIPALITIES} from '@/lib/website-build/prospects/municipalities'
@@ -15,6 +15,7 @@ async function request(url:string,body?:unknown){
 }
 export function ProspectBoard({projects,initialProjectId}:{projects:{id:string;name:string}[];initialProjectId:string}){
   const [projectId,setProjectId]=useState(initialProjectId),[saved,setSaved]=useState<ProspectView[]>([]),[model,setModel]=useState<Model|null>(null)
+  const listRequestVersion=useRef(0)
   const [busy,setBusy]=useState(''),[error,setError]=useState(''),[notice,setNotice]=useState(''),[municipality,setMunicipality]=useState('1293'),[candidates,setCandidates]=useState<Candidate[]>([]),[searchMeta,setSearchMeta]=useState<any>(null)
   const [website,setWebsite]=useState(''),[improvements,setImprovements]=useState<ProspectImprovement[]>([]),[mockupId,setMockupId]=useState(''),[demoUrl,setDemoUrl]=useState(''),[captureAvailable,setCaptureAvailable]=useState(false),[searchAvailable,setSearchAvailable]=useState(false)
   const apply=useCallback((result:Model)=>{
@@ -24,10 +25,18 @@ export function ProspectBoard({projects,initialProjectId}:{projects:{id:string;n
     setSaved(old=>[result.prospect,...old.filter(p=>p.prospectId!==result.prospect.prospectId)])
   },[])
   const loadList=useCallback(async()=>{
+    const version=++listRequestVersion.current
     if(!projectId)return
-    const result=await request(base+'?'+new URLSearchParams({projectId}));setSaved(result.prospects);setCaptureAvailable(result.captureAvailable);setSearchAvailable(result.searchAvailable)
+    const result=await request(base+'?'+new URLSearchParams({projectId}))
+    // A previous project's response must never overwrite a newer selection.
+    if(version!==listRequestVersion.current)return
+    setSaved(result.prospects);setCaptureAvailable(result.captureAvailable);setSearchAvailable(result.searchAvailable)
   },[projectId])
-  useEffect(()=>{setModel(null);setCandidates([]);setSaved([]);setError('');void loadList().catch(e=>setError(e.message))},[loadList])
+  useEffect(()=>{
+    setModel(null);setCandidates([]);setSaved([]);setError('');setSearchMeta(null)
+    const version=listRequestVersion.current
+    void loadList().catch(e=>{if(listRequestVersion.current===version+1)setError(e.message)})
+  },[loadList])
   async function run(label:string,fn:()=>Promise<void>){setBusy(label);setError('');setNotice('');try{await fn()}catch(e){setError(e instanceof Error?e.message:'Åtgärden kunde inte slutföras.')}finally{setBusy('')}}
   async function open(id:string){await run('Läser prospekt',async()=>apply(await request(base+'/'+id+'?'+new URLSearchParams({projectId}))))}
   async function change(action:string,extra:Record<string,unknown>={}){
@@ -43,7 +52,7 @@ export function ProspectBoard({projects,initialProjectId}:{projects:{id:string;n
   const disabled=Boolean(busy)
   return <main className={styles.board}>
     <header className={styles.header}><div><a href="/build" className={styles.back}>← Web Studio</a><p className={styles.eyebrow}>OMNIRA WEBBUILDER · ETAPP 1</p><h1>Från företag till granskat koncept</h1><p>Samla källor, nuläge, tre förbättringar och demo i ett prospekt.</p></div><span className={styles.internal}>Intern granskning</span></header>
-    <div className={styles.project}><label>Projekt<select value={projectId} disabled={disabled} onChange={e=>setProjectId(e.target.value)}>{projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><p>Prospektets godkännande gäller den version som visas. Kundkontakt ingår inte i flödet.</p></div>
+    <div className={styles.project}><label>Projekt<select value={projectId} disabled={disabled} onChange={e=>{listRequestVersion.current++;setProjectId(e.target.value)}}>{projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><p>Prospektets godkännande gäller den version som visas. Kundkontakt ingår inte i flödet.</p></div>
     {error&&<div className={styles.error} role="alert">{error}</div>}{(busy||notice)&&<div className={styles.notice} role="status">{busy?busy+'…':notice}</div>}
     <div className={styles.layout}><aside className={styles.sidebar}>
       <section className={styles.panel}><p className={styles.eyebrow}>1 · HARVEY</p><h2>Hitta en bilhandlare</h2><label>Kommun<select value={municipality} disabled={disabled} onChange={e=>setMunicipality(e.target.value)}>{MUNICIPALITIES.map(m=><option key={m.code} value={m.code}>{m.name}</option>)}</select></label>

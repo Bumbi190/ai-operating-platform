@@ -112,7 +112,7 @@ export function prospectInputHash(content: Pick<ProspectContent, 'company' | 'we
 export function prospectHash(content: ProspectContent): string {return createHash('sha256').update(JSON.stringify(validateProspectContent(content))).digest('hex')}
 export function prospectReadiness(content: ProspectContent): ProspectReadiness {
   const missing: string[] = []
-  if (content.company.inactive) missing.push('Företaget är inte aktivt enligt SCB.')
+  if (content.company.inactive) missing.push('SCB har inte bekräftat att företaget är aktivt.')
   if (!content.website) missing.push('Bekräfta företagets aktuella webbadress.')
   if (!content.capture) missing.push('Spara nulägesbilder och observationer för mobil och dator.')
   if (content.improvements.length !== 3) missing.push('Granska exakt tre förbättringar med stöd i observationerna.')

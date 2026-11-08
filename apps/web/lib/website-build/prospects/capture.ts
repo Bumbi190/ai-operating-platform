@@ -12,7 +12,7 @@ export function localCaptureAvailable(env: NodeJS.ProcessEnv = process.env): boo
   if (env.WEBBUILDER_LOCAL_CAPTURE !== 'isolated-local' || env.VERCEL || env.VERCEL_ENV) return false
   try {const url=new URL(env.NEXT_PUBLIC_SUPABASE_URL ?? '');return url.protocol==='http:'&&url.hostname==='127.0.0.1'&&!!url.port} catch {return false}
 }
-export async function runProspectCapture(url: string): Promise<any> {
+export async function runProspectCapture(url: string, assetPaths: string[]=[]): Promise<any> {
   if (!localCaptureAvailable()) throw new WebsiteBuildError('LOCAL_CAPTURE_UNAVAILABLE',409)
   const target=publicWebsiteUrl(url)
   const env: NodeJS.ProcessEnv={NODE_ENV:'development',OMNIRA_PROSPECT_CAPTURE_MODE:'isolated-local'}
@@ -26,7 +26,7 @@ export async function runProspectCapture(url: string): Promise<any> {
     child.stderr.resume() // Provider/browser details never reach clients or application logs.
     child.once('error',()=>finish(new WebsiteBuildError('CAPTURE_UNAVAILABLE',503)))
     child.once('close',code=>{if(code!==0)return finish(new WebsiteBuildError('CAPTURE_FAILED',503));try{finish(undefined,JSON.parse(Buffer.concat(chunks).toString('utf8')))}catch{finish(new WebsiteBuildError('CAPTURE_FAILED',503))}})
-    child.stdin.end(JSON.stringify({url:target}))
+    child.stdin.end(JSON.stringify({url:target,assetPaths}))
   })
 }
 export async function captureProspectWebsite(projectId: string, prospectId: string, url: string, beforePersist: ()=>Promise<void>): Promise<ProspectCapture> {

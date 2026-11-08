@@ -1,6 +1,6 @@
 # Omnira Kalender — verifiering 2026-10-18
 
-Status: granskningsbar lokal förhandsversion, inte driftsatt. Kalenderns egna kontroller passerar. Den bredare Windows-körningen är inte grön; fullständig körning av det frysta granskningsunderlaget pågår fortfarande.
+Status: granskningsbar lokal förhandsversion, inte driftsatt. Kalenderns egna kontroller passerar. Den bredare Windows-körningen är inte grön. Avgränsad jämförelse mot main är nu avslutad: 361 tidigare fel reproduceras där, 12 kalenderrelaterade förväntningar har rättats och 20 oförändrade äldre webbbyggarfall har inte återkörts.
 
 ## Underlag och avgränsning
 
@@ -55,7 +55,7 @@ Dessa fyra fel är oförändrade Windows-baselinefel, inte PASS:
 
 De tre första orsakas av att äldre kommentarstrippning inte hanterar arbetskopians CRLF. Samma parser över main:s kanoniska Git/LF-text innehåller inte det felaktigt matchade platform_tokens. Det sista jämför Windows `lib\\media\\youtube-oauth.ts` med POSIX `lib/media/youtube-oauth.ts`. De berörda gamla test-/SQL-filerna är oförändrade även mot aktuell maind3f9fcc. Inga äldre migrationer, säkerhetsundantag eller orelaterade produkttester har skrivits om för att få grönt.
 
-Den separata hela projektkörningen startade på fryst39c5c32 med30s-test/60s-hookgränser, egen lokal testdatabas och SQL-opt-in avstängt där projektets andra fixturer kräver det. **Resultatet kompletteras när processen avslutats; den får inte beskrivas som grön.** Kalenderintroducerade gamla menyassertioner som hittades där är rättade: elva förväntningar över fem gamla navfiler, utan ändring i deras övriga kontrakt. Samlad omkörning av sex navsviter129/129 PASS.
+Den separata hela projektkörningen startade på fryst39c5c32 med30s-test/60s-hookgränser, egen lokal testdatabas och SQL-opt-in avstängt där projektets andra fixturer kräver det. **Avslutad2026-10-18T19:46:16Z, exit1:**15319 totalt,13808 passerade,393 misslyckade,1114 överhoppade och4 väntande (pending) i671 filer. Ingen kalenderfil hade ett misslyckat test. Elva fel gäller kalenderns gamla menyförväntningar och är senare rättade/omkörda. Se den avslutade jämförelsen2026-10-19 nedan för vilka fel som reproducerats på main och vilka som inte återkörts. Alla393 fel är namngivna i [full-suite-resultatet](2026-10-18-omnira-calendar-full-suite.json). Kalenderintroducerade gamla menyassertioner som hittades där är rättade: elva förväntningar över fem gamla navfiler, utan ändring i deras övriga kontrakt. Samlad omkörning av sex navsviter129/129 PASS.
 
 ## Förhandsversion och manuellt prov
 
@@ -90,3 +90,25 @@ Nästa användarprov: granska veckovyn och ett privat möte, därefter be Atlas 
 ## Integration med samtidig main-ändring
 
 PR404 lade till den redan applicerade news-review-migrationens exakta källkod. Konflikter löstes endast i policy/fixture/registry: canonical148/enforced134, oförändrade frysta14/30-listor och175 registrerade tabellklassificeringar inklusive de två pending kalendertabellerna. Den verkliga170-namnsledgern innehåller news review men avvisas fortfarande för saknad user_calendar_v1; bara en tydligt hypotetisk171-namnsledger passerar i test. Inga gamla migreringsbytes ändrades. Kalenderns nya SQL är -text-pinnad med oförändrad SHA.
+
+## Förnyad slutkontroll2026-10-19
+
+Produktkod vid kontroll: bdb3ecdaf3ba0fd7681c0c73b5e4b709c106b140, inklusive etikettförtydligandet b053687. Enda senare källändringen är ett äldre test som nu tar med CALENDAR_TOOLS i sin exakta namnkontroll; produktkoden är oförändrad.
+
+- finish-pure: **204/204 PASS** över kalenderns tid/validering/geometri/effekter, hela lib/atlas/conversation och de sex namngivna navsviterna i arbetsjournalens JSON. Ingen SQL-fixtur används i detta rena urval.
+- finish-typecheck: **PASS**, tsc --noEmit --pretty false.
+- finish-browser: **17/17 PASS**, samma riktiga CalendarWorkspace med uttrycklig minnesbaserad API-fixtur. Detta verifierar även den senare etikettändringen; inga påståenden om produktionslagring.
+- Atlas chat efter namnkontrollens rättning: **97/99 PASS**, inga överhoppade. De två kvarstående fallen om eventlistan respektive request.signal reproduceras båda på main. Eventlistans befintliga enkelcitatsskanner saknar redan handlarborsen_test_data_review och upptäcker inte kalenderns dubbelciterade send; kalenderns typade effekt har egna beteendetester. Inget av dessa gamla kontrakt har skrivits om.
+- Brave visar på nytt den färdiga exempelveckan. Skärmbilden ovan är uppdaterad. Ingen faktisk mikrofon eller DB-ansluten Atlas-UI har provats.
+
+### Kontrollerad jämförelse med huvudversionen
+
+En ny fristående arbetskopia på exakt main d3f9fcc1045026042f6bb9c0cd302ed0b7283127 använder samma Node/Vitest och Windowsmiljö. Endast de tidigare misslyckade fallen valdes via exakta fullName-regexp i en tillfällig Vitest-konfiguration. Kommandot motsvarar vitest run --config vitest.calendar-baseline.config.ts <73 uttryckliga testfiler> --no-file-parallelism --testTimeout=30000 --reporter=default --reporter=json. ATLAS_SQL_TEST_URL var tom som i den ursprungliga breda körningen. Inga produktionsuppgifter eller produktionsskrivningar användes.
+
+**373 valda fall:**361 misslyckas även på main,12 passerar där. Det senare är de11 redan rättade menyförväntningarna och ett kalenderintroducerat verktygsnamnstest. Verktygsnamnstestet gav först verkligt RED och passerar efter att de fyra importerade kalenderverktygen räknas med. Kravet på exakt namnlista behålls.
+
+Baselineresultatets3219 totala fall inkluderar2846 avsiktligt bortfiltrerade fall;373 kördes faktiskt. Ingen av de373 saknades i jämförelsen. Fördelningen av den ursprungliga körningens393 fel är därmed361 reproducerade på main +12 rättade kalenderförväntningar +20 ej återkörda äldre webbbyggarfall.
+
+De20 ej återkörda fallen ligger i sju filer under lib/website-build, lib/project/lifecycle samt lib/qa/website-build-drain.test.ts. Git diff av dessa hela områden mellan frysta39c5c32 och aktuell main är tom. De dyra gamla SQL-fixturerna kördes inte om; de anges som **ej reproducerade i denna jämförelse**, inte som PASS. Fullständiga fil-/fallnamn och fördelning finns i [jämförelseunderlaget](2026-10-19-omnira-calendar-baseline-comparison.json). Kvarvarande breda Windows-/äldre fixturfel åtgärdas separat enligt Task6:s avgränsning.
+
+Task6 är avslutad med faktiska begränsningar redovisade. Task7 väntar på Andrés konkreta resultatgranskning samt DB-anslutet text-/röstprov och driftskontroller. Kalendern är fortfarande inte live; migrationsgrinden och samtliga sex socialjobb är orörda.

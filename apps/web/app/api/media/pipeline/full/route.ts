@@ -29,7 +29,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { generateVoiceover } from '@/lib/media/elevenlabs'
 import { uploadAudio, uploadTimingData, uploadSceneImage } from '@/lib/media/storage'
 import { generateSceneImages, generateNewsImages } from '@/lib/media/ideogram'
-import { scoreScript, shouldRegenerate } from '@/lib/media/quality'
+import { scoreScript, shouldRegenerate, assertPassingScriptQuality } from '@/lib/media/quality'
 import { getBackgroundMusicUrl } from '@/lib/media/music'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 import { toJson } from '@/lib/supabase/json'
@@ -273,7 +273,7 @@ Angle: ${news.content_angle}`,
         emit({ step: 'quality_check', label: 'Kvalitetsgranskning...', progress: 38 })
 
         const sourceContext = `${news.title}\n${news.summary}\n${news.key_insight}`
-        const qualityScore = await scoreScript({ context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) }, script.hook, script.script, sourceContext)
+        let qualityScore = await scoreScript({ context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) }, script.hook, script.script, sourceContext)
 
         if (shouldRegenerate(qualityScore)) {
           emit({
@@ -307,7 +307,10 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
           const rewriteRaw = rewriteRes.content[0].type === 'text' ? rewriteRes.content[0].text : ''
           const rewriteClean = rewriteRaw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
           script = JSON.parse(rewriteClean) as ScriptWriterOutput
+          qualityScore = await scoreScript({ context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) }, script.hook, script.script, sourceContext)
         }
+
+        assertPassingScriptQuality(qualityScore)
 
         emit({
           step: 'script_done',

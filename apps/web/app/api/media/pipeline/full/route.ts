@@ -33,6 +33,7 @@ import { scoreScript, shouldRegenerate } from '@/lib/media/quality'
 import { getBackgroundMusicUrl } from '@/lib/media/music'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 import { toJson } from '@/lib/supabase/json'
+import { stampedScriptOutput } from '@/lib/media/script-writer-provenance'
 import { Anthropic } from '@anthropic-ai/sdk'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
@@ -268,12 +269,13 @@ Angle: ${news.content_angle}`,
         const scriptRaw = scriptRes.content[0].type === 'text' ? scriptRes.content[0].text : ''
         const scriptClean = scriptRaw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
         let script = JSON.parse(scriptClean) as ScriptWriterOutput
+        let actualScriptWriterResponse = scriptRes
 
         // ── Step 3b: Quality gate — score hook + density, regenerate if needed ─
         emit({ step: 'quality_check', label: 'Kvalitetsgranskning...', progress: 38 })
 
         const sourceContext = `${news.title}\n${news.summary}\n${news.key_insight}`
-        const qualityScore = await scoreScript({ context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) }, script.hook, script.script, sourceContext)
+        let qualityScore = await scoreScript({ context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) }, script.hook, script.script, sourceContext)
 
         if (shouldRegenerate(qualityScore)) {
           emit({
@@ -307,7 +309,11 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
           const rewriteRaw = rewriteRes.content[0].type === 'text' ? rewriteRes.content[0].text : ''
           const rewriteClean = rewriteRaw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
           script = JSON.parse(rewriteClean) as ScriptWriterOutput
+          actualScriptWriterResponse = rewriteRes
+          qualityScore = await scoreScript({ context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) }, script.hook, script.script, sourceContext)
         }
+
+        if (shouldRegenerate(qualityScore)) throw new Error('quality_review_required')
 
         emit({
           step: 'script_done',
@@ -329,7 +335,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
             cta: script.cta,
             tone: script.tone,
             estimated_duration: script.estimated_duration,
-            raw_output: toJson(script),
+            raw_output: toJson(stampedScriptOutput(script, actualScriptWriterResponse, 1)),
             quality_score: toJson(qualityScore),
             status: 'approved',   // skip manual approval
             voice_status: 'none',

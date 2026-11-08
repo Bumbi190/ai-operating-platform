@@ -88,6 +88,7 @@ import { MetaApiError, errorSummary, isPermanentError, redactSecrets } from '@/l
 import { decideContainerAction, containerAgeHours } from '@/lib/media/container-policy'
 import { persistChannelSuccess } from '@/lib/media/channel-persistence'
 import { PLATFORM_SOCIAL_PROJECT_SLUG } from '@/lib/media/social-destination'
+import { isApprovedQualityScore } from '@/lib/media/quality-validation'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 120
@@ -255,6 +256,7 @@ export async function GET(request: Request) {
       video_url,
       video_status,
       status,
+      quality_score,
       instagram_creation_id,
       instagram_creation_id_at,
       instagram_media_id,
@@ -278,9 +280,10 @@ export async function GET(request: Request) {
     // a plain embed would still return every tenant's rows.
     .eq('projects.slug', PLATFORM_SOCIAL_PROJECT_SLUG)
   if (scriptIdParam) queue = queue.eq('id', scriptIdParam)
+  // Look beyond held legacy rows so one bad score cannot starve valid posts.
   const { data: scripts } = await queue
     .order('generated_at', { ascending: true })
-    .limit(1)
+    .limit(scriptIdParam ? 1 : 25)
 
   if (!scripts || scripts.length === 0) {
     log('check', 'Nothing to publish — all clear')
@@ -291,7 +294,16 @@ export async function GET(request: Request) {
     })
   }
 
-  const script = scripts[0]
+  const selectedScript = scripts.find(candidate => isApprovedQualityScore(candidate.quality_score))
+  if (!selectedScript) {
+    log('quality', `Blocked ${scripts.length} unverified script(s); no external posting`)
+    return NextResponse.json({
+      status: 'editorial_review_required', blockedScripts: scripts.length, dryRun,
+    }, { status: 409 })
+  }
+  // Freeze the checked, non-null row in a fresh const: nested publisher
+  // functions must retain this narrowing across their async boundaries.
+  const script = selectedScript
 
   // The script's OWN project is the execution authority. MEDIA_PIPELINE_PROJECT
   // is billing attribution; that every script happens to sit in that project

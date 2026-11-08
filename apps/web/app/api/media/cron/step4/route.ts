@@ -35,6 +35,7 @@ import { logRun } from '@/lib/media/run-log'
 import { projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
 import { assertExecutionDispatchAllowed, isExecutionStopped } from '@/lib/governance/execution-dispatch'
 import { PLATFORM_SOCIAL_PROJECT_SLUG } from '@/lib/media/social-destination'
+import { isApprovedQualityScore } from '@/lib/media/quality-validation'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -73,6 +74,7 @@ export async function GET(request: Request) {
       render_id,
       render_bucket,
       instagram_creation_id,
+      quality_score,
       retry_count,
       composition,
       audio_url,
@@ -106,6 +108,11 @@ export async function GET(request: Request) {
   if (!script) {
     log('Nothing to do — no pending renders without IG container')
     return NextResponse.json({ status: 'nothing_to_do' })
+  }
+
+  // Do not create a provider container for an unverified legacy manuscript.
+  if (!isApprovedQualityScore(script.quality_score)) {
+    return NextResponse.json({ status: 'editorial_review_required', scriptId: script.id }, { status: 409 })
   }
 
   // The script's OWN project is the execution authority. Not

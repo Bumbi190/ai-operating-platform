@@ -25,6 +25,7 @@ import {
   assertExecutionDispatchAllowed, isExecutionStopped, stopIsNotRetryable,
 } from '@/lib/governance/execution-dispatch'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
+import { isApprovedQualityScore } from '@/lib/media/quality-validation'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -60,7 +61,7 @@ export async function GET(request: Request) {
 
   let query = db
     .from('media_scripts')
-    .select('id, project_id, video_status, hook, audio_url, timing_url, duration_ms, images, script, composition, render_attempts, media_news_items(title)')
+    .select('id, project_id, video_status, hook, audio_url, timing_url, duration_ms, images, script, composition, render_attempts, quality_score, media_news_items(title)')
     .eq('voice_status', 'ready')
     .eq('status', 'approved')
     .order('generated_at', { ascending: false })
@@ -81,6 +82,10 @@ export async function GET(request: Request) {
 
   if (!script) {
     return NextResponse.json({ status: 'nothing_to_do', reason: 'No script waiting for images in last 30 min' })
+  }
+
+  if (!isApprovedQualityScore(script.quality_score)) {
+    return NextResponse.json({ status: 'editorial_review_required', scriptId: script.id }, { status: 409 })
   }
 
   console.log(`[cron/step3] Generating images + starting render for script ${script.id}`)

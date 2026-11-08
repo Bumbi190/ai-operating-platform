@@ -23,6 +23,7 @@ import { classifyTopic } from '@/lib/atlas/content-tags'
 import { NEWS_SYSTEM, buildScriptSystem } from '@/lib/media/script-prompt'
 import { toJson } from '@/lib/supabase/json'
 import { getMediaTextClient } from '@/lib/media/text-client'
+import { stampedScriptOutput } from '@/lib/media/script-writer-provenance'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 import { GLOBAL_ONLY, projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
 
@@ -360,10 +361,11 @@ export async function GET(request: Request) {
     messages: [{ role: 'user', content: `Write a short-form video script:\n${scriptContext}` }],
   }))
   let script = JSON.parse((scriptRes.content[0].type === 'text' ? scriptRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as ScriptWriterOutput
+  let actualScriptWriterResponse = scriptRes
 
   // Quality gate
   const sourceContext = fullArticleText || `${news.title}\n${news.summary}\n${news.key_insight}`
-  const qualityScore  = await scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext)
+  let qualityScore  = await scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext)
 
   // Skip the (expensive) regenerate pass if we're low on budget — better to ship a
   // slightly weaker hook than to 504 and save nothing.
@@ -373,6 +375,13 @@ export async function GET(request: Request) {
       messages: [{ role: 'user', content: `Rewrite — previous rejected.\nSTORY:\n${scriptContext}\nREJECTED HOOK: "${script.hook}"\nVERDICT: ${qualityScore.verdict}\nWEAK SPOTS: ${qualityScore.weak_spots.join(', ')}\nFix everything. Hook must score 8+.` }],
     }))
     script = JSON.parse((rewriteRes.content[0].type === 'text' ? rewriteRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as ScriptWriterOutput
+    actualScriptWriterResponse = rewriteRes
+    qualityScore = await scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext)
+  }
+
+  // A rewrite cannot inherit the rejected script's quality approval.
+  if (shouldRegenerate(qualityScore)) {
+    return NextResponse.json({ error: 'quality_review_required' }, { status: 422 })
   }
 
   // Save script — voice_status='none' signals step2 to pick it up
@@ -380,7 +389,8 @@ export async function GET(request: Request) {
     project_id: project.id, news_item_id: newsItemId,
     hook: script.hook, script: script.script, captions: script.captions,
     hashtags: script.hashtags, cta: script.cta, tone: script.tone,
-    estimated_duration: script.estimated_duration, raw_output: toJson(script),
+    estimated_duration: script.estimated_duration,
+    raw_output: toJson(stampedScriptOutput(script, actualScriptWriterResponse, 1)),
     quality_score: toJson(qualityScore), status: 'approved',
     voice_status: 'none', video_status: 'none', version: 1,
     topic: classifyTopic(script.hook, script.script), format: 'reel',

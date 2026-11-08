@@ -92,9 +92,15 @@ function operations(projectId: string, tag: string) {
   }
 }
 
+const VERIFIED_EDITORIAL_QA = {
+  hook_strength: 9, retention_score: 9, visual_relevance: 9,
+  shareability: 9, discussion_potential: 9, hallucination_risk: 9,
+  overall: 9, passed: true, verdict: 'Verified editorial fixture for authority testing.', weak_spots: [],
+}
+
 function mediaScript(id: string, projectId: string, over: Row = {}): Row {
   return {
-    id, project_id: projectId, news_item_id: null,
+    id, project_id: projectId, news_item_id: null, quality_score: { ...VERIFIED_EDITORIAL_QA },
     hook: `${id}-HOOK`, script: 'body', cta: null, hashtags: [], captions: [], tone: 'insider',
     status: 'approved', voice_status: 'ready', video_status: 'ready',
     video_url: `https://cdn.test/${id}.mp4`, render_id: null, render_bucket: null,
@@ -612,7 +618,7 @@ vi.mock('@/lib/bugs/digest', async (importOriginal) => {
 })
 vi.mock('@/lib/media/quality', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/media/quality')>()),
-  scoreScript: async () => ({ overall: 9, hook_strength: 9, verdict: 'ok', weak_spots: [] }),
+  scoreScript: async () => ({ ...VERIFIED_EDITORIAL_QA }),
 }))
 
 /**
@@ -1295,6 +1301,48 @@ describe('A6-3 · the breaking chain cannot turn a project owner into the platfo
 })
 
 describe('A6-3 · the machine publishers post only the platform social project’s content', () => {
+  it('an old quality-parse placeholder cannot publish to Instagram or Facebook', async () => {
+    DB.tables.media_scripts = [mediaScript('script-editorial-hold', SOCIAL, {
+      quality_score: { ...VERIFIED_EDITORIAL_QA, verdict: 'Quality check parse error — proceeding with caution.' },
+      generated_at: minutesAgo(10),
+    })]
+    const res = await cron('publish')
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ status: 'editorial_review_required' })
+    expect(publishCalls()).toEqual([])
+    // The cron's unrelated housekeeping writes may still run before queue selection.
+    // No publish claim or per-script state mutation may be performed on the held row.
+    expect(DB.mutations('media_scripts').filter(m => m.filters.includes('eq:id'))).toEqual([])
+  })
+
+  it('an unverified oldest row cannot starve a valid publication', async () => {
+    DB.tables.media_scripts = [
+      mediaScript('script-held-older', SOCIAL, {
+        quality_score: { ...VERIFIED_EDITORIAL_QA, verdict: 'Quality check parse error — proceeding with caution.' },
+        generated_at: minutesAgo(200),
+      }),
+      mediaScript('script-verified-newer', SOCIAL, { generated_at: minutesAgo(180) }),
+    ]
+    const res = await cron('publish')
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ scriptId: 'script-verified-newer' })
+    expect(posted('script-held-older')).toEqual([])
+    expect(posted('script-verified-newer').length).toBeGreaterThan(0)
+  })
+
+  it('a named unverified YouTube short and Instagram container are both blocked', async () => {
+    DB.tables.media_scripts = [mediaScript('script-editorial-hold', SOCIAL, {
+      quality_score: { ...VERIFIED_EDITORIAL_QA, verdict: 'Quality check parse error — proceeding with caution.' },
+      generated_at: minutesAgo(10),
+    })]
+    const yt = await cron('youtube', '?scriptId=script-editorial-hold')
+    expect(yt.status).toBe(200)
+    expect(EXTERNAL).toEqual([])
+    const ig = await cron('step4', '?scriptId=script-editorial-hold')
+    expect(ig.status).toBe(409)
+    expect(EXTERNAL).toEqual([])
+  })
+
   it('11 · scheduled cron/publish still publishes — the platform’s oldest ready script, not another tenant’s', async () => {
     const res = await cron('publish')
     expect(res.status).toBe(200)

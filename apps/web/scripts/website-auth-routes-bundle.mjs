@@ -33,10 +33,12 @@ async function browserPhase({client,browserProxy,fixture,docker,receipt,password
  const complete=new Promise(resolve=>{child.on('exit',code=>{ended=true;resolve({code});});child.on('error',()=>{ended=true;resolve({code:-1});});});
  child.stdin.write(fixture+'\n');
  for(let n=0;n<240&&!ended;n++){
-  if(ready)break;
+  // A validated route-runner error must terminate promptly; it is not a
+  // browser connectivity timeout. No sensitive stderr is surfaced.
+  if(ready||protocolError||result?.completed===false)break;
   await new Promise(r=>setTimeout(r,500));
  }
- if(!ready){child.kill();throw Error('BROWSER_SERVER_NOT_READY');}
+ if(!ready){child.kill();throw Error(result?.completed===false?'BROWSER_ROUTE_RUNNER_REFUSED':protocolError?'BROWSER_PROTOCOL_INVALID':'BROWSER_SERVER_NOT_READY');}
  const {runBrowserAcceptance}=await import('./website-auth-browser-local.mjs');
  receipt.browser=await runBrowserAcceptance({password,a,b,ready});
  child.stdin.end(JSON.stringify({event:'browser-done',completed:receipt.browser.completed})+'\n');

@@ -45,12 +45,18 @@ async function main(){
  let externalAttempts=0
  let refreshRequests=0
  let workerReady:any=null
+ // Fixed hosts within the owned Docker network. Disable redirects so a
+ // malicious local 30x cannot exfiltrate credentials to an external origin.
+ const allowedOrigins=new Set([base,appBase,'http://auth:9999','http://rest:3000'])
+ const allowedFixtureDestination=(url:URL)=>!url.username&&!url.password&&!url.hash&&allowedOrigins.has(url.origin)
  const nativeFetch=globalThis.fetch
  globalThis.fetch=(async(input:any,init:any)=>{
   const url=new URL(typeof input==='string'?input:input instanceof URL?input.href:input.url)
-  if(![base,appBase,'http://auth:9999','http://rest:3000'].includes(url.origin)){externalAttempts++;throw Error('NONLOCAL_FETCH_REFUSED')}
-  return nativeFetch(input,{...init,signal:init?.signal??AbortSignal.timeout(10000)})
+  if(!allowedFixtureDestination(url)){externalAttempts++;throw Error('NONLOCAL_FETCH_REFUSED')}
+  return nativeFetch(input,{...init,redirect:'manual',signal:init?.signal??AbortSignal.timeout(10000)})
  }) as typeof fetch
+ check('test_local_gateway_denies_external_origin',!allowedFixtureDestination(new URL('https://untrusted.example.invalid/')))
+ check('test_local_gateway_denies_userinfo_spoof',!allowedFixtureDestination(new URL('http://auth:9999@untrusted.example.invalid/')))
  // SDK gateway paths only. No fabricated Auth or database responses.
  const server=createServer(async(req,res)=>{
   try{
@@ -83,8 +89,16 @@ async function main(){
  try{
   if(f.nextServer){
    nextProcess=spawn(process.execPath,[f.nextServer],{env:{...process.env,NODE_ENV:'production',PORT:'3100',HOSTNAME:'0.0.0.0',NEXT_TELEMETRY_DISABLED:'1'},stdio:'ignore'})
-   let ready=false
-   for(let n=0;n<100;n++){try{const r=await fetch(appBase+'/api/website-build-settings');if(r.status===401){ready=true;break}}catch{}await new Promise(r=>setTimeout(r,100))}
+   let ready=false,lastStatus=0
+   // Cold isolated Node/Next startup can exceed ten seconds on a constrained
+   // local Docker host. Keep the boundary strict, but report HTTP status vs
+   // child-process failure instead of a misleading browser timeout.
+   for(let n=0;n<300;n++){
+    if(nextProcess.exitCode!==null)break
+    try{const r=await fetch(appBase+'/api/website-build-settings');lastStatus=r.status;if(r.status===401){ready=true;break}}catch{}
+    await new Promise(r=>setTimeout(r,100))
+   }
+   if(!ready)throw Error('NEXT_HTTP_NOT_READY_'+lastStatus+'_'+(nextProcess.exitCode===null?'RUNNING':'EXITED'))
    check('next_http_server_ready',ready)
    const redirect=await fetch(appBase+'/',{redirect:'manual'})
    check('next_middleware_redirects_missing_session',redirect.status===307&&new URL(redirect.headers.get('location')??'',appBase).pathname==='/login')
@@ -174,5 +188,9 @@ async function main(){
  }finally{if(nextProcess){nextProcess.kill();await Promise.race([new Promise<void>(r=>nextProcess!.once('exit',()=>r())),new Promise<void>(r=>setTimeout(r,2000))])}await new Promise<void>(r=>server.close(()=>r()))}
 }
 main().then(()=>process.stdout.write(JSON.stringify({completed:true,checks})+'\n')).catch(error=>{
- process.stdout.write(JSON.stringify({completed:false,checks,failure:checks.some(c=>!c.passed)?String(error.message):'ROUTE_RUNNER_FAILED'})+'\n')
+ // Allow only non-sensitive, fixed-vocabulary readiness metadata in receipts.
+ // Never echo fixture input, URLs, JWTs, provider responses or process stderr.
+ const message=String(error?.message??'')
+ const readiness=/^NEXT_HTTP_NOT_READY_(?:0|[1-5][0-9][0-9])_(?:RUNNING|EXITED)$/.test(message)?message:null
+ process.stdout.write(JSON.stringify({completed:false,checks,failure:checks.some(c=>!c.passed)?message:readiness??'ROUTE_RUNNER_FAILED'})+'\n')
 })

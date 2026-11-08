@@ -110,6 +110,9 @@ try{
   check('static_export_has_homepage',Boolean(indexFile))
   const html=await zip.file(indexFile).async('string')
   receipt.exportSha256=hash(zipBytes);receipt.artifactSha256=model.prospect.content.build.sha256
+  // Keep the synthetic ZIP locally for offline packaging checks, never in the repository.
+  const evidenceDirectory=join(directory,'synthetic-evidence');mkdirSync(evidenceDirectory,{recursive:true})
+  writeFileSync(join(evidenceDirectory,'concept-export.zip'),zipBytes)
   check('export_contains_company_and_noindex',html.includes(company.name)&&html.includes('noindex'))
   stage='desktop_and_mobile_preview'
   const images=join(directory,'synthetic-evidence');mkdirSync(images,{recursive:true})

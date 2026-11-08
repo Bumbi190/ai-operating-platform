@@ -3,6 +3,7 @@ import {chromium} from '@playwright/test'
 import {createHash} from 'node:crypto'
 import {existsSync} from 'node:fs'
 import {publicTarget, startCaptureProxy} from './website-prospect-network.mjs'
+import {hasMeaningfulRenderedWebsite} from './website-prospect-render-readiness.mjs'
 
 const input=JSON.parse(await new Promise((resolve,reject)=>{let data='';process.stdin.on('data',chunk=>{data+=chunk;if(data.length>8192)reject(Error('INPUT_LIMIT'))});process.stdin.on('end',()=>resolve(data));process.stdin.on('error',reject)}))
 const target=publicTarget(input.url)
@@ -33,8 +34,17 @@ try {
     publicTarget(page.url())
     if(finalUrl&&finalUrl!==page.url())throw Error('VIEWPORT_URL_MISMATCH')
     finalUrl=page.url()
-    await page.waitForLoadState('networkidle',{timeout:6000}).catch(()=>warnings.add('Sidan hade fortsatt nätverkstrafik vid skärmbilden.'))
+    // DOMContentLoaded and even networkidle can precede React/Vite hydration.
+    // Never mistake a loader-only shell for real website evidence.
+    const rendered=await page.waitForFunction(hasMeaningfulRenderedWebsite,null,{timeout:15000}).then(()=>true).catch(()=>false)
+    if(!rendered)throw Error('SITE_RENDER_INCOMPLETE')
+    await page.waitForLoadState('networkidle',{timeout:4000}).catch(()=>warnings.add('Sidan hade fortsatt nätverkstrafik vid skärmbilden.'))
     await page.evaluate(async()=>{await document.fonts.ready})
+    // Trigger lazy images only inside the bounded screenshot area. Scrolling
+    // is read-only; the browser request gate still refuses non-GET methods.
+    const screenshotLimit=await page.evaluate(()=>Math.min(6000,Math.max(document.documentElement.scrollHeight,document.body.scrollHeight)))
+    await page.evaluate(async limit=>{for(let top=0;top<limit;top+=Math.max(400,Math.floor(innerHeight*.75))){scrollTo(0,top);await new Promise(done=>setTimeout(done,110))}scrollTo(0,0)},screenshotLimit)
+    await page.waitForTimeout(300)
     const result=await page.evaluate(({viewport,width,height})=>{
       const clean=value=>(value??'').replace(/\s+/g,' ').trim()
       const visible=element=>{const r=element.getBoundingClientRect(),s=getComputedStyle(element);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'}
@@ -57,10 +67,13 @@ try {
       add('image-alt','Synliga bilder utan alt-attribut: '+missingAlt.length+'.',String(missingAlt.length),'img:not([alt])')
       const text=clean(document.body.innerText)
       add('visible-copy','Utdrag ur sidans synliga text.',text.slice(0,1800),'body')
-      return {observations:obs,pageHeight:Math.max(document.documentElement.scrollHeight,document.body.scrollHeight),title:document.title,overflow:docWidth>width+1,imagesLoaded:[...document.images].every(image=>image.complete&&image.naturalWidth>0)}
+      const pageHeight=Math.max(document.documentElement.scrollHeight,document.body.scrollHeight),clipBottom=Math.min(6000,Math.max(height,pageHeight))
+      const relevantImages=[...document.images].filter(image=>{const r=image.getBoundingClientRect(),s=getComputedStyle(image),top=r.top+scrollY;return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'&&top<clipBottom&&top+r.height>0})
+      return {observations:obs,pageHeight,title:document.title,overflow:docWidth>width+1,imagesLoaded:relevantImages.every(image=>image.complete&&image.naturalWidth>0)}
     },{viewport,width,height})
     const captureHeight=Math.min(6000,Math.max(height,result.pageHeight))
     if(result.pageHeight>6000)warnings.add('Skärmbilden visar de första 6000 px av sidan.')
+    if(!result.imagesLoaded)warnings.add('Minst en synlig bild hann inte laddas i skärmbildsområdet; kontrollera bilden manuellt.')
     const bytes=await page.screenshot({type:'png',clip:{x:0,y:0,width,height:captureHeight},timeout:15000,animations:'disabled'})
     images.push({viewport,width,height:captureHeight,png:bytes.toString('base64'),sha256:createHash('sha256').update(bytes).digest('hex')})
     observations.push(...result.observations)

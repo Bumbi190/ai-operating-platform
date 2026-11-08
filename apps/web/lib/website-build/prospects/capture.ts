@@ -16,7 +16,15 @@ export async function runProspectCapture(url: string, assetPaths: string[]=[]): 
   if (!localCaptureAvailable()) throw new WebsiteBuildError('LOCAL_CAPTURE_UNAVAILABLE',409)
   const target=publicWebsiteUrl(url)
   const env: NodeJS.ProcessEnv={NODE_ENV:'development',OMNIRA_PROSPECT_CAPTURE_MODE:'isolated-local'}
-  for (const key of ['PATH','Path','SystemRoot','WINDIR','TEMP','TMP','USERPROFILE','HOME','LOCALAPPDATA']) if (process.env[key]) env[key]=process.env[key]!
+  // Fixed allowlist only. Dynamic process.env[key] would permit unreviewed
+  // credential reads, and is forbidden by the platform's CI credential audit.
+  const inherited: Record<string,string|undefined> = {
+    PATH:process.env.PATH, Path:process.env.Path, SystemRoot:process.env.SystemRoot,
+    WINDIR:process.env.WINDIR, TEMP:process.env.TEMP, TMP:process.env.TMP,
+    USERPROFILE:process.env.USERPROFILE, HOME:process.env.HOME,
+    LOCALAPPDATA:process.env.LOCALAPPDATA
+  }
+  for (const [key,value] of Object.entries(inherited)) if(value) env[key]=value
   return new Promise((resolveResult,reject)=>{
     const child=spawn(process.execPath,[resolve(process.cwd(),'scripts/website-prospect-capture.mjs')],{env,stdio:['pipe','pipe','pipe'],windowsHide:true})
     const chunks: Buffer[]=[];let bytes=0,finished=false

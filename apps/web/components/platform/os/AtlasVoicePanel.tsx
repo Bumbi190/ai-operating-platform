@@ -49,7 +49,9 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
   const muteLabel = micOn ? 'Muta mikrofonen' : s.micProblem ? 'Återanslut mikrofonen' : 'Slå på mikrofonen'
   const voiceLabel = s.voice === 'nova' ? 'Nova' : s.voices.find(v => v.key === s.voice)?.label ?? 'Atlas'
   const status = s.transcribing ? 'Tolkar det du sa' : s.speaking ? 'Pratar' : s.sending ? 'Arbetar'
-    : s.opening ? 'Startar mikrofonen' : s.listening ? 'Lyssnar' : micOn ? 'Redo att lyssna'
+    : s.opening ? 'Startar mikrofonen'
+    : s.listening ? (s.inputMode === 'batch' ? 'Lyssnar - inväntar paus' : 'Lyssnar')
+    : micOn ? 'Redo att lyssna'
     : s.micProblem ? 'Återanslut mikrofon' : 'Mikrofonen är mutad'
   const mute = () => s.toggleMute()
   const muteIcon = micOn ? <Mic size={17} /> : <MicOff size={17} />
@@ -118,7 +120,8 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
     </form>
     <details className={styles.voiceSettings}>
       <summary>Mikrofontest</summary>
-      <p>Prata normalt. Staplarna vid Nova ska röra sig när mikrofonen får ljud. Om de inte gör det, prova en annan mikrofon här.</p>
+      <p>Prata normalt i mikrofonen och pausa ungefär två sekunder efter en hel mening.
+      Staplarna bredvid Nova ska röra sig när ljud kommer in. Om inget händer, kontrollera att rätt mikrofon är vald nedan.</p>
       <label htmlFor="atlas-shared-mic-device">Välj mikrofon</label>
       <select id="atlas-shared-mic-device" value={s.micDeviceId}
         onChange={e => s.selectMicDevice(e.currentTarget.value)}>

@@ -63,6 +63,7 @@ export default function NovaBridgePage() {
           <h2 className="text-sm font-semibold text-cyan-200">Så fungerar samtalet</h2>
           <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-zinc-300">
             <li>Du godkänner mikrofonen här en gång. Ingen dold inspelning startas före ditt klick.</li>
+            <li>Under det här testet använder Nova en stabilare talöverföring: säg en hel mening och vänta ungefär två sekunder. Om hon inte svarar, öppna pratbubblan nere till höger och välj Mikrofontest.</li>
             <li>Atlas använder den befintliga inloggade Omnira-sessionen, rösten och samtalsmotorn.</li>
             <li>Efter godkännandet kan <strong>Ctrl + Alt + Space</strong> starta eller pausa samtalet från Nova Desktop.</li>
             <li><strong>Ctrl + Alt + .</strong> avbryter ett pågående Atlas-svar. Den synliga Stopp-knappen fungerar också.</li>

@@ -817,7 +817,7 @@ export function AtlasRuntimeProvider({
   }
   const voiceSession = useAtlasVoiceSession({
     enabled: voiceConversationEnabled && !voiceReadOnly,
-    streamingAvailable: true, live: true, conversation,
+    streamingAvailable: true, live: true, preferBatch: true, conversation,
     projectId: activeProject?.id ?? null,
     beforeStart: deactivateLegacy, onEvent: handleVoiceEvent, onDraftCaptureEnd: setCaptureError,
   })

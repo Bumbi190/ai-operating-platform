@@ -12,8 +12,8 @@ import { createClient } from '@/lib/supabase/client'
 
 type Timing = { quietMs: number | null; textMs: number | null; audioMs: number | null }
 
-export function useAtlasVoiceSession({ enabled = true, streamingAvailable = false, live = false, conversation: shared, beforeStart, onEvent, onDraftCaptureEnd, projectId = null }: {
-  enabled?: boolean; streamingAvailable?: boolean; live?: boolean
+export function useAtlasVoiceSession({ enabled = true, streamingAvailable = false, live = false, preferBatch = false, conversation: shared, beforeStart, onEvent, onDraftCaptureEnd, projectId = null }: {
+  enabled?: boolean; streamingAvailable?: boolean; live?: boolean; preferBatch?: boolean
   conversation?: AtlasConversationController; beforeStart?(): void
   onEvent?(event: StreamEvent, conversationId: string): void
   onDraftCaptureEnd?(notice: string | null): void
@@ -28,7 +28,11 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
   const snapshot = useSyncExternalStore(conversation.subscribe, conversation.snapshot, conversation.snapshot)
   const [voices, setVoices] = useState<{ key: AtlasSwedishVoice; label: string }[]>([])
   const [voice, setVoice] = useState<AtlasSwedishVoice>('anders')
-  const [inputMode, setInputMode] = useState<'batch' | 'streaming'>(live && streamingAvailable ? 'streaming' : 'batch')
+  // Nova voice pilot defaults to the existing bounded batch STT path until
+  // the realtime WebSocket route has passed physical microphone/packet tests.
+  // Batch sends only after the VAD-detected user utterance has ended; silence
+  // and background listening are not uploaded or billed.
+  const [inputMode, setInputMode] = useState<'batch' | 'streaming'>(live && streamingAvailable && !preferBatch ? 'streaming' : 'batch')
   const [measurements, setMeasurements] = useState<{ mode: 'batch' | 'streaming'; endToPlaybackMs: number }[]>([])
   const [pauseMs, setPauseMs] = useState(1400)
   const [playbackMode, setPlaybackMode] = useState<'speakers' | 'headphones'>('speakers')

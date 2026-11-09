@@ -68,6 +68,20 @@ describe('Compact persistent Atlas call shell', () => {
     expect(render(session(), true)).not.toContain('Avbryt svar och uppl')
   })
 
+  it('shows that the safe Nova pilot waits for a short silence before batch transcription', () => {
+    const dock = render(session({ inputMode: 'batch' }), true)
+    expect(dock).toContain('Lyssnar - inv')
+    const open = render(session({ inputMode: 'batch' }))
+    expect(open).toContain('Mikrofontest')
+    expect(open).toContain('tv')
+    const hook = readFileSync(join(process.cwd(), 'lib/atlas/voice-pilot/use-voice-session.ts'), 'utf8')
+    const runtime = readFileSync(join(process.cwd(), 'lib/atlas/runtime.tsx'), 'utf8')
+    expect(runtime).toContain('preferBatch: true')
+    expect(hook).toContain("live && streamingAvailable && !preferBatch ? 'streaming' : 'batch'")
+    const capture = readFileSync(join(process.cwd(), 'lib/atlas/voice-pilot/pcm-capture.ts'), 'utf8')
+    expect(capture).toContain('deps.transcribe(pcm16(audio!)')
+  })
+
   it('shows muted state without falsely ending the call', () => {
     const html = render(session({ mic: false, listening: false }), true)
     expect(html).toContain('Mikrofonen är mutad')

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import Link from 'next/link'
-import { MessageCircle, Mic, MicOff, Minus, PhoneOff, Send } from 'lucide-react'
+import { MessageCircle, Mic, MicOff, Minus, PhoneOff, Send, Square } from 'lucide-react'
 import type { AtlasVoiceSession } from '@/lib/atlas/voice-pilot/use-voice-session'
 import { isAtlasSwedishVoice } from '@/lib/atlas/voice-pilot/voices'
 import { createMicSignalStore, type MicSignalStore } from '@/lib/atlas/voice-pilot/mic-diagnostics'
@@ -54,6 +54,8 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
   const mute = () => s.toggleMute()
   const muteIcon = micOn ? <Mic size={17} /> : <MicOff size={17} />
   const endIcon = <PhoneOff size={17} />
+  const canInterrupt = s.speaking || s.outputBusy || s.sending || s.snapshot.pending
+  const interruptLabel = 'Avbryt svar och uppläsning (redan genomförda åtgärder kan inte ångras)'
   const micStore = s.micSignalStore ?? EMPTY_SIGNAL_STORE
 
   if (minimized) return <aside className={styles.dock} aria-label="Pågående röstsamtal med Atlas">
@@ -64,13 +66,20 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
       </div>
     </div>
     <div className={styles.actions}>
+      {canInterrupt && <button type="button" className={styles.interrupt} onClick={s.interruptForCorrection}
+        aria-label={interruptLabel} title={interruptLabel}><Square size={16} fill="currentColor" /></button>}
       <button type="button" onClick={mute} aria-label={muteLabel} aria-pressed={!micOn} title={muteLabel}>{muteIcon}</button>
       <button type="button" onClick={onShow} aria-label="Visa chatten" title="Visa chatten"><MessageCircle size={18} /></button>
       <button type="button" className={styles.hangup} onClick={onClose} aria-label="Lägg på" title="Lägg på">{endIcon}</button>
     </div>
   </aside>
 
-  return <section ref={panel} tabIndex={-1} className={styles.panel} aria-label="Atlas röstsamtal">
+  return <section ref={panel} tabIndex={-1} className={styles.panel} aria-label="Atlas röstsamtal"
+    onKeyDown={event => {
+      if (canInterrupt && event.key === 'Escape') {
+        event.preventDefault(); event.stopPropagation(); s.interruptForCorrection()
+      }
+    }}>
     <header className={styles.header}>
       <div className={styles.identity} aria-live="polite">
         <strong>{voiceLabel}</strong><div className={styles.statusRow}>
@@ -79,6 +88,8 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
         </div>
       </div>
       <div className={styles.actions}>
+        {canInterrupt && <button type="button" className={styles.interrupt} onClick={s.interruptForCorrection}
+          aria-label={interruptLabel} title={interruptLabel + ' - eller tryck Escape i panelen'}><Square size={16} fill="currentColor" /></button>}
         <button type="button" onClick={mute} aria-label={muteLabel} aria-pressed={!micOn} title={muteLabel}>{muteIcon}</button>
         <button type="button" onClick={onMinimize} aria-label="Minimera chatten" title="Minimera chatten"><Minus size={18} /></button>
         <button type="button" className={styles.hangup} onClick={onClose} aria-label="Lägg på" title="Lägg på">{endIcon}</button>

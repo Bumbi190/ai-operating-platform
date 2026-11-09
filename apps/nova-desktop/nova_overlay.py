@@ -11,6 +11,7 @@ import math
 import os
 from pathlib import Path
 import queue
+import threading
 import time
 import tkinter as tk
 from tkinter import font as tkfont, simpledialog
@@ -23,13 +24,14 @@ from nova_placement import (
     foreground_window_rectangle, choose_working_zone,
     read_saved_anchor, save_anchor, clear_anchor,
 )
-from nova_auto_voice import AutoVoiceState, safe_auto_navigation, safe_window_focus
+from nova_auto_voice import AutoVoiceState, safe_auto_navigation, safe_stop_command, safe_uia_read_action, safe_window_focus
 from nova_native_tasks import (
     TaskPlan, parse_native_task, safe_native_voice_action, execute_native_step,
 )
 from nova_campaign_review import campaign_review_intent, campaign_review_url
 from nova_browser_nav import BrowserNavigator, safe_browser_command
 from nova_bridge import NovaBridge, PROD_ORIGIN, read_saved_preview_origin
+from nova_uia import UIAutomationError, build_page_read_prompt, find_foreground_browser_window, read_window
 from nova_windows import list_known_windows, focus_known_window
 from nova_theme import (
     TRANSPARENT, SURFACE, PANEL, INPUT, ACCENT, CYAN, TEXT, MUTED,
@@ -206,6 +208,9 @@ class NovaOverlay:
         self.pending = ""
         self.pending_choices = []  # only visible inside the ⋯ menu
         self.pending_native_plan: TaskPlan | None = None
+        self.pending_uia_read_instruction: str | None = None
+        self.pending_uia_read_target: dict | None = None
+        self.uia_results: queue.Queue = queue.Queue()
         self.native_task_epoch = 0
         self.history: list[tuple[str, str]] = []  # session UI trace, not AI memory
         self._atlas_login_opened = False  # explicit SSO sign-in before pairing key
@@ -483,9 +488,10 @@ class NovaOverlay:
         actions = tk.Frame(content, bg=SURFACE)
         actions.pack(fill="x")
         self._btn(actions, "🎙 Prata", self.dictate).pack(side="left", padx=(0, 8))
+        self._btn(actions, "Stopp", self.stop, width=8).pack(side="left", padx=(0, 8))
         self._btn(actions, "➤ Skicka", self.send, emphasis=True).pack(side="right")
         tk.Label(content,
-                 text="Enter skickar · Shift+Enter ny rad · Fler val under ⋯",
+                 text="Enter skickar · Ctrl+. stoppar ? Shift+Enter ny rad · Fler val under ⋯",
                  bg=SURFACE, fg="#828ba9", font=("Segoe UI", 8)).pack(
                      fill="x", pady=(6, 0))
 
@@ -762,6 +768,12 @@ class NovaOverlay:
                     self.live_reply_id = None
         except queue.Empty:
             pass
+        try:
+            while True:
+                epoch, result = self.uia_results.get_nowait()
+                self._finish_uia_read(epoch, result)
+        except queue.Empty:
+            pass
         if not self.closed:
             self.root.after(150, self._poll_bridge)
 
@@ -769,7 +781,9 @@ class NovaOverlay:
         try:
             while True:
                 event = self.events.get_nowait()
-                if event == "open":
+                if event == "stop":
+                    self.stop()
+                elif event == "open":
                     if self._manual_anchor is None:
                         self._redock_near_pointer()
                     self.expand(listen=False)
@@ -1028,6 +1042,131 @@ class NovaOverlay:
             ])
             self._phase("godkannande", "Kommandot mottaget · kräver en separat behörighet")
 
+    def _present_uia_read_preview(self, instruction: str):
+        """Capture the foreground browser, then ask before reading any page text."""
+        self.pending_uia_read_instruction = None
+        self.pending_uia_read_target = None
+        self.pending_native_plan = None
+        self._choices([])
+
+        if not self.bridge.state.online():
+            self._append(
+                "warn",
+                "Nova: Atlas ?r inte ansluten. Ingen sidtext l?ses. Anslut Atlas och upprepa kommandot.",
+            )
+            self._choices([
+                ("Anslut Atlas", self.connect_atlas),
+                ("Avbryt", self._cancel_uia_read),
+            ])
+            self._phase("godkannande", "Anslut Atlas innan sidtext l?ses")
+            return
+
+        try:
+            target = find_foreground_browser_window()
+        except (UIAutomationError, ValueError) as exc:
+            self._append(
+                "warn",
+                f"Nova: Jag hittar inget aktivt, synligt webbl?sarf?nster att l?sa ({exc}).",
+            )
+            self._phase("godkannande", "?ppna r?tt chatt i Brave, Chrome, Edge eller Firefox")
+            return
+
+        self.pending_uia_read_instruction = instruction
+        self.pending_uia_read_target = target
+        browser = target.get("processName", "webbl?saren").capitalize()
+        self._append(
+            "step",
+            f"Nova: Jag har hittat {browser}. Jag kan l?sa den synliga sidtexten "
+            "i det f?nstret och skicka h?gst 3 000 tecken till Atlas i skrivskyddat l?ge. "
+            "Kontrollera att r?tt chatt och flik ?r ?ppen. Inga klick, skrivningar "
+            "eller meddelanden skickas. Godk?nn l?sningen?",
+        )
+        self._choices([
+            ("L?s och analysera", self._approve_uia_read),
+            ("Avbryt", self._cancel_uia_read),
+        ])
+        self._phase("godkannande", "V?ntar p? godk?nnande att l?sa vald webbl?sarsida")
+
+    def _cancel_uia_read(self):
+        self.pending_uia_read_instruction = None
+        self.pending_uia_read_target = None
+        self._choices([])
+        self._append("step", "Nova: Sidl?sningen avbr?ts. Ingen sidtext l?stes eller skickades.")
+        self._phase("redo", "Redo f?r ett nytt kommando")
+
+    def _approve_uia_read(self):
+        instruction = self.pending_uia_read_instruction
+        target = self.pending_uia_read_target
+        self.pending_uia_read_instruction = None
+        self.pending_uia_read_target = None
+        self._choices([])
+
+        if not instruction or not target:
+            self._phase("redo", "Ingen v?ntande sidl?sning")
+            return
+        if not self.bridge.state.online():
+            self._append("warn", "Nova: Atlas kopplades fr?n. Ingen sidtext l?stes eller skickades.")
+            self._phase("godkannande", "Anslut Atlas och upprepa kommandot")
+            return
+
+        epoch = self.task_epoch
+        self._phase("tolkar", "L?ser synlig text fr?n den godk?nda webbl?sarsidan")
+        threading.Thread(
+            target=self._read_uia_page_worker,
+            args=(epoch, instruction, target),
+            daemon=True,
+            name="Nova-UIA-PageRead",
+        ).start()
+
+    def _read_uia_page_worker(self, epoch: int, instruction: str, target: dict):
+        """Read outside Tk's UI thread; only return a bounded prompt to the UI."""
+        try:
+            page = read_window(target, user_requested=True, max_chars=8000)
+            prompt = build_page_read_prompt(instruction, page.get("text", ""))
+            result = {"ok": True, "page": page, "prompt": prompt}
+        except (UIAutomationError, ValueError) as exc:
+            result = {"ok": False, "error": str(exc)}
+        except Exception:
+            result = {"ok": False, "error": "uia_worker_error"}
+        self.uia_results.put((epoch, result))
+
+    def _finish_uia_read(self, epoch: int, result: dict):
+        """Complete the local-to-Atlas handoff on Tk's main thread."""
+        if self.closed or epoch != self.task_epoch:
+            return
+        if not result.get("ok"):
+            error = result.get("error", "uia_worker_error")
+            self._append(
+                "warn",
+                f"Nova: Jag kunde inte l?sa den godk?nda sidan ({error}). Inget skickades till Atlas.",
+            )
+            self._phase(
+                "godkannande",
+                "Kontrollera att r?tt webbl?sarf?nster fortfarande ?r aktivt och f?rs?k igen",
+            )
+            return
+        if not self.bridge.state.online():
+            self._append(
+                "warn",
+                "Nova: Sidtexten l?stes lokalt men Atlas kopplades fr?n. Inget skickades.",
+            )
+            self._phase("godkannande", "Anslut Atlas och upprepa kommandot")
+            return
+
+        page = result["page"]
+        task_id, detail = self.bridge.state.enqueue(result["prompt"])
+        if not task_id:
+            self._append("warn", "Nova: " + detail)
+            self._phase("godkannande", detail)
+            return
+
+        self._append(
+            "step",
+            f"Nova: L?ste synlig text fr?n {page.get('processName', 'webbl?saren')} "
+            "och skickade den till Atlas i skrivskyddat l?ge. Inga ?ndringar gjordes.",
+        )
+        self._phase("tolkar", "Atlas analyserar den valda sidtexten")
+
     def _present_native_plan(self, plan: TaskPlan):
         """Review multi-step navigation; read-only local diagnostics run directly.
 
@@ -1099,10 +1238,20 @@ class NovaOverlay:
         if not text:
             self._phase("redo", "Skriv eller diktera vad jag ska göra")
             return
+        # Local emergency stop is handled before any Atlas/OS routing.
+        # It never becomes a network prompt or a Windows automation step.
+        if safe_stop_command(text):
+            self._append("you", "DU: " + text)
+            self.command.delete("1.0", "end")
+            self.draft = ""
+            self.stop()
+            return
         self.task_epoch += 1
         # A new user instruction cancels only steps not yet dispatched.
         self.native_task_epoch += 1
         self.pending_native_plan = None
+        self.pending_uia_read_instruction = None
+        self.pending_uia_read_target = None
         # Manual or automatic Send must clear the one-shot voice state.
         self._auto_voice.cancel()
         # A quick Enter must not start dictation later from a pending shortcut.
@@ -1117,11 +1266,15 @@ class NovaOverlay:
             # A transcript that was not an exact allowlisted navigation must
             # never reach arbitrary local UI or shell execution.
             if (safe_voice_action is None or
-                    (safe_auto_navigation(text) or safe_browser_command(text)
+                    (safe_stop_command(text) or safe_auto_navigation(text) or safe_browser_command(text)
                      or safe_window_focus(text)
                      or safe_native_voice_action(text)
-                     or campaign_review_intent(text)) != safe_voice_action):
+                     or campaign_review_intent(text)
+                     or safe_uia_read_action(text)) != safe_voice_action):
                 self._received_voice_without_navigation(text)
+                return
+            if safe_voice_action.kind == "uia_read_preview":
+                self._present_uia_read_preview(text)
                 return
             if safe_voice_action.kind in ("native_read", "native_preview"):
                 plan = parse_native_task(text)
@@ -1141,9 +1294,11 @@ class NovaOverlay:
             if folder:
                 self._open_project_folder(folder)
                 return
-            action = (safe_browser_command(text) or safe_window_focus(text)
-                      or campaign_review_intent(text) or route(text))
-        if action.kind == "campaign_review":
+            action = (safe_uia_read_action(text) or safe_browser_command(text)
+                      or safe_window_focus(text) or campaign_review_intent(text) or route(text))
+        if action.kind == "uia_read_preview":
+            self._present_uia_read_preview(text)
+        elif action.kind == "campaign_review":
             self._open_campaign_review(action.url)
         elif action.kind in ("browser_control", "browser_focus"):
             self._navigate_browser(action)
@@ -1258,6 +1413,8 @@ class NovaOverlay:
         self._auto_voice.cancel()
         self.native_task_epoch += 1
         self.pending_native_plan = None
+        self.pending_uia_read_instruction = None
+        self.pending_uia_read_target = None
         self.bridge.state.cancel()
         self.task_epoch += 1
         self._choices([])
@@ -1270,6 +1427,8 @@ class NovaOverlay:
         self.closed = True
         self.native_task_epoch += 1
         self.pending_native_plan = None
+        self.pending_uia_read_instruction = None
+        self.pending_uia_read_target = None
         self._auto_voice.cancel()
         self.listener.stop()
         self.bridge.stop()

@@ -371,3 +371,45 @@ describe("shared turn settlement", () => {
     expect(settled).toEqual([{conversationId:C,generation:1,current:false,ok:true}])
   })
 })
+
+describe("voice call interruption and safe resume", () => {
+  it("aborts the active fetch stream, drops pending state and preserves the user's correction", async () => {
+    let requestSignal: AbortSignal | undefined
+    let streamCanceled = false
+    const c = new AtlasConversationController(async (_url, init) => {
+      requestSignal = init?.signal as AbortSignal
+      return new Response(new ReadableStream<Uint8Array>({
+        start() {},
+        cancel() { streamCanceled = true },
+      }))
+    })
+    c.activateConversation({ id: C, saved: [], state: "ok", projectId: P })
+    const turn = c.sendTurn({ conversationId: C, text: "Fel uppgift", inputSource: "voice" })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(c.snapshot().pending).toBe(true)
+    expect(c.cancelActiveTurn()).toBe(true)
+    expect(requestSignal?.aborted).toBe(true)
+    expect(c.snapshot().pending).toBe(false)
+    expect(c.snapshot().entries.some(e => e.kind === "notice" && e.text.includes("avbrutet"))).toBe(true)
+    expect((await turn).ok).toBe(false)
+    expect(streamCanceled).toBe(true)
+    expect(c.cancelActiveTurn()).toBe(false)
+  })
+
+  it("a new turn can finish after cancel without a stale answer overwriting it", async () => {
+    let count = 0
+    const c = new AtlasConversationController(async (_url, _init) => {
+      if (++count === 1) return new Response(new ReadableStream<Uint8Array>({ start() {} }))
+      return events({ event: "text", text: "Rattelse mottagen" }, { event: "done" })
+    })
+    c.activateConversation({ id: C, saved: [], state: "ok" })
+    const first = c.sendTurn({ conversationId: C, text: "Gammal fraga", inputSource: "voice" })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(c.cancelActiveTurn()).toBe(true)
+    const second = await c.sendTurn({ conversationId: C, text: "Ny fraga", inputSource: "voice" })
+    expect(second.ok).toBe(true)
+    expect((await first).ok).toBe(false)
+    expect(c.snapshot().pending).toBe(false)
+    expect(c.snapshot().history.some(message => message.content === "Rattelse mottagen")).toBe(true)
+  })
+})

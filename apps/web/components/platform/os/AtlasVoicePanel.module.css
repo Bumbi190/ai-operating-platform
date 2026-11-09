@@ -35,6 +35,8 @@
 .actions button:focus-visible, .composer button:focus-visible, .voiceSettings summary:focus-visible, .voiceSettings select:focus-visible,
 .composer textarea:focus-visible { outline: 2px solid #86e3d6; outline-offset: 2px; }
 .actions button:disabled, .composer button:disabled { opacity: .45; cursor: default; }
+.actions .interrupt { color: #fff0c9; background: #70421b; border-color: #d19b4f; }
+.actions .interrupt:hover { background: #89511d; }
 .actions .hangup { color: #ffd2cf; background: #69292b; border-color: #c64c56; }
 .actions .hangup:hover { background: #85363a; }
 .messages { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px; }

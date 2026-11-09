@@ -27,8 +27,9 @@ SAFE_NAV_TARGETS = frozenset((
     "atlas", "omnira", "handlarborsen", "familje stunden",
     "familje-stunden", "familjestunden", "webbuilder",
     "strato", "strato mail", "strato webmail", "min strato",
-    "kalender", "kalendern", "kalendern i omnira", "omnirakalendern",
-    "omnirakalender", "omniras kalender",
+    "chatgpt", "chat gpt", "spotify",
+    "kalender", "kalendern", "kalendern i omnira", "omniras kalender", "calendar",
+    "planering", "planeringsvy", "planeringsoversikt",
     "marknadsplanering", "marknadsforing", "sociala medier",
     "contentcenter", "content center", "innehallscenter",
     "innehallsoversikt", "omniras innehallsoversikt", "content",
@@ -42,6 +43,26 @@ _DIRECT_FOCUS = re.compile(
     r"(?:kan\s+du\s+)?(?:byt\s+till|vaxla\s+till)\s+"
     r"(?:vs\s*code|visual\s+studio\s+code|outlook|filezilla|epic|epic\s+games)$"
 )
+_UIA_READ = re.compile(
+    r"^(?:hej\s+)?(?:nova[\s,:]+)?"
+    r"(?:las|sammanfatta|analysera)\s+"
+    r"(?:(?:den\s+har|den\s+aktiva|aktiva|den)\s+)?"
+    r"(?:(?:chatgpt|chat\s+gpt)[\s-]+)?"
+    r"(?:sidan|chatten|konversationen)\b(?:\s+.*)?$"
+)
+
+
+
+def safe_stop_command(text: str) -> Action | None:
+    """An exact emergency stop outranks navigation, Atlas handoff and approvals."""
+    cleaned = _TRAILING_PUNCT.sub("", normalized(text)).strip()
+    if cleaned not in {
+        "stopp", "stop", "avbryt", "tyst", "sluta prata",
+        "nova stopp", "nova stop", "nova avbryt", "nova tyst",
+        "nova sluta prata", "hej nova stopp", "hej nova avbryt",
+    }:
+        return None
+    return Action("stop", description="Stoppar Novas aktiva uppdrag och beg?r att Atlas avbryter p?g?ende svar.")
 
 
 def safe_window_focus(text: str) -> Action | None:
@@ -53,6 +74,18 @@ def safe_window_focus(text: str) -> Action | None:
     return action if action.kind == "focus" and action.url in {
         "vscode", "outlook", "filezilla", "epic"
     } else None
+
+
+def safe_uia_read_action(text: str) -> Action | None:
+    """Prepare a user-approved read of the visible foreground browser page."""
+    cleaned = _TRAILING_PUNCT.sub("", normalized(text)).strip()
+    if not cleaned or len(cleaned) > 500 or not _UIA_READ.fullmatch(cleaned):
+        return None
+    return Action(
+        "uia_read_preview",
+        "active_browser",
+        "L\u00e4ser synlig sidtext i aktiv webbl\u00e4sare efter godk\u00e4nnande.",
+    )
 
 
 def safe_auto_navigation(text: str) -> Action | None:
@@ -141,11 +174,13 @@ class AutoVoiceState:
             return None
         decision = VoiceDecision(
             text=cleaned,
-            safe_navigation=(safe_auto_navigation(cleaned)
+            safe_navigation=(safe_stop_command(cleaned)
+                             or safe_auto_navigation(cleaned)
                              or safe_browser_command(cleaned)
                              or safe_window_focus(cleaned)
                              or safe_native_voice_action(cleaned)
-                             or campaign_review_intent(cleaned)),
+                             or campaign_review_intent(cleaned)
+                             or safe_uia_read_action(cleaned)),
         )
         self.cancel()
         return decision

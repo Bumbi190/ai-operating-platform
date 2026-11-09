@@ -57,6 +57,17 @@ describe('Compact persistent Atlas call shell', () => {
     expect(html).not.toContain('Starta mikrofonen')
     expect(html).not.toContain('Välj projektvy')
   })
+  it('exposes an immediate interrupt in both the dock and full panel during speech', () => {
+    const active = session({ speaking: true, sending: true, interruptForCorrection: fn })
+    const dock = render(active, true)
+    const expanded = render(active)
+    expect(dock).toContain('Avbryt svar och uppl')
+    expect(expanded).toContain('Avbryt svar och uppl')
+    expect((dock.match(/<button /g) ?? [])).toHaveLength(4)
+    expect(expanded).toContain('tryck Escape i panelen')
+    expect(render(session(), true)).not.toContain('Avbryt svar och uppl')
+  })
+
   it('shows muted state without falsely ending the call', () => {
     const html = render(session({ mic: false, listening: false }), true)
     expect(html).toContain('Mikrofonen är mutad')
@@ -133,6 +144,13 @@ describe('Compact persistent Atlas call shell', () => {
     const runtime = readFileSync(join(process.cwd(), 'lib/atlas/runtime.tsx'), 'utf8')
     expect(runtime).toContain("const currentSessionActive = managedVoice ? voicePanel !== 'closed'")
     expect(runtime).toContain("setVoicePanel('minimized')")
+  })
+  it('hangup cannot cancel an unrelated text turn when voice does not own the request', () => {
+    const hook = readFileSync(join(process.cwd(), 'lib/atlas/voice-pilot/use-voice-session.ts'), 'utf8')
+    const stop = hook.slice(hook.indexOf('function stopAll()'), hook.indexOf('async function refreshMicDevices()', hook.indexOf('function stopAll()')))
+    expect(stop).toContain('const ownsTurn = sendingRef.current')
+    expect(stop).toContain('if (ownsTurn) conversation.cancelActiveTurn()')
+    expect(stop).not.toMatch(/^\s*conversation\.cancelActiveTurn\(\)/m)
   })
   it('keeps hands-free interruption behind an explicit headset choice in expanded microphone settings', () => {
     const html = render(session({ playbackMode: 'headphones' }))

@@ -81,6 +81,10 @@ export class AtlasConversationController {
   constructor(private request: typeof fetch = (...args) => fetch(...args)) {}
   private creating: {generation: number; promise: Promise<string | null>} | null = null;
   private compactPending: symbol | null = null;
+  private activeTurn: {
+    conversationId: string; generation: number; controller: AbortController;
+    reader: ReadableStreamDefaultReader<Uint8Array> | null;
+  } | null = null;
   private calendarListeners = new Set<(effect:CalendarChangedEffect)=>void>();
   subscribeCalendarChanged = (listener:(effect:CalendarChangedEffect)=>void) => {
     this.calendarListeners.add(listener);
@@ -145,6 +149,30 @@ export class AtlasConversationController {
     } finally {
       if (this.compactPending === token) this.compactPending = null;
     }
+  }
+
+  /**
+   * User-initiated correction. Abort the current network stream and its
+   * response reader immediately. Already executed server-side actions cannot
+   * be rolled back, so this does not claim transactional cancellation.
+   */
+  cancelActiveTurn(): boolean {
+    const running = this.activeTurn;
+    if (!running || running.conversationId !== this.active.id
+        || !this.active.pending || running.controller.signal.aborted) return false;
+    this.generation++;
+    this.compactPending = null;
+    running.controller.abort();
+    void running.reader?.cancel().catch(() => {});
+    this.activeTurn = null;
+    this.update(running.conversationId, {
+      pending: false,
+      entries: [
+        ...this.active.entries,
+        { kind: "notice", tone: "error", text: "Svar avbrutet av dig. Redan utf?rda ?tg?rder g?r inte automatiskt tillbaka." },
+      ],
+    });
+    return true;
   }
 
   snapshot = () => this.active;
@@ -330,6 +358,10 @@ export class AtlasConversationController {
       ...start.history,
       { role: "user" as const, content: text },
     ];
+    const turnController = new AbortController();
+    const activeTurn = { conversationId: id, generation, controller: turnController,
+      reader: null as ReadableStreamDefaultReader<Uint8Array> | null };
+    this.activeTurn = activeTurn;
     let reply = startReply([...start.entries, { kind: "user", text }]),
       settled = false,
       completed = false,
@@ -353,6 +385,7 @@ export class AtlasConversationController {
     try {
       const response = await this.request("/api/chat", {
         method: "POST",
+        signal: turnController.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           buildChatRequestBody({
@@ -379,9 +412,12 @@ export class AtlasConversationController {
       streaming = true;
       const reader = response.body.getReader(),
         decoder = new TextDecoder();
+      activeTurn.reader = reader;
       let buffer = "";
       while (true) {
+        if (turnController.signal.aborted) return result = { ok: false, notice: INTERRUPTED_NOTICE };
         const { done, value } = await reader.read();
+        if (turnController.signal.aborted) return result = { ok: false, notice: INTERRUPTED_NOTICE };
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         const split = splitStreamBuffer(buffer);
@@ -438,14 +474,17 @@ export class AtlasConversationController {
             turn.onEvent?.(event);
           }
         }
-        this.update(id, { entries: reply.entries });
+        if (!turnController.signal.aborted) this.update(id, { entries: reply.entries });
       }
+      if (turnController.signal.aborted) return result = { ok: false, notice: INTERRUPTED_NOTICE };
       if (!settled) return fail(INCOMPLETE_NOTICE);
       return result = { ok: completed };
     } catch {
+      if (turnController.signal.aborted) return result = { ok: false, notice: INTERRUPTED_NOTICE };
       return fail(streaming ? INTERRUPTED_NOTICE : CONNECTION_FAILED_NOTICE);
     } finally {
-      this.update(id, { pending: false });
+      if (this.activeTurn === activeTurn) this.activeTurn = null;
+      if (!turnController.signal.aborted) this.update(id, { pending: false });
       const event = {conversationId: id, generation, current: isCurrent(), ok: result.ok};
       this.settledListeners.forEach(listener => listener(event));
     }

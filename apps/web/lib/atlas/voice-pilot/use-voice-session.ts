@@ -73,10 +73,29 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
     },
   })
   function stopSpeech() { speechEpoch.current++; timedReply.current = null; player.current?.stop() }
-  function interruptForCorrection() {
+  function abortReplyForCorrection({ preserveSpeechInput }: { preserveSpeechInput: boolean }) {
     queuedVoice.current = null
-    stopSpeech(); capture.current?.discard()
-    setNotice(mic ? 'Rösten är avbruten. Säg rättelsen när Atlas lyssnar. Ett redan påbörjat jobb fortsätter; din rättelse skickas därefter.' : 'Rösten är stoppad. Ett redan påbörjat jobb fortsätter och svaret finns kvar i text.')
+    // Retire the response generation before aborting. Late model/audio
+    // callbacks cannot restart paid playback or overwrite the correction.
+    turnGeneration.current++
+    sendingRef.current = false
+    if (mounted.current) setSending(false)
+    const canceled = conversation.cancelActiveTurn()
+    stopSpeech()
+    if (!preserveSpeechInput) capture.current?.discard()
+    if (mounted.current) setNotice(canceled
+      ? 'Avbrutet. Atlas stoppade svaret och uppläsningen. Rätta mig när mikrofonen lyssnar. Redan utförda åtgärder ångras inte automatiskt.'
+      : 'Uppläsningen ar stoppad. Fortsätt när mikrofonen lyssnar.')
+  }
+  function interruptForCorrection() {
+    abortReplyForCorrection({ preserveSpeechInput: false })
+  }
+  function onSpeechBargeIn() {
+    // Headphone mode only. Do not discard the new speech that triggered
+    // interruption; the microphone must capture the user's correction.
+    if (sendingRef.current || conversation.snapshot().pending || outputActive.current) {
+      abortReplyForCorrection({ preserveSpeechInput: true })
+    }
   }
   /** Mute affects only microphone capture, never TTS, the active reply or the call. */
   function pauseMic() {
@@ -91,6 +110,13 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
   function stopAll() {
     queuedVoice.current = null; heldDraft.current = ''
     if (draftReceiver.current) latest.current.onDraftCaptureEnd?.('Mikrofoninspelningen avslutades. Du kan starta den igen.')
+    // The voice call shares Atlas's conversation controller with normal chat.
+    // Unmounting/muting voice must NOT cancel a text chat the voice hook does
+    // not own. Only an active voice-owned request may be canceled by hangup.
+    const ownsTurn = sendingRef.current
+    turnGeneration.current++; sendingRef.current = false
+    if (mounted.current) setSending(false)
+    if (ownsTurn) conversation.cancelActiveTurn()
     lifetime.current++; draftReceiver.current = null; stopSpeech(); pauseMic()
   }
 
@@ -219,7 +245,7 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
         if (!micRef.current) setMicProblem(message)
       } },
       draft: text => { if (currentMic()) writeDraft([heldDraft.current, text].filter(Boolean).join(' '), 'voice') },
-      interrupt: () => { if (currentMic()) stopSpeech() },
+      interrupt: () => { if (currentMic()) onSpeechBargeIn() },
       receive: text => {
         if (!currentMic()) return
         const receiver = draftReceiver.current
@@ -276,7 +302,7 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
     const record = { quietMs: quietMs ?? null, textMs: null as number | null, audioMs: null as number | null, startedAt: performance.now(), audioToken, mode: inputMode }
     timedReply.current = record; setTiming({ ...record })
     let responseText = '', spoken = 0, completed = false, submittedConversationId: string | null = null
-    const current = () => mounted.current && token === lifetime.current
+    const current = () => mounted.current && token === lifetime.current && turnToken === turnGeneration.current
     const flush = (final: boolean) => {
       if (!current() || audioToken !== speechEpoch.current || !voices.some(v => v.key === selectedVoice)) return
       for (;;) {

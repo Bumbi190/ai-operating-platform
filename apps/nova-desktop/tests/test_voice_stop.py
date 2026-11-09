@@ -1,0 +1,50 @@
+"""Emergency stop takes precedence over navigation, Atlas and native task plans."""
+import unittest
+from pathlib import Path
+
+from nova_auto_voice import AutoVoiceState, safe_stop_command, safe_auto_navigation
+from nova_native_tasks import parse_native_task
+
+
+class SafeStopCommandTests(unittest.TestCase):
+    def test_strict_stop_phrases(self):
+        for spoken in ("stopp", "Nova stopp", "Nova avbryt", "Hej Nova avbryt", "Tyst!", "Nova sluta prata"):
+            with self.subTest(spoken=spoken):
+                action = safe_stop_command(spoken)
+                self.assertIsNotNone(action)
+                self.assertEqual(action.kind, "stop")
+                self.assertIsNone(safe_auto_navigation(spoken))
+                self.assertIsNone(parse_native_task(spoken))
+
+    def test_stop_does_not_match_business_or_work_commands(self):
+        for spoken in (
+            "Nova stoppa en kalenderhändelse",
+            "Nova avbryt publiceringen i Facebook",
+            "Nova sluta skicka mejlet",
+            "Nova stoppa alla Windows-processer",
+            "Jag behöver hjälp att stoppa kostnader",
+        ):
+            with self.subTest(spoken=spoken):
+                self.assertIsNone(safe_stop_command(spoken))
+
+    def test_spoken_stop_is_eligible_for_safe_auto_dispatch(self):
+        state = AutoVoiceState(quiet_seconds=3)
+        state.arm("")
+        self.assertIsNone(state.observe_submission("Nova stopp", 10.0))
+        self.assertIsNone(state.observe_submission("Nova stopp", 12.9))
+        result = state.observe_submission("Nova stopp", 13.1)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.safe_navigation.kind, "stop")
+        self.assertTrue(state.completed)
+
+    def test_overlay_dispatches_stop_before_native_plan_or_atlas_handoff(self):
+        source = (Path(__file__).resolve().parents[1] / "nova_overlay.py").read_text(encoding="utf-8")
+        send = source[source.index("    def send(self,"):source.index("    def _open_campaign_review(", source.index("    def send(self,"))]
+        self.assertLess(send.index("if safe_stop_command(text):"), send.index("parse_native_task(text)"))
+        self.assertIn("self.stop()", send)
+        self.assertIn('self._btn(actions, "Stopp", self.stop', source)
+        self.assertIn('self.command.bind("<Control-period>", self._stop_shortcut)', source)
+
+
+if __name__ == "__main__":
+    unittest.main()

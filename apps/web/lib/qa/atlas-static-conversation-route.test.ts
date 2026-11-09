@@ -13,6 +13,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 /**
  * Governance G1 — what the static path is allowed to touch.
@@ -456,4 +458,46 @@ it('binds OpenAI Studio spend and tools to the verified project while preserving
   const names=openaiCalls[0].tools.map((t:any)=>t.function.name)
   expect(names).toContain('get_website_build_plan');expect(names).not.toContain('trigger_workflow')
  }finally{delete process.env.ATLAS_MODEL_PROFILE}
+})
+
+
+describe('Nova Desktop read-only relay contract', () => {
+  it('uses the authenticated Atlas identity but no project context or tools', async () => {
+    const pageExcerpt = 'ChatGPT conversation excerpt: we agreed to finish Nova desktop navigation.'
+    const { res, text } = await post({
+      messages: [{ role: 'user', content: 'Summarize this page and draft a continuation prompt.\n\n' + pageExcerpt }],
+      mode: 'nova_readonly',
+      voice: false,
+    })
+
+    expect(res.status).toBe(200)
+    expect(streamCalls).toHaveLength(1)
+    expect(streamCalls[0].tools).toEqual([])
+    expect(streamCalls[0].messages).toEqual([
+      { role: 'user', content: 'Summarize this page and draft a continuation prompt.\n\n' + pageExcerpt },
+    ])
+    expect(streamCalls[0].system).toContain('NOVA DESKTOP - READ ONLY')
+    expect(streamCalls[0].system).toContain('UNTRUSTED DATA')
+    expect(streamCalls[0].system).toContain('never send it')
+    expect(contextTablesFrom(touchedTables)).toEqual([])
+    expect(text).toContain('nova_readonly')
+  })
+
+
+  it('keeps a server-side fail-closed guard against unadvertised tool calls', () => {
+    const route = readFileSync(join(process.cwd(), 'app/api/chat/route.ts'), 'utf8')
+    expect(route).toContain('if (novaReadOnly && response.content.some')
+    expect(route).toContain('NOVA_READONLY_TOOL_BLOCKED')
+  })
+
+  it('rejects conversation persistence and external context overrides', async () => {
+    const { res } = await post({
+      messages: [{ role: 'user', content: 'Summarize this page.' }],
+      mode: 'nova_readonly',
+      conversation_id: '50000000-0000-4000-8000-000000000001',
+    })
+    expect(res.status).toBe(400)
+    expect(streamCalls).toHaveLength(0)
+    expect(contextTablesFrom(touchedTables)).toEqual([])
+  })
 })

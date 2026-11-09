@@ -115,7 +115,7 @@ export default function NovaBridgePage() {
           if (statusFailures >= 3) atlasAbort.abort()
         })
         .finally(() => { statusBusy = false })
-    }, 2500)
+    }, 400)
     try {
     const response = await fetch('/api/chat', {
       method: 'POST',
@@ -166,7 +166,7 @@ export default function NovaBridgePage() {
     }
     if (stoppedRef.current) return
     if (!sawDone) throw new Error('Atlas avbröt strömmen innan svarskvittot kom fram.')
-    turnsRef.current = [...turns, { role: 'assistant', content: answer }].slice(-12)
+    turnsRef.current = [...turns, { role: 'assistant' as const, content: answer }].slice(-12)
     await push(task.id, 'done')
     setMessage('Atlas svarade. Inget exekveringsverktyg kördes.')
     } finally {

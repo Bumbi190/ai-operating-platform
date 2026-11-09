@@ -4,6 +4,26 @@ Windows-native companion **to the existing Omnira/Atlas**, not a separate
 AI, memory database, workflow engine or agent. It runs in the logged-in
 Windows session and is available via **Ctrl+Alt+Space**.
 
+## Emergency stop: native desktop and Atlas browser
+
+- Nova Desktop now has a visible **Stopp** button.
+- **Ctrl+Alt+.** is a second global Windows hotkey handled by Nova's resident
+  host. It stops pending local plans and requests cancellation of a pending
+  read-only Atlas relay turn. It never launches an already closed UI.
+- **Ctrl+.** works in Nova's focused composer. Exact spoken one-shot commands
+  such as "Nova stopp" and "Nova avbryt" are handled locally before all
+  browser navigation, Atlas and native task routing.
+- An action already completed is not rolled back. Windows Win+H is an OS
+  service; native Stop does not promise to end the Windows microphone session.
+- Atlas browser voice has a visible interrupt control, cancels pending streamed
+  answers and TTS, and permits speech correction in headphone mode. With
+  speakers, use the visible control (or Escape when the panel has focus).
+- Ctrl+Alt+Space currently starts one-shot Windows dictation, NOT yet a true
+  continuous duplex Nova Desktop call. Reuse Atlas's existing microphone,
+  VAD, streaming STT, and TTS through a protected browser-paired audio bridge.
+- No production deploy or live voice validation has happened for this feature
+  branch; the new behavior requires a protected preview and real hardware tests.
+
 ## Tested now on stationära Hultgren
 
 - Omnira Premium glass theme: dark navy-violet layered gradient, subtle cyan
@@ -82,14 +102,14 @@ Windows session and is available via **Ctrl+Alt+Space**.
   the SendInput integrity boundary. A successful SendInput means Windows
   accepted the chord – it does NOT prove a website successfully navigated.
 - Visible text, replies and activity state. Stop cannot undo prior steps.
-- Known browser destinations: Omnira Atlas/planning/projects, Gmail,
+- Known browser destinations: Omnira Atlas/calendar/planning/projects, Gmail,
   Handlarbörsen, Familje-Stunden, Outlook Web plus Facebook, Instagram,
   LinkedIn and Pinterest. Recognizes spoken requests such as "Nova kan du
   navigera mig till Facebook" and "Hej Nova, vill du öppna Facebook?".
   Text is auto-submitted after the three-second pause in voice mode. Opening a
   page does NOT grant general GUI
   click/scroll control or permission to post/send anything.
-- Local program starts: Brave, Chrome, VS Code, Outlook Classic, FileZilla, Epic.
+- Local program starts: Brave, Chrome, Spotify, VS Code, Outlook Classic, FileZilla, Epic.
 - Explorer opens one of three verified project roots: Omnira, Handlarborsen,
   Familje-Stunden. No arbitrary paths or command execution.
 - Enumerates allowlisted open programs without reading any window titles,
@@ -102,10 +122,11 @@ Windows session and is available via **Ctrl+Alt+Space**.
   Atlas can advise via its authenticated read-only bridge but currently cannot
   control arbitrary desktop apps outside Omnira.
 - A browser relay can stream authenticated Atlas replies back into the bubble.
-  A READY, SSO-protected preview of the compatible web half is available from
-  the separate `feat/nova-main-integration-20261106` branch. Live Atlas replies
-  are **not verified** until the operator signs in and explicitly pairs Chrome.
-  `main` and production remain unaffected.
+  The current feature branch carries the SSO-protected browser half and the
+  server-side read-only route, rebased on current `origin/main`. It is not
+  deployed by this work: a fresh Vercel preview and explicit browser pairing
+  are still required before live Atlas replies can be claimed as verified.
+  `main` and production remain unchanged.
 - Both **×** and **–** collapse the chat to the corner bubble. An explicit
   **⋯ → Avsluta Nova** closes the GUI, but the small resident hotkey host
   stays alive. The NEXT Ctrl+Alt+Space relaunches Nova; there is no
@@ -133,11 +154,18 @@ Windows session and is available via **Ctrl+Alt+Space**.
   explicit **Anslut** approval in the browser. This avoids sending the
   pairing fragment through Vercel's initial SSO redirect. Live-pairing
   still requires browser sign-in and explicit user consent.
-- The browser calls existing `/api/chat` with `mode=nova_readonly`. Server removes
+- The browser calls existing /api/chat with mode=nova_readonly. Server removes
   every executable LLM tool schema, enforces a second hard stop on unexpected
   tool use and caps replies to 900 output tokens.
-- Canonical Atlas project memory is used **only if** existing recall AND
-  injection flags authorize it. No new local memory store or flag override.
+- The relay accepts only plain text messages. It rejects conversation IDs,
+  project/studio context, images and other context overrides. It does not write
+  to ordinary conversation history or load project memory, inbox, calendar or
+  other project context; only the user-approved page excerpt is sent to Atlas.
+- Atlas treats the excerpt as untrusted source data. It may summarize or draft
+  a continuation prompt, but cannot send that prompt or execute a desktop task.
+- Omnira's existing /calendar and Atlas calendar tools remain available in the
+  normal authenticated Omnira chat. Nova Desktop's relay is deliberately
+  read-only until a separately approved calendar/write capability is added.
 - Only one queued/active task; at most 10 queries per 5 minutes per runtime.
 - Local UI displays the received text as one streaming Atlas answer. Stop is
   in the **⋯** menu (or Ctrl+. shortcut). During long replies the browser polls local task status and

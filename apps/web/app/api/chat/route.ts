@@ -25,6 +25,7 @@ import { getManager } from '@/lib/ai/manager'
 import { buildAgentRunInsert } from '@/lib/ai/run-create'
 import { fetchOperatorPatterns } from '@/lib/os/patterns'
 import { buildAtlasSystemPrompt } from '@/lib/atlas/identity'
+import { isNovaReadOnlyMode, NOVA_READONLY_DIRECTIVE } from '@/lib/atlas/nova-readonly'
 import {
   classifyAnthropicError,
   getAtlasServiceErrorMessage,
@@ -751,6 +752,14 @@ export async function POST(request: Request) {
     image?:unknown
   }
 
+  const novaReadOnlyRequest = isNovaReadOnlyMode(mode)
+  if (novaReadOnlyRequest && (
+    conversation_id !== undefined || view !== undefined || websitePlanRef !== undefined
+    || rawBuildContext !== undefined || rawStudioContext !== undefined || rawImage !== undefined
+  )) {
+    return NextResponse.json({ error: 'Nova read-only accepts only its bounded text conversation.' }, { status: 400 })
+  }
+
   if(rawImage!==undefined&&(!rawImage||typeof rawImage!=='object'||Array.isArray(rawImage)))return NextResponse.json({error:'Ogiltig bildbilaga.'},{status:400})
   const image=rawImage as {mediaType?:unknown;data?:unknown}|undefined
   if(image&&(!['image/png','image/jpeg','image/webp'].includes(String(image.mediaType))||typeof image.data!=='string'||image.data.length>5_600_000||image.data.length<16||!/^[A-Za-z0-9+/]+={0,2}$/.test(image.data)||image.data.length%4!==0))return NextResponse.json({error:'Ogiltig eller för stor bild (max cirka 4 MB).'},{status:400})
@@ -804,11 +813,12 @@ export async function POST(request: Request) {
     const m = messages[messages.length - 1]
     return m?.role === 'user' && typeof m.content === 'string' ? m.content : ''
   })()
+  const novaReadOnly = isNovaReadOnlyMode(mode)
   // Source Curator is NOT yet a chat tool. Explicit Nova document review must
   // fail honestly rather than falling through to the generic CRM/tool catalog.
   // An attached image cannot turn an explicitly unavailable knowledge-review
   // request back into a generic model/tool turn (including CRM and inbox tools).
-  const pendingNovaCuratorReview = !studioContext && !websitePlanRef && !rawBuildContext
+  const pendingNovaCuratorReview = !novaReadOnly && !studioContext && !websitePlanRef && !rawBuildContext
     && isPendingNovaCuratorRequest(lastUserText)
   // Both external catalog searches and approved Notion reads need tools, even
   // when the message includes writing verbs such as "förbättra".
@@ -840,20 +850,20 @@ export async function POST(request: Request) {
     && !isNotionKnowledgeIntent(lastUserText) && hbStratoInboxReadEnabled()
     && isHandlarborsenInboxReadIntent(lastUserText)
   const socialPreparationIntent = isSocialPreparationIntent(lastUserText) || isSocialPreparationTurn(messages) || isSocialContentReadIntent(lastUserText)
-  const fastPath = !pendingNovaCuratorReview && !stratoInboxReadIntent && !hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent && !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText) && !image && !isCalendarIntent(lastUserText) && !studioContext && !websitePlanRef && !rawBuildContext && !hbReplyLifecycleReadIntent && !hbGrowthBriefReadIntent && !socialPreparationIntent && (mode === 'content' || isFastPathContent(lastUserText))
+  const fastPath = !novaReadOnly && !pendingNovaCuratorReview && !stratoInboxReadIntent && !hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent && !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText) && !image && !isCalendarIntent(lastUserText) && !studioContext && !websitePlanRef && !rawBuildContext && !hbReplyLifecycleReadIntent && !hbGrowthBriefReadIntent && !socialPreparationIntent && (mode === 'content' || isFastPathContent(lastUserText))
   // Statisk konversation (hej/tack/vem är du) — besvaras ur Atlas identitet ensam.
   // Allow-list, aldrig gissning: allt som inte bevisligen klarar sig utan live-
   // data, projekt, Memory, klocka och verktyg går full path.
   const staticConversation =
-    !pendingNovaCuratorReview && !image && !studioContext && !fastPath && !websitePlanRef && !rawBuildContext && classifyStaticConversation(lastUserText) === 'static_conversation'
+    !novaReadOnly && !pendingNovaCuratorReview && !image && !studioContext && !fastPath && !websitePlanRef && !rawBuildContext && classifyStaticConversation(lastUserText) === 'static_conversation'
   // Resolution is a state-changing action with one exact boundary. Detect it
   // separately so turn zero can force resolve_dream_finding rather than any tool.
-  const resolutionIntent = !pendingNovaCuratorReview && !fastPath && !staticConversation && isDreamResolutionIntent(lastUserText)
+  const resolutionIntent = !novaReadOnly && !pendingNovaCuratorReview && !fastPath && !staticConversation && isDreamResolutionIntent(lastUserText)
   // Action-intent (kör/starta/publicera/resolution …) → tvinga verktygsanrop.
-  const actionIntent = !pendingNovaCuratorReview && !fastPath && !staticConversation && isActionIntent(lastUserText)
+  const actionIntent = !novaReadOnly && !pendingNovaCuratorReview && !fastPath && !staticConversation && isActionIntent(lastUserText)
   // Navigerings-intent (öppna/gå till/ta mig till/visa <mål>) → ett direkt
   // kommando ÄR bekräftelsen; tvinga navigate på första turen (ingen extra tur).
-  const navIntent = !pendingNovaCuratorReview && !stratoInboxReadIntent && !fastPath && !staticConversation && !resolutionIntent && !hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent && isNavIntent(lastUserText) && !hbReplyLifecycleReadIntent
+  const navIntent = !novaReadOnly && !pendingNovaCuratorReview && !stratoInboxReadIntent && !fastPath && !staticConversation && !resolutionIntent && !hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent && isNavIntent(lastUserText) && !hbReplyLifecycleReadIntent
   const hbReadIntent = !pendingNovaCuratorReview && !stratoInboxReadIntent && !hbCompositeEvidenceIntent && !fastPath && !staticConversation && !resolutionIntent && !navIntent && !actionIntent && !studioContext
     ? classifyHandlarborsenReadIntent(lastUserText, messages.slice(0, -1)
         .filter(m => m.role === 'user' && typeof m.content === 'string')
@@ -863,11 +873,13 @@ export async function POST(request: Request) {
   // statusfråga går full path precis som förut, med samma autentisering,
   // projektisolering och verktyg. Den enda effekten är ett kort direktiv i
   // systemprompten som säger vilken period och vilket projekt som efterfrågades.
-  const statusIntent = (!fastPath && !staticConversation && !actionIntent && !navIntent)
+  const statusIntent = (!novaReadOnly && !fastPath && !staticConversation && !actionIntent && !navIntent)
     ? classifyStatusIntent(lastUserText)
     : null
-  const reqType = pendingNovaCuratorReview
-    ? 'nova_curator_unavailable'
+  const reqType = novaReadOnly
+    ? 'nova_readonly'
+    : pendingNovaCuratorReview
+      ? 'nova_curator_unavailable'
     : fastPath
     ? 'fast_path'
     : staticConversation
@@ -882,10 +894,10 @@ export async function POST(request: Request) {
   // that path builds no project context and is sent no tools, so `executeTool`
   // — the one remaining reader of this list — cannot be reached. Every other
   // path, the content fast path included, reads it exactly as before.
-  const allowedProjectIds = studioContext ? [studioContext.projectId] : staticConversation && !websitePlanRef && !rawBuildContext ? [] : await getAllowedProjectIds(db, user.id)
+  const allowedProjectIds = novaReadOnly ? [] : studioContext ? [studioContext.projectId] : staticConversation && !websitePlanRef && !rawBuildContext ? [] : await getAllowedProjectIds(db, user.id)
   // One explicit, READ-ONLY project-memory class. No action/delegation tools
   // can be made available in the same turn as untrusted Notion source evidence.
-  const notionReadOnlyTurn = !pendingNovaCuratorReview && isNotionKnowledgeIntent(lastUserText)
+  const notionReadOnlyTurn = !novaReadOnly && !pendingNovaCuratorReview && isNotionKnowledgeIntent(lastUserText)
     && !fastPath && !staticConversation && !studioContext
     && !actionIntent && !navIntent && !resolutionIntent
     && notionChatReaderConfigured()
@@ -928,7 +940,11 @@ export async function POST(request: Request) {
   let recentDelegationKnown = false
 
   let systemPrompt: string
-  if (fastPath) {
+  if (novaReadOnly) {
+    // Nova Desktop receives only the selected page excerpt and Atlas identity.
+    // No project snapshots, memories, inbox reads, tool guides or execution tools.
+    systemPrompt = buildAtlasSystemPrompt() + NOVA_READONLY_DIRECTIVE
+  } else if (fastPath) {
     // Ingen Executive Brain, inga verktyg, ingen workflow — bara skriv.
     systemPrompt = FAST_PATH_SYSTEM + (voice ? VOICE_DIRECTIVE : '')
   } else if (staticConversation) {
@@ -1059,7 +1075,7 @@ export async function POST(request: Request) {
   // executeTool is unreachable on this path. Every other class keeps TOOLS
   // exactly as before — this is not general per-class schema pruning.
   const localTextEnabled=availableLocalTextTools({inputSource:voice||inputSource==='voice'?'voice':'text',studio:!!studioContext,fast:fastPath,staticConversation}).length>0
-  const activeTools = pendingNovaCuratorReview ? [] : notionReadOnlyTurn
+  const activeTools = novaReadOnly ? [] : pendingNovaCuratorReview ? [] : notionReadOnlyTurn
     ? ATLAS_NOTION_TOOLS
     : hbCompositeEvidenceIntent ? TOOLS.filter(tool => tool.name === 'handlarborsen_compare_workflow_evidence')
     : hbReplyLifecycleReadIntent ? TOOLS.filter(tool => tool.name === 'handlarborsen_reply_lifecycle')
@@ -1077,7 +1093,7 @@ export async function POST(request: Request) {
   // Nova's source access is a distinct, READ-ONLY operator turn. It never
   // enters normal Atlas tool dispatch, action turns, or the Code Broker.
   let sourceReadTurn = false
-  if (!pendingNovaCuratorReview && novaSourcePilotEnabled() && isNovaSourceReadIntent(lastUserText)
+  if (!novaReadOnly && !pendingNovaCuratorReview && novaSourcePilotEnabled() && isNovaSourceReadIntent(lastUserText)
     && !image && !websitePlanRef && !rawBuildContext
     && !fastPath && !staticConversation && !studioContext && !notionReadOnlyTurn
     && !hbCompositeEvidenceIntent && !hbReplyLifecycleReadIntent && !stratoInboxReadIntent
@@ -1126,6 +1142,7 @@ export async function POST(request: Request) {
 
   // Helper: persist a message to DB
   async function saveMessage(role: string, content: string | null, toolData?: unknown) {
+    if (novaReadOnly) return
     // The proof, not the request body. A foreign or unknown id resolves to null
     // and is indistinguishable here from "no conversation supplied" — the same
     // silent no-op this function already performed in that case.
@@ -1171,6 +1188,7 @@ export async function POST(request: Request) {
   const stream = new ReadableStream({
     async start(controller) {
       function send(event: string, data: unknown) {
+        if (request.signal.aborted) return
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ event, ...( typeof data === 'object' ? data : { data }) })}\n\n`),
         )
@@ -1223,6 +1241,7 @@ export async function POST(request: Request) {
         let incompleteResponse = false
         // Agentic loop — Claude can use tools multiple times
         for (let i = 0; i < 10; i++) {
+          if (request.signal.aborted) return
           // STREAMA svaret token-för-token. Detta är nyckeln: TTS kan börja på
           // första färdiga meningen i stället för att vänta in hela svaret.
           // TVINGAD ROUTNING (turn 0):
@@ -1251,7 +1270,7 @@ export async function POST(request: Request) {
             : {}
           const modelInput = {
             model: modelPolicy.chatModel,
-            max_tokens: voice ? (socialPreparationTurn ? 4096 : 150) : (fastPath ? 1200 : 4096),
+            max_tokens: novaReadOnly ? 900 : (voice ? (socialPreparationTurn ? 4096 : 150) : (fastPath ? 1200 : 4096)),
             system: systemPrompt,
             tools: sourceReadTurn && sourceReadIssued ? [] : offeredTools, // one read then no more tools
             ...toolChoice,
@@ -1259,7 +1278,7 @@ export async function POST(request: Request) {
           }
           const llm = openaiEconomy
             ? await openAIAtlasStream(providerContext,modelInput,request.signal)
-            : await anthropic!.messages.stream(modelInput)
+            : await anthropic!.messages.stream(modelInput, { signal: request.signal })
           llm.on('text', (delta: string) => {
             if (!firstTokenMs) {
               firstTokenMs = Date.now() - tStart
@@ -1272,6 +1291,11 @@ export async function POST(request: Request) {
             if (delta && !bufferSocialProse) send('text', { text: delta })
           })
           const response = await llm.finalMessage()
+          if (request.signal.aborted) return
+          if (novaReadOnly && response.content.some((b: Anthropic.ContentBlock) => b.type === 'tool_use')) {
+            send('error', { code: 'NOVA_READONLY_TOOL_BLOCKED' })
+            return
+          }
           if (bufferSocialProse && response.content.some((b: Anthropic.ContentBlock) => b.type === 'tool_use' && isSocialReceiptTool(b.name))) {
             socialResponseControlled = true
           }
@@ -1361,6 +1385,7 @@ export async function POST(request: Request) {
           }
 
           for (const toolUse of toolUseBlocks) {
+            if (request.signal.aborted) return
             send('tool_call', { tool: toolUse.name, input: toolUse.input })
 
             let result: unknown
@@ -1374,6 +1399,7 @@ export async function POST(request: Request) {
                 result = { ok: false, code: 'source_read_already_used' }
               } else {
                 if (sourceReadTurn) sourceReadIssued = true
+                if (request.signal.aborted) return
                 result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds, toolUse.id, await resolveOwnedConversationId(), verifiedBuildContext, voice||inputSource==='voice'?'voice':'text',studioContext?.projectId??null,{sessionDb:supabase,sameOrigin:assertSameOrigin(request)===null},notionReadOnlyTurn,lastUserText,stratoInboxReadIntent,sourceReadTurn)
               }
             } catch (err) {
@@ -1516,7 +1542,15 @@ export async function POST(request: Request) {
             ? messages.map((msg,index)=>index===messages.length-1&&msg.role==="user"?{...msg,content:[{type:"image" as const,source:{type:"base64" as const,media_type:image.mediaType as 'image/png'|'image/jpeg'|'image/webp',data:image.data as string}},{type:"text" as const,text:lastUserText||"Beskriv bilden."}]}:msg)
             : messages
         await runConversation(conversationMessages)
+        if (request.signal.aborted) {
+          try { controller.close() } catch { /* browser already disconnected */ }
+          return
+        }
       } catch (err) {
+        if (request.signal.aborted) {
+          try { controller.close() } catch { /* browser already disconnected */ }
+          return
+        }
         if (socialResponseControlled) {
           await finishSocialResponse(true)
           send('done', {})

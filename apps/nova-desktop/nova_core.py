@@ -18,9 +18,11 @@ ATLAS = "https://omniraos.se/atlas"
 URLS = {
     "gmail": "https://mail.google.com/mail/u/0/#inbox",
     "outlook": "https://outlook.office.com/mail/",
+    "chatgpt": "https://chatgpt.com/",
     "atlas": ATLAS,
     "projects": "https://omniraos.se/projects",
     "planning": "https://omniraos.se/planning",
+    "calendar": "https://omniraos.se/calendar",
     "handlarborsen": "https://handlarborsen.se/",
     "familjestunden": "https://familje-stunden.se/",
     "facebook": "https://www.facebook.com/",
@@ -46,6 +48,8 @@ APP_SHORTCUTS = {
                          "Start Menu", "Programs", "Epic Games Launcher.lnk"),
     "outlook": os.path.join(os.environ.get("PROGRAMDATA", ""), "Microsoft", "Windows",
                             "Start Menu", "Programs", "Outlook (classic).lnk"),
+    "spotify": os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft",
+                            "WindowsApps", "Spotify.exe"),
 }
 MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, VK_SPACE = 0x0001, 0x0002, 0x4000, 0x20
 WM_HOTKEY, WM_QUIT, HOTKEY_ID = 0x0312, 0x0012, 0x4E56
@@ -86,6 +90,13 @@ def route(text: str) -> Action:
         return Action("empty", description="Skriv eller diktera ett kommando.")
     if SENSITIVE.search(value):
         return Action("handoff", ATLAS, "Uppdrag till Atlas (kräver kontroll/godkännande).")
+    if re.search(r"\b(kalender|kalendern|calendar)\b", value):
+        if NAV.match(value):
+            return Action("open", URLS["calendar"], "?ppnar Omniras kalender.")
+        return Action(
+            "handoff", ATLAS,
+            "Kalendern finns i Omnira. Nova Desktop ?r ?nnu i l?sl?ge; kalender?ndringar g?rs i Omnira tills den godk?nda skrivkopplingen ?r f?rdig.",
+        )
     # Read-only list; displays only allowlisted program names, never private titles.
     if re.search(r"\b(oppna fonster|oppna program|aktiva fonster)\b", value) and (
         "visa" in value or "lista" in value or "vilka" in value):
@@ -103,6 +114,7 @@ def route(text: str) -> Action:
                 return Action("focus", key, "Växlar till " + label)
     if NAV.search(value):
         for pattern, key, description in (
+            (r"\bspotify\b", "spotify", "Startar Spotify."),
             (r"\bbrave\b", "brave", "Startar Brave."),
             (r"\b(visual studio code|vs ?code|kodredigerare)\b", "vscode", "Startar Visual Studio Code."),
             (r"\bfilezilla\b", "filezilla", "Startar FileZilla."),
@@ -117,12 +129,11 @@ def route(text: str) -> Action:
             # accidentally route to Gmail.
             (r"\b(strato|stratos|strato webmail)\b", "strato",
              "Öppnar STRATO Webmail. Inget mejl läses eller skickas."),
-            (r"\b(omnir.*(kalender|kalendervy)|kalender.*omnira|kalendern|kalender)\b",
-             "planning", "Öppnar Omniras planeringsöversikt; det är inte en separat kalender med händelser."),
             (r"\b(marknadsplanering|marknadsforing|marknadsgranskning|sociala medier|contentplanering)\b",
              "marketing", "Öppnar Omniras marknadsgranskning; inget inlägg skapas eller publiceras."),
             (r"\b(contentcenter|content center|innehallscenter|innehallsoversikt|content|innehall)\b",
              "content", "Öppnar Omniras innehållsöversikt."),
+            (r"\b(chatgpt|chat gpt)\b", "chatgpt", "Open ChatGPT in the browser."),
             (r"\b(facebook|fb)\b", "facebook", "Öppnar Facebook i webbläsaren."),
             (r"\b(instagram|insta)\b", "instagram", "Öppnar Instagram i webbläsaren."),
             (r"\blinkedin\b", "linkedin", "Öppnar LinkedIn i webbläsaren."),

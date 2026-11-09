@@ -29,6 +29,7 @@ SAFE_NAV_TARGETS = frozenset((
     "strato", "strato mail", "strato webmail", "min strato",
     "chatgpt", "chat gpt", "spotify",
     "kalender", "kalendern", "kalendern i omnira", "omniras kalender", "calendar",
+    "kalendern i om era", "kalendern i omira",
     "planering", "planeringsvy", "planeringsoversikt",
     "marknadsplanering", "marknadsforing", "sociala medier",
     "contentcenter", "content center", "innehallscenter",

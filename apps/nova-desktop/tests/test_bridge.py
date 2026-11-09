@@ -225,5 +225,31 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(payload["ok"])
         self.assertEqual(self.request("/next", headers=self.good)[1]["command"], {})
+    def test_tool_enabled_operator_task_requires_separate_consent(self):
+        self.assertIsNone(self.bridge.state.enqueue_operator("Planera morgondagens inl?gg")[0])
+        self.assertEqual(self.request("/connect", "POST", self.good, {"protocol": 1})[0], 200)
+        self.assertIsNone(self.bridge.state.enqueue_operator("Planera morgondagens inl?gg")[0])
+        self.assertEqual(self.request("/voice/authorize", "POST", self.good, {"protocol": 1})[0], 200)
+        task_id, _ = self.bridge.state.enqueue_operator("Planera morgondagens inl?gg")
+        self.assertIsNotNone(task_id)
+        payload = self.request("/next", headers=self.good)[1]
+        self.assertEqual(payload["task"]["mode"], "atlas_operator")
+        self.assertEqual(payload["task"]["id"], task_id)
+        self.assertEqual(payload["task"]["text"], "Planera morgondagens inl?gg")
+        self.assertTrue(self.bridge.state.add_event({"id": task_id, "kind": "text", "text": "Utkast skapat."})[0])
+        self.assertTrue(self.bridge.state.add_event({"id": task_id, "kind": "done"})[0])
+        self.assertEqual(self.bridge.state.task_state(task_id), "done")
+
+    def test_operator_task_fails_closed_when_pairing_replaced(self):
+        self.request("/connect", "POST", self.good, {"protocol": 1})
+        self.request("/voice/authorize", "POST", self.good, {"protocol": 1})
+        task_id, _ = self.bridge.state.enqueue_operator("?ppna kalender")
+        self.assertIsNotNone(task_id)
+        self.bridge.state.switch_origin("https://ai-operating-platform-test123-bumbi190s-projects.vercel.app")
+        self.assertEqual(self.bridge.state.next(), {})
+        self.assertFalse(self.bridge.state.voice_authorized)
+        self.assertIsNone(self.bridge.state.enqueue_operator("?ppna kalender")[0])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -726,13 +726,13 @@ class NovaOverlay:
                 voice = self.bridge.state.voice_snapshot()
                 if voice.get("authorized"):
                     labels = {
-                        "idle": "pausat",
+                        "idle": "pausat - tryck Ctrl+Alt+Space",
                         "starting": "startar",
                         "listening": "lyssnar",
                         "transcribing": "tolkar tal",
                         "thinking": "arbetar",
                         "speaking": "pratar",
-                        "error": "rostfel",
+                        "error": "mikrofon pausad - tryck Ctrl+Alt+Space",
                     }
                     self.bridge_var.set("Nova-samtal - " + labels.get(voice.get("status"), "anslutet"))
                 else:
@@ -775,8 +775,13 @@ class NovaOverlay:
                     self._phase("tolkar", "Atlas svarar i läsläge · " +
                                 str(len(self.live_reply_text)) + " tecken")
                 elif kind == "done":
-                    self._phase("klar", "Atlas svarade · ingen skrivåtgärd utförd")
-                    self._append("ok", "Nova: Atlas-svaret klart. Inga arbetsverktyg kördes.")
+                    task = self.bridge.state.task
+                    if task and task.id == event.get("id") and task.mode == "atlas_operator":
+                        self._phase("klar", "Atlas svar klart - granska utfallet i Omnira")
+                        self._append("ok", "Nova: Atlas-turen avslutad. Granska eventuella ?ndringar eller godk?nnanden i Omnira.")
+                    else:
+                        self._phase("klar", "Atlas gav ett skrivskyddat svar")
+                        self._append("ok", "Nova: Atlas-svaret klart. Inga arbetsverktyg k?rdes.")
                     self.live_reply_id = None
                 elif kind == "error":
                     self._phase("godkannande", "Atlas kunde inte slutföra svaret")
@@ -824,9 +829,14 @@ class NovaOverlay:
                                 self._redock_near_pointer()
                             self.expand(listen=False)
                     else:
-                        # Before browser consent, retain the safe one-shot
-                        # Windows dictation fallback.
-                        if nova_has_focus:
+                        # A paired browser must be the sole speech input path.
+                        # Never race Win+H against Atlas and duplicate requests.
+                        if self.bridge.state.online():
+                            if self._manual_anchor is None:
+                                self._redock_near_pointer()
+                            self.expand(listen=False)
+                            self._phase("godkannande", "Godk?nn r?stsamtalet i Omnira-webbl?saren")
+                        elif nova_has_focus:
                             self.collapse()
                         else:
                             if self._manual_anchor is None:
@@ -856,6 +866,10 @@ class NovaOverlay:
         analysis. Typed text outside voice mode is never auto-sent.
         """
         try:
+            if self.bridge.state.online() and self.bridge.state.voice_snapshot().get("authorized"):
+                # Late Windows dictation must never create a second request while
+                # the authenticated Atlas voice session is already in control.
+                self._auto_voice.cancel()
             if self.expanded and self.auto_voice_enabled.get() and self._auto_voice.armed:
                 spoken = self.command.get("1.0", "end-1c").strip()
                 decision = self._auto_voice.observe_submission(spoken, time.monotonic())
@@ -928,11 +942,27 @@ class NovaOverlay:
         self.dictate()
 
     def dictate(self):
-        """Start Windows voice typing. Windows listens when its toolbar is ready.
+        """Start the authorized Atlas microphone, not a duplicate Win+H session.
 
-        No second click on Nova's Prata button is needed after the global
-        shortcut. No always-on microphone is activated by this application.
+        Standalone Windows dictation is only a fallback when no browser pairing
+        exists. Otherwise the browser owns the sole active microphone.
         """
+        voice = self.bridge.state.voice_snapshot()
+        if self.bridge.state.online() and voice.get("authorized"):
+            self._auto_voice.cancel()
+            self._voice_request_id += 1
+            accepted, detail = self.bridge.state.request_voice_control("voice_resume")
+            if accepted:
+                self._phase("lyssnar", "Atlas startar/forts?tter lyssna i webbl?saren")
+            else:
+                self._append("warn", "Nova: " + detail)
+                self._phase("godkannande", detail)
+            return
+        if self.bridge.state.online():
+            self._auto_voice.cancel()
+            self._phase("godkannande", "Starta r?stsamtalet i den anslutna Omnira-webbl?saren")
+            self._append("warn", "Nova: Klicka Starta r?stsamtal i Omnira f?rst. Windows-diktering startas inte parallellt.")
+            return
         if not self.expanded:
             self.expand(False)
         if not self._focus_guard.ensure_focus(self.root, self.command):
@@ -1042,36 +1072,69 @@ class NovaOverlay:
         self.root.update()
         self._append("step", "  ↳ Kommandot kopierades till urklipp på din begäran.")
 
-    def _received_voice_without_navigation(self, text: str):
-        """Deliver a spoken command to Nova, not a powerful OS executor.
+    def _approved_operator_task(self, text: str):
+        """A user-selected action in the Nova review menu, never model output."""
+        if self.pending != text:
+            self._append("warn", "Nova: Uppdraget hann ?ndras. Ge kommandot igen.")
+            self._choices([])
+            return
+        self.pending = None
+        self._choices([])
+        task_id, detail = self.bridge.state.enqueue_operator(text)
+        if task_id:
+            self._append("step", "  ? Godk?nt av dig. Atlas kontrollerar sina ordinarie verktygsbeh?righeter.")
+            self._phase("tolkar", "Atlas arbetar - avbryt med Stopp om du ?ngrar dig")
+        else:
+            self._append("warn", "Nova: " + detail)
+            self._phase("godkannande", detail)
 
-        Atlas is an AI backend; without a tool-enabled native Windows agent
-        it cannot open arbitrary desktop applications or press UI controls.
-        No implicit clipboard copy, email, publishing or changes occur here.
-        """
+    def _approved_readonly_advice(self, text: str):
+        if self.pending != text:
+            self._append("warn", "Nova: Beg?ran hann ?ndras. Ge kommandot igen.")
+            self._choices([])
+            return
+        self.pending = None
+        self._choices([])
+        task_id, detail = self.bridge.state.enqueue(text)
+        if task_id:
+            self._append("step", "  ? Fr?ga skickad till Atlas utan verktyg.")
+            self._phase("tolkar", "Atlas ger r?dgivning i l?sl?ge")
+        else:
+            self._append("warn", "Nova: " + detail)
+            self._phase("godkannande", detail)
+
+    def _received_voice_without_navigation(self, text: str):
+        """Actionable commands require a click before entering tool-enabled Atlas."""
+        if self.bridge.state.online() and self.bridge.state.voice_snapshot().get("authorized"):
+            self.pending = text
+            self._choices([
+                ("K?r i Atlas (med verktyg)", lambda phrase=text: self._approved_operator_task(phrase)),
+                ("Bara r?d (utan verktyg)", lambda phrase=text: self._approved_readonly_advice(phrase)),
+                ("Avbryt", lambda: self._choices([])),
+            ])
+            self._append("nova", "Nova: Det h?r kan beh?va Atlas riktiga verktyg. "
+                         "V?lj ? ? K?r i Atlas f?r att godk?nna just detta uppdrag. "
+                         "Ordinarie beh?righeter och granskningar g?ller fortfarande.")
+            self._phase("godkannande", "V?lj ? ? K?r i Atlas f?r ett verktygsuppdrag")
+            return
         if self.bridge.state.online():
             task_id, detail = self.bridge.state.enqueue(text)
             if task_id:
-                self._append("step", "  ↳ Fråga skickad till Atlas i läsläge.")
-                self._phase("tolkar", "Atlas förbereder svar (kan inte styra Windows)")
+                self._append("step", "  ? Fr?ga skickad till Atlas i l?sl?ge.")
+                self._phase("tolkar", "Atlas ger r?d, men utf?r inte ?tg?rder")
             else:
                 self._append("warn", "Nova: " + detail)
                 self._phase("godkannande", detail)
-        else:
-            self.pending = text
-            self._append(
-                "nova",
-                "Nova: Jag har tagit emot kommandot. "
-                "Jag kan öppna godkända sidor och program lokalt, men mer "
-                "avancerad Windows-styrning är ännu inte inkopplad. "
-                "Atlas ger projektkunskap och svar, inte fri datornavigering. "
-                "Inget har ändrats eller skickats."
-            )
-            self._choices([
-                ("Anslut Atlas för rådgivning", self.connect_atlas),
-                ("Kopiera begäran", self.copy_pending),
-            ])
-            self._phase("godkannande", "Kommandot mottaget · kräver en separat behörighet")
+            return
+        self.pending = text
+        self._append("nova", "Nova: Kommandot togs emot. Jag kan ?ppna godk?nda "
+                     "sidor och program lokalt, men Atlas beh?ver f?rst paras "
+                     "f?r att du ska kunna godk?nna ett verktygsuppdrag.")
+        self._choices([
+            ("Anslut Atlas", self.connect_atlas),
+            ("Kopiera beg?ran", self.copy_pending),
+        ])
+        self._phase("godkannande", "Atlas beh?ver anslutas")
 
     def _present_uia_read_preview(self, instruction: str):
         """Capture the foreground browser, then ask before reading any page text."""
@@ -1342,16 +1405,7 @@ class NovaOverlay:
         elif action.kind == "focus":
             self.focus_window(action.url)
         elif action.kind == "handoff":
-            if self.bridge.state.online():
-                task_id, detail = self.bridge.state.enqueue(text)
-                if task_id:
-                    self._phase("tolkar", "Atlas analyserar frågan i läsläge")
-                    self._append("step", "  ↳ Fråga skickad till autentiserade Atlas (utan verktyg).")
-                else:
-                    self._append("warn", "Nova: " + detail)
-                    self._phase("godkannande", detail)
-            else:
-                self._handoff(text)
+            self._received_voice_without_navigation(text)
         else:
             self._phase("redo", "Skriv eller diktera ett kommando")
 

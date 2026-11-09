@@ -5,8 +5,8 @@ import { usePathname } from 'next/navigation'
 import { useAtlas } from '@/lib/atlas/runtime'
 
 type Pair = { port: number; key: string }
-type LocalTask = { id: string; text: string; mode: 'nova_readonly' }
-type VoiceControl = { id: string; kind: 'voice_toggle' | 'voice_interrupt' }
+type LocalTask = { id: string; text: string; mode: 'nova_readonly' | 'atlas_operator' }
+type VoiceControl = { id: string; kind: 'voice_toggle' | 'voice_interrupt' | 'voice_resume' }
 type ChatTurn = { role: 'user' | 'assistant'; content: string }
 type LocalFetch = RequestInit & { targetAddressSpace: 'loopback' }
 type BridgePhase = 'ready' | 'connecting' | 'paired' | 'failed' | 'paused'
@@ -72,6 +72,7 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
   const voiceAuthorizedRef = useRef(false)
   const turnsRef = useRef<ChatTurn[]>([])
   const pollRef = useRef(false)
+  const runningTaskRef = useRef(false)
   const controllersRef = useRef(new Set<AbortController>())
   const atlasAbortRef = useRef<AbortController | null>(null)
   const seenControlsRef = useRef(new Set<string>())
@@ -200,8 +201,37 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
     }
   }, [local, push])
 
+  const executeOperator = useCallback(async (task: LocalTask): Promise<void> => {
+    // Only the human-approved native command may be forwarded into Atlas's
+    // normal authenticated tool + approval pipeline. No direct OS/write API
+    // and no separate model/tool provider is exposed by the loopback bridge.
+    if (task.mode !== 'atlas_operator' || !task.id || !task.text.trim() ||
+        task.text.length > MAX_LOCAL_CHARS || !voiceAuthorizedRef.current) {
+      throw new Error('Atlas-uppdraget saknar en godk?nd operat?rsanslutning.')
+    }
+    const current = atlasRef.current
+    if (!current.sendOperatorMessage || !current.voiceConversationAvailable) {
+      throw new Error('Atlas-uppdrag ?r inte tillg?ngliga i den h?r testmilj?n.')
+    }
+    if (current.voicePhase === 'thinking' || current.voicePhase === 'speaking') {
+      throw new Error('Atlas arbetar redan. V?nta eller avbryt p?g?ende svar f?rst.')
+    }
+    setLastPrompt(task.text)
+    setLastAnswer('')
+    setMessage('Atlas behandlar ditt uttryckligen godk?nda uppdrag med ordinarie beh?righeter.')
+    const result = await current.sendOperatorMessage(task.text)
+    if (!result.ok) throw new Error('Atlas avbr?t eller kunde inte slutf?ra uppdraget.')
+    const answer = result.reply || 'Atlas svarade utan text. Granska konversationen i Omnira.'
+    setLastAnswer(answer)
+    for (let index = 0; index < answer.length; index += 2048) {
+      await push(task.id, 'text', answer.slice(index, index + 2048))
+    }
+    await push(task.id, 'done')
+    setMessage('Atlas-svaret kom fram. Kontrollera eventuella genomf?rda ?tg?rder i Omnira.')
+  }, [push])
+
   const executeVoiceControl = useCallback(async (command: VoiceControl) => {
-    if (!command || typeof command.id !== 'string' || !['voice_toggle', 'voice_interrupt'].includes(command.kind)) {
+    if (!command || typeof command.id !== 'string' || !['voice_toggle', 'voice_interrupt', 'voice_resume'].includes(command.kind)) {
       throw new Error('Ogiltigt röstkommando från Nova')
     }
     if (seenControlsRef.current.has(command.id)) {
@@ -216,12 +246,19 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
     } else if (command.kind === 'voice_interrupt') {
       current.stopAudio()
       setMessage('Atlas svar avbröts. Röstsamtalet är fortfarande öppet.')
-    } else if (current.voicePanelOpen || current.isSessionActive) {
+    } else if (command.kind === 'voice_resume') {
+      // The visible "Prata" button is idempotent: never mute a running mic
+      // or start a duplicate Windows dictation.
+      if (!current.voiceMicActive) current.activate()
+      setMessage(current.voiceMicActive ? 'Nova lyssnar redan via Atlas.' : 'Mikrofonen ?terstartas via Atlas.')
+    } else if (current.voiceMicActive) {
       current.deactivate()
-      setMessage('Röstsamtalet pausades via Nova.')
+      setMessage('R?stsamtalet pausades via Nova.')
     } else {
+      // At the ten-minute privacy timeout, the call panel is still open
+      // but the microphone is released. Explicit toggle re-arms it.
       current.activate()
-      setMessage('Röstsamtalet startades via Nova.')
+      setMessage('Mikrofonen startas igen via Nova.')
     }
     seenControlsRef.current.add(command.id)
     if (seenControlsRef.current.size > 32) {
@@ -241,14 +278,24 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
         try {
           const data = await local<{ task?: LocalTask; command?: VoiceControl }>('/next')
           if (data.command?.id) await executeVoiceControl(data.command)
-          if (data.task?.id) {
-            try {
-              await executeReadOnly(data.task)
-            } catch (error) {
-              const detail = error instanceof Error ? error.message : 'Okänt fel'
-              setMessage('Atlas-läsningen avbröts: ' + detail)
-              try { await push(data.task.id, 'error', detail.slice(0, 200)) } catch { /* canceled */ }
-            }
+          if (data.task?.id && !runningTaskRef.current) {
+            runningTaskRef.current = true
+            const task = data.task
+            // Do not block /next polling while Atlas runs a task. Emergency
+            // stop must be processed immediately, even during a slow reply.
+            void (async () => {
+              try {
+                if (task.mode === 'atlas_operator') await executeOperator(task)
+                else if (task.mode === 'nova_readonly') await executeReadOnly(task)
+                else throw new Error('Ok?nt eller ogodk?nt Nova-uppdrag')
+              } catch (error) {
+                const detail = error instanceof Error ? error.message : 'Ok?nt fel'
+                setMessage('Atlas-uppdraget avbr?ts: ' + detail)
+                try { await push(task.id, 'error', detail.slice(0, 200)) } catch { /* canceled */ }
+              } finally {
+                runningTaskRef.current = false
+              }
+            })()
           }
           if (!stoppedRef.current) {
             await new Promise(resolve => setTimeout(resolve, voiceAuthorizedRef.current ? 250 : 800))
@@ -265,7 +312,7 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
     } finally {
       pollRef.current = false
     }
-  }, [executeReadOnly, executeVoiceControl, local, push])
+  }, [executeReadOnly, executeOperator, executeVoiceControl, local, push])
 
   const connect = useCallback(async () => {
     if (!pairingRef.current) {
@@ -347,12 +394,13 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
     if (!voiceAuthorizedRef.current || stoppedRef.current) return
     const phase = atlas.voicePhase
     const status = !atlas.voicePanelOpen ? 'idle'
+      : atlas.voiceMicProblem ? 'error'
       : phase === 'speaking' ? 'speaking'
       : phase === 'thinking' ? 'thinking'
       : phase === 'listening' ? 'listening'
-      : 'starting'
+      : atlas.voiceMicActive ? 'starting' : 'idle'
     void local('/voice/status', 'POST', { status }).catch(() => {})
-  }, [atlas.voicePhase, atlas.voicePanelOpen, atlas.isSessionActive, local])
+  }, [atlas.voicePhase, atlas.voicePanelOpen, atlas.voiceMicActive, atlas.voiceMicProblem, atlas.isSessionActive, local])
 
   useEffect(() => () => {
     stoppedRef.current = true

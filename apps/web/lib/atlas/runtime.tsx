@@ -102,6 +102,8 @@ export interface AtlasValue {
   // ── Session ───────────────────────────────────────────────────────────
   voiceConversationAvailable?: boolean
   voicePanelOpen?: boolean
+  voiceMicActive?: boolean
+  voiceMicProblem?: string | null
   isSessionActive: boolean
   lastActiveAt:    Date | null
 
@@ -119,6 +121,7 @@ export interface AtlasValue {
   deactivate():                     void
   stopAudio():                      void
   sendMessage(text: string): Promise<void>
+  sendOperatorMessage?(text: string): Promise<{ ok: boolean; reply: string }>
   captureUtterance(onTranscript: (text: string) => void): () => void
   speakText(text: string): Promise<void>
   captureError: string | null
@@ -595,6 +598,15 @@ export function AtlasRuntimeProvider({
     }
   }
 
+  async function sendOperatorMessage(text: string): Promise<{ ok: boolean; reply: string }> {
+    if (!voiceConversationEnabled || voiceReadOnly || !text.trim() || text.length > 3000)
+      return { ok: false, reply: '' }
+    const reply = await voiceSession.submitText(text)
+    return typeof reply === 'string'
+      ? { ok: true, reply: reply.slice(0, 12000) }
+      : { ok: false, reply: '' }
+  }
+
   function openWorkspace(href: string, _label?: string) {
     // P1A: tunn router.push-wrapper. P1B lägger till mjuka övergångar.
     router.push(href)
@@ -602,7 +614,7 @@ export function AtlasRuntimeProvider({
 
   // ── Streaming + TTS-pipeline ──────────────────────────────────────────────
   async function sendMessage(text: string) {
-    if (voiceConversationEnabled && !voiceReadOnly) return voiceSession.submitText(text)
+    if (voiceConversationEnabled && !voiceReadOnly) { await voiceSession.submitText(text); return }
     const currentConversation=conversation.snapshot()
     if(currentConversation.pending||currentConversation.state==='error'){setWarning({active:true,detail:'Vänta på svaret eller läs in konversationen igen innan du skickar nästa meddelande.'});return}
     // A delayed native start/result must not overtake this new chat request.
@@ -820,6 +832,7 @@ export function AtlasRuntimeProvider({
     streamingAvailable: true, live: true, preferBatch: true, conversation,
     projectId: activeProject?.id ?? null,
     beforeStart: deactivateLegacy, onEvent: handleVoiceEvent, onDraftCaptureEnd: setCaptureError,
+    onDirectNavigation: href => openWorkspace(href),
   })
   const managedVoice = voiceConversationEnabled && !voiceReadOnly
   const currentVoicePhase = managedVoice ? voiceSession.phase : voicePhase
@@ -857,6 +870,8 @@ export function AtlasRuntimeProvider({
     completionEvent,
     voiceConversationAvailable: managedVoice,
     voicePanelOpen: managedVoice && voicePanel !== 'closed',
+    voiceMicActive: managedVoice && (voiceSession.mic || voiceSession.opening),
+    voiceMicProblem: managedVoice ? voiceSession.micProblem : null,
     isSessionActive: currentSessionActive,
     lastActiveAt,
     history,
@@ -868,6 +883,7 @@ export function AtlasRuntimeProvider({
     deactivate,
     stopAudio,
     sendMessage,
+    sendOperatorMessage,
     captureUtterance,
     speakText,
     captureError,

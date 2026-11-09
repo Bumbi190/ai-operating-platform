@@ -9,20 +9,22 @@ import { isAtlasSwedishVoice, preferredAtlasVoice, type AtlasSwedishVoice } from
 import { createMicSignalStore, type MicSignalStore } from '@/lib/atlas/voice-pilot/mic-diagnostics'
 import type { StreamEvent } from '@/lib/os/chat-shared'
 import { createClient } from '@/lib/supabase/client'
+import { directVoiceNavigation } from './direct-navigation'
 
 type Timing = { quietMs: number | null; textMs: number | null; audioMs: number | null }
 
-export function useAtlasVoiceSession({ enabled = true, streamingAvailable = false, live = false, preferBatch = false, conversation: shared, beforeStart, onEvent, onDraftCaptureEnd, projectId = null }: {
+export function useAtlasVoiceSession({ enabled = true, streamingAvailable = false, live = false, preferBatch = false, conversation: shared, beforeStart, onEvent, onDraftCaptureEnd, onDirectNavigation, projectId = null }: {
   enabled?: boolean; streamingAvailable?: boolean; live?: boolean; preferBatch?: boolean
   conversation?: AtlasConversationController; beforeStart?(): void
   onEvent?(event: StreamEvent, conversationId: string): void
   onDraftCaptureEnd?(notice: string | null): void
+  onDirectNavigation?(href: string): void
   projectId?: string | null
 } = {}) {
   const [local] = useState(() => new AtlasConversationController())
   const conversation = shared ?? local
-  const latest = useRef({ beforeStart, onEvent, onDraftCaptureEnd, projectId })
-  latest.current = { beforeStart, onEvent, onDraftCaptureEnd, projectId }
+  const latest = useRef({ beforeStart, onEvent, onDraftCaptureEnd, onDirectNavigation, projectId })
+  latest.current = { beforeStart, onEvent, onDraftCaptureEnd, onDirectNavigation, projectId }
   const openingRef = useRef(false), micRef = useRef(false), captureEpoch = useRef(0)
   const draftReceiver = useRef<((text: string) => void) | null>(null), voicesReady = useRef<Promise<boolean>>(Promise.resolve(false))
   const snapshot = useSyncExternalStore(conversation.subscribe, conversation.snapshot, conversation.snapshot)
@@ -255,6 +257,26 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
         const receiver = draftReceiver.current
         if (receiver) { draftReceiver.current = null; stopAll(); receiver(text); return }
         const combined = [heldDraft.current, text].filter(Boolean).join(' ')
+        const direct = directVoiceNavigation(combined)
+        if (direct && latest.current.onDirectNavigation &&
+            !sendingRef.current && !conversation.snapshot().pending) {
+          // Exact same-origin navigation is a user-confirmed UI action. Do
+          // not invoke a large AI/tool chain or send external service requests.
+          heldDraft.current = ''
+          queuedVoice.current = null
+          writeDraft('', 'voice')
+          latest.current.onDirectNavigation(direct.href)
+          setReply(direct.reply)
+          setNotice('Navigering utf?rd lokalt i Omnira utan AI-v?ntetid.')
+          stopSpeech()
+          const epoch = lifetime.current
+          void speak().prepare().then(() => {
+            if (mounted.current && epoch === lifetime.current) speak().enqueue(direct.reply, voice)
+          }).catch(() => {
+            if (mounted.current && epoch === lifetime.current) setNotice(direct.reply)
+          })
+          return
+        }
         writeDraft(combined, 'voice')
         if (sendingRef.current || conversation.snapshot().pending) {
           heldDraft.current = combined
@@ -345,8 +367,9 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
         resumeQueuedVoice(lifetime.current, completed && conversation.snapshot().id === submittedConversationId)
       }
     }
+    return completed && current() ? responseText : null
   }
-  submitRef.current = submit
+  submitRef.current = async (text, source, quietMs) => { await submit(text, source, quietMs) }
 
   const phase = speaking ? 'speaking' as const : sending || transcribing ? 'thinking' as const : listening ? 'listening' as const : 'idle' as const
   return { snapshot, voices, voice, setVoice, inputMode, setInputMode, measurements, pauseMs, setPauseMs, playbackMode, setPlaybackMode,

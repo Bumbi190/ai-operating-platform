@@ -1,11 +1,13 @@
-"""Nova localhost relay: zero credentials, one active browser, read-only.
+"""Nova localhost relay: short-lived pairing and bounded operator review.
 
-A paired Omnira browser tab (not this Python process) owns authentication and
-calls the existing /api/chat endpoint. This relay accepts exactly one bounded
-read-only request and streams its result to the Nova UI.
+The default request is still read-only. A distinctly marked operator request
+requires an explicit Nova review-menu click, a paired browser and an
+authenticated Atlas session; it is handed to Atlas's normal permission/tool
+path. This local relay never performs OS commands, file writes or arbitrary
+URL navigation, and never stores login credentials.
 
-Security: listen 127.0.0.1 only, strict Host/Origin, ephemeral token in headers,
-small inputs, read-only events, no arbitrary URLs, no filesystem/shell primitives.
+Security: loopback only, strict Host/Origin, ephemeral header token, bounded
+inputs, no arbitrary shell/filesystem primitives or unapproved model actions.
 """
 from __future__ import annotations
 
@@ -27,7 +29,7 @@ MAX_PROMPT_CHARS = 3_000
 STALE_AFTER = 12
 TASK_TIMEOUT = 150
 MAX_REQUESTS_PER_5_MIN = 10
-VOICE_CONTROL_KINDS = frozenset(("voice_toggle", "voice_interrupt"))
+VOICE_CONTROL_KINDS = frozenset(("voice_toggle", "voice_interrupt", "voice_resume"))
 VOICE_STATUS_VALUES = frozenset(("idle", "starting", "listening", "transcribing", "thinking", "speaking", "error"))
 # Only this team's Omnira Vercel preview addresses, not arbitrary web origins.
 PREVIEW_HOST = re.compile(
@@ -70,6 +72,7 @@ class Task:
     id: str
     text: str
     issued: float
+    mode: str = "nova_readonly"
     state: str = "pending"   # pending, executing, done, canceled, failed
     result_chars: int = 0
 
@@ -201,12 +204,16 @@ class BridgeState:
                 return {"authorized": False, "status": "idle"}
             return {"authorized": self.voice_authorized, "status": self.voice_status}
 
-    def enqueue(self, text: str) -> tuple[str | None, str]:
+    def enqueue(self, text: str, *, mode: str = "nova_readonly") -> tuple[str | None, str]:
+        if mode not in ("nova_readonly", "atlas_operator"):
+            return None, "Okant uppdragslage."
         if not isinstance(text, str) or not 0 < len(text.strip()) <= MAX_PROMPT_CHARS:
             return None, "Begäran är tom eller för lång (max 3 000 tecken)."
         with self.lock:
             if not self.online():
                 return None, "Atlas webbläsarflik är inte ansluten."
+            if mode == "atlas_operator" and not self.voice_authorized:
+                return None, "Verktygsuppdrag kraver forst godkant Atlas-samtal i Omnira."
             if self.task and self.task.state in ("pending", "executing"):
                 return None, "Nova arbetar redan med en fråga. Använd Stopp först."
             now = time.monotonic()
@@ -214,9 +221,13 @@ class BridgeState:
             if len(self.requests_at) >= MAX_REQUESTS_PER_5_MIN:
                 return None, "Nova har nått sin lokala gräns: högst 10 Atlas-frågor per 5 minuter."
             self.requests_at.append(now)
-            self.task = Task(str(uuid.uuid4()), text.strip(), now)
-            self.events.put({"kind": "queued", "id": self.task.id})
-            return self.task.id, "Frågan köad till Atlas."
+            self.task = Task(str(uuid.uuid4()), text.strip(), now, mode=mode)
+            self.events.put({"kind": "queued", "id": self.task.id, "mode": mode})
+            return self.task.id, "Uppdraget koat till Atlas." if mode == "atlas_operator" else "Fragan koad till Atlas i laslage."
+
+    def enqueue_operator(self, text: str) -> tuple[str | None, str]:
+        """Explicit native operator approval, never a speech- or LLM-generated call."""
+        return self.enqueue(text, mode="atlas_operator")
 
     def next(self) -> dict:
         with self.lock:
@@ -228,7 +239,7 @@ class BridgeState:
                     self.events.put({"kind": "error", "text": "Atlas-uppdraget fick timeout."})
                     return {}
                 t.state = "executing"
-                return {"id": t.id, "text": t.text, "mode": "nova_readonly"}
+                return {"id": t.id, "text": t.text, "mode": t.mode}
             return {}
 
     def add_event(self, data: dict) -> tuple[bool, str]:

@@ -46,6 +46,17 @@ class MailMarketingRouteTests(unittest.TestCase):
         self.assertIsNone(safe_auto_navigation(request))
         self.assertIsNone(parse_native_task(request))
 
+    def test_natural_voice_navigation_misrecognition_is_strictly_allowlisted(self):
+        phrase = "Hej nova vill du navigera till kalendern i om era"
+        action = safe_auto_navigation(phrase)
+        self.assertIsNotNone(action)
+        self.assertEqual(action.kind, "open")
+        self.assertEqual(action.url, URLS["calendar"])
+        self.assertIsNone(safe_auto_navigation(
+            phrase + " och publicera ett inl?gg"))
+        self.assertIsNone(safe_auto_navigation(
+            "Hej Nova navigera till https://attacker.invalid"))
+
     def test_calendar_navigation_uses_the_real_omnira_calendar(self):
         for phrase in (
             "Nova oppna kalendern i Omnira",

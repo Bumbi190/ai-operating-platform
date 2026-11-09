@@ -1,3 +1,28 @@
+## Nova voice reliability / operator work (9 November, evening)
+
+- A direct, exact allowlist now handles common Omnira voice navigation
+  (calendar, Atlas, projects, planning, marketing review) in the existing
+  authenticated browser session without another paid AI response.
+- The native Prata button resumes the existing Atlas microphone when paired.
+  The global Ctrl+Alt+Space toggles it; Windows Win+H is used only when Nova
+  is unpaired so competing speech pipelines do not duplicate commands.
+- The browser voice call keeps its ten-minute privacy mic timeout. On timeout,
+  Ctrl+Alt+Space can explicitly re-arm the microphone and Nova shows the
+  paused/error state instead of pretending it still hears speech.
+- Complex native instructions are never silently forwarded as "read-only"
+  tool commands. A paired operator explicitly chooses
+  "..." -> "Kor i Atlas (med verktyg)" or "Bara rad (utan verktyg)".
+  The approved branch calls only the existing, authenticated Atlas
+  conversation/approval flow; no new direct desktop-control authority.
+- Nova's browser relay polls global Stop concurrently with long Atlas tasks,
+  so an operator can cancel without waiting for the entire model reply.
+- After updating the preview and restarting the local host, browser pairing
+  must be refreshed. The shared protected branch preview alias is stable.
+- Unit tests, type checking and build checks do not replace a physical
+  microphone/navigation/calendar test. Do not claim live functional success
+  until the owner verifies a real call.
+
+
 # Nova Desktop — Omnira Premium + safe local browser navigation (pilot v8)
 
 Windows-native companion **to the existing Omnira/Atlas**, not a separate

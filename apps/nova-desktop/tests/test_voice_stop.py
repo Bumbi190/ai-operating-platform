@@ -58,5 +58,24 @@ class SafeStopCommandTests(unittest.TestCase):
         source = (Path(__file__).resolve().parents[1] / "nova_overlay.py").read_text(encoding="utf-8")
         stop = source[source.index("    def stop(self):"):source.index("    def quit(self):")]
         self.assertIn('request_voice_control("voice_interrupt")', stop)
+    def test_paired_speech_resumes_atlas_not_windows_diction(self):
+        source = (Path(__file__).resolve().parents[1] / "nova_overlay.py").read_text(encoding="utf-8")
+        dictate = source[source.index("    def dictate(self):"):source.index("    def _send_windows_voice_typing_shortcut(", source.index("    def dictate(self):"))]
+        self.assertIn('request_voice_control("voice_resume")', dictate)
+        self.assertIn('if self.bridge.state.online()', dictate)
+        self.assertIn("self._auto_voice.cancel()", dictate)
+        self.assertLess(dictate.index('request_voice_control("voice_resume")'),
+                        dictate.index("self._focus_guard.ensure_focus"))
+        self.assertIn("if self.bridge.state.online() and self.bridge.state.voice_snapshot().get", source)
+
+    def test_operator_approval_is_separate_from_local_read_only_chat(self):
+        source = (Path(__file__).resolve().parents[1] / "nova_overlay.py").read_text(encoding="utf-8")
+        self.assertIn('def _approved_operator_task(', source)
+        self.assertIn('self.bridge.state.enqueue_operator(text)', source)
+        self.assertIn('("K?r i Atlas (med verktyg)"', source)
+        self.assertIn('("Bara r?d (utan verktyg)"', source)
+        self.assertIn('elif action.kind == "handoff":', source)
+
+
 if __name__ == "__main__":
     unittest.main()

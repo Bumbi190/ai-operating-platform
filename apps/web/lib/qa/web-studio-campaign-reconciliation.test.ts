@@ -5,6 +5,14 @@ import {createHash} from 'node:crypto'
 import {inspectCanonicalMigrationFiles,evaluateAppliedMigrationLedger,GRANDFATHERED_MIGRATION_NAMES,LEGACY_ONLY_PRODUCTION_LEDGER_NAMES} from '../../scripts/migration-guard-policy.mjs'
 const root=resolve(__dirname,'../../../..'),dir=resolve(root,'apps/web/supabase/migrations')
 const observedPosthog=JSON.parse(readFileSync(resolve(root,'docs/verification/web-studio/2026-11-04-posthog-ledger-observation.json'),'utf8')).migrationNames as string[]
+const currentProduction=JSON.parse(readFileSync(resolve(root,'docs/verification/web-studio/2026-11-09-production-ledger-observation.json'),'utf8'))
+function expectCurrentProductionLedger(state:ReturnType<typeof inspectCanonicalMigrationFiles>){
+ expect(currentProduction.migrationNames).toHaveLength(198)
+ expect(currentProduction.migration.version).toBe('20261109111500')
+ expect(currentProduction.migration.name).toBe('webbuilder_prospects')
+ expect(currentProduction.migration.statementSha256).toBe('669fdaca272a4140a210b222e003895e9f7c171b0d0ae9265d69e9382c32e5d9')
+ expect(evaluateAppliedMigrationLedger(currentProduction.migrationNames,state)).toMatchObject({canonicalSqlCount:175,enforcedCount:161,appliedLedgerCount:198,unknownLedgerNames:[],duplicateLedgerNames:[]})
+}
 const observation=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-01-web-studio-campaign-observation.json'),'utf8'))
 const name='social_campaign_preparation',file='20261101062259_'+name+'.sql'
 const state=()=>inspectCanonicalMigrationFiles(readdirSync(dir))
@@ -23,9 +31,12 @@ describe('Studio integration preserves campaign source and fail-closed history',
   const current=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-04-web-studio-initial-send-observation.json'),'utf8'))
   // The immutable real195-name capture predates the proposed allowance.
  expect(()=>evaluateAppliedMigrationLedger(current.migration_names,state())).toThrow(/project_total_allowance/)
- // The historical allowance extension is still incomplete; the separately observed PostHog ledger passes.
+ // The 197-name PostHog snapshot remains historical; the new 198-name production observation is checked below.
  expect(()=>evaluateAppliedMigrationLedger([...current.migration_names,'project_total_allowance'],state())).toThrow(/posthog_approved_read/)
- expect(evaluateAppliedMigrationLedger(observedPosthog,state())).toMatchObject({enforcedCount:160,appliedLedgerCount:197,unknownLedgerNames:[],duplicateLedgerNames:[]})
+ expect(observedPosthog).toHaveLength(197)
+ expect(observedPosthog).not.toContain('webbuilder_prospects')
+ expect(()=>evaluateAppliedMigrationLedger(observedPosthog,state())).toThrow(/webbuilder_prospects/)
+ expectCurrentProductionLedger(state())
  })
  it('does not grandfather the campaign or permit missing, duplicated or unknown names',()=>{
   const names=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-04-web-studio-initial-send-observation.json'),'utf8')).migration_names as string[],current=state()
@@ -33,7 +44,7 @@ describe('Studio integration preserves campaign source and fail-closed history',
   expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain(name);expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).not.toContain(name)
   expect(()=>evaluateAppliedMigrationLedger(names.filter(n=>n!==name),current)).toThrow(/social_campaign_preparation/)
   expect(()=>evaluateAppliedMigrationLedger([...names,name],current)).toThrow(/duplicate/)
-  expect(()=>evaluateAppliedMigrationLedger([...observedPosthog,'unapproved_future_schema'],current)).toThrow(/unknown/)
+  expect(()=>evaluateAppliedMigrationLedger([...currentProduction.migrationNames,'unapproved_future_schema'],current)).toThrow(/unknown/)
  })
  it('keeps the prior191-name snapshot immutable and correctly incomplete',()=>{
   const prior=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-01-web-studio-exact-claim-observation.json'),'utf8'))

@@ -685,7 +685,13 @@ class NovaOverlay:
         A key-bearing fragment must not cross Vercel SSO redirects.
         """
         if self.bridge.state.online():
-            self._phase("klar", "Atlas är redan ansluten (enbart läsning)")
+            voice = self.bridge.state.voice_snapshot()
+            detail = "Atlas ar redan ansluten"
+            if voice.get("authorized"):
+                detail += " - rostsamtal " + str(voice.get("status", "aktivt"))
+            else:
+                detail += " - godkann rostsamtalet i webblasaren"
+            self._phase("klar", detail)
             return
         target = next(iter(self.bridge.state.origins))
         if target == PROD_ORIGIN:
@@ -696,7 +702,7 @@ class NovaOverlay:
         try:
             if not self._atlas_login_opened:
                 # Open the SSO-protected preview WITHOUT any pairing fragment.
-                if webbrowser.open(target + "/nova-bridge", new=2):
+                if webbrowser.open(target + "/nova-bridge", new=1):
                     self._atlas_login_opened = True
                     self._append("nova", "Atlas steg 1/2: Omniras skyddade testmiljö öppnades. " +
                                  "Logga in där, klicka sedan på Atlas-statusen i Nova igen.")
@@ -706,8 +712,8 @@ class NovaOverlay:
             else:
                 # Only after manual SSO login do we send the in-memory fragment.
                 if webbrowser.open(self.bridge.pairing_url(), new=2):
-                    self._append("nova", "Atlas steg 2/2: Klicka Anslut i webbläsaren. " +
-                                 "Därefter kan Atlas svara här i läsläge.")
+                    self._append("nova", "Atlas steg 2/2: Klicka Anslut och Starta rostsamtal i webblasaren. " +
+                                 "Ctrl+Alt+Space styr sedan samtalet fran Nova.")
                     self._phase("godkannande", "Atlas steg 2/2 · klicka Anslut i webbläsaren")
                 else:
                     self._append("warn", "Nova: Parningssidan kunde inte öppnas.")
@@ -717,13 +723,26 @@ class NovaOverlay:
     def _show_bridge_status(self):
         if self.expanded and hasattr(self, "bridge_var"):
             if self.bridge.state.online():
-                self.bridge_var.set("Atlas ansluten · läsläge")
+                voice = self.bridge.state.voice_snapshot()
+                if voice.get("authorized"):
+                    labels = {
+                        "idle": "pausat",
+                        "starting": "startar",
+                        "listening": "lyssnar",
+                        "transcribing": "tolkar tal",
+                        "thinking": "arbetar",
+                        "speaking": "pratar",
+                        "error": "rostfel",
+                    }
+                    self.bridge_var.set("Nova-samtal - " + labels.get(voice.get("status"), "anslutet"))
+                else:
+                    self.bridge_var.set("Atlas ansluten - starta rostsamtal i webblasaren")
                 self.bridge_status.configure(fg=SUCCESS)
             elif self._atlas_login_opened:
-                self.bridge_var.set("Atlas · klicka för att slutföra anslutningen")
+                self.bridge_var.set("Atlas - klicka for att slutfora anslutningen")
                 self.bridge_status.configure(fg=CYAN)
             else:
-                self.bridge_var.set("Atlas offline · klicka för att ansluta")
+                self.bridge_var.set("Atlas offline - klicka for att ansluta")
                 self.bridge_status.configure(fg=CYAN)
         if not self.closed:
             self.root.after(900, self._show_bridge_status)
@@ -734,8 +753,8 @@ class NovaOverlay:
                 event = self.bridge.state.events.get_nowait()
                 kind = event.get("kind")
                 if kind == "connected":
-                    self._append("ok", "Nova: Autentiserad Atlas-flik har anslutit i läsläge.")
-                    self._phase("klar", "Atlas ansluten · inga skrivverktyg")
+                    self._append("ok", "Nova: Atlas-webblasaren ar ansluten. Godkann rostsamtalet dar nar du ar redo.")
+                    self._phase("klar", "Atlas ansluten - invantar rostsamtal")
                 elif kind == "queued":
                     self.live_reply_id = None
                     self.live_reply_text = ""
@@ -788,19 +807,31 @@ class NovaOverlay:
                         self._redock_near_pointer()
                     self.expand(listen=False)
                 elif event == "toggle":
-                    # After navigating in Brave, the browser (not Nova) has
-                    # focus. The NEXT hotkey must bring Nova back to listen,
-                    # not just collapse the still-visible overlay.
+                    voice = self.bridge.state.voice_snapshot()
+                    voice_ready = self.bridge.state.online() and voice.get("authorized") is True
                     nova_has_focus = (
                         self.expanded and
                         self._focus_guard.has_focus(self.root, self.command)
                     )
-                    if nova_has_focus:
-                        self.collapse()
+                    if voice_ready:
+                        accepted, detail = self.bridge.state.request_voice_control("voice_toggle")
+                        if not accepted:
+                            self._append("warn", "Nova: " + detail)
+                        if nova_has_focus:
+                            self.collapse()
+                        else:
+                            if self._manual_anchor is None:
+                                self._redock_near_pointer()
+                            self.expand(listen=False)
                     else:
-                        if self._manual_anchor is None:
-                            self._redock_near_pointer()
-                        self.expand(listen=True)
+                        # Before browser consent, retain the safe one-shot
+                        # Windows dictation fallback.
+                        if nova_has_focus:
+                            self.collapse()
+                        else:
+                            if self._manual_anchor is None:
+                                self._redock_near_pointer()
+                            self.expand(listen=True)
         except queue.Empty:
             pass
         if not self.closed:
@@ -1409,6 +1440,7 @@ class NovaOverlay:
         self._phase("godkannande", "Exempel: Öppna Omniras projektmapp")
 
     def stop(self):
+        self.bridge.state.request_voice_control("voice_interrupt")
         self._voice_request_id += 1
         self._auto_voice.cancel()
         self.native_task_epoch += 1

@@ -27,6 +27,8 @@ MAX_PROMPT_CHARS = 3_000
 STALE_AFTER = 12
 TASK_TIMEOUT = 150
 MAX_REQUESTS_PER_5_MIN = 10
+VOICE_CONTROL_KINDS = frozenset(("voice_toggle", "voice_interrupt"))
+VOICE_STATUS_VALUES = frozenset(("idle", "starting", "listening", "transcribing", "thinking", "speaking", "error"))
 # Only this team's Omnira Vercel preview addresses, not arbitrary web origins.
 PREVIEW_HOST = re.compile(
     r"^ai-operating-platform-[a-z0-9-]+-bumbi190s-projects\.vercel\.app$"
@@ -82,6 +84,10 @@ class BridgeState:
         self.connected_at = 0.0
         self.last_seen = 0.0
         self.requests_at: list[float] = []
+        self.voice_authorized = False
+        self.voice_status = "idle"
+        self.voice_status_at = 0.0
+        self.control_pending: dict | None = None
 
     def switch_origin(self, origin: str) -> str:
         """Explicit preview selection invalidates the previous browser pairing."""
@@ -92,6 +98,10 @@ class BridgeState:
             self.connected_at = 0.0
             self.last_seen = 0.0
             self.task = None
+            self.voice_authorized = False
+            self.voice_status = "idle"
+            self.voice_status_at = 0.0
+            self.control_pending = None
             # Drop stale events that belonged to the earlier pairing.
             while not self.events.empty():
                 try:
@@ -102,7 +112,13 @@ class BridgeState:
 
     def online(self) -> bool:
         with self.lock:
-            return self.connected_at > 0 and (time.monotonic() - self.last_seen) < STALE_AFTER
+            alive = self.connected_at > 0 and (time.monotonic() - self.last_seen) < STALE_AFTER
+            if not alive and self.voice_authorized:
+                self.voice_authorized = False
+                self.voice_status = "idle"
+                self.voice_status_at = 0.0
+                self.control_pending = None
+            return alive
 
     def heartbeat(self):
         with self.lock:
@@ -112,7 +128,78 @@ class BridgeState:
         with self.lock:
             self.connected_at = time.monotonic()
             self.last_seen = self.connected_at
+            # A new browser page must explicitly authorize its microphone again.
+            self.voice_authorized = False
+            self.voice_status = "idle"
+            self.voice_status_at = 0.0
+            self.control_pending = None
             self.events.put({"kind": "connected"})
+
+    def authorize_voice(self) -> tuple[bool, str]:
+        with self.lock:
+            if not self.online():
+                return False, "Atlas-webbl\\u00e4saren \\u00e4r inte ansluten."
+            self.voice_authorized = True
+            self.voice_status = "starting"
+            self.voice_status_at = time.monotonic()
+            self.control_pending = None
+            return True, "R\\u00f6stsamtalet \\u00e4r godk\\u00e4nt av anv\\u00e4ndaren."
+
+    def revoke_voice(self) -> None:
+        with self.lock:
+            self.voice_authorized = False
+            self.voice_status = "idle"
+            self.voice_status_at = 0.0
+            self.control_pending = None
+
+    def request_voice_control(self, kind: str) -> tuple[bool, str]:
+        if kind not in VOICE_CONTROL_KINDS:
+            return False, "Ok\\u00e4nt r\\u00f6stkommando."
+        with self.lock:
+            if not self.online():
+                return False, "Atlas-webbl\\u00e4saren \\u00e4r inte ansluten."
+            if not self.voice_authorized:
+                return False, "R\\u00f6stsamtalet beh\\u00f6ver f\\u00f6rst godk\\u00e4nnas i Omnira-webbl\\u00e4saren."
+            # Emergency interruption supersedes a queued toggle. A toggle never
+            # replaces another unacknowledged command, preventing double toggles.
+            if kind == "voice_interrupt":
+                self.control_pending = {"id": str(uuid.uuid4()), "kind": kind}
+                return True, "Avbrottet skickades till Atlas."
+            if self.control_pending:
+                return False, "Ett r\\u00f6stkommando v\\u00e4ntar redan p\\u00e5 bekr\\u00e4ftelse."
+            self.control_pending = {"id": str(uuid.uuid4()), "kind": kind}
+            return True, "R\\u00f6stkommandot skickades till Atlas."
+
+    def next_voice_control(self) -> dict:
+        with self.lock:
+            if not self.online() or not self.voice_authorized or not self.control_pending:
+                return {}
+            return dict(self.control_pending)
+
+    def acknowledge_voice_control(self, control_id: str) -> bool:
+        with self.lock:
+            if not self.control_pending or self.control_pending.get("id") != control_id:
+                return False
+            self.control_pending = None
+            self.heartbeat()
+            return True
+
+    def update_voice_status(self, status: str) -> bool:
+        if status not in VOICE_STATUS_VALUES:
+            return False
+        with self.lock:
+            if not self.online() or not self.voice_authorized:
+                return False
+            self.voice_status = status
+            self.voice_status_at = time.monotonic()
+            self.heartbeat()
+            return True
+
+    def voice_snapshot(self) -> dict:
+        with self.lock:
+            if not self.online():
+                return {"authorized": False, "status": "idle"}
+            return {"authorized": self.voice_authorized, "status": self.voice_status}
 
     def enqueue(self, text: str) -> tuple[str | None, str]:
         if not isinstance(text, str) or not 0 < len(text.strip()) <= MAX_PROMPT_CHARS:
@@ -246,7 +333,7 @@ def create_handler(state: BridgeState):
                 self.send_json(403, {"error": "Not authorized"})
                 return
             if self.endpoint() == "/next":
-                self.send_json(200, {"task": state.next()})
+                self.send_json(200, {"task": state.next(), "command": state.next_voice_control()})
             elif self.endpoint() == "/status":
                 task_id = urlsplit(self.path).query
                 self.send_json(200, {"state": state.task_state(task_id)})
@@ -277,19 +364,43 @@ def create_handler(state: BridgeState):
                 self.send_json(403, {"error": "Not authorized"})
                 return
             endpoint = self.endpoint()
-            if endpoint not in ("/connect", "/event"):
+            if endpoint not in ("/connect", "/event", "/voice/authorize", "/voice/revoke", "/voice/status", "/control/ack"):
                 self.send_json(404, {"error": "Unknown route"})
                 return
-            data = self.read_data(MAX_EVENT_BYTES if endpoint == "/event" else MAX_REQUEST_BYTES)
+            data = self.read_data(MAX_EVENT_BYTES if endpoint in ("/event", "/voice/status", "/control/ack") else MAX_REQUEST_BYTES)
             if data is None:
                 self.send_json(400, {"error": "Invalid JSON or request size"})
                 return
             if endpoint == "/connect":
-                if data.get("protocol") != 1:
+                if set(data) != {"protocol"} or data.get("protocol") != 1:
                     self.send_json(400, {"error": "Unsupported protocol"})
                     return
                 state.connect()
-                self.send_json(200, {"connected": True, "mode": "read_only"})
+                self.send_json(200, {"connected": True, "mode": "read_only", "voice_control": "user_gesture_required"})
+            elif endpoint == "/voice/authorize":
+                if set(data) != {"protocol"} or data.get("protocol") != 1:
+                    self.send_json(400, {"error": "Unsupported protocol"})
+                    return
+                accepted, message = state.authorize_voice()
+                self.send_json(200 if accepted else 409, {"authorized": accepted, "message": message})
+            elif endpoint == "/voice/revoke":
+                if set(data) != {"protocol"} or data.get("protocol") != 1:
+                    self.send_json(400, {"error": "Unsupported protocol"})
+                    return
+                state.revoke_voice()
+                self.send_json(200, {"authorized": False})
+            elif endpoint == "/voice/status":
+                if set(data) != {"status"} or not isinstance(data.get("status"), str):
+                    self.send_json(400, {"error": "Invalid voice status"})
+                    return
+                accepted = state.update_voice_status(data["status"])
+                self.send_json(200 if accepted else 409, {"ok": accepted})
+            elif endpoint == "/control/ack":
+                if set(data) != {"id"} or not isinstance(data.get("id"), str) or len(data["id"]) > 64:
+                    self.send_json(400, {"error": "Invalid control acknowledgement"})
+                    return
+                accepted = state.acknowledge_voice_control(data["id"])
+                self.send_json(200 if accepted else 409, {"ok": accepted})
             else:
                 if not state.online():
                     self.send_json(409, {"error": "Not connected"})

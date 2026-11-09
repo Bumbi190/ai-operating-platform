@@ -4,25 +4,39 @@ Windows-native companion **to the existing Omnira/Atlas**, not a separate
 AI, memory database, workflow engine or agent. It runs in the logged-in
 Windows session and is available via **Ctrl+Alt+Space**.
 
-## Emergency stop: native desktop and Atlas browser
+## Continuous Atlas voice call and emergency stop
 
-- Nova Desktop now has a visible **Stopp** button.
-- **Ctrl+Alt+.** is a second global Windows hotkey handled by Nova's resident
-  host. It stops pending local plans and requests cancellation of a pending
-  read-only Atlas relay turn. It never launches an already closed UI.
-- **Ctrl+.** works in Nova's focused composer. Exact spoken one-shot commands
-  such as "Nova stopp" and "Nova avbryt" are handled locally before all
-  browser navigation, Atlas and native task routing.
-- An action already completed is not rolled back. Windows Win+H is an OS
-  service; native Stop does not promise to end the Windows microphone session.
-- Atlas browser voice has a visible interrupt control, cancels pending streamed
-  answers and TTS, and permits speech correction in headphone mode. With
-  speakers, use the visible control (or Escape when the panel has focus).
-- Ctrl+Alt+Space currently starts one-shot Windows dictation, NOT yet a true
-  continuous duplex Nova Desktop call. Reuse Atlas's existing microphone,
-  VAD, streaming STT, and TTS through a protected browser-paired audio bridge.
-- No production deploy or live voice validation has happened for this feature
-  branch; the new behavior requires a protected preview and real hardware tests.
+- The browser-paired Nova bridge is mounted inside the authenticated platform
+  layout, not inside the /nova-bridge page. Its poller therefore survives
+  client-side navigation to other Omnira pages.
+- First connect the desktop relay, then click **Starta r?stsamtal** once in
+  the protected Omnira browser window. This is the explicit browser gesture
+  that starts the existing Atlas microphone and audio session.
+- The voice call reuses Atlas's existing PCM capture, Silero VAD, streaming
+  speech recognition, Swedish TTS and authenticated conversation controller.
+  The microphone and audio remain browser-owned; the Windows host receives
+  only narrow start/stop/interrupt control signals and status. No new provider,
+  subscription, API key or local credential is introduced.
+- After microphone consent, **Ctrl+Alt+Space** toggles the persistent Atlas
+  voice call from Nova Desktop instead of starting a competing Win+H dictation
+  session. Before consent, the old one-shot Windows dictation remains available.
+- Keep the dedicated Omnira bridge window open while using other apps. The
+  call survives navigation inside Omnira and remains alive while that window
+  stays loaded in the background. Closing it or navigating away from Omnira
+  in that window ends the browser-owned call.
+- **Ctrl+Alt+.** and Nova's visible **Stopp** request immediate interruption
+  of Atlas speech and the active answer. The Atlas call remains open for a
+  correction. Headphone mode additionally supports speech barge-in; speaker
+  mode uses the visible interrupt control to avoid echo/self-trigger.
+- Atlas voice uses the normal authenticated conversation path and its
+  existing scoped tools, including the existing calendar capability and any
+  normal approval gates. The separate local page-reading relay remains
+  read-only; it does not gain desktop write access.
+- Exact one-shot commands such as "Nova stopp" remain local. An action that
+  already completed cannot be rolled back by Stop.
+- This implementation is local to the feature branch. It has not been pushed
+  or deployed; the protected preview and physical mic/headphone tests are
+  required before claiming live end-to-end operation or production readiness.
 
 ## Tested now on stationära Hultgren
 
@@ -176,6 +190,29 @@ Windows session and is available via **Ctrl+Alt+Space**.
 - `/nova-bridge` exists on the SSO-protected Vercel preview, but **not** on
   production. Do NOT claim real Atlas AI responses or full memory access until
   the logged-in browser → local relay → UI test actually succeeds.
+
+## Persistent Atlas voice control (local feature branch)
+
+- The authenticated Nova bridge provider is mounted in the platform layout,
+  so its short-lived pairing and local command poller survive route changes
+  inside Omnira. It does not persist pairing credentials to disk or storage.
+- After connecting, click **Starta r?stsamtal** once in the browser. That
+  explicit gesture starts the existing Atlas voice session and authorizes
+  the local bridge to send only two control intents: voice toggle and interrupt.
+- The local relay never receives microphone audio. Atlas's browser-owned
+  runtime performs PCM capture, VAD, streaming transcription and TTS.
+- Once consented, Ctrl+Alt+Space toggles the Atlas call; Ctrl+Alt+. interrupts
+  the current answer. Native Nova's visible Stopp button sends the same
+  interrupt. Before consent, Ctrl+Alt+Space retains one-shot Win+H dictation.
+- Keep the dedicated Omnira bridge window loaded while working in other apps.
+  The Atlas provider survives navigation inside Omnira; closing that browser
+  window or navigating away from Omnira in it ends the call.
+- Voice turns use the normal authenticated Atlas conversation and its existing
+  scoped tools/approval gates. The separate page-reading relay remains
+  read-only and cannot execute desktop clicks, typing or arbitrary shell code.
+- This is local code only. The protected preview must be deployed and the
+  microphone, headset barge-in, speaker-mode Stop and calendar flow physically
+  tested before any production claim.
 
 ## NOT yet working
 

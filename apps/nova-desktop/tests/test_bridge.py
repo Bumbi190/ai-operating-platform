@@ -159,5 +159,71 @@ class BridgeTests(unittest.TestCase):
                                      {"irrelevant": "y" * 9000})[0], 400)
 
 
+    def test_voice_controls_require_browser_consent_and_are_acknowledged(self):
+        self.request("/connect", "POST", self.good, {"protocol": 1})
+        allowed, reason = self.bridge.state.request_voice_control("voice_toggle")
+        self.assertFalse(allowed)
+        self.assertIn("godk", reason)
+        self.assertEqual(self.bridge.state.next_voice_control(), {})
+
+        status, payload, _ = self.request(
+            "/voice/authorize", "POST", self.good, {"protocol": 1})
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["authorized"])
+        self.assertEqual(self.bridge.state.voice_snapshot(),
+                         {"authorized": True, "status": "starting"})
+
+        self.assertTrue(self.bridge.state.update_voice_status("listening"))
+        self.assertEqual(self.bridge.state.voice_snapshot()["status"], "listening")
+        accepted, _ = self.bridge.state.request_voice_control("voice_toggle")
+        self.assertTrue(accepted)
+        first = self.bridge.state.next_voice_control()
+        self.assertEqual(first["kind"], "voice_toggle")
+        self.assertEqual(self.bridge.state.next_voice_control(), first)
+        self.assertFalse(self.bridge.state.acknowledge_voice_control("wrong-id"))
+        self.assertEqual(self.request(
+            "/control/ack", "POST", self.good, {"id": "wrong-id"})[0], 409)
+        self.assertEqual(self.request(
+            "/control/ack", "POST", self.good, {"id": first["id"]})[0], 200)
+        self.assertEqual(self.bridge.state.next_voice_control(), {})
+
+    def test_voice_interrupt_supersedes_toggle_and_revoke_clears_pending(self):
+        self.request("/connect", "POST", self.good, {"protocol": 1})
+        self.request("/voice/authorize", "POST", self.good, {"protocol": 1})
+        self.assertTrue(self.bridge.state.request_voice_control("voice_toggle")[0])
+        self.assertTrue(self.bridge.state.request_voice_control("voice_interrupt")[0])
+        command = self.bridge.state.next_voice_control()
+        self.assertEqual(command["kind"], "voice_interrupt")
+        self.assertFalse(self.bridge.state.acknowledge_voice_control("stale-toggle"))
+        self.bridge.state.revoke_voice()
+        self.assertEqual(self.bridge.state.next_voice_control(), {})
+        self.assertFalse(self.bridge.state.voice_snapshot()["authorized"])
+        self.assertFalse(self.bridge.state.update_voice_status("speaking"))
+
+    def test_voice_routes_reject_extra_fields_and_invalid_status(self):
+        self.request("/connect", "POST", self.good, {"protocol": 1})
+        self.assertEqual(self.request(
+            "/voice/authorize", "POST", self.good,
+            {"protocol": 1, "token": "not-allowed"})[0], 400)
+        self.assertEqual(self.request(
+            "/voice/status", "POST", self.good, {"status": "run_shell"})[0], 409)
+        self.assertEqual(self.request(
+            "/voice/status", "POST", self.good, {"status": "listening", "extra": True})[0], 400)
+        self.assertEqual(self.request(
+            "/voice/revoke", "POST", self.good, {"protocol": 1})[0], 200)
+
+    def test_voice_control_http_round_trip_through_next_poll(self):
+        self.request("/connect", "POST", self.good, {"protocol": 1})
+        self.request("/voice/authorize", "POST", self.good, {"protocol": 1})
+        self.assertTrue(self.bridge.state.request_voice_control("voice_toggle")[0])
+        status, payload, _ = self.request("/next", headers=self.good)
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["command"]["kind"], "voice_toggle")
+        control_id = payload["command"]["id"]
+        status, payload, _ = self.request(
+            "/control/ack", "POST", self.good, {"id": control_id})
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(self.request("/next", headers=self.good)[1]["command"], {})
 if __name__ == "__main__":
     unittest.main()

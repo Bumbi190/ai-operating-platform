@@ -1,0 +1,379 @@
+'use client'
+
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { usePathname } from 'next/navigation'
+import { useAtlas } from '@/lib/atlas/runtime'
+
+type Pair = { port: number; key: string }
+type LocalTask = { id: string; text: string; mode: 'nova_readonly' }
+type VoiceControl = { id: string; kind: 'voice_toggle' | 'voice_interrupt' }
+type ChatTurn = { role: 'user' | 'assistant'; content: string }
+type LocalFetch = RequestInit & { targetAddressSpace: 'loopback' }
+type BridgePhase = 'ready' | 'connecting' | 'paired' | 'failed' | 'paused'
+
+type NovaBridgeValue = {
+  phase: BridgePhase
+  message: string
+  lastPrompt: string
+  lastAnswer: string
+  voiceAuthorized: boolean
+  voiceAvailable: boolean
+  voiceStatus: string
+  connect(): Promise<void>
+  startVoice(): Promise<void>
+  stopVoice(): Promise<void>
+  pause(): void
+}
+
+const Context = createContext<NovaBridgeValue | null>(null)
+const MAX_LOCAL_CHARS = 3000
+const SAFE_PAIR = /^[A-Za-z0-9_-]{32,96}$/
+
+function readPairingFragment(): Pair | null {
+  const raw = window.location.hash.slice(1)
+  if (!raw) return null
+  const params = new URLSearchParams(raw)
+  const port = Number(params.get('port'))
+  const key = params.get('key') ?? ''
+  // Remove the short-lived token from browser history immediately.
+  window.history.replaceState(null, '', window.location.pathname + window.location.search)
+  if (!Number.isInteger(port) || port < 1025 || port > 65535 || !SAFE_PAIR.test(key)) return null
+  return { port, key }
+}
+
+function voiceStatusLabel(status: string): string {
+  return ({
+    idle: 'Av',
+    starting: 'Startar mikrofon',
+    listening: 'Lyssnar',
+    transcribing: 'Tolkar tal',
+    thinking: 'Atlas arbetar',
+    speaking: 'Nova pratar',
+    error: 'Röstfel',
+  } as Record<string, string>)[status] ?? 'Okänd status'
+}
+
+export function NovaBridgeProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname()
+  const atlas = useAtlas()
+  const atlasRef = useRef(atlas)
+  atlasRef.current = atlas
+
+  const [phase, setPhase] = useState<BridgePhase>('ready')
+  const [message, setMessage] = useState('Öppna sidan från Nova-bubblans Koppla Atlas-knapp.')
+  const [lastPrompt, setLastPrompt] = useState('')
+  const [lastAnswer, setLastAnswer] = useState('')
+  const [voiceAuthorized, setVoiceAuthorized] = useState(false)
+
+  const pairingRef = useRef<Pair | null>(null)
+  const stoppedRef = useRef(true)
+  const phaseRef = useRef<BridgePhase>('ready')
+  phaseRef.current = phase
+  const voiceAuthorizedRef = useRef(false)
+  const turnsRef = useRef<ChatTurn[]>([])
+  const pollRef = useRef(false)
+  const controllersRef = useRef(new Set<AbortController>())
+  const atlasAbortRef = useRef<AbortController | null>(null)
+  const seenControlsRef = useRef(new Set<string>())
+
+  useEffect(() => {
+    if (pathname !== '/nova-bridge' || pairingRef.current) return
+    const pair = readPairingFragment()
+    if (pair) {
+      pairingRef.current = pair
+      setMessage('Nova hittad lokalt. Klicka Anslut och godkänn sedan röstsamtalet.')
+    }
+  }, [pathname])
+
+  const local = useCallback(async <T,>(path: string, method = 'GET', body?: unknown): Promise<T> => {
+    const pairing = pairingRef.current
+    if (!pairing) throw new Error('Ingen giltig Nova-parning')
+    const controller = new AbortController()
+    controllersRef.current.add(controller)
+    const init: LocalFetch = {
+      method,
+      credentials: 'omit',
+      mode: 'cors',
+      cache: 'no-store',
+      targetAddressSpace: 'loopback',
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json', 'X-Nova-Token': pairing.key },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    }
+    try {
+      const response = await fetch('http://127.0.0.1:' + pairing.port + path, init)
+      if (!response.ok) throw new Error('Nova lokal HTTP ' + response.status)
+      return (await response.json()) as T
+    } finally {
+      controllersRef.current.delete(controller)
+    }
+  }, [])
+
+  const push = useCallback(async (id: string, kind: 'text' | 'done' | 'error', text = '') => {
+    return local<{ ok: boolean }>('/event', 'POST', { id, kind, text })
+  }, [local])
+
+  const executeReadOnly = useCallback(async (task: LocalTask): Promise<void> => {
+    if (task.mode !== 'nova_readonly' || !task.id || typeof task.text !== 'string' ||
+        task.text.length > MAX_LOCAL_CHARS) {
+      throw new Error('Nova skickade ett ogiltigt uppdrag')
+    }
+    setLastPrompt(task.text)
+    setLastAnswer('')
+    setMessage('Atlas svarar på den separata läsförfrågan. Inga arbetsverktyg körs.')
+    let answer = ''
+    const turns: ChatTurn[] = [...turnsRef.current.slice(-10), { role: 'user', content: task.text }]
+    const atlasAbort = new AbortController()
+    atlasAbortRef.current = atlasAbort
+    let statusBusy = false
+    let statusFailures = 0
+    const statusTimer = window.setInterval(() => {
+      if (stoppedRef.current || statusBusy) return
+      statusBusy = true
+      void local<{ state: string }>('/status?' + encodeURIComponent(task.id))
+        .then(({ state }) => {
+          statusFailures = 0
+          if (state !== 'executing' && state !== 'done') atlasAbort.abort()
+        })
+        .catch(() => {
+          statusFailures += 1
+          if (statusFailures >= 3) atlasAbort.abort()
+        })
+        .finally(() => { statusBusy = false })
+    }, 400)
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        credentials: 'same-origin',
+        signal: atlasAbort.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: turns, mode: 'nova_readonly', voice: false }),
+      })
+      if (!response.ok || !response.body) {
+        throw new Error(response.status === 401
+          ? 'Atlas-sessionen har gått ut. Logga in i Omnira.'
+          : 'Atlas kunde inte svara (HTTP ' + response.status + ').')
+      }
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let sawDone = false
+      try {
+        while (!stoppedRef.current && !atlasAbort.signal.aborted) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            let data: { event?: string; text?: string; code?: string } = {}
+            try { data = JSON.parse(line.slice(6)) } catch { continue }
+            if (data.event === 'text' && typeof data.text === 'string') {
+              for (let i = 0; i < data.text.length; i += 2048) {
+                const part = data.text.slice(i, i + 2048)
+                answer += part
+                if (answer.length > 30_000) throw new Error('Svaret blev för stort')
+                await push(task.id, 'text', part)
+                setLastAnswer(answer)
+              }
+            } else if (data.event === 'done') {
+              sawDone = true
+            } else if (data.event === 'error') {
+              throw new Error('Atlas rapporterade ett tjänstefel: ' + (data.code ?? 'okänt'))
+            } else if (data.event === 'tool_call' || data.event === 'navigate') {
+              throw new Error('Atlas försökte använda ett verktyg i läsläge.')
+            }
+          }
+        }
+      } finally {
+        try { await reader.cancel() } catch { /* stream finished or canceled */ }
+      }
+      if (stoppedRef.current || atlasAbort.signal.aborted) return
+      if (!sawDone) throw new Error('Atlas avbröt strömmen innan svarskvittot kom fram.')
+      turnsRef.current = [...turns, { role: 'assistant' as const, content: answer }].slice(-12)
+      await push(task.id, 'done')
+      setMessage('Atlas svarade på läsförfrågan. Inget exekveringsverktyg kördes.')
+    } finally {
+      window.clearInterval(statusTimer)
+      if (atlasAbortRef.current === atlasAbort) atlasAbortRef.current = null
+    }
+  }, [local, push])
+
+  const executeVoiceControl = useCallback(async (command: VoiceControl) => {
+    if (!command || typeof command.id !== 'string' || !['voice_toggle', 'voice_interrupt'].includes(command.kind)) {
+      throw new Error('Ogiltigt röstkommando från Nova')
+    }
+    if (seenControlsRef.current.has(command.id)) {
+      // The native side may have superseded/revoked this command while the
+      // browser was handling it. A stale acknowledgement is not a lost session.
+      await local('/control/ack', 'POST', { id: command.id }).catch(() => {})
+      return
+    }
+    const current = atlasRef.current
+    if (!current.voiceConversationAvailable) {
+      setMessage('Atlas röstsamtal är inte aktiverat för den här sessionen.')
+    } else if (command.kind === 'voice_interrupt') {
+      current.stopAudio()
+      setMessage('Atlas svar avbröts. Röstsamtalet är fortfarande öppet.')
+    } else if (current.voicePanelOpen || current.isSessionActive) {
+      current.deactivate()
+      setMessage('Röstsamtalet pausades via Nova.')
+    } else {
+      current.activate()
+      setMessage('Röstsamtalet startades via Nova.')
+    }
+    seenControlsRef.current.add(command.id)
+    if (seenControlsRef.current.size > 32) {
+      const first = seenControlsRef.current.values().next().value
+      if (first) seenControlsRef.current.delete(first)
+    }
+    // Emergency interrupt can supersede a queued toggle, so a 409 for this
+    // old acknowledgement is expected and must not tear down the poller.
+    await local('/control/ack', 'POST', { id: command.id }).catch(() => {})
+  }, [local])
+
+  const pollingLoop = useCallback(async () => {
+    if (pollRef.current) return
+    pollRef.current = true
+    try {
+      while (!stoppedRef.current) {
+        try {
+          const data = await local<{ task?: LocalTask; command?: VoiceControl }>('/next')
+          if (data.command?.id) await executeVoiceControl(data.command)
+          if (data.task?.id) {
+            try {
+              await executeReadOnly(data.task)
+            } catch (error) {
+              const detail = error instanceof Error ? error.message : 'Okänt fel'
+              setMessage('Atlas-läsningen avbröts: ' + detail)
+              try { await push(data.task.id, 'error', detail.slice(0, 200)) } catch { /* canceled */ }
+            }
+          }
+          if (!stoppedRef.current) {
+            await new Promise(resolve => setTimeout(resolve, voiceAuthorizedRef.current ? 250 : 800))
+          }
+        } catch (error) {
+          if (!stoppedRef.current) {
+            setPhase('failed')
+            setMessage('Kopplingen till Nova försvann: ' +
+              (error instanceof Error ? error.message : 'okänt fel'))
+          }
+          break
+        }
+      }
+    } finally {
+      pollRef.current = false
+    }
+  }, [executeReadOnly, executeVoiceControl, local, push])
+
+  const connect = useCallback(async () => {
+    if (!pairingRef.current) {
+      setPhase('failed')
+      setMessage('Ingen giltig parning. Klicka Koppla Atlas i Nova på din dator.')
+      return
+    }
+    if (pollRef.current) return
+    stoppedRef.current = false
+    setPhase('connecting')
+    setMessage('Ansluter till den lokala Nova-bubblan ...')
+    try {
+      const result = await local<{ connected: boolean; mode: string; voice_control?: string }>(
+        '/connect', 'POST', { protocol: 1 })
+      if (!result.connected || result.mode !== 'read_only') throw new Error('Fel protokoll från lokal Nova')
+      voiceAuthorizedRef.current = false
+      setVoiceAuthorized(false)
+      setPhase('paired')
+      setMessage('Ansluten. Klicka Starta röstsamtal en gång för mikrofonbehörighet; därefter kan Ctrl+Alt+Space styra samtalet.')
+      void pollingLoop()
+    } catch (error) {
+      stoppedRef.current = true
+      setPhase('failed')
+      setMessage('Kopplingen misslyckades: ' +
+        (error instanceof Error ? error.message : 'okänt fel') +
+        '. Tillåt åtkomst till lokalt nätverk om Chrome frågar.')
+    }
+  }, [local, pollingLoop])
+
+  const startVoice = useCallback(async () => {
+    if (!pairingRef.current || phaseRef.current !== 'paired') {
+      setMessage('Anslut Nova först innan röstsamtalet startas.')
+      return
+    }
+    const current = atlasRef.current
+    if (!current.voiceConversationAvailable) {
+      setMessage('Atlas röstsamtal är inte aktiverat för den här användaren eller miljön.')
+      return
+    }
+    // Call synchronously from the click so browser microphone and audio
+    // permissions are requested inside a real user gesture.
+    current.activate()
+    try {
+      const result = await local<{ authorized: boolean; message: string }>(
+        '/voice/authorize', 'POST', { protocol: 1 })
+      if (!result.authorized) throw new Error(result.message || 'Mikrofonkopplingen nekades')
+      voiceAuthorizedRef.current = true
+      setVoiceAuthorized(true)
+      setMessage('Röstsamtalet är aktivt. Ctrl+Alt+Space pausar/startar och Ctrl+Alt+. avbryter svaret.')
+    } catch (error) {
+      current.deactivate()
+      setMessage('Röstsamtalet kunde inte godkännas: ' +
+        (error instanceof Error ? error.message : 'okänt fel'))
+    }
+  }, [local])
+
+  const stopVoice = useCallback(async () => {
+    atlasRef.current.deactivate()
+    voiceAuthorizedRef.current = false
+    setVoiceAuthorized(false)
+    try { await local('/voice/revoke', 'POST', { protocol: 1 }) } catch { /* local relay may already be offline */ }
+    setMessage('Röstsamtalet avslutades.')
+  }, [local])
+
+  const pause = useCallback(() => {
+    stoppedRef.current = true
+    for (const controller of controllersRef.current) controller.abort()
+    controllersRef.current.clear()
+    atlasAbortRef.current?.abort()
+    atlasRef.current.deactivate()
+    voiceAuthorizedRef.current = false
+    setVoiceAuthorized(false)
+    void local('/voice/revoke', 'POST', { protocol: 1 }).catch(() => {})
+    setPhase('paused')
+    setMessage('Kopplingen pausad. Mikrofonen är avstängd och inga nya kommandon behandlas.')
+  }, [local])
+
+  useEffect(() => {
+    if (!voiceAuthorizedRef.current || stoppedRef.current) return
+    const phase = atlas.voicePhase
+    const status = !atlas.voicePanelOpen ? 'idle'
+      : phase === 'speaking' ? 'speaking'
+      : phase === 'thinking' ? 'thinking'
+      : phase === 'listening' ? 'listening'
+      : 'starting'
+    void local('/voice/status', 'POST', { status }).catch(() => {})
+  }, [atlas.voicePhase, atlas.voicePanelOpen, atlas.isSessionActive, local])
+
+  useEffect(() => () => {
+    stoppedRef.current = true
+    for (const controller of controllersRef.current) controller.abort()
+    controllersRef.current.clear()
+    atlasAbortRef.current?.abort()
+  }, [])
+
+  const value = useMemo<NovaBridgeValue>(() => ({
+    phase, message, lastPrompt, lastAnswer, voiceAuthorized,
+    voiceAvailable: Boolean(atlas.voiceConversationAvailable),
+    voiceStatus: voiceStatusLabel(atlas.voicePhase),
+    connect, startVoice, stopVoice, pause,
+  }), [phase, message, lastPrompt, lastAnswer, voiceAuthorized, atlas.voiceConversationAvailable,
+    atlas.voicePhase, connect, startVoice, stopVoice, pause])
+
+  return <Context.Provider value={value}>{children}</Context.Provider>
+}
+
+export function useNovaBridge(): NovaBridgeValue {
+  const value = useContext(Context)
+  if (!value) throw new Error('useNovaBridge() måste användas inuti NovaBridgeProvider')
+  return value
+}

@@ -1,6 +1,6 @@
 # Nova Desktop: Continuous voice call and operator interruption
 
-## Current verified work (9 November 2026)
+## Current verified work (9 November 2026 ? local feature branch)
 
 - The new native Nova overlay still uses one-shot Windows voice typing (Win+H).
 - The native overlay now has a visible Stopp button, exact spoken stop intents,
@@ -14,6 +14,33 @@
 - A completed tool side effect is not automatically undone by Stop.
 - None of the new Atlas browser changes are in production. Hardware testing
   and an SSO-protected feature preview are still required.
+
+## Implemented locally in this continuation
+
+- NovaBridgeProvider is mounted inside the authenticated Atlas platform
+  layout, so its pairing token, polling loop and voice-control channel survive
+  client-side Omnira navigation. The pairing token remains in memory only and
+  is scrubbed from the URL.
+- The /nova-bridge page now offers **Anslut Nova** and **Starta r?stsamtal**.
+  The latter calls the existing Atlas runtime synchronously from the user's
+  click, then records explicit voice consent in the local relay.
+- The local loopback relay now has allowlisted voice authorize/revoke/status
+  endpoints and acknowledged voice_toggle / voice_interrupt commands.
+  It does not carry audio, cookies, transcripts, credentials or model prompts
+  for the voice call.
+- The global Ctrl+Alt+Space toggles the Atlas voice session after consent.
+  Before consent it retains the existing Win+H one-shot dictation fallback.
+- Ctrl+Alt+. and the visible Nova Stopp action send voice_interrupt to
+  the existing Atlas voice runtime. The browser owns mic capture, VAD, TTS
+  and the authenticated Atlas conversation; no second voice provider was added.
+- The dedicated Omnira bridge window should remain open while the operator
+  uses other apps. The provider survives navigation inside Omnira, not a full
+  browser close or navigation away from Omnira in that window.
+- The full Atlas voice conversation uses the normal authenticated tool path;
+  the separate Nova page-reading relay remains read-only.
+- Verification so far: 119 Windows unit tests pass; 81 targeted web voice,
+  bridge and controller tests pass; TypeScript check passes. Live microphone,
+  browser pairing and hardware tests are not yet done.
 
 ## Real goal
 

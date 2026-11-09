@@ -46,5 +46,17 @@ class SafeStopCommandTests(unittest.TestCase):
         self.assertIn('self.command.bind("<Control-period>", self._stop_shortcut)', source)
 
 
+    def test_global_hotkey_controls_authenticated_call_and_keeps_dictation_fallback(self):
+        source = (Path(__file__).resolve().parents[1] / "nova_overlay.py").read_text(encoding="utf-8")
+        events = source[source.index("    def _process_events(self):"):source.index("    def _animate(self):")]
+        self.assertIn('voice = self.bridge.state.voice_snapshot()', events)
+        self.assertIn('request_voice_control("voice_toggle")', events)
+        self.assertIn('self.expand(listen=False)', events)
+        self.assertIn('self.expand(listen=True)', events)
+
+    def test_native_stop_requests_atlas_voice_interruption(self):
+        source = (Path(__file__).resolve().parents[1] / "nova_overlay.py").read_text(encoding="utf-8")
+        stop = source[source.index("    def stop(self):"):source.index("    def quit(self):")]
+        self.assertIn('request_voice_control("voice_interrupt")', stop)
 if __name__ == "__main__":
     unittest.main()

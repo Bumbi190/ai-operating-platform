@@ -54,6 +54,30 @@ describe('Nova Desktop persistent Atlas voice bridge', () => {
     expect(runtime).toContain("current.activate()")
   })
 
+  it('distinguishes relay consent from a working microphone and offers a real click recovery', () => {
+    const bridge = readFileSync(join(root, 'components/platform/os/NovaBridgeRuntime.tsx'), 'utf8')
+    const page = readFileSync(join(root, 'app/(platform)/nova-bridge/page.tsx'), 'utf8')
+    expect(bridge).toContain('voiceMicActive: Boolean(atlas.voiceMicActive)')
+    expect(bridge).toContain('voiceMicProblem: atlas.voiceMicProblem ?? null')
+    expect(bridge).toContain("!atlas.voiceMicActive ? 'Av - mikrofonen")
+    expect(bridge).toContain('const retryMic = useCallback(() => {')
+    expect(bridge).toContain('current.deactivate()')
+    expect(bridge).toContain('current.activate()')
+    expect(page).toContain('onClick={bridge.retryMic}')
+    expect(page).toContain('Aktivera mikrofon')
+    expect(page).toContain('role="alert"')
+  })
+
+  it('does not make mic acquisition depend on a playable TTS AudioContext', () => {
+    const hook = readFileSync(join(root, 'lib/atlas/voice-pilot/use-voice-session.ts'), 'utf8')
+    const start = hook.slice(hook.indexOf('  async function startMic('), hook.indexOf('  function resumeQueuedVoice('))
+    expect(start).toContain('void prepared.catch')
+    expect(start).toContain('await next.start()')
+    expect(start).not.toContain('await prepared')
+    expect(start).not.toContain('if (!await voicesReady.current)')
+    expect(start).toContain('void voicesReady.current.then(')
+  })
+
   it('requires a separate browser click for microphone consent and documents hotkeys', () => {
     const page = readFileSync(join(root, 'app/(platform)/nova-bridge/page.tsx'), 'utf8')
     expect(page).toContain('Starta röstsamtal')

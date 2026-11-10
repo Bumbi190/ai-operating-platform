@@ -47,11 +47,26 @@ export default function NovaBridgePage() {
             </button>
           )}
 
+          {bridge.voiceAuthorized && (!bridge.voiceMicActive || bridge.voiceMicProblem) && (
+            <button type="button" onClick={bridge.retryMic}
+              className="rounded-xl bg-cyan-700 px-5 py-3 text-sm font-semibold text-white">
+              Aktivera mikrofon
+            </button>
+          )}
+
           <button type="button" onClick={bridge.pause}
             className="rounded-xl border border-zinc-700 px-5 py-3 text-sm text-zinc-300">
             Pausa kopplingen
           </button>
         </div>
+
+        {bridge.voiceAuthorized && (!bridge.voiceMicActive || bridge.voiceMicProblem) && (
+          <p className="mt-4 rounded-xl border border-amber-500/30 bg-amber-950/30 p-3 text-sm text-amber-200" role="alert">
+            Atlas och Nova är anslutna, men mikrofonen är inte igång.
+            {bridge.voiceMicProblem ? ' ' + bridge.voiceMicProblem : ' Webbläsaren kan kräva ett direkt klick för att aktivera ljud och mikrofon.'}
+            {' '}Klicka Aktivera mikrofon.
+          </p>
+        )}
 
         {!bridge.voiceAvailable && (
           <p className="mt-4 rounded-xl border border-amber-500/30 bg-amber-950/30 p-3 text-sm text-amber-200">

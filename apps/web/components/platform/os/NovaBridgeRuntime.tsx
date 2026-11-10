@@ -18,7 +18,10 @@ type NovaBridgeValue = {
   lastAnswer: string
   voiceAuthorized: boolean
   voiceAvailable: boolean
+  voiceMicActive: boolean
+  voiceMicProblem: string | null
   voiceStatus: string
+  retryMic(): void
   connect(): Promise<void>
   startVoice(): Promise<void>
   stopVoice(): Promise<void>
@@ -368,7 +371,7 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
       if (!result.authorized) throw new Error(result.message || 'Mikrofonkopplingen nekades')
       voiceAuthorizedRef.current = true
       setVoiceAuthorized(true)
-      setMessage('Röstsamtalet är godkänt. Kontrollera att mikrofonstatus visar Lyssnar. Ctrl+Alt+Space pausar/startar och Ctrl+Alt+. avbryter.')
+      setMessage('Röstsamtalet har godkänts. Mikrofonen startar separat. Om status stannar på Av, klicka Aktivera mikrofon.')
     } catch (error) {
       current.deactivate()
       setMessage('Röstsamtalet kunde inte godkännas: ' +
@@ -395,6 +398,22 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
     // still apply; a visible manual start button stays available as fallback.
     void startVoice()
   }, [phase, startVoice])
+
+  const retryMic = useCallback(() => {
+    // Only a real onClick on the authenticated Nova page may initiate this
+    // recovery. Never equate the loopback's authorization with an open mic.
+    if (phaseRef.current !== 'paired' || !voiceAuthorizedRef.current ||
+        !atlasRef.current.voiceConversationAvailable) {
+      setMessage('Anslut Nova och godkänn röstsamtalet först.')
+      return
+    }
+    const current = atlasRef.current
+    // Clear a stale suspended AudioContext/capture attempt, then request both
+    // media resources under this fresh explicit browser user gesture.
+    current.deactivate()
+    current.activate()
+    setMessage('Startar mikrofonen efter ditt klick. Kontrollera att status blir Lyssnar.')
+  }, [])
 
   const stopVoice = useCallback(async () => {
     atlasRef.current.deactivate()
@@ -439,10 +458,16 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
   const value = useMemo<NovaBridgeValue>(() => ({
     phase, message, lastPrompt, lastAnswer, voiceAuthorized,
     voiceAvailable: Boolean(atlas.voiceConversationAvailable),
-    voiceStatus: voiceStatusLabel(atlas.voicePhase),
-    connect, startVoice, stopVoice, pause,
+    voiceMicActive: Boolean(atlas.voiceMicActive),
+    voiceMicProblem: atlas.voiceMicProblem ?? null,
+    voiceStatus: !voiceAuthorized ? 'Inte godkänt'
+      : atlas.voiceMicProblem ? 'Mikrofonfel'
+      : !atlas.voiceMicActive ? 'Av - mikrofonen behöver startas'
+      : atlas.voicePhase === 'idle' ? 'Startar mikrofonen'
+      : voiceStatusLabel(atlas.voicePhase),
+    connect, startVoice, retryMic, stopVoice, pause,
   }), [phase, message, lastPrompt, lastAnswer, voiceAuthorized, atlas.voiceConversationAvailable,
-    atlas.voicePhase, connect, startVoice, stopVoice, pause])
+    atlas.voiceMicActive, atlas.voiceMicProblem, atlas.voicePhase, connect, startVoice, retryMic, stopVoice, pause])
 
   return <Context.Provider value={value}>{children}</Context.Provider>
 }

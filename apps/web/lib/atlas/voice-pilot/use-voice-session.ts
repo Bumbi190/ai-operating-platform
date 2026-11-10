@@ -289,14 +289,22 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
       : browserDependencies(selectedDeviceId))
       capture.current = next
       next.setOutputActive(outputActive.current)
-      await prepared
-      if (!await voicesReady.current) {
-        if (currentMic()) { pauseMic(); setNotice('Inga röster är tillgängliga. Samtalet är kvar.') }
-        return
-      }
+      // Never gate microphone acquisition on speech playback readiness or
+      // voice-list fetch. Browser AudioContext playback can be blocked without
+      // preventing user-approved microphone capture and transcription.
+      void prepared.catch(() => {
+        if (currentMic()) setNotice('Ljuduppspelningen blockerades. Mikrofonen kan ändå användas; klicka i webbläsaren för ljud.')
+      })
       if (currentMic()) {
         await next.start()
-        if (currentMic()) void refreshMicDevices()
+        if (currentMic()) {
+          void refreshMicDevices()
+          void voicesReady.current.then(available => {
+            if (currentMic() && !available) setNotice('Inga svenska uppläsningsröster är tillgängliga. Mikrofon och textsvar fungerar fortfarande.')
+          }).catch(() => {
+            if (currentMic()) setNotice('Röstlistan kunde inte hämtas. Mikrofon och textsvar fungerar fortfarande.')
+          })
+        }
       } else next.stop()
     } catch { if (currentMic()) {
       pauseMic()

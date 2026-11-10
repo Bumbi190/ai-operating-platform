@@ -54,6 +54,15 @@ class BridgeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.bridge.pairing_url("https://attacker.invalid")
 
+    def test_hotkey_pairing_marker_only_after_explicit_request(self):
+        manual = self.bridge.pairing_url()
+        via_hotkey = self.bridge.pairing_url(auto_voice=True)
+        self.assertNotIn("hotkey=", manual)
+        self.assertEqual(via_hotkey, manual + "&hotkey=1")
+        self.assertNotIn("key=", via_hotkey.split("#")[0])
+        self.assertNotIn("hotkey=", via_hotkey.split("#")[0])
+        self.assertEqual(self.bridge.state.key, via_hotkey.split("&key=")[1].split("&")[0])
+
     def test_exact_preview_origin_and_token_rotation(self):
         preview = "https://ai-operating-platform-35zto91g0-bumbi190s-projects.vercel.app"
         self.assertEqual(validate_pairing_origin(preview), preview)

@@ -1,3 +1,33 @@
+## Hotkey connection pilot (10 November 2026)
+
+- One explicit Ctrl+Alt+Space is now eligible to open the selected,
+  SSO-protected Omnira preview using an ephemeral localhost pairing token
+  marked with hotkey=1 in the URL fragment. The marker is never sent to
+  the Vercel server and is removed from browser history together with the key.
+- The browser automatically attempts pairing only for this hotkey-marked
+  one-time link. After a successful authenticated pairing it attempts to
+  resume the existing Atlas voice session using previously granted browser
+  microphone permission. No new AI voice provider or hidden microphone
+  recording was added.
+- A missing/expired Vercel SSO session, signed-out Omnira account, or browser
+  permission/user-gesture requirement still leads to a visible manual step.
+  Browser audio autoplay rules may require the user to click Starta
+  rostsamtal; this is a pilot and NOT a guarantee of zero-click operation.
+- The key, browser cookies and mic audio remain outside the Windows config.
+  preview-origin.txt continues to contain only an allowlisted public URL.
+- The established ten-minute privacy mic timeout remains unchanged;
+  Ctrl+Alt+Space explicitly resumes after timeout on an authorized pair.
+  Closing the voice call or explicitly hitting Stop must disable capture.
+- Native Nova's read-current-page operation is still scoped to visible
+  browser document text with a separate approval, bounded excerpt, and no
+  automatic ChatGPT prompt insertion, typing or message submission.
+- Ordinary authenticated Atlas voice may use the existing project tools and
+  memory only when their server-side feature gates and project permissions
+  allow it. The Nova read-only relay continues to have NO memory or tools.
+- Actual browser microphone reactivation must be verified on the user's PC
+  before this capability can be called complete. No production deploy.
+
+
 ## Code-job proposals: Nova operator intake (2026-11-10)
 
 - Commands such as "Nova, fixa buggen i WebBuilder" or "Nova, koda en

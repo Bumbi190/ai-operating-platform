@@ -214,7 +214,10 @@ class NovaOverlay:
         self.uia_results: queue.Queue = queue.Queue()
         self.native_task_epoch = 0
         self.history: list[tuple[str, str]] = []  # session UI trace, not AI memory
-        self._atlas_login_opened = False  # explicit SSO sign-in before pairing key
+        # An approved saved preview is a hint that the user previously signed
+        # in; NOT proof of a live SSO session. An expired session still needs
+        # browser login, and we never persist browser cookies or pairing keys.
+        self._atlas_login_opened = bool(approved_preview)
         self._voice_request_id = 0
         self._auto_voice = AutoVoiceState()
         self._browser = BrowserNavigator()
@@ -243,7 +246,7 @@ class NovaOverlay:
         self.root.deiconify()
         self.root.lift()
         if os.environ.get("NOVA_START_EXPANDED") == "1":
-            self.root.after(180, lambda: self.expand(listen=True))
+            self.root.after(180, self._open_from_hotkey)
 
     def _setup_fonts(self):
         self.h = ("Segoe UI Semibold", 12)
@@ -623,6 +626,24 @@ class NovaOverlay:
         short = detail if len(detail) <= 45 else detail[:44] + "…"
         self.activity.itemconfigure(self.activity_text, text=short, fill=color)
 
+    def _open_from_hotkey(self):
+        """An explicit hotkey opens Nova and requests a safe Atlas voice session.
+
+        This never bypasses Omnira SSO or browser microphone permission. The
+        legacy Win+H fallback applies only before a preview is configured.
+        """
+        self.expand(listen=False)
+        if self.bridge.state.online():
+            accepted, detail = self.bridge.state.request_voice_control("voice_resume")
+            if not accepted:
+                self._phase("godkannande", detail)
+            return
+        target = next(iter(self.bridge.state.origins))
+        if target != PROD_ORIGIN:
+            self.connect_atlas(auto_voice=True)
+            return
+        self.dictate()
+
     def expand(self, listen=False):
         if not self.expanded:
             self._draw_expanded()
@@ -680,7 +701,7 @@ class NovaOverlay:
         self._append("ok", "Nova: Testmiljö vald: " + approved + ". Tidigare parning återkallad.")
         self.connect_atlas()
 
-    def connect_atlas(self):
+    def connect_atlas(self, *, auto_voice: bool = False):
         """First sign in without key, then explicitly pair with a short-lived key.
 
         A key-bearing fragment must not cross Vercel SSO redirects.
@@ -712,7 +733,7 @@ class NovaOverlay:
                     self._append("warn", "Nova: Webbläsaren kunde inte öppna testmiljön.")
             else:
                 # Only after manual SSO login do we send the in-memory fragment.
-                if webbrowser.open(self.bridge.pairing_url(), new=2):
+                if webbrowser.open(self.bridge.pairing_url(auto_voice=auto_voice), new=2):
                     self._append("nova", "Atlas steg 2/2: Klicka Anslut och Starta rostsamtal i webblasaren. " +
                                  "Ctrl+Alt+Space styr sedan samtalet fran Nova.")
                     self._phase("godkannande", "Atlas steg 2/2 · klicka Anslut i webbläsaren")
@@ -837,6 +858,11 @@ class NovaOverlay:
                                 self._redock_near_pointer()
                             self.expand(listen=False)
                             self._phase("godkannande", "Godk?nn r?stsamtalet i Omnira-webbl?saren")
+                        elif next(iter(self.bridge.state.origins)) != PROD_ORIGIN:
+                            if self._manual_anchor is None:
+                                self._redock_near_pointer()
+                            self.expand(listen=False)
+                            self.connect_atlas(auto_voice=True)
                         elif nova_has_focus:
                             self.collapse()
                         else:

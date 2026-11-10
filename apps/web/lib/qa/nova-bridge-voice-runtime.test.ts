@@ -41,6 +41,19 @@ describe('Nova Desktop persistent Atlas voice bridge', () => {
     expect(runtime).not.toContain("if (pathname !== '/nova-bridge') { stoppedRef.current = true")
   })
 
+  it('supports a one-time hotkey auto-pair while retaining SSO and browser permission gates', () => {
+    const runtime = readFileSync(join(root, 'components/platform/os/NovaBridgeRuntime.tsx'), 'utf8')
+    expect(runtime).toContain("const hotkey = params.get('hotkey') === '1'")
+    expect(runtime).toContain("window.history.replaceState(null, '', window.location.pathname + window.location.search)")
+    expect(runtime).toContain("autoHotkeyStageRef.current = pair.hotkey ? 'connect' : 'none'")
+    expect(runtime).toContain("autoHotkeyStageRef.current = 'voice'")
+    expect(runtime).toContain("if (phase !== 'paired' || autoHotkeyStageRef.current !== 'voice') return")
+    expect(runtime).toContain("void startVoice()")
+    expect(runtime).toContain("if (!result.connected || result.mode !== 'read_only')")
+    expect(runtime).toContain("if (!current.voiceConversationAvailable)")
+    expect(runtime).toContain("current.activate()")
+  })
+
   it('requires a separate browser click for microphone consent and documents hotkeys', () => {
     const page = readFileSync(join(root, 'app/(platform)/nova-bridge/page.tsx'), 'utf8')
     expect(page).toContain('Starta röstsamtal')

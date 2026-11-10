@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { usePathname } from 'next/navigation'
 import { useAtlas } from '@/lib/atlas/runtime'
 
-type Pair = { port: number; key: string }
+type Pair = { port: number; key: string; hotkey: boolean }
 type LocalTask = { id: string; text: string; mode: 'nova_readonly' | 'atlas_operator' }
 type VoiceControl = { id: string; kind: 'voice_toggle' | 'voice_interrupt' | 'voice_resume' }
 type ChatTurn = { role: 'user' | 'assistant'; content: string }
@@ -35,10 +35,11 @@ function readPairingFragment(): Pair | null {
   const params = new URLSearchParams(raw)
   const port = Number(params.get('port'))
   const key = params.get('key') ?? ''
+  const hotkey = params.get('hotkey') === '1'
   // Remove the short-lived token from browser history immediately.
   window.history.replaceState(null, '', window.location.pathname + window.location.search)
   if (!Number.isInteger(port) || port < 1025 || port > 65535 || !SAFE_PAIR.test(key)) return null
-  return { port, key }
+  return { port, key, hotkey }
 }
 
 function voiceStatusLabel(status: string): string {
@@ -64,8 +65,10 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
   const [lastPrompt, setLastPrompt] = useState('')
   const [lastAnswer, setLastAnswer] = useState('')
   const [voiceAuthorized, setVoiceAuthorized] = useState(false)
+  const [pairVersion, setPairVersion] = useState(0)
 
   const pairingRef = useRef<Pair | null>(null)
+  const autoHotkeyStageRef = useRef<'none' | 'connect' | 'voice'>('none')
   const stoppedRef = useRef(true)
   const phaseRef = useRef<BridgePhase>('ready')
   phaseRef.current = phase
@@ -82,7 +85,11 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
     const pair = readPairingFragment()
     if (pair) {
       pairingRef.current = pair
-      setMessage('Nova hittad lokalt. Klicka Anslut och godkänn sedan röstsamtalet.')
+      autoHotkeyStageRef.current = pair.hotkey ? 'connect' : 'none'
+      setPairVersion(value => value + 1)
+      setMessage(pair.hotkey
+        ? 'Snabbkommando mottaget. Kontrollerar anslutning och mikrofon ...'
+        : 'Nova hittad lokalt. Klicka Anslut och godkänn sedan röstsamtalet.')
     }
   }, [pathname])
 
@@ -361,13 +368,33 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
       if (!result.authorized) throw new Error(result.message || 'Mikrofonkopplingen nekades')
       voiceAuthorizedRef.current = true
       setVoiceAuthorized(true)
-      setMessage('Röstsamtalet är aktivt. Ctrl+Alt+Space pausar/startar och Ctrl+Alt+. avbryter svaret.')
+      setMessage('Röstsamtalet är godkänt. Kontrollera att mikrofonstatus visar Lyssnar. Ctrl+Alt+Space pausar/startar och Ctrl+Alt+. avbryter.')
     } catch (error) {
       current.deactivate()
       setMessage('Röstsamtalet kunde inte godkännas: ' +
         (error instanceof Error ? error.message : 'okänt fel'))
     }
   }, [local])
+
+  useEffect(() => {
+    if (pathname !== '/nova-bridge' || pairVersion === 0 ||
+        autoHotkeyStageRef.current !== 'connect') return
+    autoHotkeyStageRef.current = 'voice'
+    // An expired SSO session still requires interactive browser login.
+    void connect()
+  }, [pathname, pairVersion, connect])
+
+  useEffect(() => {
+    if (phase !== 'paired' || autoHotkeyStageRef.current !== 'voice') return
+    autoHotkeyStageRef.current = 'none'
+    if (!atlasRef.current.voiceConversationAvailable) {
+      setMessage('Nova är parad, men Atlas röstfunktion är inte tillgänglig. Logga in och prova manuellt.')
+      return
+    }
+    // Browser permission may permit auto-start. Browser gesture restrictions
+    // still apply; a visible manual start button stays available as fallback.
+    void startVoice()
+  }, [phase, startVoice])
 
   const stopVoice = useCallback(async () => {
     atlasRef.current.deactivate()

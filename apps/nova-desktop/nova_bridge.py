@@ -433,14 +433,17 @@ class NovaBridge:
     def start(self):
         self.thread.start()
 
-    def pairing_url(self, base_origin=None):
+    def pairing_url(self, base_origin=None, *, auto_voice: bool = False):
         if base_origin is None:
             base_origin = next(iter(self.state.origins))
         if validate_pairing_origin(base_origin) not in self.state.origins:
             raise ValueError("Invalid Atlas origin")
         # URL fragment is NOT sent to Omnira's server. Browser relay immediately
         # removes it from history after reading and never persists the key.
-        return f"{base_origin}/nova-bridge#port={self.port}&key={self.state.key}"
+        # A marker is included only for an explicit Windows hotkey gesture.
+        # The secret token is still ephemeral and scrubbed in the browser.
+        suffix = "&hotkey=1" if auto_voice is True else ""
+        return f"{base_origin}/nova-bridge#port={self.port}&key={self.state.key}{suffix}"
 
     def stop(self):
         self.state.cancel()

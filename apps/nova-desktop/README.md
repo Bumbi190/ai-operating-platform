@@ -1,3 +1,36 @@
+## Code-job proposals: Nova operator intake (2026-11-10)
+
+- Commands such as "Nova, fixa buggen i WebBuilder" or "Nova, koda en
+  funktion i Handlarb?rsen" now create a scoped, reviewable *code-job draft*
+  in Nova's existing overlay. They do NOT execute arbitrary shell commands,
+  Git operations, run Codex/Claude, or incur model costs.
+- The top-right (...) review menu offers **Kopiera kodbrief**, an explicit
+  clipboard action, **?ppna projektmapp** for verified repo candidates,
+  and **Avbryt koduppdrag**.
+- Verified project mappings on this Windows machine:
+  Omnira/WebBuilder -> the Omnira repository; Handlarb?rsen -> its repo;
+  Portfolio -> its repo. Familje-Stunden has a folder but its Git repo is
+  not yet verified, so its coding job stays proposal-only.
+- Requests with ambiguous/multiple project targets, direct URLs, filesystem
+  paths, missing code verbs or excessive text fail closed into the existing
+  non-executing Atlas handoff path.
+- The registered Omnira SDF code-work capability is still a governed
+  proposal/control-plane, not a registered Windows Codex/Claude executor.
+  Its model router is advisory-only and its worker requires an isolated
+  Linux environment. Do not bypass those authority boundaries from Nova.
+- Codex CLI and Claude Code are installed on the Windows host, but installed
+  does not prove subscription quota, independent review, safe worktree
+  isolation or permission to execute the user's code.
+- **Next step for actual coding**: register and verify project-specific
+  repositories, separate read-only inspection from write-capable execution,
+  configure a trusted signed broker with a per-job spend cap and explicit
+  operator approval, bound writes to a clean isolated worktree, test and
+  present diff/receipts before any push or merge. Clean temporary worktrees
+  only after evidence of completion and owner's review.
+- No new branches, destructive cleanup, paid provider calls or real code jobs
+  are performed by this proposal-only implementation.
+
+
 ## Nova voice reliability / operator work (9 November, evening)
 
 - A direct, exact allowlist now handles common Omnira voice navigation

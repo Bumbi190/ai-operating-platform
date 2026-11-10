@@ -32,6 +32,7 @@ from nova_campaign_review import campaign_review_intent, campaign_review_url
 from nova_browser_nav import BrowserNavigator, safe_browser_command
 from nova_bridge import NovaBridge, PROD_ORIGIN, read_saved_preview_origin
 from nova_uia import UIAutomationError, build_page_read_prompt, find_foreground_browser_window, read_window
+from nova_code_jobs import CodeJobDraft, propose_code_job
 from nova_windows import list_known_windows, focus_known_window
 from nova_theme import (
     TRANSPARENT, SURFACE, PANEL, INPUT, ACCENT, CYAN, TEXT, MUTED,
@@ -1103,6 +1104,77 @@ class NovaOverlay:
             self._append("warn", "Nova: " + detail)
             self._phase("godkannande", detail)
 
+    def _present_code_job(self, draft: CodeJobDraft):
+        """Code requests get a reviewable brief, never direct shell authority."""
+        self.pending_code_job = draft
+        self.pending = draft.request
+        self._phase("godkannande", "Koduppdrag f?r " + draft.label + " - granska f?rslaget")
+        self._append(
+            "nova",
+            "Nova: Jag har identifierat koduppdrag f?r " + draft.label + ". "
+            + ("Projektets Git-mapp beh?ver verifieras innan k?rning. "
+               if draft.repository is None else "En lokal repo-kandidat ?r registrerad. ")
+            + "Inga filer ?ndras och ingen kodagent startas automatiskt. "
+            "V?lj ? ? Kopiera kodbrief eller ?ppna projektet. "
+            "Sj?lva agentk?rningen beh?ver en separat, isolerad k?rv?g och ditt godk?nnande."
+        )
+        choices = [("Kopiera kodbrief", lambda d=draft: self._copy_code_job_brief(d))]
+        if self.bridge.state.online():
+            choices.insert(0, ("Planera med Atlas (utan kod?ndring)",
+                               lambda d=draft: self._plan_code_job_with_atlas(d)))
+        if draft.repository is not None:
+            choices.append(("?ppna projektmapp", lambda d=draft: self._open_code_job_folder(d)))
+        choices.append(("Avbryt koduppdrag", self._cancel_code_job))
+        self._choices(choices)
+
+    def _plan_code_job_with_atlas(self, draft: CodeJobDraft):
+        """Explicitly approved LLM planning via the existing tool-free relay."""
+        if getattr(self, "pending_code_job", None) != draft:
+            self._append("warn", "Nova: Koduppdraget hann ?ndras. Ge kommandot igen.")
+            return
+        if not self.bridge.state.online():
+            self._append("warn", "Nova: Atlas m?ste anslutas innan planering.")
+            return
+        prompt = ("Planera endast f?ljande koduppdrag. Du har ingen ?tkomst "
+                  "till projektets faktiska filer eller Git-historik i detta "
+                  "l?ge. Ange d?rf?r vad som m?ste kontrolleras p? datorn och "
+                  "redovisa os?kerheter. Starta ingen agent och f?resl? inga "
+                  "oannonserade ?ndringar.\n\n" + draft.atlas_brief)
+        task_id, detail = self.bridge.state.enqueue(prompt)
+        if not task_id:
+            self._append("warn", "Nova: " + detail)
+            self._phase("godkannande", detail)
+            return
+        self._choices([])
+        self._append("step", "  ? Atlas skapar en plan i skrivskyddat l?ge. Ingen kodagent eller verktygsk?rning startas.")
+        self._phase("tolkar", "Atlas planerar koduppdraget utan att ?ndra filer")
+
+    def _copy_code_job_brief(self, draft: CodeJobDraft):
+        if getattr(self, "pending_code_job", None) != draft:
+            self._append("warn", "Nova: Koduppdraget har ?ndrats. Ge kommandot igen.")
+            return
+        self.root.clipboard_clear()
+        self.root.clipboard_append(draft.brief)
+        self.root.update()
+        self._append("step", "  ? Kodbrief kopierad p? din beg?ran. Ingen agent har startats.")
+        self._phase("klar", "Kodbrief redo att granskas i din kodagent")
+
+    def _open_code_job_folder(self, draft: CodeJobDraft):
+        if getattr(self, "pending_code_job", None) != draft or draft.repository is None:
+            self._append("warn", "Nova: Projektet saknar en verifierad lokal Git-mapp.")
+            return
+        if not draft.repository.is_dir():
+            self._append("warn", "Nova: Projektmappen finns inte l?ngre p? datorn.")
+            return
+        self._open_project_folder(str(draft.repository))
+
+    def _cancel_code_job(self):
+        self.pending_code_job = None
+        self.pending = None
+        self._choices([])
+        self._append("step", "Nova: Kodf?rslaget avbr?ts. Ingen k?rning p?b?rjades.")
+        self._phase("redo", "Redo f?r ett nytt uppdrag")
+
     def _received_voice_without_navigation(self, text: str):
         """Actionable commands require a click before entering tool-enabled Atlas."""
         if self.bridge.state.online() and self.bridge.state.voice_snapshot().get("authorized"):
@@ -1332,6 +1404,9 @@ class NovaOverlay:
         if not text:
             self._phase("redo", "Skriv eller diktera vad jag ska göra")
             return
+        # Code-job proposals are inert: only a reviewed draft is prepared.
+        # Parsing happens before generic Atlas handoff for both voice and text.
+        self.pending_code_job = None
         # Local emergency stop is handled before any Atlas/OS routing.
         # It never becomes a network prompt or a Windows automation step.
         if safe_stop_command(text):
@@ -1356,6 +1431,10 @@ class NovaOverlay:
         self.command.delete("1.0", "end")
         self.draft = ""
         self.transcript_var.set(text[:180])
+        code_job = propose_code_job(text)
+        if code_job:
+            self._present_code_job(code_job)
+            return
         if from_voice:
             # A transcript that was not an exact allowlisted navigation must
             # never reach arbitrary local UI or shell execution.
@@ -1499,6 +1578,7 @@ class NovaOverlay:
         self._auto_voice.cancel()
         self.native_task_epoch += 1
         self.pending_native_plan = None
+        self.pending_code_job = None
         self.pending_uia_read_instruction = None
         self.pending_uia_read_target = None
         self.bridge.state.cancel()
@@ -1513,6 +1593,7 @@ class NovaOverlay:
         self.closed = True
         self.native_task_epoch += 1
         self.pending_native_plan = None
+        self.pending_code_job = None
         self.pending_uia_read_instruction = None
         self.pending_uia_read_target = None
         self._auto_voice.cancel()

@@ -83,8 +83,8 @@ class SafeStopCommandTests(unittest.TestCase):
         source = (Path(__file__).resolve().parents[1] / "nova_overlay.py").read_text(encoding="utf-8")
         self.assertIn('def _approved_operator_task(', source)
         self.assertIn('self.bridge.state.enqueue_operator(text)', source)
-        self.assertIn('("K?r i Atlas (med verktyg)"', source)
-        self.assertIn('("Bara r?d (utan verktyg)"', source)
+        self.assertIn('("Kör i Atlas (med verktyg)"', source)
+        self.assertIn('("Bara råd (utan verktyg)"', source)
         self.assertIn('elif action.kind == "handoff":', source)
 
 

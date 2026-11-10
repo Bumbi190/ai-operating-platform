@@ -65,6 +65,17 @@ class CodeJobProposalTests(unittest.TestCase):
         self.assertIsNone(propose_code_job("Nova koda i Omnira " + "x" * 500))
         self.assertIsNone(propose_code_job(None))
 
+    def test_code_job_status_keeps_swedish_text_readable(self):
+        from pathlib import Path
+        source = (Path(__file__).resolve().parents[1] / 'nova_overlay.py').read_text(encoding='utf-8')
+        start = source.index('    def _present_code_job(')
+        end = source.index('    def _present_uia_read_preview(', start)
+        messages = source[start:end]
+        self.assertIn('Koduppdrag f\u00f6r', messages)
+        self.assertIn('Kopiera kodbrief', messages)
+        self.assertNotIn('Koduppdrag f?r', messages)
+        self.assertNotIn('beh?ver', messages)
+
     def test_overlay_only_previews_and_never_executes_agent(self):
         source = (Path(__file__).resolve().parents[1] / "nova_overlay.py").read_text(encoding="utf-8")
         self.assertIn("code_job = propose_code_job(text)", source)
@@ -72,9 +83,9 @@ class CodeJobProposalTests(unittest.TestCase):
         self.assertIn("def _copy_code_job_brief(", source)
         self.assertIn("Ingen agent har startats", source)
         self.assertIn('("Kopiera kodbrief"', source)
-        self.assertIn("Planera med Atlas (utan kod?ndring)", source)
+        self.assertIn("Planera med Atlas (utan kodändring)", source)
         self.assertIn("self.bridge.state.enqueue(prompt)", source)
-        self.assertIn("Ingen kodagent eller verktygsk?rning startas", source)
+        self.assertIn("Ingen kodagent eller verktygskörning startas", source)
         self.assertNotIn("subprocess.Popen", source[source.index("    def _present_code_job("):source.index("    def _received_voice_without_navigation(")])
 
 

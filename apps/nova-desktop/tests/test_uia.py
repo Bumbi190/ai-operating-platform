@@ -208,7 +208,7 @@ class UIAutomationContractTests(unittest.TestCase):
         )
         self.assertIn("safe_uia_read_action(text)", overlay)
         self.assertIn('safe_voice_action.kind == "uia_read_preview"', overlay)
-        self.assertIn('("L?s och analysera", self._approve_uia_read)', overlay)
+        self.assertIn('("Läs och analysera", self._approve_uia_read)', overlay)
         self.assertIn("read_window(target, user_requested=True", overlay)
         self.assertIn("self.uia_results.get_nowait()", overlay)
         self.assertIn("self.bridge.state.enqueue(result[\"prompt\"])", overlay)

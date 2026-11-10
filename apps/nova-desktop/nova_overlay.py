@@ -648,6 +648,12 @@ class NovaOverlay:
         if not self.expanded:
             self._draw_expanded()
         self.root.deiconify()
+        # Tk on a saved ultrawide bottom-right position can resize its
+        # override-redirect window without applying the new x/y until after
+        # it is deiconified. Re-apply the clamped *panel* geometry once all
+        # widgets are laid out, so no controls are drawn beyond the screen.
+        self.root.update_idletasks()
+        self._place(PANEL_W, PANEL_H)
         self.root.lift()
         self.root.attributes("-topmost", True)
         self.command.focus_force()
@@ -1102,30 +1108,30 @@ class NovaOverlay:
     def _approved_operator_task(self, text: str):
         """A user-selected action in the Nova review menu, never model output."""
         if self.pending != text:
-            self._append("warn", "Nova: Uppdraget hann ?ndras. Ge kommandot igen.")
+            self._append("warn", "Nova: Uppdraget hann ändras. Ge kommandot igen.")
             self._choices([])
             return
         self.pending = None
         self._choices([])
         task_id, detail = self.bridge.state.enqueue_operator(text)
         if task_id:
-            self._append("step", "  ? Godk?nt av dig. Atlas kontrollerar sina ordinarie verktygsbeh?righeter.")
-            self._phase("tolkar", "Atlas arbetar - avbryt med Stopp om du ?ngrar dig")
+            self._append("step", "  ↳ Godkänt av dig. Atlas kontrollerar sina ordinarie verktygsbehörigheter.")
+            self._phase("tolkar", "Atlas arbetar - avbryt med Stopp om du ångrar dig")
         else:
             self._append("warn", "Nova: " + detail)
             self._phase("godkannande", detail)
 
     def _approved_readonly_advice(self, text: str):
         if self.pending != text:
-            self._append("warn", "Nova: Beg?ran hann ?ndras. Ge kommandot igen.")
+            self._append("warn", "Nova: Begäran hann ändras. Ge kommandot igen.")
             self._choices([])
             return
         self.pending = None
         self._choices([])
         task_id, detail = self.bridge.state.enqueue(text)
         if task_id:
-            self._append("step", "  ? Fr?ga skickad till Atlas utan verktyg.")
-            self._phase("tolkar", "Atlas ger r?dgivning i l?sl?ge")
+            self._append("step", "  ↳ Fråga skickad till Atlas utan verktyg.")
+            self._phase("tolkar", "Atlas ger rådgivning i läsläge")
         else:
             self._append("warn", "Nova: " + detail)
             self._phase("godkannande", detail)
@@ -1134,55 +1140,55 @@ class NovaOverlay:
         """Code requests get a reviewable brief, never direct shell authority."""
         self.pending_code_job = draft
         self.pending = draft.request
-        self._phase("godkannande", "Koduppdrag f?r " + draft.label + " - granska f?rslaget")
+        self._phase("godkannande", "Koduppdrag för " + draft.label + " - granska förslaget")
         self._append(
             "nova",
-            "Nova: Jag har identifierat koduppdrag f?r " + draft.label + ". "
-            + ("Projektets Git-mapp beh?ver verifieras innan k?rning. "
-               if draft.repository is None else "En lokal repo-kandidat ?r registrerad. ")
-            + "Inga filer ?ndras och ingen kodagent startas automatiskt. "
-            "V?lj ? ? Kopiera kodbrief eller ?ppna projektet. "
-            "Sj?lva agentk?rningen beh?ver en separat, isolerad k?rv?g och ditt godk?nnande."
+            "Nova: Jag har identifierat koduppdrag för " + draft.label + ". "
+            + ("Projektets Git-mapp behöver verifieras innan körning. "
+               if draft.repository is None else "En lokal repo-kandidat är registrerad. ")
+            + "Inga filer ändras och ingen kodagent startas automatiskt. "
+            "Välj menyn ⋯ och sedan Kopiera kodbrief eller öppna projektet. "
+            "Själva agentkörningen behöver en separat, isolerad körväg och ditt godkännande."
         )
         choices = [("Kopiera kodbrief", lambda d=draft: self._copy_code_job_brief(d))]
         if self.bridge.state.online():
-            choices.insert(0, ("Planera med Atlas (utan kod?ndring)",
+            choices.insert(0, ("Planera med Atlas (utan kodändring)",
                                lambda d=draft: self._plan_code_job_with_atlas(d)))
         if draft.repository is not None:
-            choices.append(("?ppna projektmapp", lambda d=draft: self._open_code_job_folder(d)))
+            choices.append(("Öppna projektmapp", lambda d=draft: self._open_code_job_folder(d)))
         choices.append(("Avbryt koduppdrag", self._cancel_code_job))
         self._choices(choices)
 
     def _plan_code_job_with_atlas(self, draft: CodeJobDraft):
         """Explicitly approved LLM planning via the existing tool-free relay."""
         if getattr(self, "pending_code_job", None) != draft:
-            self._append("warn", "Nova: Koduppdraget hann ?ndras. Ge kommandot igen.")
+            self._append("warn", "Nova: Koduppdraget hann ändras. Ge kommandot igen.")
             return
         if not self.bridge.state.online():
-            self._append("warn", "Nova: Atlas m?ste anslutas innan planering.")
+            self._append("warn", "Nova: Atlas måste anslutas innan planering.")
             return
-        prompt = ("Planera endast f?ljande koduppdrag. Du har ingen ?tkomst "
+        prompt = ("Planera endast följande koduppdrag. Du har ingen åtkomst "
                   "till projektets faktiska filer eller Git-historik i detta "
-                  "l?ge. Ange d?rf?r vad som m?ste kontrolleras p? datorn och "
-                  "redovisa os?kerheter. Starta ingen agent och f?resl? inga "
-                  "oannonserade ?ndringar.\n\n" + draft.atlas_brief)
+                  "läge. Ange därför vad som måste kontrolleras på datorn och "
+                  "redovisa osäkerheter. Starta ingen agent och föreslå inga "
+                  "oannonserade ändringar.\n\n" + draft.atlas_brief)
         task_id, detail = self.bridge.state.enqueue(prompt)
         if not task_id:
             self._append("warn", "Nova: " + detail)
             self._phase("godkannande", detail)
             return
         self._choices([])
-        self._append("step", "  ? Atlas skapar en plan i skrivskyddat l?ge. Ingen kodagent eller verktygsk?rning startas.")
-        self._phase("tolkar", "Atlas planerar koduppdraget utan att ?ndra filer")
+        self._append("step", "  ↳ Atlas skapar en plan i skrivskyddat läge. Ingen kodagent eller verktygskörning startas.")
+        self._phase("tolkar", "Atlas planerar koduppdraget utan att ändra filer")
 
     def _copy_code_job_brief(self, draft: CodeJobDraft):
         if getattr(self, "pending_code_job", None) != draft:
-            self._append("warn", "Nova: Koduppdraget har ?ndrats. Ge kommandot igen.")
+            self._append("warn", "Nova: Koduppdraget har ändrats. Ge kommandot igen.")
             return
         self.root.clipboard_clear()
         self.root.clipboard_append(draft.brief)
         self.root.update()
-        self._append("step", "  ? Kodbrief kopierad p? din beg?ran. Ingen agent har startats.")
+        self._append("step", "  ↳ Kodbrief kopierad på din begäran. Ingen agent har startats.")
         self._phase("klar", "Kodbrief redo att granskas i din kodagent")
 
     def _open_code_job_folder(self, draft: CodeJobDraft):
@@ -1190,7 +1196,7 @@ class NovaOverlay:
             self._append("warn", "Nova: Projektet saknar en verifierad lokal Git-mapp.")
             return
         if not draft.repository.is_dir():
-            self._append("warn", "Nova: Projektmappen finns inte l?ngre p? datorn.")
+            self._append("warn", "Nova: Projektmappen finns inte längre på datorn.")
             return
         self._open_project_folder(str(draft.repository))
 
@@ -1198,41 +1204,41 @@ class NovaOverlay:
         self.pending_code_job = None
         self.pending = None
         self._choices([])
-        self._append("step", "Nova: Kodf?rslaget avbr?ts. Ingen k?rning p?b?rjades.")
-        self._phase("redo", "Redo f?r ett nytt uppdrag")
+        self._append("step", "Nova: Kodförslaget avbröts. Ingen körning påbörjades.")
+        self._phase("redo", "Redo för ett nytt uppdrag")
 
     def _received_voice_without_navigation(self, text: str):
         """Actionable commands require a click before entering tool-enabled Atlas."""
         if self.bridge.state.online() and self.bridge.state.voice_snapshot().get("authorized"):
             self.pending = text
             self._choices([
-                ("K?r i Atlas (med verktyg)", lambda phrase=text: self._approved_operator_task(phrase)),
-                ("Bara r?d (utan verktyg)", lambda phrase=text: self._approved_readonly_advice(phrase)),
+                ("Kör i Atlas (med verktyg)", lambda phrase=text: self._approved_operator_task(phrase)),
+                ("Bara råd (utan verktyg)", lambda phrase=text: self._approved_readonly_advice(phrase)),
                 ("Avbryt", lambda: self._choices([])),
             ])
-            self._append("nova", "Nova: Det h?r kan beh?va Atlas riktiga verktyg. "
-                         "V?lj ? ? K?r i Atlas f?r att godk?nna just detta uppdrag. "
-                         "Ordinarie beh?righeter och granskningar g?ller fortfarande.")
-            self._phase("godkannande", "V?lj ? ? K?r i Atlas f?r ett verktygsuppdrag")
+            self._append("nova", "Nova: Det här kan behöva Atlas riktiga verktyg. "
+                         "Välj menyn ⋯ och sedan Kör i Atlas för att godkänna just detta uppdrag. "
+                         "Ordinarie behörigheter och granskningar gäller fortfarande.")
+            self._phase("godkannande", "Välj menyn ... och sedan Kör i Atlas för ett verktygsuppdrag")
             return
         if self.bridge.state.online():
             task_id, detail = self.bridge.state.enqueue(text)
             if task_id:
-                self._append("step", "  ? Fr?ga skickad till Atlas i l?sl?ge.")
-                self._phase("tolkar", "Atlas ger r?d, men utf?r inte ?tg?rder")
+                self._append("step", "  ↳ Fråga skickad till Atlas i läsläge.")
+                self._phase("tolkar", "Atlas ger råd, men utför inte åtgärder")
             else:
                 self._append("warn", "Nova: " + detail)
                 self._phase("godkannande", detail)
             return
         self.pending = text
-        self._append("nova", "Nova: Kommandot togs emot. Jag kan ?ppna godk?nda "
-                     "sidor och program lokalt, men Atlas beh?ver f?rst paras "
-                     "f?r att du ska kunna godk?nna ett verktygsuppdrag.")
+        self._append("nova", "Nova: Kommandot togs emot. Jag kan öppna godkända "
+                     "sidor och program lokalt, men Atlas behöver först paras "
+                     "för att du ska kunna godkänna ett verktygsuppdrag.")
         self._choices([
             ("Anslut Atlas", self.connect_atlas),
-            ("Kopiera beg?ran", self.copy_pending),
+            ("Kopiera begäran", self.copy_pending),
         ])
-        self._phase("godkannande", "Atlas beh?ver anslutas")
+        self._phase("godkannande", "Atlas behöver anslutas")
 
     def _present_uia_read_preview(self, instruction: str):
         """Capture the foreground browser, then ask before reading any page text."""
@@ -1244,13 +1250,13 @@ class NovaOverlay:
         if not self.bridge.state.online():
             self._append(
                 "warn",
-                "Nova: Atlas ?r inte ansluten. Ingen sidtext l?ses. Anslut Atlas och upprepa kommandot.",
+                "Nova: Atlas är inte ansluten. Ingen sidtext läses. Anslut Atlas och upprepa kommandot.",
             )
             self._choices([
                 ("Anslut Atlas", self.connect_atlas),
                 ("Avbryt", self._cancel_uia_read),
             ])
-            self._phase("godkannande", "Anslut Atlas innan sidtext l?ses")
+            self._phase("godkannande", "Anslut Atlas innan sidtext läses")
             return
 
         try:
@@ -1258,33 +1264,33 @@ class NovaOverlay:
         except (UIAutomationError, ValueError) as exc:
             self._append(
                 "warn",
-                f"Nova: Jag hittar inget aktivt, synligt webbl?sarf?nster att l?sa ({exc}).",
+                f"Nova: Jag hittar inget aktivt, synligt webbläsarfönster att läsa ({exc}).",
             )
-            self._phase("godkannande", "?ppna r?tt chatt i Brave, Chrome, Edge eller Firefox")
+            self._phase("godkannande", "öppna rätt chatt i Brave, Chrome, Edge eller Firefox")
             return
 
         self.pending_uia_read_instruction = instruction
         self.pending_uia_read_target = target
-        browser = target.get("processName", "webbl?saren").capitalize()
+        browser = target.get("processName", "webbläsaren").capitalize()
         self._append(
             "step",
-            f"Nova: Jag har hittat {browser}. Jag kan l?sa den synliga sidtexten "
-            "i det f?nstret och skicka h?gst 3 000 tecken till Atlas i skrivskyddat l?ge. "
-            "Kontrollera att r?tt chatt och flik ?r ?ppen. Inga klick, skrivningar "
-            "eller meddelanden skickas. Godk?nn l?sningen?",
+            f"Nova: Jag har hittat {browser}. Jag kan läsa den synliga sidtexten "
+            "i det fönstret och skicka högst 3 000 tecken till Atlas i skrivskyddat läge. "
+            "Kontrollera att rätt chatt och flik är öppen. Inga klick, skrivningar "
+            "eller meddelanden skickas. Godkänn l?sningen?",
         )
         self._choices([
-            ("L?s och analysera", self._approve_uia_read),
+            ("Läs och analysera", self._approve_uia_read),
             ("Avbryt", self._cancel_uia_read),
         ])
-        self._phase("godkannande", "V?ntar p? godk?nnande att l?sa vald webbl?sarsida")
+        self._phase("godkannande", "Väntar på godkännande att läsa vald webbläsarsida")
 
     def _cancel_uia_read(self):
         self.pending_uia_read_instruction = None
         self.pending_uia_read_target = None
         self._choices([])
-        self._append("step", "Nova: Sidl?sningen avbr?ts. Ingen sidtext l?stes eller skickades.")
-        self._phase("redo", "Redo f?r ett nytt kommando")
+        self._append("step", "Nova: Sidläsningen avbröts. Ingen sidtext lästes eller skickades.")
+        self._phase("redo", "Redo för ett nytt kommando")
 
     def _approve_uia_read(self):
         instruction = self.pending_uia_read_instruction
@@ -1294,15 +1300,15 @@ class NovaOverlay:
         self._choices([])
 
         if not instruction or not target:
-            self._phase("redo", "Ingen v?ntande sidl?sning")
+            self._phase("redo", "Ingen väntande sidläsning")
             return
         if not self.bridge.state.online():
-            self._append("warn", "Nova: Atlas kopplades fr?n. Ingen sidtext l?stes eller skickades.")
+            self._append("warn", "Nova: Atlas kopplades från. Ingen sidtext lästes eller skickades.")
             self._phase("godkannande", "Anslut Atlas och upprepa kommandot")
             return
 
         epoch = self.task_epoch
-        self._phase("tolkar", "L?ser synlig text fr?n den godk?nda webbl?sarsidan")
+        self._phase("tolkar", "Läser synlig text från den godkända webbläsarsidan")
         threading.Thread(
             target=self._read_uia_page_worker,
             args=(epoch, instruction, target),
@@ -1330,17 +1336,17 @@ class NovaOverlay:
             error = result.get("error", "uia_worker_error")
             self._append(
                 "warn",
-                f"Nova: Jag kunde inte l?sa den godk?nda sidan ({error}). Inget skickades till Atlas.",
+                f"Nova: Jag kunde inte läsa den godkända sidan ({error}). Inget skickades till Atlas.",
             )
             self._phase(
                 "godkannande",
-                "Kontrollera att r?tt webbl?sarf?nster fortfarande ?r aktivt och f?rs?k igen",
+                "Kontrollera att rätt webbläsarfönster fortfarande är aktivt och försök igen",
             )
             return
         if not self.bridge.state.online():
             self._append(
                 "warn",
-                "Nova: Sidtexten l?stes lokalt men Atlas kopplades fr?n. Inget skickades.",
+                "Nova: Sidtexten lästes lokalt men Atlas kopplades från. Inget skickades.",
             )
             self._phase("godkannande", "Anslut Atlas och upprepa kommandot")
             return
@@ -1354,8 +1360,8 @@ class NovaOverlay:
 
         self._append(
             "step",
-            f"Nova: L?ste synlig text fr?n {page.get('processName', 'webbl?saren')} "
-            "och skickade den till Atlas i skrivskyddat l?ge. Inga ?ndringar gjordes.",
+            f"Nova: Läste synlig text från {page.get('processName', 'webbläsaren')} "
+            "och skickade den till Atlas i skrivskyddat läge. Inga ändringar gjordes.",
         )
         self._phase("tolkar", "Atlas analyserar den valda sidtexten")
 

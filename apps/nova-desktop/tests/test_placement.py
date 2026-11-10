@@ -59,6 +59,19 @@ class PlacementTests(unittest.TestCase):
             clear_anchor(str(path))
             self.assertIsNone(read_saved_anchor(str(path)))
 
+    def test_expanded_window_is_placed_after_deiconify(self):
+        # A real Windows ultrawide regression produced a 442x600 UI at
+        # (5026,1298), retaining the previous 94x94 bubble's origin and
+        # clipping almost the entire panel outside a 5120x1440 desktop.
+        from pathlib import Path
+        source = (Path(__file__).resolve().parents[1] / 'nova_overlay.py').read_text(encoding='utf-8')
+        expanded = source[source.index('    def expand(self, listen=False):'):
+                          source.index('    def collapse(self):')]
+        self.assertIn('self.root.update_idletasks()', expanded)
+        self.assertIn('self._place(PANEL_W, PANEL_H)', expanded)
+        self.assertLess(expanded.index('self.root.deiconify()'),
+                        expanded.index('self._place(PANEL_W, PANEL_H)'))
+
     def parse_geometry(self, g):
         import re
         match = re.fullmatch(r"(\d+)x(\d+)([+-]\d+)([+-]\d+)", g)

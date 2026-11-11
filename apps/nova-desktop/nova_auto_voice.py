@@ -152,6 +152,9 @@ def safe_auto_navigation(text: str) -> Action | None:
         cleaned = _TRAILING_PUNCT.sub("", cleaned).strip()
     if not cleaned or len(cleaned) > 140:
         return None
+    # A clipped wake name is sometimes heard as "vad" before a polite request.
+    # The rest must still parse as a complete navigation to a known destination.
+    cleaned = re.sub(r"^(nova[, ]+)?(?:vad|va)[ ,]+(?=(?:kan|vill|skulle) du\b)", r"\1", cleaned, count=1)
     match = _CONVERSATIONAL_NAV.match(cleaned) or NAV.match(cleaned)
     if not match:
         return None

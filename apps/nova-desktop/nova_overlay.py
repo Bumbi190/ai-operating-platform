@@ -202,6 +202,7 @@ class NovaOverlay:
         self.reply_file = Path(local_app_data or str(Path.home())) / "Omnira" / "Nova" / "reply-mode.txt"
         self.reply_mode = load_reply_mode(self.reply_file)
         self._last_unclear_audio = 0.0
+        self.last_heard = ""
         self.preview_file = (Path(local_app_data) / "Omnira" / "Nova" / "preview-origin.txt"
                              if local_app_data else None)
         approved_preview = (read_saved_preview_origin(str(self.preview_file))
@@ -514,7 +515,7 @@ class NovaOverlay:
         live.pack(fill="x", pady=(8, 0))
         tk.Label(live, text="LIVE  /", bg=SURFACE, fg=CYAN,
                  font=("Segoe UI Semibold", 8)).pack(side="left", padx=(0, 8))
-        self.transcript_var = tk.StringVar(value="—")
+        self.transcript_var = tk.StringVar(value=self.last_heard or "—")
         self.transcript_label = tk.Label(
             live, textvariable=self.transcript_var, bg=SURFACE, fg="#c9c8ff",
             font=self.small, anchor="w", width=35, justify="left")
@@ -781,8 +782,9 @@ class NovaOverlay:
                 self.root.after(125, self._poll_native_mic)
 
     def _received_native_transcript(self, phrase: str):
+        self.last_heard = phrase[:180]
         if getattr(self, "expanded", False) and hasattr(self, "transcript_var"):
-            self.transcript_var.set(phrase[:180])
+            self.transcript_var.set(self.last_heard)
         suggestion = getattr(self, "_voice_suggestion", None)
         self._discard_voice_interpretation()
         command, has_wake = native_command_text(phrase)
@@ -1410,7 +1412,7 @@ class NovaOverlay:
     def _on_input(self, _e=None):
         text = self.command.get("1.0", "end-1c").strip()
         self.draft = text
-        self.transcript_var.set(text[-180:] if text else "—")
+        self.transcript_var.set(text[-180:] or self.last_heard or "—")
         if self.phase == "lyssnar" and text:
             self.activity.itemconfigure(
                 self.activity_text, text="Text mottagen · tryck Enter"
@@ -1554,7 +1556,7 @@ class NovaOverlay:
             os.startfile(action.url)
             self.spotify_selected = action.url == APP_SHORTCUTS["spotify"]
             self._reply("ok", "Nova: Windows har fått startkommandot. "
-                         "Programfönstrets innehåll är inte verifierat.")
+                         "Programfönstrets innehåll är inte verifierat.", spoken=action.description)
             self._phase("klar", "Startkommando skickat")
         except OSError as exc:
             self._reply("warn", "Nova: Programmet kunde inte startas: " + str(exc))
@@ -2039,7 +2041,7 @@ class NovaOverlay:
         if transcript is None:
             self.command.delete("1.0", "end")
             self.draft = ""
-        self.transcript_var.set(text[:180])
+        self.transcript_var.set((self.last_heard or text[:180]) if from_voice and transcript is not None else text[:180])
         plan = parse_native_task(text)
         # A note body is literal text, even when it contains a coding request.
         code_job = propose_code_job(text) if plan is None else None

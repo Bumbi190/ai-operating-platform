@@ -78,6 +78,8 @@ def local_greeting(text):
     words = re.sub(r"^[\s.,!?]*(?:(?:hej|halla)[\s.,!?]+)?(?:nova|innova)\b[\s.,!?]*", "", words)
     words = re.sub(r"[^\w ]+", " ", words)
     words = " ".join(words.split())
+    if re.fullmatch(r"(?:(?:(?:jag|du|nova) (?:har|ska ha|borde ha)|har (?:jag|du)) (?:val )?tillgang till (?:min |mina |den har )?(?:data|dator|appar|filer)|kan du (?:oppna|starta) (?:appar|program)(?: pa min dator)?)", words):
+        return "Jag kan öppna appar som Spotify på din dator. Vilken app eller vilka uppgifter vill du åt?"
     if words in {"", "hej", "halla", "hejsan", "hor du mig", "kan du hora mig", "hor du vad jag sager",
                  "ar du dar", "ar du har", "funkar mikrofonen", "kan vi prata", "kan du prata med mig"}:
         return "Ja, jag hör dig. Vad vill du göra?"
@@ -174,9 +176,10 @@ def conversation_reply(text, history=()):
             or words.endswith("?") or (history and _follow_up(words))):
         return Interpretation(None)
     prompt = ("Du är Nova, en lokal svensk datorassistent. Svara på frågan med en eller två korta "
-              "meningar på svenska som passar för uppläsning. Du har inga verktyg här och kan inte "
-              "se användarens skärm, meddelanden eller aktuella webbinformation. Påstå aldrig att "
-              "du har utfört något. Om något är oklart, ställ en följdfråga.")
+              "meningar på svenska som passar för uppläsning. Nova Desktop kan öppna kända appar "
+              "och sidor i Windows och styra Spotify. Den här svarsfunktionen ger bara text till Nova. "
+              "Säg aldrig att en åtgärd har utförts utan resultat från appen. Du får ingen fri insyn "
+              "i filer, skärm eller meddelanden. Om målet är oklart, ställ en kort följdfråga.")
     try:
         messages = [{"role": "system", "content": prompt}]
         for question, reply in history:

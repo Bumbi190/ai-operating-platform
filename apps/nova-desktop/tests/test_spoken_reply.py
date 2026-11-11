@@ -82,6 +82,23 @@ class SpokenReplyTests(unittest.TestCase):
         panel._received_native_transcript("Sanna.")
         panel._connect_sanna.assert_called_once()
 
+    def test_spotify_request_from_the_real_microphone_transcript(self):
+        from nova_auto_voice import safe_auto_navigation
+        spotify = safe_auto_navigation("öppna Spotify")
+        self.assertIsNotNone(spotify)
+        for phrase in ("Vad vill du starta Spotify?", "Va, kan du öppna Spotify?", "Nova, vad skulle du kunna plocka fram musikappen åt mig?"):
+            self.assertEqual(safe_auto_navigation(phrase), spotify)
+        for phrase in ("Vad vill du starta Spotify för?", "Vad vill du göra med Spotify?",
+                       "Vad vill du starta i Spotify?", "Vad vill du starta Spotify eller Gmail?",
+                       "Vill du inte starta Spotify?"):
+            self.assertIsNone(safe_auto_navigation(phrase))
+
+    def test_desktop_access_question_reports_registered_capabilities(self):
+        for phrase in ("Jag ska ha tillgång till min data.", "Har du tillgång till min dator?",
+                       "Kan du öppna appar på min dator?"):
+            self.assertIn("Spotify", local_greeting(phrase))
+        self.assertIsNone(local_greeting("Radera min data."))
+
     def test_choose_voice_once(self):
         with tempfile.TemporaryDirectory() as tmp:
             choice = Path(tmp) / "voice.txt"

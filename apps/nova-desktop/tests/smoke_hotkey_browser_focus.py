@@ -7,6 +7,8 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from nova_overlay import NovaOverlay
+from nova_voice_intent import Interpretation
+from nova_core import Action
 
 # Avoid capturing global keyboard shortcuts or attaching to a user's bridge.
 with patch("nova_overlay.HotkeyListener"), patch("nova_overlay.HostEventListener"), \
@@ -17,6 +19,7 @@ try:
             patch("nova_overlay.local_model_ready", return_value=True), \
             patch.object(app, "start_native_mic_pilot") as mic, \
             patch("nova_overlay.webbrowser.open") as browser, \
+            patch.object(app.voice_interpreter, "submit") as interpret, \
             patch("nova_native_tasks.NOTES_DIR", Path(directory)), \
             patch("nova_overlay.NOTES_DIR", Path(directory)):
         app.bridge.state.switch_origin("https://ai-operating-platform-2vteosw04-bumbi190s-projects.vercel.app")
@@ -56,7 +59,17 @@ try:
         assert app.native_mic_session is worker
         worker.stop.assert_not_called()
         assert app.command.get("1.0", "end-1c") == ""
-        assert any("Jag uppfattade inget lokalt kommando" in text for _, text in app.history)
+        assert ("Det hördes nog fel", False) in [call.args for call in interpret.call_args_list]
+        media_action = Action("spotify_media", "play")
+        turn = app.voice_interpreter.turn
+        app.voice_interpreter.results.put((turn - 1, Interpretation(media_action)))
+        app.voice_interpreter.results.put((turn, Interpretation(media_action, "Menar du Spotify?", confirm=True)))
+        with patch.object(app, "_control_spotify") as media:
+            app._poll_voice_interpretations()
+            media.assert_not_called()
+            app._received_native_transcript("Ja, gör det.")
+            media.assert_called_once_with("play")
+        assert app.native_mic_session is worker
         # A normal capture window ending can continue only inside the active session.
         worker.pop_events.return_value = [{"kind": "finished", "reason": "pilot_timeout"}]
         app._poll_native_mic()

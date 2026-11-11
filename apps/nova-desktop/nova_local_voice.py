@@ -14,6 +14,8 @@ from math import sqrt
 SAMPLE_RATE = 16000
 BLOCK_FRAMES = 1024
 MAX_UTTERANCE_SECONDS = 12.0
+PILOT_SECONDS = 25
+CONVERSATION_SECONDS = 600
 
 
 def rms_level(raw_pcm16: bytes) -> float:

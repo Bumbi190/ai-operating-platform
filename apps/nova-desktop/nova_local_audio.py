@@ -15,6 +15,8 @@ import subprocess
 import threading
 from typing import Any
 
+from nova_local_voice import CONVERSATION_SECONDS, PILOT_SECONDS
+
 WORKER = Path(__file__).resolve().with_name("nova_local_voice_worker.py")
 ENV_ROOT = (
     Path(os.environ.get("USERPROFILE", str(Path.home())))
@@ -27,7 +29,7 @@ ALLOWED_EVENTS = frozenset({
     "transcript", "no_transcript", "warning", "error", "finished", "exit",
 })
 MAX_EVENT_CHARS = 1200
-MAX_SESSION_SECONDS = 25
+MAX_SESSION_SECONDS = PILOT_SECONDS
 
 
 def local_model_ready() -> bool:
@@ -55,10 +57,11 @@ class NativeAudioSession:
             # audio status or allowing a background thread to block.
             pass
 
-    def start(self, *, seconds: float = 20.0, transcribe: bool = False) -> None:
+    def start(self, *, seconds: float = 20.0, transcribe: bool = False, conversation: bool = False) -> None:
         if self.process is not None:
             raise RuntimeError("Local audio pilot already started")
-        if not 0.5 <= seconds <= MAX_SESSION_SECONDS:
+        limit = CONVERSATION_SECONDS if conversation and transcribe else PILOT_SECONDS
+        if not 0.5 <= seconds <= limit:
             raise ValueError("Invalid audio session duration")
         if not VENV_PYTHON.is_file() or not WORKER.is_file():
             raise RuntimeError("NOVA_AUDIO_ENV_NOT_INSTALLED")
@@ -70,6 +73,8 @@ class NativeAudioSession:
             str(VENV_PYTHON), "-u", str(WORKER), "--mode", self.mode,
             "--seconds", str(float(seconds)),
         ]
+        if conversation and transcribe:
+            argv.append("--conversation")
         if transcribe:
             argv += ["--model-path", str(MODEL_DIR)]
         # No shell=True, token, URL, code prompt or user-supplied path.

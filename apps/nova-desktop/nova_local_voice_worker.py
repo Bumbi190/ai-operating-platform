@@ -1,6 +1,6 @@
 """Isolated foreground microphone worker for the Nova Desktop voice pilot.
 
-Explicit CLI start only; runs for at most 25 seconds per approved pilot session.
+Explicit CLI start only; uses the requested pilot or foreground conversation deadline.
 Captures 16-kHz 16-bit mono PCM into memory, uses a conservative VAD and
 optionally a locally cached Swedish Whisper model. No browser, Atlas tokens,
 API calls, disk recordings, or implicit model downloads.
@@ -9,13 +9,14 @@ Stdout is JSON metadata/transcripts only, never raw audio samples.
 from __future__ import annotations
 
 import argparse
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor, Future
 import json
 from pathlib import Path
 import sys
 import time
 
-from nova_local_voice import BLOCK_FRAMES, SAMPLE_RATE, SpeechGate
+from nova_local_voice import BLOCK_FRAMES, SAMPLE_RATE, SpeechGate, CONVERSATION_SECONDS, PILOT_SECONDS
 
 
 def emit(kind: str, **fields) -> None:
@@ -48,12 +49,18 @@ def offline_transcribe(segment: bytes, model) -> str:
     return " ".join(words).strip()[:500]
 
 
-def run(*, mode: str, seconds: float, device: int | None, model_dir: Path | None) -> int:
-    if mode not in ("meter", "transcribe") or not 0.5 <= seconds <= 25:
+def _load_model(model_dir):
+    from faster_whisper import WhisperModel
+    return WhisperModel(str(model_dir), device="cpu", compute_type="int8", cpu_threads=4, num_workers=1)
+
+
+def run(*, mode: str, seconds: float, device: int | None, model_dir: Path | None,
+        conversation: bool = False) -> int:
+    limit = CONVERSATION_SECONDS if conversation and mode == "transcribe" else PILOT_SECONDS
+    if mode not in ("meter", "transcribe") or not 0.5 <= seconds <= limit:
         raise ValueError("invalid pilot options")
     import sounddevice as sd
 
-    model = None
     if mode == "transcribe":
         if not model_dir or not model_dir.is_dir():
             emit("error", code="LOCAL_MODEL_NOT_INSTALLED")
@@ -62,13 +69,6 @@ def run(*, mode: str, seconds: float, device: int | None, model_dir: Path | None
             if not (model_dir / file).is_file():
                 emit("error", code="LOCAL_MODEL_INCOMPLETE")
                 return 2
-        emit("loading", mode="transcribe")
-        from faster_whisper import WhisperModel
-        # This is an exact LOCAL directory, not a model identifier. No model
-        # download or network request is possible through the worker.
-        model = WhisperModel(str(model_dir), device="cpu", compute_type="int8",
-                             cpu_threads=4, num_workers=1)
-
     selected = sd.default.device[0] if device is None else device
     info = sd.query_devices(int(selected))
     if info["max_input_channels"] < 1:
@@ -79,24 +79,17 @@ def run(*, mode: str, seconds: float, device: int | None, model_dir: Path | None
     )
 
     gate = SpeechGate()
-    pending: Future[str] | None = None
+    pending: deque[Future[str]] = deque()
     since = time.monotonic()
     levels = 0
     utterances = 0
 
-    def deliver_completed() -> None:
-        nonlocal pending
-        if pending is None or not pending.done():
-            return
-        try:
-            phrase = pending.result()
-            if phrase:
-                emit("transcript", text=phrase)
-            else:
-                emit("no_transcript")
-        except Exception:
-            emit("error", code="LOCAL_TRANSCRIPTION_FAILED")
-        pending = None
+    def deliver(future):
+        phrase = future.result(timeout=8)
+        if phrase:
+            emit("transcript", text=phrase)
+        else:
+            emit("no_transcript")
 
     try:
         # Single STT task at a time; no unbounded backlog of captured speech.
@@ -110,6 +103,12 @@ def run(*, mode: str, seconds: float, device: int | None, model_dir: Path | None
                 blocksize=BLOCK_FRAMES,
             ) as stream:
                 emit("ready", mode=mode, device=info["name"], hz=SAMPLE_RATE)
+                # Start capture first. The first words can arrive while Whisper loads.
+                model_job = pool.submit(_load_model, model_dir) if mode == "transcribe" else None
+
+                def transcribe(segment):
+                    return offline_transcribe(segment, model_job.result())
+
                 while time.monotonic() - since < seconds:
                     raw, overflow = stream.read(BLOCK_FRAMES)
                     if overflow:
@@ -121,32 +120,21 @@ def run(*, mode: str, seconds: float, device: int | None, model_dir: Path | None
                              speaking=gate.speaking)
                     for kind in kinds:
                         emit(kind)
-                    if segment is not None and model is not None:
-                        if pending is not None:
-                            emit("warning", code="TRANSCRIBER_BUSY")
-                        else:
-                            utterances += 1
-                            emit("transcribing")
-                            pending = pool.submit(offline_transcribe, segment, model)
-                        # Only the worker owns this frame; explicitly drop it.
-                        del segment
-                    elif segment is not None:
+                    if model_job and model_job.done():
+                        model_job.result()  # Surface a startup failure even before speech.
+                    while pending and pending[0].done():
+                        deliver(pending.popleft())
+                    if segment is not None:
                         utterances += 1
-                    deliver_completed()
+                        if model_job:
+                            if len(pending) < 3:
+                                emit("transcribing")
+                                pending.append(pool.submit(transcribe, segment))
+                            else:
+                                emit("warning", code="TRANSCRIBER_BUSY")
                 gate.clear()
-            # The worker must not announce "finished" before a pending local
-            # transcription has emitted its result. After capture closes we
-            # wait for the single already-started, bounded utterance only.
-            if pending is not None:
-                try:
-                    phrase = pending.result(timeout=8)
-                    if phrase:
-                        emit("transcript", text=phrase)
-                    else:
-                        emit("no_transcript")
-                except Exception:
-                    emit("error", code="LOCAL_TRANSCRIPTION_FAILED")
-                pending = None
+            for future in pending:
+                deliver(future)
             emit("finished", reason="pilot_timeout", utterances=utterances)
     except KeyboardInterrupt:
         gate.clear()
@@ -164,9 +152,10 @@ def main() -> int:
     parser.add_argument("--seconds", type=float, default=20.0)
     parser.add_argument("--device", type=int, default=None)
     parser.add_argument("--model-path", type=Path, default=None)
+    parser.add_argument("--conversation", action="store_true")
     args = parser.parse_args()
     return run(mode=args.mode, seconds=args.seconds,
-               device=args.device, model_dir=args.model_path)
+               device=args.device, model_dir=args.model_path, conversation=args.conversation)
 
 
 if __name__ == "__main__":

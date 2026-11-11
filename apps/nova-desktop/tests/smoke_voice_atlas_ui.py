@@ -44,7 +44,7 @@ def check_atlas():
         # Access is visible from the header without adding a toolbar button.
         assert app.bridge_status.bind("<Button-1>")
         app._show_bridge_status()
-        assert "slutföra" in app.bridge_var.get()
+        assert "Anslut Sannas röst" in app.bridge_var.get()
 
         app._phase("lyssnar", "Försöker öppna Windows röstinmatning med en väldigt lång text")
         label = app.activity.itemcget(app.activity_text, "text")

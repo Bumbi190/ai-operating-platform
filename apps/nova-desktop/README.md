@@ -1,5 +1,3 @@
-## Hotkey connection pilot (10 November 2026)
-
 ## Starta Nova på Windows
 
 Tryck **Ctrl + Alt + Space** för att visa sidopanelen och börja prata med den lokala mikrofonen. Du kan också skriva i rutan. Under **⋯** kan du stänga av mikrofonstarten för den aktuella sessionen. Start vid Windows-inloggning aktiverar bara bubblan.
@@ -7,10 +5,13 @@ Tryck **Ctrl + Alt + Space** för att visa sidopanelen och börja prata med den 
 - **”Nova, öppna Spotify”** begär programstart. **”Nova, kolla ledigt diskutrymme”** visar en aktuell mätning i rutan.
 - **”Nova, skapa en anteckning med texten Ring Oscar”** visar den uppfattade texten. Klicka **Spara anteckning** för att skapa en ny UTF-8-textfil under `%USERPROFILE%\Nova\Anteckningar`. Den fullständiga sökvägen visas efter sparandet.
 - **”Nova, öppna Gmail och Spotify”** visar en plan som du kan godkänna eller avbryta i panelen.
-- Välj **⋯ → Anslut Sannas röst via Brave** när du vill använda Atlas med Sannas tal. Atlas arbetsverktyg kräver en ansluten, behörig session och ditt godkännande för uppdraget.
+- Så länge röstläget är aktivt kan du fortsätta med nästa kommando, exempelvis **”Hur mycket ledigt diskutrymme har jag?”**. Vid otydligt tal lyssnar Nova efter en ny formulering. Stopp och minimering avslutar lyssningen.
+- Säg **”Anslut Sanna”** eller välj **Anslut Sannas röst** i panelen när du vill ha upplästa svar från Atlas via Brave. Atlas arbetsverktyg kräver en ansluten, behörig session och ditt godkännande för uppdraget.
 
 
-- One explicit Ctrl+Alt+Space is now eligible to open the selected,
+## Historical connection pilot (10 November 2026)
+
+- One explicit Ctrl+Alt+Space was eligible to open the selected,
   SSO-protected Omnira preview using an ephemeral localhost pairing token
   marked with hotkey=1 in the URL fragment. The marker is never sent to
   the Vercel server and is removed from browser history together with the key.

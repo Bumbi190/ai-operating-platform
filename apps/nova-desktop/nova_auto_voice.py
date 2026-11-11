@@ -54,6 +54,22 @@ _UIA_READ = re.compile(
 
 
 
+_SPOKEN_NAME = re.compile(r"^(?:hej[ ,]+)?(?:nova|innova)\b[.,:!?\s]*", re.I)
+# Remove only a complete filler at the start, never part of the instruction.
+_SPOKEN_FILLER = re.compile(r"^ja(?:,?\s+det)?[,.!?]\s+", re.I)
+_SPOKEN_NAV = re.compile(r"^((?:(?:kan|vill|skulle) du )?)navgera\b", re.I)
+
+
+def native_command_text(phrase: str) -> tuple[str, bool]:
+    """Repair the spoken command prefix while preserving literal task contents."""
+    phrase = phrase.strip()
+    name = _SPOKEN_NAME.match(phrase)
+    body = phrase[name.end():] if name else phrase
+    body = _SPOKEN_FILLER.sub("", body, count=1)
+    body = _SPOKEN_NAV.sub(r"\1navigera", body, count=1)
+    return ("Nova, " + body if name else body), bool(name)
+
+
 def safe_stop_command(text: str) -> Action | None:
     """An exact emergency stop outranks navigation, Atlas handoff and approvals."""
     cleaned = _TRAILING_PUNCT.sub("", normalized(text)).strip()

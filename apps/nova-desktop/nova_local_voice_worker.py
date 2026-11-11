@@ -19,17 +19,20 @@ from nova_local_voice import BLOCK_FRAMES, SAMPLE_RATE, SpeechGate
 
 
 def emit(kind: str, **fields) -> None:
-    print(json.dumps({"kind": kind, **fields}, ensure_ascii=False), flush=True)
+    print(json.dumps({"kind": kind, **fields}), flush=True)
 
 
 def offline_transcribe(segment: bytes, model) -> str:
     """Run the model on a short utterance in memory. No network or file writes."""
     import numpy as np
     pcm = np.frombuffer(segment, dtype="<i2").astype(np.float32) / 32768.0
+    if not pcm.size or np.ptp(pcm) < 0.002:
+        return ""
     items, _ = model.transcribe(
         pcm,
         language="sv",
-        beam_size=1,
+        beam_size=3,
+        hotwords="Nova, Spotify, diskutrymme, kalendern, anteckning",
         best_of=1,
         condition_on_previous_text=False,
         vad_filter=False,
@@ -37,7 +40,12 @@ def offline_transcribe(segment: bytes, model) -> str:
         without_timestamps=True,
     )
     # Iterating is required: faster-whisper returns a lazy generator.
-    return " ".join(item.text.strip() for item in items).strip()[:500]
+    words = []
+    for item in items:
+        if item.avg_logprob < -1.3 or (item.no_speech_prob > 0.6 and item.avg_logprob < -1):
+            return ""
+        words.append(item.text.strip())
+    return " ".join(words).strip()[:500]
 
 
 def run(*, mode: str, seconds: float, device: int | None, model_dir: Path | None) -> int:

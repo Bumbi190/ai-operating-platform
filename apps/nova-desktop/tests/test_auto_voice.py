@@ -6,6 +6,19 @@ from nova_core import URLS
 
 
 class AutoVoiceTests(unittest.TestCase):
+    def test_native_spoken_command_repairs_only_the_spoken_prefix(self):
+        from nova_auto_voice import native_command_text
+        spoken = "Innova. Ja, det. Vill du navgera till Spotify?"
+        repaired, addressed = native_command_text(spoken)
+        self.assertTrue(addressed)
+        self.assertEqual(safe_auto_navigation(repaired).kind, "app")
+        for phrase in ("Innova, öppna inte Spotify", "Ja, det. Öppna Spotify och skicka mejlet",
+                       "Jag hörde Nova säga öppna Spotify", "Innova, om jag säger öppna Spotify"):
+            self.assertIsNone(safe_auto_navigation(native_command_text(phrase)[0]))
+        note = "Öppna INTE kalendern. Innova, navgera till Spotify!"
+        self.assertEqual(native_command_text("Nova, skapa en anteckning med texten " + note)[0],
+                         "Nova, skapa en anteckning med texten " + note)
+
     def test_explicit_safe_open_commands(self):
         for utterance, expected in (
             ("Hej Nova, vill du öppna Facebook?", URLS["facebook"]),

@@ -3,7 +3,7 @@ import os
 import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from nova_overlay import NovaOverlay
@@ -28,7 +28,26 @@ try:
         app._process_events()
         assert app.expanded and mic.call_count == 2
         browser.assert_not_called()
-        app._received_native_transcript("Nova, kolla ledigt diskutrymme")
+        # Feed the same live worker that the real Tk polling loop consumes.
+        worker = Mock()
+        app.native_mic_session = worker
+        worker.pop_events.return_value = [
+            {"kind": "transcript", "text": "Innova. Ja, det. Vill du navgera till Spotify?"},
+            {"kind": "transcript", "text": "Det hördes nog fel"},
+            {"kind": "transcript", "text": "Hur mycket ledigt diskutrymme har jag?"},
+        ]
+        with patch.object(app, "_start_app") as start:
+            app._poll_native_mic()
+            start.assert_called_once()
+            assert start.call_args.args[0].url.lower().endswith("spotify.exe")
+        assert app.native_mic_session is worker
+        worker.stop.assert_not_called()
+        assert app.command.get("1.0", "end-1c") == ""
+        assert any("Jag uppfattade inget lokalt kommando" in text for _, text in app.history)
+        # A normal capture window ending can continue only inside the active session.
+        worker.pop_events.return_value = [{"kind": "finished", "reason": "pilot_timeout"}]
+        app._poll_native_mic()
+        assert mic.call_count == 3
         assert any("GB av" in text for _, text in app.history), app.history
         app.command.insert("1.0", "Utkast som ska ligga kvar")
         phrase = "Nova, skapa en anteckning med texten Ring Oscar om mobilversionen."
@@ -47,7 +66,7 @@ try:
         assert len(list(Path(directory).iterdir())) == 1
         app.native_mic_hotkey.set(False)
         app._open_from_hotkey()
-        assert app.expanded and mic.call_count == 2
+        assert app.expanded and mic.call_count == 4
         browser.assert_not_called()
         order = "Nova, lägg till ett möte i kalendern i morgon klockan tio"
         app._received_native_transcript(order)

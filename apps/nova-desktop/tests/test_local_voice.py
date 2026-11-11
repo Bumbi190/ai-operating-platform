@@ -130,8 +130,6 @@ class LocalVoiceTests(unittest.TestCase):
         self.assertIn('if os.environ.get("NOVA_START_EXPANDED") == "1":\n            self.root.after(180, self._open_from_hotkey)', overlay)
         self.assertIn("self.stop_native_mic_pilot(quiet=True)", overlay)
         self.assertIn('def _received_native_transcript(self, phrase: str):', overlay)
-        self.assertIn('has_wake = value.startswith(("nova ", "nova,", "nova:", "hej nova ", "hej nova,", "hej nova:"))', overlay)
-        self.assertIn("action = safe_auto_navigation(phrase) if has_wake else None", overlay)
         self.assertNotIn("subprocess.Popen", overlay[overlay.index("    def start_native_mic_pilot(self):"):overlay.index("    def _make_more_menu(self):")])
 
     def test_local_spoken_allowlisted_navigation_is_real_and_stops_capture(self):
@@ -199,6 +197,7 @@ class LocalVoiceTests(unittest.TestCase):
         ui._phase = Mock()
         ui._open_url = Mock()
         ui._start_app = Mock()
+        ui.stop_native_mic_pilot = Mock()
         ui._received_voice_without_navigation = Mock()
         ui.expanded = False
         ui._local_voice_only = False

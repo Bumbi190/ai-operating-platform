@@ -12,6 +12,7 @@ import os
 import sys
 
 ALLOWLIST = {
+    "spotify": ("spotify.exe", "Spotify"),
     "chrome": ("chrome.exe", "Google Chrome"),
     "brave": ("brave.exe", "Brave"),
     "edge": ("msedge.exe", "Microsoft Edge"),

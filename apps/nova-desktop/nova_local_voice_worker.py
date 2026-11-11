@@ -49,9 +49,48 @@ def offline_transcribe(segment: bytes, model) -> str:
     return " ".join(words).strip()[:500]
 
 
-def _load_model(model_dir):
+def _load_cpu_model(model_dir):
     from faster_whisper import WhisperModel
     return WhisperModel(str(model_dir), device="cpu", compute_type="int8", cpu_threads=4, num_workers=1)
+
+
+def _load_model(model_dir):
+    import os
+    import ctranslate2
+    from faster_whisper import WhisperModel
+
+    try:
+        if ctranslate2.get_cuda_device_count() and "int8_float16" in ctranslate2.get_supported_compute_types("cuda"):
+            if sys.platform == "win32":
+                # The same CUDA 12 runtime can be bundled with Ollama or the Python environment.
+                candidates = (Path(sys.prefix) / "Lib/site-packages/nvidia/cublas/bin",
+                              Path(os.environ.get("LOCALAPPDATA", "")) / "Programs/Ollama/lib/ollama/cuda_v12")
+                for directory in candidates:
+                    if (directory / "cublas64_12.dll").is_file():
+                        # Set only in this isolated worker. The loader also uses PATH for delayed dependencies.
+                        os.environ["PATH"] = str(directory) + os.pathsep + os.environ.get("PATH", "")
+                        break
+            return WhisperModel(str(model_dir), device="cuda", compute_type="int8_float16", num_workers=1)
+    except (OSError, RuntimeError, ValueError):
+        pass
+    return _load_cpu_model(model_dir)
+
+
+class LocalTranscriber:
+    def __init__(self, model_dir):
+        self.model_dir = model_dir
+        self.model = _load_model(model_dir)
+
+    def transcribe(self, segment):
+        try:
+            return offline_transcribe(segment, self.model)
+        except (RuntimeError, OSError):
+            if self.model.model.device != "cuda":
+                raise
+        # CUDA can first fail during decoding. Retry the same words on CPU for the rest of the session.
+        self.model = None
+        self.model = _load_cpu_model(self.model_dir)
+        return offline_transcribe(segment, self.model)
 
 
 def run(*, mode: str, seconds: float, device: int | None, model_dir: Path | None,
@@ -105,10 +144,10 @@ def run(*, mode: str, seconds: float, device: int | None, model_dir: Path | None
             ) as stream:
                 emit("ready", mode=mode, device=info["name"], hz=SAMPLE_RATE)
                 # Start capture first. The first words can arrive while Whisper loads.
-                model_job = pool.submit(_load_model, model_dir) if mode == "transcribe" else None
+                model_job = pool.submit(LocalTranscriber, model_dir) if mode == "transcribe" else None
 
                 def transcribe(segment):
-                    return offline_transcribe(segment, model_job.result())
+                    return model_job.result().transcribe(segment)
 
                 while time.monotonic() - since < seconds:
                     raw, overflow = stream.read(BLOCK_FRAMES)

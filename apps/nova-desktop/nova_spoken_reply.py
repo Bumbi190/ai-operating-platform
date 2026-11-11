@@ -9,18 +9,41 @@ import time
 class SpokenReply:
     def __init__(self):
         self.process = None
+        self.prepared = None
         self.started = 0.0
         self.intervals = deque(maxlen=24)
 
-    def speak(self, text):
-        self.stop()
+    @staticmethod
+    def _launch():
         binary = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
         script = Path(__file__).with_name("nova_windows_speech.ps1")
-        self.process = subprocess.Popen(
+        return subprocess.Popen(
             [str(binary), "-NoProfile", "-NonInteractive", "-File", str(script)],
             stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
+
+    def prepare(self):
+        if self.process is None and self.prepared is None:
+            try:
+                self.prepared = self._launch()
+            except OSError:
+                pass  # Starting again at reply time reports any persistent failure.
+
+    def discard_prepared(self):
+        idle, self.prepared = self.prepared, None
+        if idle is not None:
+            idle.stdin.close()  # EOF without a message exits without speaking.
+
+    def speak(self, text):
+        idle, self.prepared = self.prepared, None
+        self.stop()
+        if idle is not None and idle.poll() is None:
+            self.process = idle
+        else:
+            if idle is not None:
+                idle.stdin.close()
+            self.process = self._launch()
         self.started = time.monotonic()
         try:
             self.process.stdin.write(text[:700].encode("utf-8"))
@@ -52,6 +75,7 @@ class SpokenReply:
         return result
 
     def stop(self):
+        self.discard_prepared()
         if self.process is not None:
             if self.process.poll() is None:
                 self.process.kill()

@@ -20,6 +20,68 @@ class SpokenReplyTests(unittest.TestCase):
                 (small / name).touch()
             self.assertEqual(_preferred_model(root), small)
 
+    def test_preparing_voice_is_silent_and_reused_or_cancelled(self):
+        player = SpokenReply()
+        idle = Mock()
+        idle.poll.return_value = None
+        with patch.object(player, "_launch", return_value=idle) as launch:
+            player.prepare()
+            self.assertIsNone(player.process)
+            idle.stdin.write.assert_not_called()
+            player.speak("Hej")
+            self.assertIs(player.process, idle)
+            launch.assert_called_once()
+            idle.stdin.write.assert_called_once_with(b"Hej")
+            player.stop()
+        with patch.object(player, "_launch", return_value=Mock()) as launch:
+            player.prepare()
+            player.stop()
+            launch.return_value.stdin.close.assert_called_once()
+            launch.return_value.stdin.write.assert_not_called()
+
+    def test_spoken_navigation_understands_polite_requests_without_the_model(self):
+        from nova_auto_voice import native_command_text, safe_auto_navigation
+        for text in ("Hej Nova! Skulle du kunna plocka fram musikappen åt mig?", "Kan du hjälpa mig att öppna Spotify?"):
+            heard, _ = native_command_text(text)
+            self.assertEqual(safe_auto_navigation(heard), safe_auto_navigation("starta Spotify"))
+        for text in ("Hur får man upp Spotify?", "Ta fram Spotify och ändra min spellista", "Öppna inte Spotify"):
+            self.assertIsNone(safe_auto_navigation(text))
+
+    def test_gpu_decode_failure_retries_the_same_audio_then_keeps_cpu(self):
+        import nova_local_voice_worker as worker
+        gpu, cpu = Mock(), Mock()
+        gpu.model.device = "cuda"
+        with patch.object(worker, "_load_model", return_value=gpu), patch.object(worker, "_load_cpu_model", return_value=cpu) as fallback, patch.object(worker, "offline_transcribe", side_effect=[RuntimeError("CUDA unavailable"), "Hej", "En till"]) as decode:
+            transcriber = worker.LocalTranscriber("model")
+            self.assertEqual(transcriber.transcribe(b"first"), "Hej")
+            self.assertEqual(transcriber.transcribe(b"next"), "En till")
+            self.assertEqual([call.args for call in decode.call_args_list], [(b"first",gpu),(b"first",cpu),(b"next",cpu)])
+            fallback.assert_called_once()
+
+    def test_question_followup_receives_the_last_spoken_answer(self):
+        with patch("nova_voice_intent._local_chat", return_value="Fem.") as model:
+            reply = conversation_reply("Och om jag lägger till ett?", (("Vad är två plus två?", "Fyra."),))
+        self.assertIsNone(reply.action)
+        self.assertEqual(reply.message, "Fem.")
+        messages = model.call_args.args[0]["messages"]
+        self.assertEqual(messages[-2], {"role": "assistant", "content": "Fyra."})
+
+    def test_first_voice_choice_can_be_spoken_and_does_not_launch_other_tools(self):
+        from nova_overlay import NovaOverlay
+        panel = NovaOverlay.__new__(NovaOverlay)
+        panel._conversation_active = Mock(return_value=True)
+        panel._discard_voice_interpretation = Mock()
+        panel._local_voice_only = True
+        panel.reply_mode = "choose"
+        panel._append = Mock()
+        panel._set_reply_mode = Mock()
+        panel._connect_sanna = Mock()
+        panel._received_native_transcript("Hej Nova, välj Bengt.")
+        panel._set_reply_mode.assert_called_once_with("windows")
+        panel._connect_sanna.assert_not_called()
+        panel._received_native_transcript("Sanna.")
+        panel._connect_sanna.assert_called_once()
+
     def test_choose_voice_once(self):
         with tempfile.TemporaryDirectory() as tmp:
             choice = Path(tmp) / "voice.txt"

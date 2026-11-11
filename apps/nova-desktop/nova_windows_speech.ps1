@@ -2,8 +2,6 @@
 $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 try {
-    $text = [Console]::In.ReadToEnd().Trim()
-    if (!$text -or $text.Length -gt 700) { exit 2 }
     $voice = New-Object -ComObject SAPI.SpVoice
     $category = New-Object -ComObject SAPI.SpObjectTokenCategory
     $category.SetId('HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech_OneCore\Voices', $false)
@@ -12,6 +10,8 @@ try {
     } | Select-Object -First 1
     if (!$token) { exit 3 }
     $voice.Voice = $token
+    $text = [Console]::In.ReadToEnd().Trim()
+    if (!$text -or $text.Length -gt 700) { exit 2 }
     $null = $voice.Speak($text, 16)
     exit 0
 } catch { exit 4 }

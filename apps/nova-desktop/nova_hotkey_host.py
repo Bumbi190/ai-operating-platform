@@ -174,7 +174,7 @@ class Guardian:
                 U.AllowSetForegroundWindow(self.process.pid)
             K.SetEvent(self.toggle_handle)
 
-    def run(self):
+    def run(self, *, expand_on_start=False):
         if self.duplicate:
             notify_running_host()
             self.close()
@@ -183,7 +183,7 @@ class Guardian:
         # Create a message queue on this thread prior to RegisterHotKey.
         U.PeekMessageW(ctypes.byref(msg), None, 0, 0, 0)
         if self.start_gui:
-            self.launch_gui(expanded=False)
+            self.launch_gui(expanded=expand_on_start)
         last_register_attempt = 0.0
         try:
             while not self._stop:
@@ -268,7 +268,7 @@ def main():
     if sys.platform != "win32":
         raise SystemExit("Nova Hotkey Host kräver Windows.")
     guardian = Guardian()
-    guardian.run()
+    guardian.run(expand_on_start="--open" in sys.argv[1:])
 
 
 if __name__ == "__main__":

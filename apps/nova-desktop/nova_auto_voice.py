@@ -116,13 +116,15 @@ _REQUEST_PREFIX = (
     r"(?:(?:(?:kan|vill|skulle) du|kan vi) +(?:kunna +)?(?:snalla +)?)?"
 )
 _CONVERSATIONAL_NAV = re.compile(
-    _REQUEST_PREFIX + r"(?:oppna(?: upp)?|visa(?: mig)?|ta mig(?: tillbaka)? till|"
+    _REQUEST_PREFIX + r"(?:hjalpa mig (?:att|med att) )?(?:oppna(?: upp)?|starta|dra (?:i ?gang)|"
+    r"(?:plocka|ta) fram|fa upp|visa(?: mig)?|ta mig(?: tillbaka)? till|"
     r"ga (?:in (?:pa|i)|tillbaka till|over till|till)|hoppa (?:in pa|till)|"
     r"navigera(?: mig)?(?: tillbaka)? (?:till|in pa)|vaxla till|byt till) +"
 )
 _SPOKEN_TARGETS = {
     "om nira": "omnira", "omira": "omnira", "om mira": "omnira", "om era": "omnira",
     "omnila": "omnira", "spot ify": "spotify",
+    "musikappen": "spotify", "musikprogrammet": "spotify",
 }
 _MEDIA_COMMAND = re.compile(
     _REQUEST_PREFIX + r"(?P<verb>tryck(?:a)? pa play|spela(?: upp)?|playa|play|"
@@ -155,6 +157,7 @@ def safe_auto_navigation(text: str) -> Action | None:
         return None
     target = cleaned[match.end():].strip()
     target = re.sub(r"(?:,? (?:tack|ar du snall))$", "", target).removesuffix(" nu")
+    target = target.removesuffix(" at mig").removesuffix(" for mig")
     if re.fullmatch(r"spot[.,… ]+spotify", target):
         target = "spotify"
     target = _SPOKEN_TARGETS.get(target, target)

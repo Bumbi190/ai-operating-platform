@@ -368,7 +368,7 @@ class NovaOverlay:
         if self._dragged:
             self._save_dragged_position()
         else:
-            self.expand(False)
+            self._open_from_hotkey()
 
     def _end_header_drag(self, _event):
         self._drag_origin = None
@@ -400,7 +400,7 @@ class NovaOverlay:
         menu = tk.Menu(self.root, tearoff=0, bg="#172135", fg=TEXT,
                        activebackground="#363560", activeforeground=TEXT,
                        bd=1, relief="flat")
-        menu.add_command(label="Öppna Nova", command=lambda: self.expand(False))
+        menu.add_command(label="Öppna Nova", command=self._open_from_hotkey)
         menu.add_command(label="Flytta Nova till aktivt program", command=self._redock_near_pointer)
         menu.add_command(label="Anslut Atlas", command=self.connect_atlas)
         menu.add_command(label="Välj skyddad testmiljö", command=self.choose_preview)
@@ -582,6 +582,8 @@ class NovaOverlay:
         if self.expanded:
             self._display_voice_options()
         if mode == "windows" and self._local_voice_only:
+            if self._conversation_active():
+                self.voice_interpreter.prepare()
             self._play_reply("Nu är uppläsning med Bengt på.")
         else:
             self._append("nova", "Lokala svar visas i rutan.")
@@ -668,12 +670,15 @@ class NovaOverlay:
             self._phase("godkannande", "Lokal mikrofonmilj? saknas eller ?r upptagen")
             return
         self.native_mic_session = session
-        self._phase("lyssnar", "Startar mikrofonen")
+        self._phase("startar", "Öppnar mikrofonen")
         if not transcribe:
             self._append("warn", "Den lokala svenska talmodellen saknas. Skriv ditt kommando i rutan.")
 
     def stop_native_mic_pilot(self, *, quiet: bool = False):
         self._discard_voice_interpretation()
+        player = getattr(self, "spoken_reply", None)
+        if player is not None:
+            player.discard_prepared()
         session = self.native_mic_session
         self.native_mic_session = None
         if session is None:
@@ -708,6 +713,8 @@ class NovaOverlay:
                 elif kind == "loading":
                     self._phase("tolkar", "Laddar svensk talmodell lokalt")
                 elif kind == "level":
+                    if self.phase == "tanker":
+                        continue
                     level = event.get("percent", 0)
                     if isinstance(level, (int, float)):
                         if event.get("speaking"):
@@ -718,6 +725,8 @@ class NovaOverlay:
                                 f"Mikrofon · ljudnivå {max(0, min(level, 100)):.1f} %",
                             )
                 elif kind == "speech_start":
+                    if self.reply_mode == "windows" and self._local_voice_only:
+                        self.spoken_reply.prepare()
                     self._phase("lyssnar", "Lyssnar på ditt kommando")
                 elif kind == "speech_end":
                     self._phase("tolkar", "Talavsnitt avslutat")
@@ -776,6 +785,15 @@ class NovaOverlay:
             return
         body = value.removeprefix("nova,") if has_wake else value
         answer = re.sub(r"[\s,.!?]+", " ", body).strip()
+        if conversation and getattr(self, "reply_mode", None) == "choose" and self._local_voice_only:
+            choice = re.fullmatch(r"(?:(?:valj|anvand|kor med|prata med|jag vill ha) (?:rosten )?)?(bengt|sanna)(?: tack)?", answer)
+            if choice:
+                self._append("you", "DU (lokalt tal): " + phrase[:180])
+                if choice[1] == "bengt":
+                    self._set_reply_mode("windows")
+                else:
+                    self._connect_sanna()
+                return
         if suggestion and conversation and self._local_voice_only:
             if answer in ("ja", "ja tack", "japp", "precis", "absolut", "garna", "gor det", "ja gor det"):
                 self._append("you", "DU (lokalt tal): " + phrase)
@@ -853,7 +871,7 @@ class NovaOverlay:
             return
         if conversation and self._local_voice_only:
             self.voice_interpreter.submit(command, self.spotify_selected)
-            self._phase("tolkar", "Tolkar vad du vill göra")
+            self._phase("tanker", "Formulerar ett svar")
             return
         if self.expanded and hasattr(self, "command"):
             existing = self.command.get("1.0", "end-1c")
@@ -895,6 +913,8 @@ class NovaOverlay:
                 self._perform_interpreted_action(result.action)
                 continue
             else:
+                if result.question:
+                    self.voice_interpreter.remember_reply(result.question, result.message)
                 self._reply("nova", result.message or "Jag är osäker på vad du vill göra. Kan du berätta lite mer?")
             self._phase("lyssnar", "Jag lyssnar")
 
@@ -987,7 +1007,9 @@ class NovaOverlay:
         label, color = {
             "redo": ("● Redo", SUCCESS),
             "lyssnar": ("● Lyssnar", ACCENT),
+            "startar": ("● Startar mikrofonen", MUTED),
             "talar": ("● Talar", CYAN),
+            "tanker": ("● Tänker", ACCENT),
             "tolkar": ("● Tolkar kommandot", ACCENT),
             "navigerar": ("● Navigerar – synlig åtgärd", ACCENT),
             "godkannande": ("● Väntar på ditt nästa steg", WARNING),
@@ -1062,6 +1084,7 @@ class NovaOverlay:
     def _start_panel_voice(self):
         if not self._conversation_active():
             self.spotify_selected = False
+            self.voice_interpreter.history = ()
         voice = self.bridge.state.voice_snapshot()
         if self.bridge.state.online() and voice.get("authorized"):
             if voice.get("mode") != "native":
@@ -1077,11 +1100,15 @@ class NovaOverlay:
             self._local_voice_only = True
         if self.expanded:
             self._display_voice_options()
+            if self._local_voice_only and self.reply_mode == "choose" and not self._conversation_active():
+                self._append("nova", "Vill du höra svar? Välj en röst nedan eller säg ”Bengt” eller ”Sanna”.")
         if not local_model_ready():
             self._phase("redo", "Talmodellen saknas · skriv i rutan")
             return
         self._native_conversation_deadline = time.monotonic() + CONVERSATION_SECONDS
         self.start_native_mic_pilot()
+        if self.native_mic_session and self._local_voice_only and self.reply_mode == "windows":
+            self.voice_interpreter.prepare()
 
     def expand(self, listen=False):
         if not self.expanded:
@@ -1306,11 +1333,7 @@ class NovaOverlay:
                 event = self.events.get_nowait()
                 if event == "stop":
                     self.stop()
-                elif event == "open":
-                    if self._manual_anchor is None:
-                        self._redock_near_pointer()
-                    self.expand(listen=False)
-                elif event == "toggle":
+                elif event in ("open", "toggle"):
                     self._open_from_hotkey()
         except queue.Empty:
             pass

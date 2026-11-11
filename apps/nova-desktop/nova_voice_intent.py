@@ -7,9 +7,12 @@ import json
 import queue
 import re
 import threading
+import time
 
 from nova_auto_voice import safe_auto_navigation
 from nova_core import Action, normalized
+
+LOCAL_MODEL = "qwen3:4b-instruct"
 
 # A model chooses among grounded operations. Paths, URLs and arguments still
 # come exclusively from Nova's existing local adapters.
@@ -67,6 +70,7 @@ class Interpretation:
     action: Action | None
     message: str = ""
     confirm: bool = False
+    question: str = ""
 
 
 def local_greeting(text):
@@ -113,7 +117,7 @@ def interpret(text: str, spotify_selected: bool) -> Interpretation:
         choices = {key: choices[key] for key in ("play", "pause", "open_spotify")}
     schema = {"type": "object", "properties": {"intent": {
         "type": "string", "enum": ["none", *choices]}}, "required": ["intent"], "additionalProperties": False}
-    payload = {"model": "qwen3:4b-instruct", "stream": False, "format": schema,
+    payload = {"model": LOCAL_MODEL, "stream": False, "format": schema,
                "keep_alive": "2m", "options": {"temperature": 0, "num_predict": 32, "num_ctx": 2048},
                "messages": [{"role": "system", "content": _SYSTEM}, {"role": "user", "content":
                    json.dumps({"tal": text, "senast_vald_app": "Spotify" if spotify_selected else None,
@@ -160,20 +164,28 @@ def _local_chat(payload):
         connection.close()
 
 
-def conversation_reply(text):
+def _follow_up(words):
+    return re.match(r"^(?:och (?:om|varfor|hur|vad|vem)|vad menar du|beratta mer|kan du utveckla|forklara det)\b", words)
+
+
+def conversation_reply(text, history=()):
     words = normalized(text).removeprefix("nova, ").strip()
     if not (re.match(r"^(?:vad|vem|nar|varfor|hur|vilk\w*|forklara|beratta|ar du)\b", words)
-            or words.endswith("?")):
+            or words.endswith("?") or (history and _follow_up(words))):
         return Interpretation(None)
     prompt = ("Du är Nova, en lokal svensk datorassistent. Svara på frågan med en eller två korta "
               "meningar på svenska som passar för uppläsning. Du har inga verktyg här och kan inte "
               "se användarens skärm, meddelanden eller aktuella webbinformation. Påstå aldrig att "
               "du har utfört något. Om något är oklart, ställ en följdfråga.")
     try:
-        answer = _local_chat({"model": "qwen3:4b-instruct", "stream": False, "keep_alive": "2m",
+        messages = [{"role": "system", "content": prompt}]
+        for question, reply in history:
+            messages.extend([{"role": "user", "content": question}, {"role": "assistant", "content": reply}])
+        messages.append({"role": "user", "content": text})
+        answer = _local_chat({"model": LOCAL_MODEL, "stream": False, "keep_alive": "2m",
                               "options": {"num_predict": 120, "num_ctx": 2048},
-                              "messages": [{"role": "system", "content": prompt}, {"role": "user", "content": text}]})
-        return Interpretation(None, answer[:650])
+                              "messages": messages})
+        return Interpretation(None, answer[:650], question=text[:350])
     except (OSError, HTTPException, ValueError, TypeError, KeyError, AttributeError):
         return Interpretation(None, "Jag hörde din fråga, men den lokala modellen svarade inte. Försök igen.")
 
@@ -185,6 +197,30 @@ class VoiceInterpreter:
         self.results = queue.SimpleQueue()
         self.thread = None
         self.turn = 0
+        self.history = ()
+        self.last_preload = float("-inf")
+
+    def prepare(self):
+        # Begin loading while the microphone opens. Only an active local conversation requests this.
+        now = time.monotonic()
+        if now - self.last_preload >= 90:
+            self.last_preload = now
+            threading.Thread(target=self._preload, name="NovaLocalModelLoad", daemon=True).start()
+
+    @staticmethod
+    def _preload():
+        connection = HTTPConnection("127.0.0.1", 11434, timeout=12)
+        try:
+            payload = {"model": LOCAL_MODEL, "stream": False, "keep_alive": "2m", "options": {"num_ctx": 2048}}
+            connection.request("POST", "/api/chat", json.dumps(payload), {"Content-Type": "application/json"})
+            connection.getresponse().read(2048)
+        except (OSError, HTTPException):
+            pass  # An unavailable local model must never block desktop commands.
+        finally:
+            connection.close()
+
+    def remember_reply(self, question, reply):
+        self.history = (*self.history[-1:], (question, reply))
 
     def cancel(self):
         self.turn += 1
@@ -195,16 +231,22 @@ class VoiceInterpreter:
 
     def submit(self, text, spotify_selected):
         self.cancel()
-        self.pending.put_nowait((self.turn, text, spotify_selected))
+        self.pending.put_nowait((self.turn, text, spotify_selected, self.history))
         if self.thread is None:
             self.thread = threading.Thread(target=self._run, name="NovaLocalIntent", daemon=True)
             self.thread.start()
 
     def _run(self):
         while True:
-            turn, text, spotify_selected = self.pending.get()
+            turn, text, spotify_selected, history = self.pending.get()
             greeting = local_greeting(text)
-            result = Interpretation(None, greeting) if greeting else interpret(text, spotify_selected)
-            if not result.action and not result.message:
-                result = conversation_reply(text)
+            question = re.sub(r"^(?:hej[ ,.]+)?(?:nova|innova)[ ,.!]+", "", normalized(text))
+            if greeting:
+                result = Interpretation(None, greeting)
+            elif re.match(r"^(?:vad (?:ar|betyder)|vem ar|varfor|hur fungerar|forklara)\b", question) or (history and _follow_up(question)):
+                result = conversation_reply(text, history)
+            else:
+                result = interpret(text, spotify_selected)
+                if not result.action and not result.message:
+                    result = conversation_reply(text, history)
             self.results.put((turn, result))

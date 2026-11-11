@@ -65,6 +65,10 @@ def native_command_text(phrase: str) -> tuple[str, bool]:
     phrase = phrase.strip()
     name = _SPOKEN_NAME.match(phrase)
     body = phrase[name.end():] if name else phrase
+    # Swedish ASR can join the final s of a following app name to "starta".
+    verb, _, target = normalized(body).rstrip(".!").partition(" ")
+    if name and verb == "startas" and target in SAFE_NAV_TARGETS:
+        body = "starta " + body.split(None, 1)[1]
     body = _SPOKEN_FILLER.sub("", body, count=1)
     body = _SPOKEN_NAV.sub(r"\1navigera", body, count=1)
     return ("Nova, " + body if name else body), bool(name)

@@ -32,7 +32,7 @@ def offline_transcribe(segment: bytes, model) -> str:
     items, _ = model.transcribe(
         pcm,
         language="sv",
-        beam_size=3,
+        beam_size=5,
         initial_prompt="Svenska: Nova, Omnira, Spotify, kalendern, ledigt diskutrymme, en anteckning med texten.",
         best_of=1,
         condition_on_previous_text=False,

@@ -46,6 +46,14 @@ class SpokenReplyTests(unittest.TestCase):
         self.assertIn("Spotify", local_greeting("Nova, vad kan du hjälpa mig med?"))
         self.assertIsNone(local_greeting("Hej Nova, öppna Spotify"))
 
+    def test_addressed_speech_to_text_word_boundary_for_app_launch(self):
+        from nova_auto_voice import native_command_text, safe_auto_navigation
+        heard, _ = native_command_text("Hej Nova, startas Spotify.")
+        self.assertEqual(safe_auto_navigation(heard), safe_auto_navigation("starta Spotify"))
+        for phrase in ("Hej Nova, startas Spotify?", "Hur startas Spotify?", "Hej Nova, startas Spotify automatiskt?"):
+            heard, _ = native_command_text(phrase)
+            self.assertIsNone(safe_auto_navigation(heard))
+
     def test_local_question_can_only_return_speech(self):
         with patch("nova_voice_intent._local_chat", return_value="Fyra.") as model:
             answer = conversation_reply("Nova, vad är två plus två?")

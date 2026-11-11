@@ -30,6 +30,13 @@ class BridgeTests(unittest.TestCase):
             value = e.read()
             return e.code, json.loads(value) if value else {}, dict(e.headers)
 
+    def test_native_http_grant_for_verbatim_desktop_replies(self):
+        self.request("/connect", "POST", self.good, {"protocol": 1})
+        grant = {"protocol": 1, "mode": "native", "desktopReplies": True}
+        self.assertEqual(self.request("/voice/authorize", "POST", self.good, grant)[0], 200)
+        self.assertIsNotNone(self.bridge.state.enqueue("Spotify är öppet.", mode="nova_speech")[0])
+        self.assertEqual(self.request("/voice/authorize", "POST", self.good, dict(grant, mode="browser"))[0], 400)
+
     def test_deny_origin_and_missing_token(self):
         self.assertEqual(self.request("/next")[0], 403)
         self.assertEqual(self.request("/next", headers={

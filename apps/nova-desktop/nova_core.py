@@ -93,7 +93,7 @@ def route(text: str) -> Action:
         return Action("handoff", ATLAS, "Uppdrag till Atlas (kräver kontroll/godkännande).")
     if re.search(r"\b(kalender|kalendern|calendar)\b", value):
         if NAV.match(value):
-            return Action("open", URLS["calendar"], "?ppnar Omniras kalender.")
+            return Action("open", URLS["calendar"], "Öppnar Omniras kalender.")
         return Action(
             "handoff", ATLAS,
             "Kalendern finns i Omnira. Nova Desktop ?r ?nnu i l?sl?ge; kalender?ndringar g?rs i Omnira tills den godk?nda skrivkopplingen ?r f?rdig.",
@@ -136,7 +136,7 @@ def route(text: str) -> Action:
              "marketing", "Öppnar Omniras marknadsgranskning; inget inlägg skapas eller publiceras."),
             (r"\b(contentcenter|content center|innehallscenter|innehallsoversikt|content|innehall)\b",
              "content", "Öppnar Omniras innehållsöversikt."),
-            (r"\b(chatgpt|chat gpt)\b", "chatgpt", "Open ChatGPT in the browser."),
+            (r"\b(chatgpt|chat gpt)\b", "chatgpt", "Öppnar ChatGPT i webbläsaren."),
             (r"\b(facebook|fb)\b", "facebook", "Öppnar Facebook i webbläsaren."),
             (r"\b(instagram|insta)\b", "instagram", "Öppnar Instagram i webbläsaren."),
             (r"\blinkedin\b", "linkedin", "Öppnar LinkedIn i webbläsaren."),

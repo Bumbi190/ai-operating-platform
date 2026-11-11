@@ -118,12 +118,14 @@ _REQUEST_PREFIX = (
 _CONVERSATIONAL_NAV = re.compile(
     _REQUEST_PREFIX + r"(?:hjalpa mig (?:att|med att) )?(?:oppna(?: upp)?|starta|dra (?:i ?gang)|"
     r"(?:plocka|ta) fram|fa upp|visa(?: mig)?|ta mig(?: tillbaka)? till|"
+    r"(?:jag (?:vill|behover)|jag skulle vilja) (?:kolla(?: pa)?|oppna|se|ga till)|"
     r"ga (?:in (?:pa|i)|tillbaka till|over till|till)|hoppa (?:in pa|till)|"
     r"navigera(?: mig)?(?: tillbaka)? (?:till|in pa)|vaxla till|byt till) +"
 )
 _SPOKEN_TARGETS = {
     "om nira": "omnira", "omira": "omnira", "om mira": "omnira", "om era": "omnira",
     "omnila": "omnira", "spot ify": "spotify",
+    "min kalender": "kalendern", "min kalender i omnira": "kalendern", "min almanacka": "kalendern",
     "musikappen": "spotify", "musikprogrammet": "spotify",
 }
 _MEDIA_COMMAND = re.compile(

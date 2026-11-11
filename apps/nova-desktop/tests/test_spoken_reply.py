@@ -20,6 +20,28 @@ class SpokenReplyTests(unittest.TestCase):
                 (small / name).touch()
             self.assertEqual(_preferred_model(root), small)
 
+    def test_sanna_preference_and_verbatim_desktop_speech(self):
+        from nova_bridge import BridgeState
+        with tempfile.TemporaryDirectory() as tmp:
+            prefs = Path(tmp) / "mode"
+            save_reply_mode(prefs, "sanna")
+            self.assertEqual(load_reply_mode(prefs), "sanna")
+        state = BridgeState()
+        state.connect()
+        state.authorize_voice(mode="native")
+        self.assertIsNone(state.enqueue("Spotify är öppet.", mode="nova_speech")[0])
+        state.authorize_voice(mode="native", desktop_replies=True)
+        self.assertIsNotNone(state.enqueue("Spotify är öppet.", mode="nova_speech")[0])
+        self.assertEqual(state.next()["text"], "Spotify är öppet.")
+
+    def test_spoken_calendar_wishes_require_a_single_named_destination(self):
+        from nova_auto_voice import safe_auto_navigation
+        calendar = safe_auto_navigation("öppna kalendern")
+        for phrase in ("Ta mig till min kalender", "Jag skulle vilja kolla min kalender i Omnira"):
+            self.assertEqual(safe_auto_navigation(phrase), calendar)
+        self.assertIsNone(safe_auto_navigation("Jag vill inte öppna min kalender"))
+        self.assertIsNone(safe_auto_navigation("Jag vill kolla min kalender och boka ett möte"))
+
     def test_preparing_voice_is_silent_and_reused_or_cancelled(self):
         player = SpokenReply()
         idle = Mock()

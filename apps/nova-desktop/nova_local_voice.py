@@ -42,7 +42,7 @@ class SpeechGate:
     end_silent_frames: int = 11
     min_voiced_frames: int = 4
     max_frames: int = int(MAX_UTTERANCE_SECONDS * SAMPLE_RATE / BLOCK_FRAMES)
-    _pre_roll: deque[bytes] = field(default_factory=lambda: deque(maxlen=3))
+    _pre_roll: deque[bytes] = field(default_factory=lambda: deque(maxlen=7))
     _buffer: list[bytes] = field(default_factory=list)
     _active: bool = False
     _hot_frames: int = 0

@@ -83,7 +83,7 @@ class SpokenReply:
 
 
 def save_reply_mode(path, mode):
-    if mode not in {"windows", "text"}:
+    if mode not in {"sanna", "windows", "text"}:
         raise ValueError("Unknown reply mode")
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(f".{os.getpid()}.tmp")
@@ -96,4 +96,27 @@ def load_reply_mode(path):
         value = path.read_text(encoding="ascii").strip()
     except (OSError, UnicodeError):
         return "choose"
-    return value if value in {"windows", "text"} else "choose"
+    return value if value in {"sanna", "windows", "text"} else "choose"
+
+
+def play_sanna_pcm():
+    import io
+    import sys
+    import wave
+    import winsound
+
+    pcm = sys.stdin.buffer.read(2_880_001)
+    if not 0 < len(pcm) <= 2_880_000 or len(pcm) % 2:
+        return 2
+    output = io.BytesIO()
+    with wave.open(output, "wb") as wav:
+        wav.setparams((1, 2, 24000, 0, "NONE", "not compressed"))
+        wav.writeframes(pcm)
+    winsound.PlaySound(output.getvalue(), winsound.SND_MEMORY | winsound.SND_NODEFAULT)
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    if sys.argv[1:] == ["--play-sanna-pcm"]:
+        raise SystemExit(play_sanna_pcm())

@@ -17,6 +17,9 @@ import json
 import queue
 import re
 import secrets
+import subprocess
+import sys
+from pathlib import Path
 import threading
 import time
 from urllib.parse import urlsplit
@@ -75,6 +78,7 @@ class Task:
     mode: str = "nova_readonly"
     state: str = "pending"   # pending, executing, done, canceled, failed
     result_chars: int = 0
+    audio_claimed: bool = False
 
 
 class BridgeState:
@@ -84,19 +88,54 @@ class BridgeState:
         self.events: queue.Queue[dict] = queue.Queue()
         self.lock = threading.RLock()
         self.task: Task | None = None
+        self.audio_process = None
         self.connected_at = 0.0
         self.last_seen = 0.0
         self.requests_at: list[float] = []
         self.voice_authorized = False
         self.voice_input_mode = "browser"
+        self.desktop_replies = False
         self.voice_status = "idle"
         self.voice_status_at = 0.0
         self.control_pending: dict | None = None
+
+    def stop_audio(self):
+        with self.lock:
+            player = self.audio_process
+            if player is not None and player.poll() is None:
+                player.kill()
+
+    def play_reply_audio(self, task_id, pcm):
+        with self.lock:
+            task = self.task
+            if (not self.online() or not self.voice_authorized or not self.desktop_replies
+                    or not task or task.mode != "nova_speech" or task.state != "executing"
+                    or task.id != task_id or task.audio_claimed):
+                return False
+            task.audio_claimed = True
+            player = subprocess.Popen(
+                [sys.executable, str(Path(__file__).with_name("nova_spoken_reply.py")), "--play-sanna-pcm"],
+                stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            self.audio_process = player
+        try:
+            player.communicate(input=pcm, timeout=len(pcm) / 48000 + 8)
+            return player.returncode == 0
+        except subprocess.TimeoutExpired:
+            player.kill()
+            player.wait()
+            return False
+        finally:
+            with self.lock:
+                if self.audio_process is player:
+                    self.audio_process = None
 
     def switch_origin(self, origin: str) -> str:
         """Explicit preview selection invalidates the previous browser pairing."""
         approved = validate_pairing_origin(origin)
         with self.lock:
+            self.stop_audio()
             self.origins = frozenset((approved,))
             self.key = secrets.token_urlsafe(32)
             self.connected_at = 0.0
@@ -104,6 +143,7 @@ class BridgeState:
             self.task = None
             self.voice_authorized = False
             self.voice_input_mode = "browser"
+            self.desktop_replies = False
             self.voice_status = "idle"
             self.voice_status_at = 0.0
             self.control_pending = None
@@ -119,6 +159,7 @@ class BridgeState:
         with self.lock:
             alive = self.connected_at > 0 and (time.monotonic() - self.last_seen) < STALE_AFTER
             if not alive and self.voice_authorized:
+                self.stop_audio()
                 self.voice_authorized = False
                 self.voice_status = "idle"
                 self.voice_status_at = 0.0
@@ -133,15 +174,17 @@ class BridgeState:
         with self.lock:
             self.connected_at = time.monotonic()
             self.last_seen = self.connected_at
+            self.stop_audio()
             # A new browser page must explicitly authorize its microphone again.
             self.voice_authorized = False
             self.voice_input_mode = "browser"
+            self.desktop_replies = False
             self.voice_status = "idle"
             self.voice_status_at = 0.0
             self.control_pending = None
             self.events.put({"kind": "connected"})
 
-    def authorize_voice(self, *, mode: str = "browser") -> tuple[bool, str]:
+    def authorize_voice(self, *, mode: str = "browser", desktop_replies: bool = False) -> tuple[bool, str]:
         if mode not in ("browser", "native"):
             return False, "Unsupported input mode"
         with self.lock:
@@ -149,6 +192,7 @@ class BridgeState:
                 return False, "Atlas-webbl\\u00e4saren \\u00e4r inte ansluten."
             self.voice_authorized = True
             self.voice_input_mode = mode
+            self.desktop_replies = mode == "native" and desktop_replies is True
             self.voice_status = "idle" if mode == "native" else "starting"
             self.voice_status_at = time.monotonic()
             self.control_pending = None
@@ -156,8 +200,10 @@ class BridgeState:
 
     def revoke_voice(self) -> None:
         with self.lock:
+            self.stop_audio()
             self.voice_authorized = False
             self.voice_input_mode = "browser"
+            self.desktop_replies = False
             self.voice_status = "idle"
             self.voice_status_at = 0.0
             self.control_pending = None
@@ -213,16 +259,18 @@ class BridgeState:
                     "mode": self.voice_input_mode}
 
     def enqueue(self, text: str, *, mode: str = "nova_readonly") -> tuple[str | None, str]:
-        if mode not in ("nova_readonly", "atlas_operator", "nova_voice"):
+        if mode not in ("nova_readonly", "atlas_operator", "nova_voice", "nova_speech"):
             return None, "Okant uppdragslage."
         if not isinstance(text, str) or not 0 < len(text.strip()) <= MAX_PROMPT_CHARS:
             return None, "Begäran är tom eller för lång (max 3 000 tecken)."
         with self.lock:
             if not self.online():
                 return None, "Atlas webbläsarflik är inte ansluten."
-            if mode in ("atlas_operator", "nova_voice") and not self.voice_authorized:
+            if mode in ("atlas_operator", "nova_voice", "nova_speech") and not self.voice_authorized:
                 return None, "Verktygsuppdrag kraver forst godkant Atlas-samtal i Omnira."
-            if mode == "nova_voice" and self.voice_input_mode != "native":
+            if mode == "nova_speech" and (not self.desktop_replies or len(text) > 300):
+                return None, "Anslut den uppdaterade Omnira-fliken för att höra Sanna."
+            if mode in ("nova_voice", "nova_speech") and self.voice_input_mode != "native":
                 return None, "Windows-r?stl?ge ?r inte godk?nt."
             if self.task and self.task.state in ("pending", "executing"):
                 return None, "Nova arbetar redan med en fråga. Använd Stopp först."
@@ -297,6 +345,7 @@ class BridgeState:
 
     def cancel(self):
         with self.lock:
+            self.stop_audio()
             t = self.task
             if t and t.state in ("pending", "executing"):
                 t.state = "canceled"
@@ -398,6 +447,23 @@ def create_handler(state: BridgeState):
                 self.send_json(403, {"error": "Not authorized"})
                 return
             endpoint = self.endpoint()
+            if endpoint == "/speech/audio":
+                try:
+                    size = int(self.headers.get("Content-Length", ""))
+                    if (self.headers.get("Content-Type") != "audio/pcm"
+                            or not 0 < size <= 2_880_000 or size % 2):
+                        raise ValueError()
+                    self.connection.settimeout(10)
+                    pcm = self.rfile.read(size)
+                    if len(pcm) != size:
+                        raise ValueError()
+                    played = state.play_reply_audio(urlsplit(self.path).query, pcm)
+                except (ValueError, OSError):
+                    self.close_connection = True
+                    self.send_json(400, {"played": False})
+                else:
+                    self.send_json(200 if played else 409, {"played": played})
+                return
             if endpoint not in ("/connect", "/event", "/voice/authorize", "/voice/revoke", "/voice/status", "/control/ack"):
                 self.send_json(404, {"error": "Unknown route"})
                 return
@@ -415,11 +481,16 @@ def create_handler(state: BridgeState):
                 if data.get("protocol") != 1:
                     self.send_json(400, {"error": "Unsupported protocol"})
                     return
-                if set(data) not in ({"protocol"}, {"protocol", "mode"}) or data.get("mode", "browser") not in ("browser", "native"):
+                if (set(data) not in ({"protocol"}, {"protocol", "mode"}, {"protocol", "mode", "desktopReplies"})
+                        or data.get("mode", "browser") not in ("browser", "native")
+                        or ("desktopReplies" in data and
+                            (data.get("mode") != "native" or not isinstance(data["desktopReplies"], bool)))):
                     self.send_json(400, {"error": "Invalid voice mode"})
                     return
-                accepted, message = state.authorize_voice(mode=data.get("mode", "browser"))
-                self.send_json(200 if accepted else 409, {"authorized": accepted, "message": message})
+                accepted, message = state.authorize_voice(mode=data.get("mode", "browser"),
+                                                         desktop_replies=data.get("desktopReplies") is True)
+                self.send_json(200 if accepted else 409, {"authorized": accepted, "message": message,
+                                                          "windowsPlayback": accepted and state.desktop_replies})
             elif endpoint == "/voice/revoke":
                 if set(data) != {"protocol"} or data.get("protocol") != 1:
                     self.send_json(400, {"error": "Unsupported protocol"})

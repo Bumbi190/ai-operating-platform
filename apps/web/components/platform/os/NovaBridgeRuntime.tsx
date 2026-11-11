@@ -75,6 +75,7 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
   const [nativeVoice, setNativeVoice] = useState(false)
   const [pairVersion, setPairVersion] = useState(0)
 
+  const windowsPlayback = useRef(false)
   const pairingRef = useRef<Pair | null>(null)
   const autoHotkeyStageRef = useRef<'none' | 'connect' | 'voice' | 'native'>('none')
   const stoppedRef = useRef(true)
@@ -114,8 +115,8 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
       cache: 'no-store',
       targetAddressSpace: 'loopback',
       signal: controller.signal,
-      headers: { 'Content-Type': 'application/json', 'X-Nova-Token': pairing.key },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      headers: { 'Content-Type': body instanceof Blob ? body.type : 'application/json', 'X-Nova-Token': pairing.key },
+      ...(body === undefined ? {} : { body: body instanceof Blob ? body : JSON.stringify(body) }),
     }
     try {
       const response = await fetch('http://127.0.0.1:' + pairing.port + path, init)
@@ -326,7 +327,39 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
                     throw new Error('Sanna kunde inte läsa upp skrivbordssvaret.')
                   }
                   setLastAnswer(task.text)
-                  const played = await atlasRef.current.speakNativeReply?.(task.text)
+                  let played: boolean | undefined
+                  if (windowsPlayback.current) {
+                    const response = await fetch('/api/atlas/voice-pilot/speech', {
+                      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ text: task.text, voice: 'nova' }),
+                      signal: AbortSignal.timeout(35_000),
+                    })
+                    if (!response.ok) throw new Error('Omnira kunde inte skapa ljud med Sanna (HTTP ' + response.status + ').')
+                    if (!response.body || response.headers.get('Content-Type')?.split(';')[0] !== 'audio/pcm') {
+                      throw new Error('Omnira skickade inget PCM-ljud med Sanna.')
+                    }
+                    const reader = response.body.getReader()
+                    const chunks: ArrayBuffer[] = []
+                    let size = 0
+                    try {
+                      for (;;) {
+                        const { value, done } = await reader.read()
+                        if (done) break
+                        size += value.byteLength
+                        if (size > 2_880_000) throw new Error('Sannas ljudsvar blev för långt.')
+                        chunks.push(new Uint8Array(value).buffer)
+                      }
+                    } finally {
+                      await reader.cancel().catch(() => {})
+                      reader.releaseLock()
+                    }
+                    if (!size || size % 2) throw new Error('Sannas ljudsvar var tomt eller ofullständigt.')
+                    const output = await local<{ played: boolean }>('/speech/audio?' + encodeURIComponent(task.id),
+                      'POST', new Blob(chunks, { type: 'audio/pcm' }))
+                    played = output.played
+                  } else {
+                    played = await atlasRef.current.speakNativeReply?.(task.text)
+                  }
                   if (!played) {
                     atlasRef.current.stopAudio()
                     throw new Error('Sannas ljud kunde inte spelas upp. Kontrollera ljudet i Omnira-fliken.')
@@ -442,8 +475,9 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
       current.selectNovaVoice?.()
       // Windows owns the microphone; the authenticated Omnira tab remains
       // an Atlas conversation/TTS bridge, never a browser microphone.
-      const grant = await local<{ authorized: boolean }>(
+      const grant = await local<{ authorized: boolean; windowsPlayback?: boolean }>(
         '/voice/authorize', 'POST', { protocol: 1, mode: 'native', desktopReplies: true })
+      windowsPlayback.current = grant.windowsPlayback === true
       if (!grant.authorized) throw new Error('Windows-r?stl?get nekades.')
       voiceAuthorizedRef.current = true
       setVoiceAuthorized(true)

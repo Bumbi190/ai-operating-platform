@@ -5,9 +5,17 @@ Tryck **Ctrl + Alt + Space** för att visa sidopanelen och börja prata med den 
 - **”Nova, öppna Spotify”** begär programstart. **”Nova, kolla ledigt diskutrymme”** visar en aktuell mätning i rutan.
 - **”Nova, skapa en anteckning med texten Ring Oscar”** visar den uppfattade texten. Klicka **Spara anteckning** för att skapa en ny UTF-8-textfil under `%USERPROFILE%\Nova\Anteckningar`. Den fullständiga sökvägen visas efter sparandet.
 - **”Nova, öppna Gmail och Spotify”** visar en plan som du kan godkänna eller avbryta i panelen.
-- Så länge röstläget är aktivt kan du fortsätta med nästa kommando, exempelvis **”Hur mycket ledigt diskutrymme har jag?”**. Vid otydligt tal lyssnar Nova efter en ny formulering. Stopp och minimering avslutar lyssningen.
+- När panelen är öppen, säg **”Hej Nova”** följt av ditt uppdrag. Du kan också trycka **Prata** och tala en gång utan att säga namnet. **”Nova, pausa lyssningen”**, Stopp eller minimering stänger mikrofonen.
 - Säg **”Anslut Sanna”** eller välj **Anslut Sannas röst** i panelen när du vill ha upplästa svar från Atlas via Brave. Atlas arbetsverktyg kräver en ansluten, behörig session och ditt godkännande för uppdraget.
 
+
+## Datoruppdrag på din Windows-dator
+
+Nova använder Sannas röst när Sanna är ansluten. Säg exempelvis **”Hej Nova, visa filerna i Hämtade filer”** eller **”Nova, skapa en mapp som heter Kvitton på skrivbordet”**. Uppdrag kan också skrivas i panelen. Under **⋯ → Ge Nova ett datoruppdrag…** kan du beskriva uppgiften med egna ord.
+
+Nova ansluter till det lokalt installerade Desktop Commander med ditt Windows-kontos rättigheter. För en enkel listning av en namngiven standardmapp visas resultatet direkt. Övriga Desktop Commander-steg visas med verktyg och argument. Klicka **Godkänn datorsteget** för att köra steget. **Avbryt**, **Stopp** eller minimering släpper väntande godkännanden. Redan utförda ändringar består.
+
+På datorn anger `%LOCALAPPDATA%\Omnira\Nova\desktop-commander.json` de absoluta sökvägarna `node` (node.exe) och `entry` (Desktop Commanders installerade startfil). Fritt formulerade datoruppdrag tolkas av den befintliga lokala Ollama-modellen. Verktygskvitton visas i panelen.
 
 ## Historical connection pilot (10 November 2026)
 

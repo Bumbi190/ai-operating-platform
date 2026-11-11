@@ -37,7 +37,7 @@ try:
         worker.pop_events.return_value = [
             {"kind": "transcript", "text": "Innova. Ja, det. Vill du navgera till Spotify?"},
             {"kind": "transcript", "text": "Det hördes nog fel"},
-            {"kind": "transcript", "text": "Hur mycket ledigt diskutrymme har jag?"},
+            {"kind": "transcript", "text": "Nova, hur mycket ledigt diskutrymme har jag?"},
         ]
         with patch.object(app, "_start_app") as start:
             app._poll_native_mic()
@@ -46,12 +46,12 @@ try:
         with patch("nova_overlay.list_known_windows", return_value=[]), \
                 patch("nova_overlay.os.path.isfile", return_value=True), \
                 patch("nova_overlay.os.startfile") as launch, patch.object(app, "_control_spotify") as media:
-            app._received_native_transcript("Skulle du kunna gå in på Spotify?")
+            app._received_native_transcript("Nova, skulle du kunna gå in på Spotify?")
             assert launch.call_count == 1 and app.spotify_selected
-            app._received_native_transcript("Kan du playa?")
-            app._received_native_transcript("Pausa musiken")
+            app._received_native_transcript("Nova, kan du playa?")
+            app._received_native_transcript("Nova, pausa musiken")
             assert [call.args[0] for call in media.call_args_list] == ["play", "pause"]
-            app._received_native_transcript("Ta mig tillbaka till Om Nira")
+            app._received_native_transcript("Nova, ta mig tillbaka till Om Nira")
             browser.assert_called_once_with("https://omniraos.se/dashboard", new=2)
             browser.reset_mock()
             app._received_native_transcript("Play")
@@ -59,7 +59,7 @@ try:
         assert app.native_mic_session is worker
         worker.stop.assert_not_called()
         assert app.command.get("1.0", "end-1c") == ""
-        assert ("Det hördes nog fel", False) in [call.args for call in interpret.call_args_list]
+        assert ("Det hördes nog fel", False) not in [call.args for call in interpret.call_args_list]
         media_action = Action("spotify_media", "play")
         turn = app.voice_interpreter.turn
         app.voice_interpreter.results.put((turn - 1, Interpretation(media_action)))

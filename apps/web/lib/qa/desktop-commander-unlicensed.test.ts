@@ -55,7 +55,7 @@ const productionMatches = (pattern: string): string[] => {
     const err = e as { status?: number }
     if (err.status !== 1) throw e   // 1 = no match at all, which is the pass
   }
-  return out.trim().split('\n').filter(Boolean).filter(f => !f.includes('/qa/'))
+  return out.trim().split(/\r?\n/).filter(Boolean).filter(f => !f.replaceAll('\\', '/').includes('/qa/')).map(f => resolve(f))
 }
 
 describe('the declaration grants nothing', () => {

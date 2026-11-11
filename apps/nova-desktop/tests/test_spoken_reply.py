@@ -115,6 +115,9 @@ class SpokenReplyTests(unittest.TestCase):
         panel._received_native_transcript("Hej Nova, välj Bengt.")
         panel._set_reply_mode.assert_called_once_with("windows")
         panel._connect_sanna.assert_not_called()
+        # Nova explicitly offered a voice choice on this turn.
+        import time
+        panel._voice_answer_until = time.monotonic() + 20
         panel._received_native_transcript("Sanna.")
         panel._connect_sanna.assert_called_once()
 

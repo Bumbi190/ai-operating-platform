@@ -1,6 +1,6 @@
 # Desktop Commander — Capability Definition, Security Model & Integration Boundary
 
-**Status:** Phase 0 — declared, unlicensed, wired to nothing
+**Status for Atlas missions:** Phase 0 — declared, unlicensed, wired to nothing
 **Date:** 2026-08-25
 **Owner:** André Hultgren
 **Autonomy level (Ch18.10):** `L0 — Observe` · **License status (Ch18.49):** `draft` · **Autonomous execution:** `false`
@@ -11,7 +11,9 @@
 > **Phase 0 grants nothing.** This document exists so that Desktop Commander is not
 > forgotten while the rest of Omnira is built, and so that when it *is* connected, the
 > boundary was designed before the capability arrived rather than after. Nothing here
-> authorizes an execution. No code in this repository can reach Desktop Commander.
+> authorizes an execution. Atlas missions have no execution path to Desktop Commander.
+
+The owner's interactive Windows client has its own local entry point, described in [Nova Desktop](../../apps/nova-desktop/README.md).
 
 ---
 

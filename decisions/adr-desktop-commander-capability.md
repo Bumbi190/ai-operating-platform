@@ -10,6 +10,10 @@
 
 ---
 
+### 2026-11-11 — interactive use by the Windows operator
+
+The founder authorized Nova Desktop to act on explicit requests on the founder's PC. Its local panel starts a Desktop Commander stdio session under the signed-in Windows account. A specific folder listing can run immediately. The panel shows the concrete tool and arguments for operator approval before dispatching any other Desktop Commander step. Closing the panel ends the request. This entry point accepts input from the local panel only. Atlas missions and delegated agents continue to follow the Phase 0 decision below.
+
 ## 1. Context
 
 Desktop Commander is installed and connected to the founder's Claude Code environment as an

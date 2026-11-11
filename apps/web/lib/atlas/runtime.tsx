@@ -104,6 +104,8 @@ export interface AtlasValue {
   voicePanelOpen?: boolean
   voiceMicActive?: boolean
   voiceMicProblem?: string | null
+  novaVoiceAvailable?: boolean
+  selectNovaVoice?(): void
   isSessionActive: boolean
   lastActiveAt:    Date | null
 
@@ -124,6 +126,7 @@ export interface AtlasValue {
   sendOperatorMessage?(text: string): Promise<{ ok: boolean; reply: string }>
   captureUtterance(onTranscript: (text: string) => void): () => void
   speakText(text: string): Promise<void>
+  speakNativeReply?(text: string): Promise<boolean>
   captureError: string | null
 }
 
@@ -872,6 +875,8 @@ export function AtlasRuntimeProvider({
     voicePanelOpen: managedVoice && voicePanel !== 'closed',
     voiceMicActive: managedVoice && (voiceSession.mic || voiceSession.opening),
     voiceMicProblem: managedVoice ? voiceSession.micProblem : null,
+    novaVoiceAvailable: managedVoice && voiceSession.voices.some(v => v.key === 'nova'),
+    selectNovaVoice: () => { if (managedVoice) voiceSession.setVoice('nova') },
     isSessionActive: currentSessionActive,
     lastActiveAt,
     history,
@@ -886,6 +891,7 @@ export function AtlasRuntimeProvider({
     sendOperatorMessage,
     captureUtterance,
     speakText,
+    speakNativeReply: (text: string) => managedVoice ? voiceSession.speakNativeReply(text) : Promise.resolve(false),
     captureError,
   }
 

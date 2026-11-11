@@ -4,8 +4,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { usePathname } from 'next/navigation'
 import { useAtlas } from '@/lib/atlas/runtime'
 
-type Pair = { port: number; key: string; hotkey: boolean }
-type LocalTask = { id: string; text: string; mode: 'nova_readonly' | 'atlas_operator' }
+type Pair = { port: number; key: string; hotkey: boolean; native: boolean }
+type LocalTask = { id: string; text: string; mode: 'nova_readonly' | 'atlas_operator' | 'nova_voice' }
 type VoiceControl = { id: string; kind: 'voice_toggle' | 'voice_interrupt' | 'voice_resume' }
 type ChatTurn = { role: 'user' | 'assistant'; content: string }
 type LocalFetch = RequestInit & { targetAddressSpace: 'loopback' }
@@ -17,13 +17,16 @@ type NovaBridgeValue = {
   lastPrompt: string
   lastAnswer: string
   voiceAuthorized: boolean
+  nativeVoice: boolean
   voiceAvailable: boolean
+  novaVoiceAvailable: boolean
   voiceMicActive: boolean
   voiceMicProblem: string | null
   voiceStatus: string
   retryMic(): void
   connect(): Promise<void>
   startVoice(): Promise<void>
+  startNativeVoice(): Promise<void>
   stopVoice(): Promise<void>
   pause(): void
 }
@@ -39,10 +42,11 @@ function readPairingFragment(): Pair | null {
   const port = Number(params.get('port'))
   const key = params.get('key') ?? ''
   const hotkey = params.get('hotkey') === '1'
+  const native = params.get('native') === '1'
   // Remove the short-lived token from browser history immediately.
   window.history.replaceState(null, '', window.location.pathname + window.location.search)
   if (!Number.isInteger(port) || port < 1025 || port > 65535 || !SAFE_PAIR.test(key)) return null
-  return { port, key, hotkey }
+  return { port, key, hotkey, native }
 }
 
 function voiceStatusLabel(status: string): string {
@@ -68,15 +72,17 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
   const [lastPrompt, setLastPrompt] = useState('')
   const [lastAnswer, setLastAnswer] = useState('')
   const [voiceAuthorized, setVoiceAuthorized] = useState(false)
+  const [nativeVoice, setNativeVoice] = useState(false)
   const [pairVersion, setPairVersion] = useState(0)
 
   const pairingRef = useRef<Pair | null>(null)
-  const autoHotkeyStageRef = useRef<'none' | 'connect' | 'voice'>('none')
+  const autoHotkeyStageRef = useRef<'none' | 'connect' | 'voice' | 'native'>('none')
   const stoppedRef = useRef(true)
   const phaseRef = useRef<BridgePhase>('ready')
   phaseRef.current = phase
   const voiceAuthorizedRef = useRef(false)
   const turnsRef = useRef<ChatTurn[]>([])
+  const nativeTurnsRef = useRef<ChatTurn[]>([])
   const pollRef = useRef(false)
   const runningTaskRef = useRef(false)
   const controllersRef = useRef(new Set<AbortController>())
@@ -88,7 +94,7 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
     const pair = readPairingFragment()
     if (pair) {
       pairingRef.current = pair
-      autoHotkeyStageRef.current = pair.hotkey ? 'connect' : 'none'
+      autoHotkeyStageRef.current = pair.hotkey ? (pair.native ? 'native' : 'connect') : 'none'
       setPairVersion(value => value + 1)
       setMessage(pair.hotkey
         ? 'Snabbkommando mottaget. Kontrollerar anslutning och mikrofon ...'
@@ -125,15 +131,19 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
   }, [local])
 
   const executeReadOnly = useCallback(async (task: LocalTask): Promise<void> => {
-    if (task.mode !== 'nova_readonly' || !task.id || typeof task.text !== 'string' ||
+    if (!['nova_readonly', 'nova_voice'].includes(task.mode) || !task.id || typeof task.text !== 'string' ||
         task.text.length > MAX_LOCAL_CHARS) {
       throw new Error('Nova skickade ett ogiltigt uppdrag')
     }
+    const native = task.mode === 'nova_voice'
+    if (native && !voiceAuthorizedRef.current) throw new Error('Windows-r?stl?get har inte godk?nts.')
     setLastPrompt(task.text)
     setLastAnswer('')
-    setMessage('Atlas svarar på den separata läsförfrågan. Inga arbetsverktyg körs.')
+    setMessage(native ? 'Atlas besvarar Novas r?st i s?kert l?sl?ge.'
+      : 'Atlas l?ser texten utan k?rverktyg.')
     let answer = ''
-    const turns: ChatTurn[] = [...turnsRef.current.slice(-10), { role: 'user', content: task.text }]
+    const context = native ? nativeTurnsRef : turnsRef
+    const turns: ChatTurn[] = [...context.current.slice(-10), { role: 'user', content: task.text }]
     const atlasAbort = new AbortController()
     atlasAbortRef.current = atlasAbort
     let statusBusy = false
@@ -158,7 +168,7 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
         credentials: 'same-origin',
         signal: atlasAbort.signal,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: turns, mode: 'nova_readonly', voice: false }),
+        body: JSON.stringify({ messages: turns, mode: 'nova_readonly', voice: native }),
       })
       if (!response.ok || !response.body) {
         throw new Error(response.status === 401
@@ -202,9 +212,24 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
       }
       if (stoppedRef.current || atlasAbort.signal.aborted) return
       if (!sawDone) throw new Error('Atlas avbröt strömmen innan svarskvittot kom fram.')
-      turnsRef.current = [...turns, { role: 'assistant' as const, content: answer }].slice(-12)
+      context.current = [...turns, { role: 'assistant' as const, content: answer }].slice(-12)
+      if (native && !stoppedRef.current && voiceAuthorizedRef.current && answer.trim()) {
+        // Authenticated browser only plays the explicitly verified Sanna
+        // voice. The original answer remains visible if autoplay is blocked.
+        try {
+          const played = await atlasRef.current.speakNativeReply?.(answer.slice(0, 300))
+          if (!played) {
+            // Never re-arm Windows capture while the browser audio sink might
+            // still be playing after an expired TTS deadline or failed request.
+            atlasRef.current.stopAudio()
+            setMessage('Atlas svarade i text, men Nova-r?sten kunde inte verifieras. Inget annat r?stval anv?nds.')
+          }
+        } catch {
+          setMessage('Atlas svarade i text men Brave kunde inte spela upp ljudet.')
+        }
+      }
       await push(task.id, 'done')
-      setMessage('Atlas svarade på läsförfrågan. Inget exekveringsverktyg kördes.')
+      if (!native) setMessage('Atlas gav ett skrivskyddat svar.')
     } finally {
       window.clearInterval(statusTimer)
       if (atlasAbortRef.current === atlasAbort) atlasAbortRef.current = null
@@ -215,7 +240,7 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
     // Only the human-approved native command may be forwarded into Atlas's
     // normal authenticated tool + approval pipeline. No direct OS/write API
     // and no separate model/tool provider is exposed by the loopback bridge.
-    if (task.mode !== 'atlas_operator' || !task.id || !task.text.trim() ||
+    if (!['atlas_operator', 'nova_voice'].includes(task.mode) || !task.id || !task.text.trim() ||
         task.text.length > MAX_LOCAL_CHARS || !voiceAuthorizedRef.current) {
       throw new Error('Atlas-uppdraget saknar en godk?nd operat?rsanslutning.')
     }
@@ -296,7 +321,7 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
             void (async () => {
               try {
                 if (task.mode === 'atlas_operator') await executeOperator(task)
-                else if (task.mode === 'nova_readonly') await executeReadOnly(task)
+                else if (task.mode === 'nova_readonly' || task.mode === 'nova_voice') await executeReadOnly(task)
                 else throw new Error('Ok?nt eller ogodk?nt Nova-uppdrag')
               } catch (error) {
                 const detail = error instanceof Error ? error.message : 'Ok?nt fel'
@@ -340,6 +365,7 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
       if (!result.connected || result.mode !== 'read_only') throw new Error('Fel protokoll från lokal Nova')
       voiceAuthorizedRef.current = false
       setVoiceAuthorized(false)
+      setNativeVoice(false)
       setPhase('paired')
       setMessage('Ansluten. Klicka Starta röstsamtal en gång för mikrofonbehörighet; därefter kan Ctrl+Alt+Space styra samtalet.')
       void pollingLoop()
@@ -379,13 +405,57 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
     }
   }, [local])
 
+  const startNativeVoice = useCallback(async () => {
+    if (!pairingRef.current || phaseRef.current !== 'paired') {
+      setMessage('Anslut Nova f?rst innan Windows-samtalet startas.')
+      return
+    }
+    const current = atlasRef.current
+    if (!current.voiceConversationAvailable) {
+      setMessage('Atlas ?r inte tillg?ngligt f?r den h?r inloggade sessionen.')
+      return
+    }
+    try {
+      // Confirm the owner-approved Sanna option from the server. Never
+      // silently downgrade to Anders and do not expose the provider ID.
+      const response = await fetch('/api/atlas/voice-pilot/speech', {
+        method: 'GET', credentials: 'same-origin', cache: 'no-store',
+      })
+      if (!response.ok) throw new Error('Novas r?st kunde inte verifieras. Kontrollera inloggningen.')
+      const data = await response.json() as { voices?: { key?: string }[] }
+      if (!Array.isArray(data.voices) || !data.voices.some(v => v.key === 'nova')) {
+        throw new Error('Sanna ?r inte tillg?nglig f?r den h?r Atlas-sessionen. Ingen reservr?st anv?nds.')
+      }
+      current.deactivate()
+      current.selectNovaVoice?.()
+      // Windows owns the microphone; the authenticated Omnira tab remains
+      // an Atlas conversation/TTS bridge, never a browser microphone.
+      const grant = await local<{ authorized: boolean }>(
+        '/voice/authorize', 'POST', { protocol: 1, mode: 'native' })
+      if (!grant.authorized) throw new Error('Windows-r?stl?get nekades.')
+      voiceAuthorizedRef.current = true
+      setVoiceAuthorized(true)
+      setNativeVoice(true)
+      setMessage('Windows-r?stl?get godk?nt. Prata med Nova fr?n Windows-f?nstret.')
+    } catch (error) {
+      setNativeVoice(false)
+      setMessage(error instanceof Error ? error.message : 'Windows-r?stl?get kunde inte startas.')
+    }
+  }, [local])
+
   useEffect(() => {
     if (pathname !== '/nova-bridge' || pairVersion === 0 ||
-        autoHotkeyStageRef.current !== 'connect') return
-    autoHotkeyStageRef.current = 'voice'
+        !['connect', 'native'].includes(autoHotkeyStageRef.current)) return
+    autoHotkeyStageRef.current = autoHotkeyStageRef.current === 'native' ? 'native' : 'voice'
     // An expired SSO session still requires interactive browser login.
     void connect()
   }, [pathname, pairVersion, connect])
+
+  useEffect(() => {
+    if (phase !== 'paired' || autoHotkeyStageRef.current !== 'native') return
+    autoHotkeyStageRef.current = 'none'
+    void startNativeVoice()
+  }, [phase, startNativeVoice])
 
   useEffect(() => {
     if (phase !== 'paired' || autoHotkeyStageRef.current !== 'voice') return
@@ -419,6 +489,7 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
     atlasRef.current.deactivate()
     voiceAuthorizedRef.current = false
     setVoiceAuthorized(false)
+    setNativeVoice(false)
     try { await local('/voice/revoke', 'POST', { protocol: 1 }) } catch { /* local relay may already be offline */ }
     setMessage('Röstsamtalet avslutades.')
   }, [local])
@@ -431,6 +502,7 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
     atlasRef.current.deactivate()
     voiceAuthorizedRef.current = false
     setVoiceAuthorized(false)
+    setNativeVoice(false)
     void local('/voice/revoke', 'POST', { protocol: 1 }).catch(() => {})
     setPhase('paused')
     setMessage('Kopplingen pausad. Mikrofonen är avstängd och inga nya kommandon behandlas.')
@@ -456,18 +528,20 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo<NovaBridgeValue>(() => ({
-    phase, message, lastPrompt, lastAnswer, voiceAuthorized,
+    phase, message, lastPrompt, lastAnswer, voiceAuthorized, nativeVoice,
     voiceAvailable: Boolean(atlas.voiceConversationAvailable),
+    novaVoiceAvailable: Boolean(atlas.novaVoiceAvailable),
     voiceMicActive: Boolean(atlas.voiceMicActive),
     voiceMicProblem: atlas.voiceMicProblem ?? null,
-    voiceStatus: !voiceAuthorized ? 'Inte godkänt'
+    voiceStatus: nativeVoice ? 'Windows-mikrofon styr Nova' : !voiceAuthorized ? 'Inte godkänt'
       : atlas.voiceMicProblem ? 'Mikrofonfel'
       : !atlas.voiceMicActive ? 'Av - mikrofonen behöver startas'
       : atlas.voicePhase === 'idle' ? 'Startar mikrofonen'
       : voiceStatusLabel(atlas.voicePhase),
-    connect, startVoice, retryMic, stopVoice, pause,
-  }), [phase, message, lastPrompt, lastAnswer, voiceAuthorized, atlas.voiceConversationAvailable,
-    atlas.voiceMicActive, atlas.voiceMicProblem, atlas.voicePhase, connect, startVoice, retryMic, stopVoice, pause])
+    connect, startVoice, startNativeVoice, retryMic, stopVoice, pause,
+  }), [phase, message, lastPrompt, lastAnswer, voiceAuthorized, nativeVoice, atlas.voiceConversationAvailable,
+    atlas.novaVoiceAvailable, atlas.voiceMicActive, atlas.voiceMicProblem, atlas.voicePhase,
+    connect, startVoice, startNativeVoice, retryMic, stopVoice, pause])
 
   return <Context.Provider value={value}>{children}</Context.Provider>
 }

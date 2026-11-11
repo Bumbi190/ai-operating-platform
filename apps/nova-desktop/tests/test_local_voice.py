@@ -171,6 +171,112 @@ class LocalVoiceTests(unittest.TestCase):
                 ui._start_app.assert_not_called()
                 ui.stop_native_mic_pilot.assert_not_called()
 
+    def test_authorized_native_stt_queues_a_single_safe_conversation_turn(self):
+        from nova_overlay import NovaOverlay
+        from unittest.mock import Mock
+        ui = NovaOverlay.__new__(NovaOverlay)
+        ui._append = Mock()
+        ui._phase = Mock()
+        ui.stop_native_mic_pilot = Mock()
+        ui._open_url = Mock()
+        ui._start_app = Mock()
+        ui.expanded = False
+        ui.bridge = Mock()
+        ui.bridge.state.voice_snapshot.return_value = {"authorized": True, "mode": "native"}
+        ui.bridge.state.online.return_value = True
+        ui.bridge.state.enqueue_native_voice.return_value = ("task-1", "queued")
+        NovaOverlay._received_native_transcript(ui, "Nova, hur fungerar dagen?")
+        ui.bridge.state.enqueue_native_voice.assert_called_once_with("Nova, hur fungerar dagen?")
+        ui._open_url.assert_not_called()
+        ui._start_app.assert_not_called()
+
+    def test_high_risk_native_stt_must_request_review(self):
+        from nova_overlay import NovaOverlay
+        from unittest.mock import Mock
+        ui = NovaOverlay.__new__(NovaOverlay)
+        ui._append = Mock()
+        ui._phase = Mock()
+        ui._open_url = Mock()
+        ui._start_app = Mock()
+        ui._received_voice_without_navigation = Mock()
+        ui.expanded = False
+        ui.bridge = Mock()
+        ui.bridge.state.voice_snapshot.return_value = {"authorized": True, "mode": "native"}
+        ui.bridge.state.online.return_value = True
+        NovaOverlay._received_native_transcript(ui, "Nova, publicera inl?gget")
+        ui._received_voice_without_navigation.assert_called_once()
+        ui.bridge.state.enqueue_native_voice.assert_not_called()
+
+    def test_native_conversation_rearms_only_when_authorized_and_visible(self):
+        from nova_overlay import NovaOverlay
+        from unittest.mock import Mock
+        import time
+        ui=NovaOverlay.__new__(NovaOverlay)
+        ui.closed=False
+        ui.expanded=True
+        ui.native_mic_hotkey=Mock()
+        ui.native_mic_hotkey.get.return_value=True
+        ui._native_conversation_deadline=time.monotonic()+20
+        ui._phase=Mock()
+        ui.start_native_mic_pilot=Mock()
+        ui.bridge=Mock()
+        ui.bridge.state.online.return_value=True
+        ui.bridge.state.voice_snapshot.return_value={"authorized":True,"mode":"native"}
+        ui.native_mic_session=None
+        NovaOverlay._resume_native_voice_after_reply(ui)
+        ui.start_native_mic_pilot.assert_called_once()
+
+        ui.start_native_mic_pilot.reset_mock()
+        ui._native_conversation_deadline=0
+        NovaOverlay._resume_native_voice_after_reply(ui)
+        ui.start_native_mic_pilot.assert_not_called()
+
+        ui._native_conversation_deadline=time.monotonic()+20
+        ui.bridge.state.voice_snapshot.return_value={"authorized":True,"mode":"browser"}
+        NovaOverlay._resume_native_voice_after_reply(ui)
+        ui.start_native_mic_pilot.assert_not_called()
+
+    def test_native_stop_and_collapse_disable_auto_rearm(self):
+        from pathlib import Path
+        source=(Path(__file__).resolve().parents[1] / "nova_overlay.py").read_text(encoding="utf-8")
+        for start,end in [
+            ("    def stop(self):","    def quit(self):"),
+            ("    def collapse(self):","    def _hotkey_check("),
+            ("    def quit(self):","\n\n",),
+        ]:
+            block=source[source.index(start):]
+            if end != "\n\n":block=block[:block.index(end)]
+            else:block=block[:100]
+            self.assertIn("self._native_conversation_deadline = 0.0",block)
+
+    def test_safe_native_navigation_rearms_only_when_conversation_active(self):
+        from nova_overlay import NovaOverlay
+        from nova_core import URLS
+        import time
+        ui=NovaOverlay.__new__(NovaOverlay)
+        ui._append=Mock()
+        ui._phase=Mock()
+        ui.stop_native_mic_pilot=Mock()
+        ui._open_url=Mock()
+        ui._start_app=Mock()
+        ui.expanded=True
+        ui.root=Mock()
+        ui.native_mic_hotkey=Mock()
+        ui.native_mic_hotkey.get.return_value=True
+        ui._native_conversation_deadline=time.monotonic()+30
+        NovaOverlay._received_native_transcript(ui,"Hej Nova, "+chr(0xf6)+"ppna kalendern")
+        ui._open_url.assert_called_once()
+        self.assertEqual(ui._open_url.call_args.args[0],URLS["calendar"])
+        ui.root.after.assert_called_once()
+        args=ui.root.after.call_args.args
+        self.assertEqual(args[0],400)
+        self.assertEqual(args[1],ui._resume_native_voice_after_reply)
+
+        ui.root.reset_mock()
+        ui._native_conversation_deadline=0
+        NovaOverlay._received_native_transcript(ui,"Hej Nova, "+chr(0xf6)+"ppna kalendern")
+        ui.root.after.assert_not_called()
+
     def test_worker_offline_safety_rules(self):
         worker = (Path(__file__).resolve().parents[1] / "nova_local_voice_worker.py").read_text(encoding="utf-8")
         self.assertIn('mode not in ("meter", "transcribe")', worker)

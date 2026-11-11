@@ -88,6 +88,7 @@ class BridgeState:
         self.last_seen = 0.0
         self.requests_at: list[float] = []
         self.voice_authorized = False
+        self.voice_input_mode = "browser"
         self.voice_status = "idle"
         self.voice_status_at = 0.0
         self.control_pending: dict | None = None
@@ -102,6 +103,7 @@ class BridgeState:
             self.last_seen = 0.0
             self.task = None
             self.voice_authorized = False
+            self.voice_input_mode = "browser"
             self.voice_status = "idle"
             self.voice_status_at = 0.0
             self.control_pending = None
@@ -133,17 +135,21 @@ class BridgeState:
             self.last_seen = self.connected_at
             # A new browser page must explicitly authorize its microphone again.
             self.voice_authorized = False
+            self.voice_input_mode = "browser"
             self.voice_status = "idle"
             self.voice_status_at = 0.0
             self.control_pending = None
             self.events.put({"kind": "connected"})
 
-    def authorize_voice(self) -> tuple[bool, str]:
+    def authorize_voice(self, *, mode: str = "browser") -> tuple[bool, str]:
+        if mode not in ("browser", "native"):
+            return False, "Unsupported input mode"
         with self.lock:
             if not self.online():
                 return False, "Atlas-webbl\\u00e4saren \\u00e4r inte ansluten."
             self.voice_authorized = True
-            self.voice_status = "starting"
+            self.voice_input_mode = mode
+            self.voice_status = "idle" if mode == "native" else "starting"
             self.voice_status_at = time.monotonic()
             self.control_pending = None
             return True, "R\\u00f6stsamtalet \\u00e4r godk\\u00e4nt av anv\\u00e4ndaren."
@@ -151,6 +157,7 @@ class BridgeState:
     def revoke_voice(self) -> None:
         with self.lock:
             self.voice_authorized = False
+            self.voice_input_mode = "browser"
             self.voice_status = "idle"
             self.voice_status_at = 0.0
             self.control_pending = None
@@ -202,18 +209,21 @@ class BridgeState:
         with self.lock:
             if not self.online():
                 return {"authorized": False, "status": "idle"}
-            return {"authorized": self.voice_authorized, "status": self.voice_status}
+            return {"authorized": self.voice_authorized, "status": self.voice_status,
+                    "mode": self.voice_input_mode}
 
     def enqueue(self, text: str, *, mode: str = "nova_readonly") -> tuple[str | None, str]:
-        if mode not in ("nova_readonly", "atlas_operator"):
+        if mode not in ("nova_readonly", "atlas_operator", "nova_voice"):
             return None, "Okant uppdragslage."
         if not isinstance(text, str) or not 0 < len(text.strip()) <= MAX_PROMPT_CHARS:
             return None, "Begäran är tom eller för lång (max 3 000 tecken)."
         with self.lock:
             if not self.online():
                 return None, "Atlas webbläsarflik är inte ansluten."
-            if mode == "atlas_operator" and not self.voice_authorized:
+            if mode in ("atlas_operator", "nova_voice") and not self.voice_authorized:
                 return None, "Verktygsuppdrag kraver forst godkant Atlas-samtal i Omnira."
+            if mode == "nova_voice" and self.voice_input_mode != "native":
+                return None, "Windows-r?stl?ge ?r inte godk?nt."
             if self.task and self.task.state in ("pending", "executing"):
                 return None, "Nova arbetar redan med en fråga. Använd Stopp först."
             now = time.monotonic()
@@ -224,6 +234,19 @@ class BridgeState:
             self.task = Task(str(uuid.uuid4()), text.strip(), now, mode=mode)
             self.events.put({"kind": "queued", "id": self.task.id, "mode": mode})
             return self.task.id, "Uppdraget koat till Atlas." if mode == "atlas_operator" else "Fragan koad till Atlas i laslage."
+
+    def enqueue_native_voice(self, text: str) -> tuple[str | None, str]:
+        """One user-requested local STT turn; the browser owns Atlas auth.
+
+        No HTTP endpoint can create this task. Execution still goes through
+        Atlas's server-side user, project and tool authorization.
+        """
+        if not isinstance(text, str) or not 0 < len(text.strip()) <= 500:
+            return None, "Ogiltigt lokalt r?stkommando."
+        with self.lock:
+            if not self.online() or not self.voice_authorized or self.voice_input_mode != "native":
+                return None, "Aktivera ett godk?nt Windows-r?stsamtal f?rst."
+        return self.enqueue(text, mode="nova_voice")
 
     def enqueue_operator(self, text: str) -> tuple[str | None, str]:
         """Explicit native operator approval, never a speech- or LLM-generated call."""
@@ -389,10 +412,13 @@ def create_handler(state: BridgeState):
                 state.connect()
                 self.send_json(200, {"connected": True, "mode": "read_only", "voice_control": "user_gesture_required"})
             elif endpoint == "/voice/authorize":
-                if set(data) != {"protocol"} or data.get("protocol") != 1:
+                if data.get("protocol") != 1:
                     self.send_json(400, {"error": "Unsupported protocol"})
                     return
-                accepted, message = state.authorize_voice()
+                if set(data) not in ({"protocol"}, {"protocol", "mode"}) or data.get("mode", "browser") not in ("browser", "native"):
+                    self.send_json(400, {"error": "Invalid voice mode"})
+                    return
+                accepted, message = state.authorize_voice(mode=data.get("mode", "browser"))
                 self.send_json(200 if accepted else 409, {"authorized": accepted, "message": message})
             elif endpoint == "/voice/revoke":
                 if set(data) != {"protocol"} or data.get("protocol") != 1:
@@ -433,7 +459,7 @@ class NovaBridge:
     def start(self):
         self.thread.start()
 
-    def pairing_url(self, base_origin=None, *, auto_voice: bool = False):
+    def pairing_url(self, base_origin=None, *, auto_voice: bool = False, native_voice: bool = False):
         if base_origin is None:
             base_origin = next(iter(self.state.origins))
         if validate_pairing_origin(base_origin) not in self.state.origins:
@@ -442,7 +468,7 @@ class NovaBridge:
         # removes it from history after reading and never persists the key.
         # A marker is included only for an explicit Windows hotkey gesture.
         # The secret token is still ephemeral and scrubbed in the browser.
-        suffix = "&hotkey=1" if auto_voice is True else ""
+        suffix = ("&hotkey=1" if auto_voice is True else "") + ("&native=1" if auto_voice is True and native_voice is True else "")
         return f"{base_origin}/nova-bridge#port={self.port}&key={self.state.key}{suffix}"
 
     def stop(self):

@@ -62,3 +62,32 @@ Datum: 2026-11-10. Branch: `feat/nova-desktop-ui-automation-20261109`.
 
 Allt görs på samma Nova-branch. Inga andra projekt/worktrees, main,
 databaser, mejl eller produktion ska påverkas av den här piloten.
+
+## N2.1 ? Windows microphone with authenticated Atlas response (local feature)
+
+- A NEW native-input mode on the SSO-protected /nova-bridge page verifies that
+  the approved Nova/Sanna voice is genuinely available before enabling speech.
+  There is **no fallback** to Anders/Peter when Sanna is absent.
+- Only the actual Ctrl+Alt+Space user action and a currently paired, approved
+  native-mode session may start the local microphone. Brave's microphone stays
+  off; the browser remains an AUTHENTICATED RELAY and TTS output player.
+  Closing/signing out of that browser session still disconnects Atlas.
+  This is NOT yet a fully browser-independent desktop login.
+- The small Whisper model transcribes speech OFFLINE. Its short TEXT transcript
+  (never the PCM recording) is sent over the authenticated local relay to the
+  server's **nova_readonly** Atlas route, limited to 150 output tokens. This
+  pilot deliberately has NO Atlas project memories, tool execution or writes.
+- Atlas's read-only response streams to Nova's text history and the approved
+  Sanna ElevenLabs voice in the browser. Voice is billable only for actual
+  spoken replies; no audio, tokens or model keys live in the Windows bridge.
+- A Sanna-only PCM receipt must confirm audio reached the browser sink. Blocked audio, an empty stream or Stop must fail closed; no fallback to Anders.
+- Sanna playback must complete before the native microphone is rearmed. A
+  consented conversation is limited to 10 minutes from the hotkey and local
+  capture windows are capped to 25 seconds. Global Stopp, collapse, quit and
+  revoked pairing stop microphone restart. Risky instructions still require
+  the separate existing manual approval flow.
+- This wiring is covered by unit and local HTTP tests. Sanna output, Windows
+  mic recognition and timing need physical operator testing in Brave and on
+  the Sonic microphone. Browser audio autoplay might still require a click.
+- Project-scoped, memory-aware interactive tools and a true desktop-only
+  SSO/PKCE session remain follow-up projects, not part of this release.

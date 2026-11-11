@@ -180,7 +180,7 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(payload["authorized"])
         self.assertEqual(self.bridge.state.voice_snapshot(),
-                         {"authorized": True, "status": "starting"})
+                         {"authorized": True, "status": "starting", "mode": "browser"})
 
         self.assertTrue(self.bridge.state.update_voice_status("listening"))
         self.assertEqual(self.bridge.state.voice_snapshot()["status"], "listening")
@@ -258,6 +258,40 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(self.bridge.state.next(), {})
         self.assertFalse(self.bridge.state.voice_authorized)
         self.assertIsNone(self.bridge.state.enqueue_operator("?ppna kalender")[0])
+
+
+    def test_native_mic_authorization_requires_browser_pair_and_mode(self):
+        self.assertIsNone(self.bridge.state.enqueue_native_voice("Nova hej")[0])
+        self.assertEqual(self.request("/connect", "POST", self.good, {"protocol": 1})[0], 200)
+        self.assertIsNone(self.bridge.state.enqueue_native_voice("Nova hej")[0])
+        code, payload, _ = self.request("/voice/authorize", "POST", self.good,
+                                        {"protocol": 1, "mode": "native"})
+        self.assertEqual(code, 200)
+        self.assertTrue(payload["authorized"])
+        self.assertEqual(self.bridge.state.voice_snapshot()["mode"], "native")
+        self.assertFalse(self.bridge.state.enqueue_native_voice("x" * 600)[0])
+        native_id, _ = self.bridge.state.enqueue_native_voice("Nova kan vi prata?")
+        self.assertIsNotNone(native_id)
+        queued = self.request("/next", headers=self.good)[1]["task"]
+        self.assertEqual(queued["mode"], "nova_voice")
+        self.assertEqual(queued["text"], "Nova kan vi prata?")
+        self.assertEqual(self.request("/voice/revoke", "POST", self.good,
+                                      {"protocol": 1})[0], 200)
+        self.assertIsNone(self.bridge.state.enqueue_native_voice("Nova igen")[0])
+
+    def test_native_mode_does_not_activate_for_browser_mic_authorization(self):
+        self.request("/connect", "POST", self.good, {"protocol": 1})
+        self.request("/voice/authorize", "POST", self.good, {"protocol": 1})
+        self.assertEqual(self.bridge.state.voice_snapshot()["mode"], "browser")
+        self.assertIsNone(self.bridge.state.enqueue_native_voice("Nova hej")[0])
+        self.assertEqual(self.request("/voice/authorize", "POST", self.good,
+                                      {"protocol": 1, "mode": "shell"})[0], 400)
+
+    def test_explicit_native_hotkey_pairing_is_not_persisted_in_url_path(self):
+        url = self.bridge.pairing_url(auto_voice=True, native_voice=True)
+        self.assertIn("&hotkey=1&native=1", url)
+        self.assertNotIn("key=", url.split("#")[0])
+        self.assertNotIn("native=", self.bridge.pairing_url())
 
 
 if __name__ == "__main__":

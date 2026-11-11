@@ -23,11 +23,28 @@ type RequestSpeech = (text: string, voice: AtlasSwedishVoice, signal: AbortSigna
 
 /** Serial paid requests with immediate chunk playback and generation-safe stop. */
 export function createPcmSpeechPlayer(options: { notice(message: string): void; playing?(value: boolean): void; outputActive?(value: boolean): void }, dependencies?: { request: RequestSpeech; sink: Sink }) {
-  const sink = dependencies?.sink ?? browserPcmSink(value => options.playing?.(value), value => options.outputActive?.(value))
+  let audioActive = false, audioStartCount = 0
+  const baseSink = dependencies?.sink ?? browserPcmSink(
+    value => options.playing?.(value),
+    value => { audioActive = value; options.outputActive?.(value) },
+  )
+  const sink: Sink = {
+    prepare: () => baseSink.prepare(),
+    push(samples) {
+      // Count only PCM chunks successfully accepted by an audio sink.
+      // An empty stream, a blocked AudioContext or a failed TTS request
+      // must never look like a completed spoken reply.
+      baseSink.push(samples)
+      audioStartCount++
+    },
+    stop: () => baseSink.stop(),
+    dispose: () => baseSink.dispose(),
+  }
   const request: RequestSpeech = dependencies?.request ?? ((text, voice, signal) => fetch('/api/atlas/voice-pilot/speech', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice }), signal,
   }))
   let generation = 0, disposed = false, running = false, abort: AbortController | null = null
+  let failedGeneration = -1
   let queue: { text: string; voice: AtlasSwedishVoice }[] = []
   function stop() { generation++; queue = []; running = false; abort?.abort(); abort = null; sink.stop() }
   async function drain(token: number) {
@@ -61,6 +78,7 @@ export function createPcmSpeechPlayer(options: { notice(message: string): void; 
       }
     } catch (error) {
       if (token === generation && !disposed) {
+        failedGeneration = token
         stop()
         options.notice(isVoiceAccessFailure(error) ? VOICE_ACCESS_NOTICE : 'Rösten kunde inte spelas. Klicka på provlyssna och försök igen; svaret finns kvar i text.')
       }
@@ -75,6 +93,34 @@ export function createPcmSpeechPlayer(options: { notice(message: string): void; 
       if (!running) void drain(generation)
     },
     stop,
+    async playNativeVoice(text: string, timeoutMs = 30_000): Promise<boolean> {
+      // Sanna is an explicit operator-approved voice. Do not fall back to
+      // Anders when the provider or browser audio is unavailable.
+      if (disposed || !text.trim() || running || queue.length || audioActive) return false
+      const token = generation, before = audioStartCount
+      try {
+        await sink.prepare()
+        if (disposed || generation !== token) return false
+        this.enqueue(text.slice(0, 300), 'nova')
+        const idle = await this.waitUntilIdle(timeoutMs)
+        return idle && generation === token &&
+          failedGeneration !== token && audioStartCount > before
+      } catch {
+        options.notice('Nova-r?sten kunde inte startas i webbl?saren. Inget ljud har verifierats.')
+        return false
+      }
+    },
+    async waitUntilIdle(timeoutMs = 30_000): Promise<boolean> {
+      // Includes both network streaming and actual scheduled PCM playback.
+      // Used only for an explicit native voice pilot to prevent the Windows
+      // mic from re-arming while Sanna is still speaking.
+      const limit = Date.now() + Math.max(100, Math.min(timeoutMs, 30_000))
+      do {
+        if (!running && queue.length === 0 && !audioActive) return true
+        await new Promise<void>(resolve => setTimeout(resolve, 60))
+      } while (!disposed && Date.now() < limit)
+      return !running && queue.length === 0 && !audioActive
+    },
     dispose() { if (disposed) return; disposed = true; stop(); sink.dispose() },
   }
 }

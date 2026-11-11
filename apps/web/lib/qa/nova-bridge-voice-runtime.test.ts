@@ -45,13 +45,37 @@ describe('Nova Desktop persistent Atlas voice bridge', () => {
     const runtime = readFileSync(join(root, 'components/platform/os/NovaBridgeRuntime.tsx'), 'utf8')
     expect(runtime).toContain("const hotkey = params.get('hotkey') === '1'")
     expect(runtime).toContain("window.history.replaceState(null, '', window.location.pathname + window.location.search)")
-    expect(runtime).toContain("autoHotkeyStageRef.current = pair.hotkey ? 'connect' : 'none'")
-    expect(runtime).toContain("autoHotkeyStageRef.current = 'voice'")
+    expect(runtime).toContain("autoHotkeyStageRef.current = pair.hotkey ? (pair.native ? 'native' : 'connect') : 'none'")
+    expect(runtime).toContain("autoHotkeyStageRef.current = autoHotkeyStageRef.current === 'native' ? 'native' : 'voice'")
     expect(runtime).toContain("if (phase !== 'paired' || autoHotkeyStageRef.current !== 'voice') return")
     expect(runtime).toContain("void startVoice()")
     expect(runtime).toContain("if (!result.connected || result.mode !== 'read_only')")
     expect(runtime).toContain("if (!current.voiceConversationAvailable)")
     expect(runtime).toContain("current.activate()")
+  })
+
+  it('authorizes only the user-requested native input mode with Sanna and no browser mic', () => {
+    const bridge = readFileSync(join(root, 'components/platform/os/NovaBridgeRuntime.tsx'), 'utf8')
+    const page = readFileSync(join(root, 'app/(platform)/nova-bridge/page.tsx'), 'utf8')
+    expect(bridge).toContain("const native = params.get('native') === '1'")
+    expect(bridge).toContain("'/voice/authorize', 'POST', { protocol: 1, mode: 'native' }")
+    expect(bridge).toContain("data.voices.some(v => v.key === 'nova')")
+    expect(bridge).toContain('current.selectNovaVoice?.()')
+    expect(bridge).toContain("current.deactivate()")
+    expect(bridge).toContain('voiceStatus: nativeVoice ?')
+    expect(page).toContain('Koppla Windows-r?st (Sanna)')
+    expect(page).toContain('bridge.nativeVoice')
+  })
+
+  it('uses only the tool-free mode for automatic native speech and keeps ordinary read-only context separate', () => {
+    const bridge = readFileSync(join(root, 'components/platform/os/NovaBridgeRuntime.tsx'), 'utf8')
+    const route = readFileSync(join(root, 'app/api/chat/route.ts'), 'utf8')
+    expect(bridge).toContain("task.mode === 'nova_readonly' || task.mode === 'nova_voice'")
+    expect(bridge).toContain("mode: 'nova_readonly', voice: native")
+    expect(bridge).toContain("await atlasRef.current.speakNativeReply?.(answer.slice(0, 300))")
+    expect(bridge).toContain('const nativeTurnsRef = useRef<ChatTurn[]>([])')
+    expect(route).toContain("systemPrompt = buildAtlasSystemPrompt() + NOVA_READONLY_DIRECTIVE + (voice ? VOICE_DIRECTIVE : '')")
+    expect(route).toContain('max_tokens: novaReadOnly ? (voice ? 150 : 900)')
   })
 
   it('distinguishes relay consent from a working microphone and offers a real click recovery', () => {
@@ -76,6 +100,20 @@ describe('Nova Desktop persistent Atlas voice bridge', () => {
     expect(start).not.toContain('await prepared')
     expect(start).not.toContain('if (!await voicesReady.current)')
     expect(start).toContain('void voicesReady.current.then(')
+  })
+
+  it('waits for Sanna PCM playback before replying done to native microphone supervisor', () => {
+    const bridge = readFileSync(join(root, 'components/platform/os/NovaBridgeRuntime.tsx'), 'utf8')
+    const player = readFileSync(join(root, 'lib/atlas/voice-pilot/player.ts'), 'utf8')
+    const hook = readFileSync(join(root, 'lib/atlas/voice-pilot/use-voice-session.ts'), 'utf8')
+    const native = bridge.slice(bridge.indexOf('const executeReadOnly'), bridge.indexOf('const executeOperator'))
+    expect(native.indexOf("await atlasRef.current.speakNativeReply?.("))
+      .toBeLessThan(native.indexOf("await push(task.id, 'done')"))
+    expect(player).toContain('async waitUntilIdle(timeoutMs = 30_000)')
+    expect(player).toContain('!running && queue.length === 0 && !audioActive')
+    expect(hook).toContain('async function speakNativeReply(text: string)')
+    expect(hook).toContain('return speak().playNativeVoice(text, 30_000)')
+    expect(hook).toContain("voices.some(item => item.key === 'nova')")
   })
 
   it('requires a separate browser click for microphone consent and documents hotkeys', () => {

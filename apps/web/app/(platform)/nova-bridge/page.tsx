@@ -34,6 +34,14 @@ export default function NovaBridgePage() {
             {paired ? 'Ansluten' : busy ? 'Ansluter…' : 'Anslut Nova'}
           </button>
 
+          {!bridge.voiceAuthorized && (
+            <button type="button" onClick={() => void bridge.startNativeVoice()}
+              disabled={!paired || !bridge.voiceAvailable}
+              className="rounded-xl bg-indigo-500 px-5 py-3 text-sm font-semibold text-white disabled:opacity-40">
+              Koppla Windows-r?st (Sanna)
+            </button>
+          )}
+
           {!bridge.voiceAuthorized ? (
             <button type="button" onClick={() => void bridge.startVoice()}
               disabled={!paired || !bridge.voiceAvailable}
@@ -47,7 +55,7 @@ export default function NovaBridgePage() {
             </button>
           )}
 
-          {bridge.voiceAuthorized && (!bridge.voiceMicActive || bridge.voiceMicProblem) && (
+          {bridge.voiceAuthorized && !bridge.nativeVoice && (!bridge.voiceMicActive || bridge.voiceMicProblem) && (
             <button type="button" onClick={bridge.retryMic}
               className="rounded-xl bg-cyan-700 px-5 py-3 text-sm font-semibold text-white">
               Aktivera mikrofon
@@ -60,11 +68,18 @@ export default function NovaBridgePage() {
           </button>
         </div>
 
-        {bridge.voiceAuthorized && (!bridge.voiceMicActive || bridge.voiceMicProblem) && (
+        {bridge.voiceAuthorized && !bridge.nativeVoice && (!bridge.voiceMicActive || bridge.voiceMicProblem) && (
           <p className="mt-4 rounded-xl border border-amber-500/30 bg-amber-950/30 p-3 text-sm text-amber-200" role="alert">
             Atlas och Nova är anslutna, men mikrofonen är inte igång.
             {bridge.voiceMicProblem ? ' ' + bridge.voiceMicProblem : ' Webbläsaren kan kräva ett direkt klick för att aktivera ljud och mikrofon.'}
             {' '}Klicka Aktivera mikrofon.
+          </p>
+        )}
+
+        {bridge.nativeVoice && (
+          <p className="mt-4 text-sm text-cyan-200" role="status">
+            Windows-mikrofonen anv?nds i Novas eget f?nster. Brave beh?ver inte lyssna.
+            Atlas anv?nder den verifierade Sanna-r?sten f?r svaret.
           </p>
         )}
 

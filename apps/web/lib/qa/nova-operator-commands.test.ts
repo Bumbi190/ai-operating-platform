@@ -7,12 +7,13 @@ const source = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
 describe('Approved Nova commands cannot silently bypass the read-only relay', () => {
   it('keeps two explicit task modes, with separate authenticated Atlas execution', () => {
     const bridge = source('components/platform/os/NovaBridgeRuntime.tsx')
-    expect(bridge).toContain("mode: 'nova_readonly' | 'atlas_operator'")
-    expect(bridge).toContain("if (task.mode !== 'atlas_operator'")
+    expect(bridge).toContain("mode: 'nova_readonly' | 'atlas_operator' | 'nova_voice'")
+    expect(bridge).toContain("!['atlas_operator', 'nova_voice'].includes(task.mode)")
     expect(bridge).toContain("!voiceAuthorizedRef.current")
     expect(bridge).toContain("await current.sendOperatorMessage(task.text)")
     expect(bridge).toContain("if (task.mode === 'atlas_operator') await executeOperator(task)")
-    expect(bridge).toContain("else if (task.mode === 'nova_readonly') await executeReadOnly(task)")
+    expect(bridge).toContain("else if (task.mode === 'nova_readonly' || task.mode === 'nova_voice') await executeReadOnly(task)")
+    expect(bridge).toContain("mode: 'nova_readonly', voice: native")
   })
   it('polls emergency stop while Atlas is waiting on model or tools', () => {
     const bridge = source('components/platform/os/NovaBridgeRuntime.tsx')

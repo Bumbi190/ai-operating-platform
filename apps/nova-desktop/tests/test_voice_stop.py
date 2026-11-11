@@ -67,7 +67,7 @@ class SafeStopCommandTests(unittest.TestCase):
         self.assertIn("if target != PROD_ORIGIN:", hotkey)
         self.assertIn("self.dictate()", hotkey)
         self.assertIn("self._atlas_login_opened = bool(approved_preview)", source)
-        self.assertIn("self.bridge.pairing_url(auto_voice=auto_voice)", source)
+        self.assertIn("self.bridge.pairing_url(auto_voice=auto_voice, native_voice=native_voice)", source)
 
     def test_paired_speech_resumes_atlas_not_windows_diction(self):
         source = (Path(__file__).resolve().parents[1] / "nova_overlay.py").read_text(encoding="utf-8")

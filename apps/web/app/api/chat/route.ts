@@ -943,7 +943,7 @@ export async function POST(request: Request) {
   if (novaReadOnly) {
     // Nova Desktop receives only the selected page excerpt and Atlas identity.
     // No project snapshots, memories, inbox reads, tool guides or execution tools.
-    systemPrompt = buildAtlasSystemPrompt() + NOVA_READONLY_DIRECTIVE
+    systemPrompt = buildAtlasSystemPrompt() + NOVA_READONLY_DIRECTIVE + (voice ? VOICE_DIRECTIVE : '')
   } else if (fastPath) {
     // Ingen Executive Brain, inga verktyg, ingen workflow — bara skriv.
     systemPrompt = FAST_PATH_SYSTEM + (voice ? VOICE_DIRECTIVE : '')
@@ -1270,7 +1270,7 @@ export async function POST(request: Request) {
             : {}
           const modelInput = {
             model: modelPolicy.chatModel,
-            max_tokens: novaReadOnly ? 900 : (voice ? (socialPreparationTurn ? 4096 : 150) : (fastPath ? 1200 : 4096)),
+            max_tokens: novaReadOnly ? (voice ? 150 : 900) : (voice ? (socialPreparationTurn ? 4096 : 150) : (fastPath ? 1200 : 4096)),
             system: systemPrompt,
             tools: sourceReadTurn && sourceReadIssued ? [] : offeredTools, // one read then no more tools
             ...toolChoice,

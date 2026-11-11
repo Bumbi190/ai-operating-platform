@@ -215,6 +215,11 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
       if (mounted.current && token === lifetime.current && audioToken === speechEpoch.current) speak().enqueue(text, voice)
     } catch { if (mounted.current && token === lifetime.current && audioToken === speechEpoch.current) setNotice('Klicka på provlyssna igen för att aktivera ljudet i webbläsaren.') }
   }
+  async function speakNativeReply(text: string): Promise<boolean> {
+    // Native conversation must never silently use the normal Atlas voice.
+    if (!enabled || !text.trim() || !voices.some(item => item.key === 'nova')) return false
+    return speak().playNativeVoice(text, 30_000)
+  }
   async function startMic(mode: 'speakers' | 'headphones' = playbackMode) {
     if (micRef.current || openingRef.current) return
     if (!enabled || !mounted.current) return
@@ -383,7 +388,7 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
   return { snapshot, voices, voice, setVoice, inputMode, setInputMode, measurements, pauseMs, setPauseMs, playbackMode, setPlaybackMode,
     outputBusy, listening, transcribing, timing, mic, micProblem, micSignalStore: micSignalStoreRef.current,
     micDevices, micDeviceId, opening, speaking, draft, reply, notice, sending, phase,
-    active: mic || opening || outputBusy, sample,
+    active: mic || opening || outputBusy, sample, speakNativeReply,
     toggleMute: () => { if (micRef.current || openingRef.current) pauseMic(); else void startMic() },
     setCallAudioMode: (mode: 'speakers' | 'headphones') => {
       if (mode !== 'speakers' && mode !== 'headphones') return

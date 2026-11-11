@@ -69,6 +69,20 @@ class Interpretation:
     confirm: bool = False
 
 
+def local_greeting(text):
+    words = normalized(text)
+    words = re.sub(r"^[\s.,!?]*(?:(?:hej|halla)[\s.,!?]+)?(?:nova|innova)\b[\s.,!?]*", "", words)
+    words = re.sub(r"[^\w ]+", " ", words)
+    words = " ".join(words.split())
+    if words in {"", "hej", "halla", "hejsan", "hor du mig", "kan du hora mig", "hor du vad jag sager",
+                 "ar du dar", "ar du har", "funkar mikrofonen", "kan vi prata", "kan du prata med mig"}:
+        return "Ja, jag hör dig. Vad vill du göra?"
+    if re.fullmatch(r"(?:beratta (?:lite |kort )?)?(?:vad (?:kan du|du kan)(?: gora| hjalpa (?:mig )?med)?|vad kan jag be dig om)", words):
+        return ("Jag kan öppna appar och sidor, styra Spotify och svara på frågor. "
+                "Du kan också be mig kolla diskutrymmet eller förbereda en anteckning.")
+    return None
+
+
 def interpret(text: str, spotify_selected: bool) -> Interpretation:
     words = normalized(text)
     if re.search(r"\b(?:spellista\w*|artisten|bandet|podden|podcast\w*|album\w*|"
@@ -104,16 +118,8 @@ def interpret(text: str, spotify_selected: bool) -> Interpretation:
                "messages": [{"role": "system", "content": _SYSTEM}, {"role": "user", "content":
                    json.dumps({"tal": text, "senast_vald_app": "Spotify" if spotify_selected else None,
                                "val": ["none", *choices]}, ensure_ascii=False)}]}
-    connection = HTTPConnection("127.0.0.1", 11434, timeout=18)
     try:
-        connection.request("POST", "/api/chat", json.dumps(payload).encode(), {"Content-Type": "application/json"})
-        response = connection.getresponse()
-        if response.status != 200:
-            raise ValueError("No local inference response")
-        reply = json.loads(response.read(16_385))
-        if reply.get("done") is not True:
-            raise ValueError("Incomplete inference")
-        decision = json.loads(reply["message"]["content"])
+        decision = json.loads(_local_chat(payload))
         key = decision["intent"]
         action = choices.get(key)
         if action is None:
@@ -135,8 +141,41 @@ def interpret(text: str, spotify_selected: bool) -> Interpretation:
         return Interpretation(action, question, confirm=True)
     except (OSError, HTTPException, ValueError, TypeError, KeyError, AttributeError):
         return Interpretation(None, "Den lokala språktolkningen svarade inte. Du kan försöka igen.")
+
+
+
+def _local_chat(payload):
+    connection = HTTPConnection("127.0.0.1", 11434, timeout=18)
+    try:
+        connection.request("POST", "/api/chat", json.dumps(payload).encode(), {"Content-Type": "application/json"})
+        response = connection.getresponse()
+        if response.status != 200:
+            raise ValueError("No local inference response")
+        reply = json.loads(response.read(16_385))
+        content = reply["message"]["content"]
+        if reply.get("done") is not True or not isinstance(content, str) or not content.strip():
+            raise ValueError("Incomplete local response")
+        return content.strip()
     finally:
         connection.close()
+
+
+def conversation_reply(text):
+    words = normalized(text).removeprefix("nova, ").strip()
+    if not (re.match(r"^(?:vad|vem|nar|varfor|hur|vilk\w*|forklara|beratta|ar du)\b", words)
+            or words.endswith("?")):
+        return Interpretation(None)
+    prompt = ("Du är Nova, en lokal svensk datorassistent. Svara på frågan med en eller två korta "
+              "meningar på svenska som passar för uppläsning. Du har inga verktyg här och kan inte "
+              "se användarens skärm, meddelanden eller aktuella webbinformation. Påstå aldrig att "
+              "du har utfört något. Om något är oklart, ställ en följdfråga.")
+    try:
+        answer = _local_chat({"model": "qwen3:4b-instruct", "stream": False, "keep_alive": "2m",
+                              "options": {"num_predict": 120, "num_ctx": 2048},
+                              "messages": [{"role": "system", "content": prompt}, {"role": "user", "content": text}]})
+        return Interpretation(None, answer[:650])
+    except (OSError, HTTPException, ValueError, TypeError, KeyError, AttributeError):
+        return Interpretation(None, "Jag hörde din fråga, men den lokala modellen svarade inte. Försök igen.")
 
 
 class VoiceInterpreter:
@@ -164,5 +203,8 @@ class VoiceInterpreter:
     def _run(self):
         while True:
             turn, text, spotify_selected = self.pending.get()
-            result = interpret(text, spotify_selected)
+            greeting = local_greeting(text)
+            result = Interpretation(None, greeting) if greeting else interpret(text, spotify_selected)
+            if not result.action and not result.message:
+                result = conversation_reply(text)
             self.results.put((turn, result))

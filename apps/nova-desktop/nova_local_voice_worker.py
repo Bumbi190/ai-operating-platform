@@ -79,17 +79,18 @@ def run(*, mode: str, seconds: float, device: int | None, model_dir: Path | None
     )
 
     gate = SpeechGate()
-    pending: deque[Future[str]] = deque()
+    pending: deque[tuple[Future[str], float, float]] = deque()
     since = time.monotonic()
     levels = 0
     utterances = 0
 
-    def deliver(future):
+    def deliver(item):
+        future, start, end = item
         phrase = future.result(timeout=8)
         if phrase:
-            emit("transcript", text=phrase)
+            emit("transcript", text=phrase, audio_start=start, audio_end=end)
         else:
-            emit("no_transcript")
+            emit("no_transcript", audio_start=start, audio_end=end)
 
     try:
         # Single STT task at a time; no unbounded backlog of captured speech.
@@ -122,14 +123,16 @@ def run(*, mode: str, seconds: float, device: int | None, model_dir: Path | None
                         emit(kind)
                     if model_job and model_job.done():
                         model_job.result()  # Surface a startup failure even before speech.
-                    while pending and pending[0].done():
+                    while pending and pending[0][0].done():
                         deliver(pending.popleft())
                     if segment is not None:
                         utterances += 1
                         if model_job:
                             if len(pending) < 3:
                                 emit("transcribing")
-                                pending.append(pool.submit(transcribe, segment))
+                                end = time.monotonic()
+                                duration = len(segment) / (SAMPLE_RATE * 2)
+                                pending.append((pool.submit(transcribe, segment), end - duration, end))
                             else:
                                 emit("warning", code="TRANSCRIBER_BUSY")
                 gate.clear()

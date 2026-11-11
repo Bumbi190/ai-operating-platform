@@ -23,7 +23,19 @@ ENV_ROOT = (
     / "Projects" / "Omnira" / "Administration" / "NovaDesktop"
 )
 VENV_PYTHON = ENV_ROOT / ".venv-audio" / "Scripts" / "python.exe"
-MODEL_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Omnira" / "Nova" / "models" / "faster-whisper-tiny"
+MODEL_ROOT = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Omnira" / "Nova" / "models"
+
+
+def _installed_model(directory):
+    return all((directory / name).is_file() for name in ("model.bin", "config.json", "tokenizer.json"))
+
+
+def _preferred_model(root):
+    small = root / "faster-whisper-small"
+    return small if _installed_model(small) else root / "faster-whisper-tiny"
+
+
+MODEL_DIR = _preferred_model(MODEL_ROOT)
 ALLOWED_EVENTS = frozenset({
     "ready", "loading", "level", "speech_start", "speech_end", "transcribing",
     "transcript", "no_transcript", "warning", "error", "finished", "exit",
@@ -33,10 +45,7 @@ MAX_SESSION_SECONDS = PILOT_SECONDS
 
 
 def local_model_ready() -> bool:
-    return MODEL_DIR.is_dir() and all(
-        (MODEL_DIR / name).is_file()
-        for name in ("model.bin", "config.json", "tokenizer.json")
-    )
+    return _installed_model(MODEL_DIR)
 
 
 class NativeAudioSession:

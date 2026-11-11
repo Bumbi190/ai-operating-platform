@@ -34,6 +34,19 @@ class SpokenReplyTests(unittest.TestCase):
         self.assertIsNotNone(state.enqueue("Spotify är öppet.", mode="nova_speech")[0])
         self.assertEqual(state.next()["text"], "Spotify är öppet.")
 
+    def test_unclear_navigation_accepts_a_bare_destination_on_the_next_turn(self):
+        from nova_overlay import NovaOverlay
+        from nova_auto_voice import safe_auto_navigation
+        panel = NovaOverlay.__new__(NovaOverlay)
+        panel._conversation_active = Mock(return_value=True)
+        panel._local_voice_only = False
+        panel.reply_mode = "sanna"
+        panel._append, panel._reply, panel._perform_interpreted_action = Mock(), Mock(), Mock()
+        panel._received_native_transcript("Hej Nova, kan du ta mig till mig?")
+        self.assertIn("Vilken app", panel._reply.call_args.args[1])
+        panel._received_native_transcript("Min kalender i Omnira.")
+        panel._perform_interpreted_action.assert_called_once_with(safe_auto_navigation("öppna kalendern"))
+
     def test_spoken_calendar_wishes_require_a_single_named_destination(self):
         from nova_auto_voice import safe_auto_navigation
         calendar = safe_auto_navigation("öppna kalendern")

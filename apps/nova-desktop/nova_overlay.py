@@ -203,6 +203,7 @@ class NovaOverlay:
         self.reply_mode = load_reply_mode(self.reply_file)
         self._last_unclear_audio = 0.0
         self.last_heard = ""
+        self._destination_question = False
         self.preview_file = (Path(local_app_data) / "Omnira" / "Nova" / "preview-origin.txt"
                              if local_app_data else None)
         approved_preview = (read_saved_preview_origin(str(self.preview_file))
@@ -829,6 +830,23 @@ class NovaOverlay:
                 self._reply("nova", "Okej. Vad vill du göra?")
                 return
         if conversation and self._desktop_dialogue():
+            if getattr(self, "_destination_question", False):
+                self._destination_question = False
+                target = re.sub(r"^nova[, ]+", "", value).strip(" .!?")
+                resolved = safe_auto_navigation("öppna " + target)
+                if resolved:
+                    self._append("you", "DU (lokalt tal): " + phrase[:350])
+                    self._perform_interpreted_action(resolved)
+                    return
+            incomplete = re.fullmatch(
+                r"(?:(?:kan|vill|skulle) du (?:kunna )?)?(?:(?:ta|navigera) mig (?:till|dit)|"
+                r"(?:oppna|visa|ga till))(?: (?:mig|den|det|den dar))?", answer.strip()
+            )
+            if incomplete:
+                self._destination_question = True
+                self._append("you", "DU (lokalt tal): " + phrase[:350])
+                self._reply("nova", "Jag missade vart du ville gå. Vilken app eller sida?")
+                return
             greeting = local_greeting(command)
             if greeting:
                 self._append("you", "DU (lokalt tal): " + phrase[:350])
@@ -1121,6 +1139,7 @@ class NovaOverlay:
             self._connect_sanna()
             return
         if not self._conversation_active():
+            self._destination_question = False
             self.spotify_selected = False
             self.voice_interpreter.history = ()
         voice = self.bridge.state.voice_snapshot()

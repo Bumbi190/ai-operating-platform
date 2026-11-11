@@ -32,7 +32,7 @@ def offline_transcribe(segment: bytes, model) -> str:
         pcm,
         language="sv",
         beam_size=3,
-        hotwords="Nova, Spotify, diskutrymme, kalendern, anteckning",
+        initial_prompt="Svenska: Nova, Omnira, Spotify, kalendern, ledigt diskutrymme, en anteckning med texten.",
         best_of=1,
         condition_on_previous_text=False,
         vad_filter=False,

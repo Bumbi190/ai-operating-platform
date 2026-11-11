@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import queue
 import re
+import subprocess
 import threading
 import time
 import tkinter as tk
@@ -25,7 +26,7 @@ from nova_placement import (
     foreground_window_rectangle, choose_working_zone,
     read_saved_anchor, save_anchor, clear_anchor,
 )
-from nova_auto_voice import AutoVoiceState, native_command_text, safe_auto_navigation, safe_stop_command, safe_uia_read_action, safe_window_focus
+from nova_auto_voice import AutoVoiceState, native_command_text, safe_auto_navigation, safe_stop_command, safe_uia_read_action, safe_window_focus, spotify_command
 from nova_native_tasks import (
     NOTES_DIR, TaskPlan, parse_native_task, safe_native_voice_action, execute_native_step,
 )
@@ -236,6 +237,9 @@ class NovaOverlay:
         # Only a user gesture starts capture. Opening at login leaves the mic off.
         self.native_mic_hotkey = tk.BooleanVar(value=True)
         self._local_voice_only = True
+        self.spotify_selected = False
+        self._media_worker = None
+        self._next_media_action = None
         self.native_mic_session: NativeAudioSession | None = None
         self._native_hotkey_pending_until = 0.0
         self._native_conversation_deadline = 0.0
@@ -701,12 +705,13 @@ class NovaOverlay:
             return
         action = safe_auto_navigation(command) if addressed else None
         if addressed and not action:
-            local = (safe_native_voice_action(command) or safe_browser_command(command)
+            local = (spotify_command(command, spotify_selected=getattr(self, 'spotify_selected', False))
+                     or safe_native_voice_action(command) or safe_browser_command(command)
                      or safe_window_focus(command) or safe_uia_read_action(command)
                      or campaign_review_intent(command))
             if local or propose_code_job(command):
                 keep_listening = local and local.kind in (
-                    "native_read", "browser_control", "browser_focus", "focus")
+                    "native_read", "browser_control", "browser_focus", "focus", "spotify_media")
                 if not keep_listening:
                     self.stop_native_mic_pilot(quiet=True)
                 self.send(from_voice=True, safe_voice_action=local, transcript=command)
@@ -924,6 +929,8 @@ class NovaOverlay:
         self._start_panel_voice()
 
     def _start_panel_voice(self):
+        if not self._conversation_active():
+            self.spotify_selected = False
         voice = self.bridge.state.voice_snapshot()
         if self.bridge.state.online() and voice.get("authorized"):
             if voice.get("mode") != "native":
@@ -965,6 +972,7 @@ class NovaOverlay:
             self.root.after(600, lambda: self._voice_after_hotkey(request_id))
 
     def collapse(self):
+        self._cancel_spotify_control()
         self._native_conversation_deadline = 0.0
         self._native_hotkey_pending_until = 0.0
         # Never leave native microphone capture hidden behind a collapsed UI.
@@ -1199,7 +1207,8 @@ class NovaOverlay:
                 self._auto_voice.cancel()
             if self.expanded and self.auto_voice_enabled.get() and self._auto_voice.armed:
                 spoken = self.command.get("1.0", "end-1c").strip()
-                decision = self._auto_voice.observe_submission(spoken, time.monotonic())
+                decision = self._auto_voice.observe_submission(
+                    spoken, time.monotonic(), spotify_selected=self.spotify_selected)
                 if decision is not None:
                     # Verify that the original, unmodified transcript is still
                     # in Nova's own focused text field.
@@ -1335,6 +1344,7 @@ class NovaOverlay:
             self._append("warn", f"Nova: Röstinmatning misslyckades: {exc}")
 
     def _open_url(self, url: str, caption: str):
+        self.spotify_selected = False
         self._phase("navigerar", caption)
         self._append("step", "  ↳ " + caption)
         try:
@@ -1355,6 +1365,7 @@ class NovaOverlay:
             self._phase("godkannande", "Kontrollera webbläsaren")
 
     def _start_app(self, action):
+        self.spotify_selected = False
         self._phase("navigerar", "Startar godkänt Windows-program")
         self._append("step", "  ↳ " + action.description)
         if action.url == APP_SHORTCUTS["spotify"] and any(w.key == "spotify" for w in list_known_windows()):
@@ -1366,6 +1377,7 @@ class NovaOverlay:
             return
         try:
             os.startfile(action.url)
+            self.spotify_selected = action.url == APP_SHORTCUTS["spotify"]
             self._append("ok", "Nova: Windows har fått startkommandot. "
                          "Programfönstrets innehåll är inte verifierat.")
             self._phase("klar", "Startkommando skickat")
@@ -1373,7 +1385,65 @@ class NovaOverlay:
             self._append("warn", "Nova: Programmet kunde inte startas: " + str(exc))
             self._phase("godkannande", "Programstart misslyckades")
 
+    def _control_spotify(self, action: str):
+        if action not in ("play", "pause"):
+            return
+        if self._media_worker is not None:
+            # Keep the last requested state if the previous action is still pending.
+            self._next_media_action = action
+            return
+        powershell = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+        script = Path(__file__).with_name("nova_spotify.ps1")
+        try:
+            worker = subprocess.Popen(
+                [str(powershell), "-NoProfile", "-NonInteractive", "-File", str(script), action],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+        except OSError:
+            self._append("warn", "Nova: Kunde inte ansluta till Windows mediestyrning.")
+            return
+        self._media_worker = worker
+        self._phase("tolkar", "Kontrollerar Spotify")
+        deadline = time.monotonic() + 15
+
+        def check():
+            if self._media_worker is not worker:
+                return
+            status = worker.poll()
+            if status is None:
+                if time.monotonic() < deadline:
+                    self.root.after(100, check)
+                    return
+                worker.kill()
+                status = 4
+            self._media_worker = None
+            if status == 0:
+                message = "Spotify spelar." if action == "play" else "Spotify är pausat."
+            else:
+                message = {
+                    2: "Hittade ingen entydig Spotify-spelare. Öppna Spotify och välj en låt.",
+                    3: "Spotify kunde inte utföra kommandot. Välj en låt i spelaren.",
+                    4: "Spotify har inte bekräftat att uppspelningen ändrades.",
+                }.get(status, "Kunde inte kontrollera uppspelningen i Windows.")
+            self._append("ok" if status == 0 else "warn", "Nova: " + message)
+            self._phase("klar" if status == 0 else "godkannande", message)
+            following, self._next_media_action = self._next_media_action, None
+            if following and (following != action or status != 0):
+                self._control_spotify(following)
+
+        self.root.after(100, check)
+
+    def _cancel_spotify_control(self):
+        self.spotify_selected = False
+        self._next_media_action = None
+        worker = getattr(self, "_media_worker", None)
+        self._media_worker = None
+        if worker is not None and worker.poll() is None:
+            worker.kill()
+
     def _open_project_folder(self, path: str):
+        self.spotify_selected = False
         self._phase("navigerar", "Navigerar till vald projektmapp")
         self._append("step", "  ↳ Filutforskaren: " + os.path.basename(path))
         if not os.path.isdir(path):
@@ -1803,6 +1873,7 @@ class NovaOverlay:
             # never reach arbitrary local UI or shell execution.
             if (safe_voice_action is None or
                     (safe_stop_command(text) or safe_auto_navigation(text) or safe_native_voice_action(text)
+                     or spotify_command(text, spotify_selected=getattr(self, "spotify_selected", False))
                      or safe_browser_command(text) or safe_window_focus(text)
                      or campaign_review_intent(text)
                      or safe_uia_read_action(text)) != safe_voice_action):
@@ -1828,9 +1899,13 @@ class NovaOverlay:
                 self._open_project_folder(folder)
                 return
             action = (safe_uia_read_action(text) or safe_browser_command(text)
-                      or safe_window_focus(text) or campaign_review_intent(text) or route(text))
+                      or safe_window_focus(text) or campaign_review_intent(text) or safe_auto_navigation(text)
+                      or spotify_command(text, spotify_selected=self.spotify_selected) or route(text))
         if action.kind == "uia_read_preview":
             self._present_uia_read_preview(text)
+        elif action.kind == "spotify_media":
+            self.spotify_selected = True
+            self._control_spotify(action.url)
         elif action.kind == "campaign_review":
             self._open_campaign_review(action.url)
         elif action.kind in ("browser_control", "browser_focus"):
@@ -1884,6 +1959,7 @@ class NovaOverlay:
 
     def _navigate_browser(self, action):
         """Only allow safe, fixed browser shortcuts to a verified browser HWND."""
+        self.spotify_selected = False
         self._phase("navigerar", "Söker verifierat webbläsarfönster")
         self._append("step", "  ↳ " + action.description)
         try:
@@ -1913,10 +1989,13 @@ class NovaOverlay:
             self._phase("godkannande", "Fönsterlistning misslyckades")
 
     def focus_window(self, key):
+        self.spotify_selected = False
         self._phase("navigerar", "Försöker växla till godkänt öppet program")
         self._append("step", "  ↳ Fönsterbyte: " + key)
         try:
             verified, message = focus_known_window(key)
+            # Spotify remains the conversational target even if Windows denied foreground focus.
+            self.spotify_selected = key == "spotify"
             self._append("ok" if verified else "warn", "Nova: " + message)
             self._phase("klar" if verified else "godkannande", message)
         except Exception as exc:
@@ -1933,6 +2012,7 @@ class NovaOverlay:
         self._phase("godkannande", "Exempel: Öppna Omniras projektmapp")
 
     def stop(self):
+        self._cancel_spotify_control()
         self._native_hotkey_pending_until = 0.0
         self._native_conversation_deadline = 0.0
         self.stop_native_mic_pilot(quiet=True)
@@ -1955,6 +2035,7 @@ class NovaOverlay:
 
     def quit(self):
         self._native_conversation_deadline = 0.0
+        self._cancel_spotify_control()
         self._native_hotkey_pending_until = 0.0
         self.stop_native_mic_pilot(quiet=True)
         self.closed = True

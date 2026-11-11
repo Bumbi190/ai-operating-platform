@@ -106,19 +106,59 @@ def safe_uia_read_action(text: str) -> Action | None:
     )
 
 
+# Additional conversational forms still require a complete, named destination.
+_REQUEST_PREFIX = (
+    r"^(?:(?:hej|halla) +)?(?:nova[,:]? +)?"
+    r"(?:(?:(?:kan|vill|skulle) du|kan vi) +(?:kunna +)?(?:snalla +)?)?"
+)
+_CONVERSATIONAL_NAV = re.compile(
+    _REQUEST_PREFIX + r"(?:oppna(?: upp)?|visa(?: mig)?|ta mig(?: tillbaka)? till|"
+    r"ga (?:in (?:pa|i)|tillbaka till|over till|till)|hoppa (?:in pa|till)|"
+    r"navigera(?: mig)?(?: tillbaka)? (?:till|in pa)|vaxla till|byt till) +"
+)
+_SPOKEN_TARGETS = {
+    "om nira": "omnira", "omira": "omnira", "om mira": "omnira", "om era": "omnira",
+    "omnila": "omnira", "spot ify": "spotify",
+}
+_MEDIA_COMMAND = re.compile(
+    _REQUEST_PREFIX + r"(?P<verb>tryck(?:a)? pa play|spela(?: upp)?|playa|play|"
+    r"satt(?:a)? (?:pa|igang)|starta|ateruppta|fortsatt spela|pausa|paus)"
+    r"(?: (?P<object>lite musik|musiken|musik|uppspelningen|laten|den))?"
+    r"(?: (?:i |pa )?(?P<app>spotify))?(?: nu)?(?:,? tack)?$"
+)
+
+
+def spotify_command(text: str, *, spotify_selected: bool = False) -> Action | None:
+    value = _TRAILING_PUNCT.sub("", normalized(text)).strip()
+    match = _MEDIA_COMMAND.fullmatch(value)
+    if not match or not (match["app"] or spotify_selected):
+        return None
+    verb = match["verb"]
+    # "Starta Spotify" opens the app. Starting music needs a media object.
+    if verb in ("starta", "satt pa", "satta pa", "satt igang", "satta igang") and not match["object"]:
+        return None
+    return Action("spotify_media", "pause" if verb in ("pausa", "paus") else "play")
+
+
 def safe_auto_navigation(text: str) -> Action | None:
     cleaned = normalized(text)
     while cleaned and _TRAILING_PUNCT.search(cleaned):
         cleaned = _TRAILING_PUNCT.sub("", cleaned).strip()
     if not cleaned or len(cleaned) > 140:
         return None
-    match = NAV.match(cleaned)
+    match = _CONVERSATIONAL_NAV.match(cleaned) or NAV.match(cleaned)
     if not match:
         return None
     target = cleaned[match.end():].strip()
+    target = re.sub(r"(?:,? (?:tack|ar du snall))$", "", target).removesuffix(" nu")
+    if re.fullmatch(r"spot[.,… ]+spotify", target):
+        target = "spotify"
+    target = _SPOKEN_TARGETS.get(target, target)
+    if match.group().strip().endswith(("byt till", "vaxla till")) and target not in ("omnira", "spotify"):
+        return None
     if target not in SAFE_NAV_TARGETS:
         return None
-    selected = route(cleaned)
+    selected = route("öppna " + target)
     if selected.kind not in ("open", "app"):
         return None
     return selected
@@ -178,7 +218,7 @@ class AutoVoiceState:
             self.cancel()
         return action
 
-    def observe_submission(self, text: str, now: float) -> VoiceDecision | None:
+    def observe_submission(self, text: str, now: float, *, spotify_selected: bool = False) -> VoiceDecision | None:
         """Auto-SEND one transcribed phrase after ~3s, but never auto-authorize.
 
         A safe navigation is eligible for local execution. Other phrases are
@@ -194,6 +234,7 @@ class AutoVoiceState:
             text=cleaned,
             safe_navigation=(safe_stop_command(cleaned)
                              or safe_auto_navigation(cleaned)
+                             or spotify_command(cleaned, spotify_selected=spotify_selected)
                              or safe_browser_command(cleaned)
                              or safe_window_focus(cleaned)
                              or safe_native_voice_action(cleaned)

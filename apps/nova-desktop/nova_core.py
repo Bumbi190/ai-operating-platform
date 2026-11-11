@@ -20,6 +20,7 @@ URLS = {
     "outlook": "https://outlook.office.com/mail/",
     "chatgpt": "https://chatgpt.com/",
     "atlas": ATLAS,
+    "omnira": "https://omniraos.se/dashboard",
     "projects": "https://omniraos.se/projects",
     "planning": "https://omniraos.se/planning",
     "calendar": "https://omniraos.se/calendar",
@@ -146,7 +147,8 @@ def route(text: str) -> Action:
             (r"\b(familje.stunden|familjestunden)\b", "familjestunden", "Öppnar Familje-Stunden."),
             (r"\b(planering|planeringsvy)\b", "planning", "Öppnar Omniras planeringsvy."),
             (r"\b(projekt|webbuilder|webbbyggare|web studio)\b", "projects", "Öppnar Omniras projektvy."),
-            (r"\b(atlas|omnira|nova)\b", "atlas", "Öppnar Atlas i Omnira."),
+            (r"\bomnira\b", "omnira", "Öppnar Omniras översikt."),
+            (r"\b(atlas|nova)\b", "atlas", "Öppnar Atlas i Omnira."),
         ):
             if re.search(pattern, target):
                 return Action("open", URLS[key], description)

@@ -44,7 +44,7 @@ _TARGETS = {
     "min mejl": ("url", "gmail"),
     "hotmail": ("url", "outlook"),
     "atlas": ("url", "atlas"),
-    "omnira": ("url", "atlas"),
+    "omnira": ("url", "omnira"),
     "handlarborsen": ("url", "handlarborsen"),
     "familje stunden": ("url", "familjestunden"),
     "familje-stunden": ("url", "familjestunden"),

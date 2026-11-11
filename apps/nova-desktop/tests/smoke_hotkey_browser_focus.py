@@ -40,6 +40,19 @@ try:
             app._poll_native_mic()
             start.assert_called_once()
             assert start.call_args.args[0].url.lower().endswith("spotify.exe")
+        with patch("nova_overlay.list_known_windows", return_value=[]), \
+                patch("nova_overlay.os.path.isfile", return_value=True), \
+                patch("nova_overlay.os.startfile") as launch, patch.object(app, "_control_spotify") as media:
+            app._received_native_transcript("Skulle du kunna gå in på Spotify?")
+            assert launch.call_count == 1 and app.spotify_selected
+            app._received_native_transcript("Kan du playa?")
+            app._received_native_transcript("Pausa musiken")
+            assert [call.args[0] for call in media.call_args_list] == ["play", "pause"]
+            app._received_native_transcript("Ta mig tillbaka till Om Nira")
+            browser.assert_called_once_with("https://omniraos.se/dashboard", new=2)
+            browser.reset_mock()
+            app._received_native_transcript("Play")
+            assert media.call_count == 2 and not app.spotify_selected
         assert app.native_mic_session is worker
         worker.stop.assert_not_called()
         assert app.command.get("1.0", "end-1c") == ""

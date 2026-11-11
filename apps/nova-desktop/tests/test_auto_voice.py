@@ -1,7 +1,7 @@
 """Voice auto-SEND after 3s: only exact allowlisted navigation may execute."""
 import unittest
 
-from nova_auto_voice import AutoVoiceState, safe_auto_navigation, safe_window_focus
+from nova_auto_voice import AutoVoiceState, safe_auto_navigation, safe_window_focus, spotify_command
 from nova_core import URLS
 
 
@@ -32,6 +32,25 @@ class AutoVoiceTests(unittest.TestCase):
                 self.assertIsNotNone(action)
                 self.assertEqual(action.kind, "open")
                 self.assertEqual(action.url, expected)
+
+    def test_conversational_navigation_and_distinct_omnira_home(self):
+        for phrase in ("Skulle du kunna ta mig tillbaka till Omnira?",
+                       "Nova, gå in på Om Nira tack", "Navigera mig till Omira",
+                       "Byt till Omnira", "Ta mig tillbaka till Omnila"):
+            self.assertEqual(safe_auto_navigation(phrase).url, URLS["omnira"])
+        self.assertEqual(safe_auto_navigation("Öppna Atlas").url, URLS["atlas"])
+        self.assertEqual(safe_auto_navigation("Kan du gå in på Spot.. Spotify?").kind, "app")
+        self.assertIsNone(safe_auto_navigation("Gå in på Omnira och skicka ett mejl"))
+
+    def test_spotify_media_requires_target_and_exact_intent(self):
+        for phrase in ("Kan du playa?", "Tryck på play", "Kan du sätta på lite musik?"):
+            self.assertIsNone(spotify_command(phrase))
+            self.assertEqual(spotify_command(phrase, spotify_selected=True).url, "play")
+        self.assertEqual(spotify_command("Kan du spela upp musiken på Spotify?").url, "play")
+        self.assertEqual(spotify_command("Pausa Spotify tack").url, "pause")
+        for phrase in ("Starta Spotify", "Spela inte musik på Spotify", "Spela på YouTube",
+                       "Han sa playa", "Pausa Spotify och skicka ett mejl"):
+            self.assertIsNone(spotify_command(phrase, spotify_selected=True))
 
     def test_all_extra_instructions_fail_closed(self):
         for utterance in (

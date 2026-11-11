@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useAtlas } from '@/lib/atlas/runtime'
 
 type Pair = { port: number; key: string; hotkey: boolean; native: boolean }
-type LocalTask = { id: string; text: string; mode: 'nova_readonly' | 'atlas_operator' | 'nova_voice' }
+type LocalTask = { id: string; text: string; mode: 'nova_readonly' | 'atlas_operator' | 'nova_voice' | 'nova_speech' }
 type VoiceControl = { id: string; kind: 'voice_toggle' | 'voice_interrupt' | 'voice_resume' }
 type ChatTurn = { role: 'user' | 'assistant'; content: string }
 type LocalFetch = RequestInit & { targetAddressSpace: 'loopback' }
@@ -321,6 +321,18 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
             void (async () => {
               try {
                 if (task.mode === 'atlas_operator') await executeOperator(task)
+                else if (task.mode === 'nova_speech') {
+                  if (!voiceAuthorizedRef.current || typeof task.text !== 'string' || !task.text.trim() || task.text.length > 300) {
+                    throw new Error('Sanna kunde inte läsa upp skrivbordssvaret.')
+                  }
+                  setLastAnswer(task.text)
+                  const played = await atlasRef.current.speakNativeReply?.(task.text)
+                  if (!played) {
+                    atlasRef.current.stopAudio()
+                    throw new Error('Sannas ljud kunde inte spelas upp. Kontrollera ljudet i Omnira-fliken.')
+                  }
+                  await push(task.id, 'done')
+                }
                 else if (task.mode === 'nova_readonly' || task.mode === 'nova_voice') await executeReadOnly(task)
                 else throw new Error('Ok?nt eller ogodk?nt Nova-uppdrag')
               } catch (error) {
@@ -431,7 +443,7 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
       // Windows owns the microphone; the authenticated Omnira tab remains
       // an Atlas conversation/TTS bridge, never a browser microphone.
       const grant = await local<{ authorized: boolean }>(
-        '/voice/authorize', 'POST', { protocol: 1, mode: 'native' })
+        '/voice/authorize', 'POST', { protocol: 1, mode: 'native', desktopReplies: true })
       if (!grant.authorized) throw new Error('Windows-r?stl?get nekades.')
       voiceAuthorizedRef.current = true
       setVoiceAuthorized(true)

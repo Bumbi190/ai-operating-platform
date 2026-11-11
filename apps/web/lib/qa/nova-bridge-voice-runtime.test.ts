@@ -58,13 +58,22 @@ describe('Nova Desktop persistent Atlas voice bridge', () => {
     const bridge = readFileSync(join(root, 'components/platform/os/NovaBridgeRuntime.tsx'), 'utf8')
     const page = readFileSync(join(root, 'app/(platform)/nova-bridge/page.tsx'), 'utf8')
     expect(bridge).toContain("const native = params.get('native') === '1'")
-    expect(bridge).toContain("'/voice/authorize', 'POST', { protocol: 1, mode: 'native' }")
+    expect(bridge).toContain("'/voice/authorize', 'POST', { protocol: 1, mode: 'native', desktopReplies: true }")
     expect(bridge).toContain("data.voices.some(v => v.key === 'nova')")
     expect(bridge).toContain('current.selectNovaVoice?.()')
     expect(bridge).toContain("current.deactivate()")
     expect(bridge).toContain('voiceStatus: nativeVoice ?')
     expect(page).toContain('Koppla Windows-r?st (Sanna)')
     expect(page).toContain('bridge.nativeVoice')
+  })
+
+  it('speaks the desktop result directly and acknowledges successful playback', () => {
+    const bridge = readFileSync(join(root, 'components/platform/os/NovaBridgeRuntime.tsx'), 'utf8')
+    const block = bridge.split("else if (task.mode === 'nova_speech')")[1].split('else if (task.mode')[0]
+    expect(block).toContain('await atlasRef.current.speakNativeReply?.(task.text)')
+    expect(block).toContain('if (!played)')
+    expect(block).toContain("await push(task.id, 'done')")
+    expect(block).not.toContain('executeReadOnly')
   })
 
   it('uses only the tool-free mode for automatic native speech and keeps ordinary read-only context separate', () => {

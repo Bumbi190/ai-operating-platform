@@ -11,6 +11,40 @@ from ctypes import wintypes
 import sys
 
 
+def show_idle_bubble(root):
+    """Map the first Tk window without taking input from the current app."""
+    # Tk activates the first mapped window even if wm state requested a
+    # nonactivating show. Veto just that change on this UI thread during
+    # the first mapping. Explicit panel clicks keep normal focus behavior.
+    u = ctypes.WinDLL("user32", use_last_error=True)
+    k = ctypes.WinDLL("kernel32", use_last_error=True)
+    hook_type = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM)
+    u.SetWindowsHookExW.argtypes = [ctypes.c_int, hook_type, wintypes.HINSTANCE, wintypes.DWORD]
+    u.SetWindowsHookExW.restype = wintypes.HANDLE
+    u.CallNextHookEx.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM]
+    u.CallNextHookEx.restype = ctypes.c_ssize_t
+    u.UnhookWindowsHookEx.argtypes = [wintypes.HANDLE]
+    u.UnhookWindowsHookEx.restype = wintypes.BOOL
+    k.GetCurrentThreadId.restype = wintypes.DWORD
+    wh_cbt, hcbt_activate, hcbt_setfocus = 5, 5, 9
+
+    @hook_type
+    def keep_focus(code, window, detail):
+        if code in (hcbt_activate, hcbt_setfocus):
+            return 1
+        return u.CallNextHookEx(None, code, window, detail)
+
+    hook = u.SetWindowsHookExW(wh_cbt, keep_focus, None, k.GetCurrentThreadId())
+    if not hook:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        root.update_idletasks()
+        root.state("normal")
+        root.update_idletasks()
+    finally:
+        u.UnhookWindowsHookEx(hook)
+
+
 class ForegroundFocusGuard:
     def __init__(self, user32=None):
         if sys.platform != "win32":

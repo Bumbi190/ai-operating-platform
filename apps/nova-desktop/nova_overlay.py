@@ -23,7 +23,7 @@ import webbrowser
 from nova_commander import CommanderSession, commander_request
 from nova_core import HotkeyListener, URLS, APP_SHORTCUTS, route, normalized
 from nova_hotkey_host import HostEventListener
-from nova_focus import ForegroundFocusGuard
+from nova_focus import ForegroundFocusGuard, show_idle_bubble
 from nova_placement import (
     foreground_window_rectangle, choose_working_zone,
     read_saved_anchor, save_anchor, clear_anchor,
@@ -283,8 +283,7 @@ class NovaOverlay:
         self.root.after(125, self._poll_native_mic)
         self.root.after(400, self._remember_active_window)
         self.root.after(900, self._show_bridge_status)
-        self.root.deiconify()
-        self.root.lift()
+        show_idle_bubble(self.root)
         if os.environ.get("NOVA_START_EXPANDED") == "1":
             self.root.after(180, self._open_from_hotkey)
 
@@ -341,7 +340,6 @@ class NovaOverlay:
             geometry = f"{width}x{height}{x:+d}{y:+d}"
         self._requested_geometry = geometry
         self.root.geometry(geometry)
-        self.root.lift()
         self.root.after(60, self._settle_placement, geometry)
 
     def _settle_placement(self, geometry):

@@ -54,7 +54,7 @@ _UIA_READ = re.compile(
 
 
 
-_SPOKEN_NAME = re.compile(r"^(?:hej[ ,]+)?(?:nova|innova)\b[.,:!?\s]*", re.I)
+_SPOKEN_NAME = re.compile(r"^(?:(?:hej|okej)[ ,]+)?(?:nova|innova)\b[.,:!?\s]*", re.I)
 # Remove only a complete filler at the start, never part of the instruction.
 _SPOKEN_FILLER = re.compile(r"^ja(?:,?\s+det)?[,.!?]\s+", re.I)
 _SPOKEN_NAV = re.compile(r"^((?:(?:kan|vill|skulle) du )?)navgera\b", re.I)
@@ -112,7 +112,7 @@ def safe_uia_read_action(text: str) -> Action | None:
 
 # Additional conversational forms still require a complete, named destination.
 _REQUEST_PREFIX = (
-    r"^(?:(?:hej|halla) +)?(?:nova[,:]? +)?"
+    r"^(?:(?:hej|halla|okej)[ ,]+)?(?:nova[,:]? +)?"
     r"(?:(?:(?:kan|vill|skulle) du|kan vi) +(?:kunna +)?(?:snalla +)?)?"
 )
 _CONVERSATIONAL_NAV = re.compile(
@@ -165,6 +165,8 @@ def safe_auto_navigation(text: str) -> Action | None:
     target = target.removesuffix(" at mig").removesuffix(" for mig")
     if re.fullmatch(r"spot[.,… ]+spotify", target):
         target = "spotify"
+    if re.fullmatch(r"(?:min )?kalendern?(?:(?:,? i|,?) (?:omnira|om nira|omira))", target):
+        target = "kalendern"
     target = _SPOKEN_TARGETS.get(target, target)
     if match.group().strip().endswith(("byt till", "vaxla till")) and target not in ("omnira", "spotify"):
         return None

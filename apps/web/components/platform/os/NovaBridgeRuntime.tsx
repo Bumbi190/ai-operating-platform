@@ -312,7 +312,8 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
     try {
       while (!stoppedRef.current) {
         try {
-          const data = await local<{ task?: LocalTask; command?: VoiceControl }>('/next')
+          const wait = windowsPlayback.current && voiceAuthorizedRef.current
+          const data = await local<{ task?: LocalTask; command?: VoiceControl }>(wait ? '/next?wait=1' : '/next')
           if (data.command?.id) await executeVoiceControl(data.command)
           if (data.task?.id && !runningTaskRef.current) {
             runningTaskRef.current = true
@@ -377,7 +378,7 @@ export function NovaBridgeProvider({ children }: { children: ReactNode }) {
               }
             })()
           }
-          if (!stoppedRef.current) {
+          if (!wait && !stoppedRef.current) {
             await new Promise(resolve => setTimeout(resolve, voiceAuthorizedRef.current ? 250 : 800))
           }
         } catch (error) {

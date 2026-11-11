@@ -87,6 +87,7 @@ class BridgeState:
         self.origins = frozenset(origins)
         self.events: queue.Queue[dict] = queue.Queue()
         self.lock = threading.RLock()
+        self.activity = threading.Condition(self.lock)
         self.task: Task | None = None
         self.audio_process = None
         self.connected_at = 0.0
@@ -220,10 +221,12 @@ class BridgeState:
             # replaces another unacknowledged command, preventing double toggles.
             if kind == "voice_interrupt":
                 self.control_pending = {"id": str(uuid.uuid4()), "kind": kind}
+                self.activity.notify_all()
                 return True, "Avbrottet skickades till Atlas."
             if self.control_pending:
                 return False, "Ett r\\u00f6stkommando v\\u00e4ntar redan p\\u00e5 bekr\\u00e4ftelse."
             self.control_pending = {"id": str(uuid.uuid4()), "kind": kind}
+            self.activity.notify_all()
             return True, "R\\u00f6stkommandot skickades till Atlas."
 
     def next_voice_control(self) -> dict:
@@ -280,6 +283,7 @@ class BridgeState:
                 return None, "Nova har nått sin lokala gräns: högst 10 Atlas-frågor per 5 minuter."
             self.requests_at.append(now)
             self.task = Task(str(uuid.uuid4()), text.strip(), now, mode=mode)
+            self.activity.notify_all()
             self.events.put({"kind": "queued", "id": self.task.id, "mode": mode})
             return self.task.id, "Uppdraget koat till Atlas." if mode == "atlas_operator" else "Fragan koad till Atlas i laslage."
 
@@ -299,6 +303,14 @@ class BridgeState:
     def enqueue_operator(self, text: str) -> tuple[str | None, str]:
         """Explicit native operator approval, never a speech- or LLM-generated call."""
         return self.enqueue(text, mode="atlas_operator")
+
+    def next_poll(self, wait):
+        with self.activity:
+            if wait and self.online() and self.desktop_replies and self.voice_authorized:
+                self.heartbeat()
+                self.activity.wait_for(lambda: self.control_pending is not None
+                                       or (self.task and self.task.state == "pending"), timeout=3)
+            return {"task": self.next(), "command": self.next_voice_control()}
 
     def next(self) -> dict:
         with self.lock:
@@ -416,7 +428,7 @@ def create_handler(state: BridgeState):
                 self.send_json(403, {"error": "Not authorized"})
                 return
             if self.endpoint() == "/next":
-                self.send_json(200, {"task": state.next(), "command": state.next_voice_control()})
+                self.send_json(200, state.next_poll(urlsplit(self.path).query == "wait=1"))
             elif self.endpoint() == "/status":
                 task_id = urlsplit(self.path).query
                 self.send_json(200, {"state": state.task_state(task_id)})

@@ -37,7 +37,8 @@ class SpokenReplyTests(unittest.TestCase):
     def test_spoken_calendar_wishes_require_a_single_named_destination(self):
         from nova_auto_voice import safe_auto_navigation
         calendar = safe_auto_navigation("öppna kalendern")
-        for phrase in ("Ta mig till min kalender", "Jag skulle vilja kolla min kalender i Omnira"):
+        for phrase in ("Ta mig till min kalender", "Jag skulle vilja kolla min kalender i Omnira",
+                       "Okej, Nova, vill du öppna kalendern, Omnira?"):
             self.assertEqual(safe_auto_navigation(phrase), calendar)
         self.assertIsNone(safe_auto_navigation("Jag vill inte öppna min kalender"))
         self.assertIsNone(safe_auto_navigation("Jag vill kolla min kalender och boka ett möte"))

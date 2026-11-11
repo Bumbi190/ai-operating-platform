@@ -1108,7 +1108,8 @@ class NovaOverlay:
             self._redock_near_pointer()
         self.expand(listen=False)
         if self.native_mic_session and self.native_mic_session.running():
-            return
+            if self.reply_mode != "sanna" or self.bridge.state.online() or self._sanna_pair_attempted:
+                return
         if not self.native_mic_hotkey.get():
             self._phase("redo", "Skriv ditt kommando")
             return
@@ -1280,6 +1281,7 @@ class NovaOverlay:
             if self.bridge.state.online():
                 voice = self.bridge.state.voice_snapshot()
                 if voice.get("authorized") and voice.get("mode") == "native":
+                    self._sanna_pair_attempted = False
                     self.bridge_var.set("Sanna ansluten · Windows-mikrofon i Nova")
                 elif voice.get("authorized"):
                     labels = {

@@ -14,7 +14,9 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import tempfile
 import webbrowser
+from datetime import datetime
 
 from nova_core import Action, APP_SHORTCUTS, URLS, normalized
 
@@ -81,6 +83,12 @@ _PREAMBLE = re.compile(
     r"(?:(?:kan|vill|skulle)\s+du\s+)?"
 )
 _TRAILING = re.compile(r"[.!,?:;]+$")
+_NOTE = re.compile(
+    r"^(?:(?:hej\s+)?nova[\s,:]+)?(?:kan du\s+)?(?:skapa|spara|skriv)\s+"
+    r"(?:en\s+)?anteckning(?:\s+med texten\s*:?\s+|\s*:\s*)(.+)$",
+    re.IGNORECASE | re.DOTALL,
+)
+NOTES_DIR = _HOME / "Nova" / "Anteckningar"
 _OPEN_VERB = re.compile(r"^(?:oppna|visa|starta|ga till|ta mig till)\s+")
 _STATUS = re.compile(
     r"^(?:visa|kolla|kontrollera|ge mig)\s+"
@@ -98,9 +106,10 @@ _DISK_PHRASES = frozenset((
 
 @dataclass(frozen=True)
 class TaskStep:
-    kind: str             # url/app/folder/git_status/disk_free
+    kind: str
     key: str              # exact whitelist registry key
     description: str
+    note: str = ""
 
 
 @dataclass(frozen=True)
@@ -149,7 +158,15 @@ def parse_native_task(text: str) -> TaskPlan | None:
     Single opens are intentionally left to existing Nova routing; no extra
     confirmation or duplicate browser tab is introduced for those.
     """
-    if not isinstance(text, str) or len(text) > 240:
+    if not isinstance(text, str) or len(text) > 2200:
+        return None
+    note = _NOTE.fullmatch(text.strip())
+    if note:
+        body = note.group(1).strip()
+        if 0 < len(body) <= 2000:
+            return TaskPlan((TaskStep("note", "new", "Spara ny anteckning", body),), True)
+        return None
+    if len(text) > 240:
         return None
     s = _clean(text)
     if not s:
@@ -169,6 +186,10 @@ def parse_native_task(text: str) -> TaskPlan | None:
     # For multi-step navigation ONLY: no "och skicka", unknown site, path,
     # arbitrary link, semicolon, or interpreted code is allowed.
     clauses = s.split(" och ")
+    if len(clauses) == 1:
+        step = _one_open(s, inherit_verb=False)
+        if step and step.kind == "folder":
+            return TaskPlan((step,), False)
     if not 2 <= len(clauses) <= 3:
         return None
     steps: list[TaskStep] = []
@@ -212,11 +233,23 @@ def execute_native_step(step: TaskStep, *, browser_open=None, app_open=None,
                         git_read=None, disk_usage=None) -> TaskResult:
     """Revalidate every step, including when caller creates TaskStep manually."""
     browser_open = browser_open or webbrowser.open
-    app_open = app_open or os.startfile
     git_read = git_read or _git_read
     disk_usage = disk_usage or shutil.disk_usage
 
     try:
+        if step.kind == "note" and step.key == "new" and 0 < len(step.note.strip()) <= 2000:
+            NOTES_DIR.mkdir(parents=True, exist_ok=True)
+            prefix = datetime.now().strftime("Anteckning-%Y-%m-%d-%H%M%S-")
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=NOTES_DIR,
+                                             prefix=prefix, suffix=".txt", delete=False) as file:
+                try:
+                    file.write(step.note + "\n")
+                    file.flush()
+                except OSError:
+                    file.close()
+                    Path(file.name).unlink(missing_ok=True)
+                    raise
+            return TaskResult(True, "Anteckningen sparades i " + file.name)
         if step.kind == "url" and step.key in URLS and \
                 (step.kind, step.key) in _TARGETS.values():
             ok = browser_open(URLS[step.key], new=2)
@@ -229,14 +262,14 @@ def execute_native_step(step: TaskStep, *, browser_open=None, app_open=None,
             path = APP_SHORTCUTS[step.key]
             if not os.path.isfile(path):
                 return TaskResult(False, "Programgenvägen hittades inte: " + step.key)
-            app_open(path)
+            (app_open or os.startfile)(path)
             return TaskResult(True, "Start begärd: " + step.description +
                               ". Programfönstret är inte verifierat.")
         if step.kind == "folder" and step.key in _FOLDER_PATHS:
             path = _FOLDER_PATHS[step.key]
             if not path.is_dir():
                 return TaskResult(False, "Projektmappen finns inte: " + step.key)
-            app_open(str(path))
+            (app_open or os.startfile)(str(path))
             return TaskResult(True, "Filutforskaren ombads öppna " + step.key + ".")
         if step.kind == "git_status" and step.key in _REPO_PATHS:
             path = _REPO_PATHS[step.key]

@@ -64,8 +64,8 @@ def after_auto_voice():
     check_atlas()
 
 
-# Intercept just the actual Win+H delivery, not the dictation scheduler.
-app._send_windows_voice_typing_shortcut = lambda *_args: voice_shortcuts.append("win+h")
+# Simulate capture; the shortcut itself must never open the saved URL.
+app.start_native_mic_pilot = lambda: (voice_shortcuts.append("local"), app._phase("lyssnar", "Lokal mikrofon"))
 app.collapse()
 app.events.put("toggle")
 app._process_events()

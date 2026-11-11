@@ -112,7 +112,9 @@ def route(text: str) -> Action:
         ):
             if re.search(pattern, value):
                 return Action("focus", key, "Växlar till " + label)
-    if NAV.search(value):
+    nav = NAV.match(value)
+    if nav:
+        target = value[nav.end():].strip()
         for pattern, key, description in (
             (r"\bspotify\b", "spotify", "Startar Spotify."),
             (r"\bbrave\b", "brave", "Startar Brave."),
@@ -122,7 +124,7 @@ def route(text: str) -> Action:
             (r"\b(chrome|google chrome)\b", "chrome", "Startar Google Chrome."),
             (r"\boutlook\b", "outlook", "Startar Outlook på datorn."),
         ):
-            if re.search(pattern, value):
+            if re.search(pattern, target):
                 return Action("app", APP_SHORTCUTS[key], description)
         for pattern, key, description in (
             # Keep STRATO above generic e-mail words so "Strato mail" cannot
@@ -146,7 +148,7 @@ def route(text: str) -> Action:
             (r"\b(projekt|webbuilder|webbbyggare|web studio)\b", "projects", "Öppnar Omniras projektvy."),
             (r"\b(atlas|omnira|nova)\b", "atlas", "Öppnar Atlas i Omnira."),
         ):
-            if re.search(pattern, value):
+            if re.search(pattern, target):
                 return Action("open", URLS[key], description)
     return Action("handoff", ATLAS, "Uppdrag till Atlas (ingen automatisk åtgärd).")
 

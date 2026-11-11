@@ -46,29 +46,10 @@ class SafeStopCommandTests(unittest.TestCase):
         self.assertIn('self.command.bind("<Control-period>", self._stop_shortcut)', source)
 
 
-    def test_global_hotkey_controls_authenticated_call_and_keeps_dictation_fallback(self):
-        source = (Path(__file__).resolve().parents[1] / "nova_overlay.py").read_text(encoding="utf-8")
-        events = source[source.index("    def _process_events(self):"):source.index("    def _animate(self):")]
-        self.assertIn('voice = self.bridge.state.voice_snapshot()', events)
-        self.assertIn('request_voice_control("voice_toggle")', events)
-        self.assertIn('self.expand(listen=False)', events)
-        self.assertIn('self.expand(listen=True)', events)
-
     def test_native_stop_requests_atlas_voice_interruption(self):
         source = (Path(__file__).resolve().parents[1] / "nova_overlay.py").read_text(encoding="utf-8")
         stop = source[source.index("    def stop(self):"):source.index("    def quit(self):")]
         self.assertIn('request_voice_control("voice_interrupt")', stop)
-    def test_hotkey_launch_uses_ephemeral_browser_pairing_not_os_microphone(self):
-        source = (Path(__file__).resolve().parents[1] / "nova_overlay.py").read_text(encoding="utf-8")
-        hotkey = source[source.index("    def _open_from_hotkey(self):"):
-                        source.index("    def expand(self, listen=False):")]
-        self.assertIn("self.connect_atlas(auto_voice=True)", hotkey)
-        self.assertIn("self.bridge.state.request_voice_control(\"voice_resume\")", hotkey)
-        self.assertIn("if target != PROD_ORIGIN:", hotkey)
-        self.assertIn("self.dictate()", hotkey)
-        self.assertIn("self._atlas_login_opened = bool(approved_preview)", source)
-        self.assertIn("self.bridge.pairing_url(auto_voice=auto_voice, native_voice=native_voice)", source)
-
     def test_paired_speech_resumes_atlas_not_windows_diction(self):
         source = (Path(__file__).resolve().parents[1] / "nova_overlay.py").read_text(encoding="utf-8")
         dictate = source[source.index("    def dictate(self):"):source.index("    def _send_windows_voice_typing_shortcut(", source.index("    def dictate(self):"))]

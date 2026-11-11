@@ -102,6 +102,26 @@ class NativeTasksTests(unittest.TestCase):
                 self.assertIsNone(parse_native_task(statement))
                 self.assertIsNone(safe_native_voice_action(statement))
 
+    def test_notes_preserve_literal_text_and_stay_in_the_notes_directory(self):
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from unittest.mock import patch
+        body = "Ring Åsa. Läs C:\\Windows, och skriv kod i morgon!"
+        plan = parse_native_task("Hej Nova, spara en anteckning med texten " + body)
+        self.assertTrue(plan.requires_approval)
+        with TemporaryDirectory() as directory, patch("nova_native_tasks.NOTES_DIR", Path(directory)):
+            for _ in range(2):
+                self.assertTrue(execute_native_step(plan.steps[0]).success)
+            files = list(Path(directory).glob("*.txt"))
+            self.assertEqual(len(files), 2)
+            self.assertTrue(all(f.read_text(encoding="utf-8") == body + "\n" for f in files))
+        self.assertIsNone(parse_native_task("Spara en anteckning med texten " + "X" * 2001))
+
+    def test_unknown_navigation_target_does_not_open_omnira(self):
+        from nova_core import route
+        self.assertEqual(route("Nova, öppna okänt program").kind, "handoff")
+        self.assertEqual(route("Nova, öppna Omnira").kind, "open")
+
     def test_single_open_stays_in_existing_router(self):
         self.assertIsNone(parse_native_task("Nova öppna Facebook"))
         self.assertIsNone(parse_native_task("Nova öppna VS Code"))

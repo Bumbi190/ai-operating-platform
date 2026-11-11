@@ -11,6 +11,7 @@ import math
 import os
 from pathlib import Path
 import queue
+import re
 import threading
 import time
 import tkinter as tk
@@ -26,7 +27,7 @@ from nova_placement import (
 )
 from nova_auto_voice import AutoVoiceState, safe_auto_navigation, safe_stop_command, safe_uia_read_action, safe_window_focus
 from nova_native_tasks import (
-    TaskPlan, parse_native_task, safe_native_voice_action, execute_native_step,
+    NOTES_DIR, TaskPlan, parse_native_task, safe_native_voice_action, execute_native_step,
 )
 from nova_campaign_review import campaign_review_intent, campaign_review_url
 from nova_browser_nav import BrowserNavigator, safe_browser_command
@@ -45,6 +46,14 @@ PROJECTS = {
     "Handlarbörsen": r"C:\Users\Andre\Projects\Handlarborsen",
     "Familje-Stunden": r"C:\Users\Andre\Projects\Familje-Stunden",
 }
+# An action request can be held for explicit operator approval even while offline.
+# The words select a review path; only the authenticated tools can execute it.
+_WORK_REQUEST = re.compile(
+    r"^(?:(?:hej\s+)?nova[,:\s]+)?(?:(?:kan|skulle|vill) du\s+)?"
+    r"(?:lagg(?:a)? (?:till|in)|boka|skapa|skicka|publicera|uppdatera|"
+    r"flytta|radera|betala|kop|kopa|skriv|svara|besvara|planera in|installera)\b"
+)
+
 BUBBLE_W, BUBBLE_H = 94, 94
 PANEL_W, PANEL_H = 442, 600
 
@@ -208,6 +217,7 @@ class NovaOverlay:
         self.draft = ""
         self.last_transcript = ""
         self.pending = ""
+        self._waiting_operator_request = None
         self.pending_choices = []  # only visible inside the ⋯ menu
         self.pending_native_plan: TaskPlan | None = None
         self.pending_uia_read_instruction: str | None = None
@@ -223,8 +233,9 @@ class NovaOverlay:
         self._auto_voice = AutoVoiceState()
         self._browser = BrowserNavigator()
         self.auto_voice_enabled = tk.BooleanVar(value=True)
-        # Explicit opt-in only; the browser voice mode remains the default.
-        self.native_mic_hotkey = tk.BooleanVar(value=False)
+        # Only a user gesture starts capture. Opening at login leaves the mic off.
+        self.native_mic_hotkey = tk.BooleanVar(value=True)
+        self._local_voice_only = True
         self.native_mic_session: NativeAudioSession | None = None
         self._native_hotkey_pending_until = 0.0
         self._native_conversation_deadline = 0.0
@@ -471,6 +482,9 @@ class NovaOverlay:
         self.chat.config(state="disabled")
         self._render_history()
 
+        self.review_bar = tk.Frame(content, bg=SURFACE)
+        self.review_bar.pack(fill="x")
+        self._refresh_review_bar()
         live = tk.Frame(content, bg=SURFACE)
         live.pack(fill="x", pady=(8, 0))
         tk.Label(live, text="LIVE  /", bg=SURFACE, fg=CYAN,
@@ -498,7 +512,7 @@ class NovaOverlay:
         self.command.insert("1.0", self.draft)
         actions = tk.Frame(content, bg=SURFACE)
         actions.pack(fill="x")
-        self._btn(actions, "🎙 Prata", self.dictate).pack(side="left", padx=(0, 8))
+        self._btn(actions, "🎙 Prata", self._start_panel_voice).pack(side="left", padx=(0, 8))
         self._btn(actions, "Stopp", self.stop, width=8).pack(side="left", padx=(0, 8))
         self._btn(actions, "➤ Skicka", self.send, emphasis=True).pack(side="right")
         tk.Label(content,
@@ -507,9 +521,8 @@ class NovaOverlay:
                      fill="x", pady=(6, 0))
 
         if not self.history:
-            self._append("nova", "Nova: Jag öppnar godkända program och projekt. "
-                          "Mer avancerade uppdrag lämnar jag till Atlas – utan att "
-                          "påstå att de redan är utförda.")
+            self._append("nova", "Säg eller skriv exempelvis ”Nova, kolla ledigt diskutrymme” "
+                         "eller ”Nova, skapa en anteckning med texten Ring Oscar”.")
         if self.draft:
             self.transcript_var.set(self.draft[:180])
 
@@ -539,21 +552,30 @@ class NovaOverlay:
         # Contextual actions are retained but never clutter the chat composer.
         self.pending_choices = list(options)
         self._refresh_more_button()
+        if self.expanded and hasattr(self, "review_bar"):
+            self._refresh_review_bar()
+
+    def _refresh_review_bar(self):
+        for child in self.review_bar.winfo_children():
+            child.destroy()
+        if not self.pending_choices:
+            return
+        label, callback = self.pending_choices[0]
+        if label.startswith(("Godkänn", "Spara anteckning", "Kör i Atlas", "Anslut Atlas för uppdraget")):
+            self._btn(self.review_bar, label, callback, emphasis=True).pack(side="left")
+            cancel_label, cancel = self.pending_choices[-1]
+            self._btn(self.review_bar, cancel_label, cancel).pack(side="right")
 
     def _refresh_more_button(self):
         if self.expanded and hasattr(self, "more_button"):
             self.more_button.set_attention(bool(self.pending_choices))
 
     def _on_native_mic_hotkey_toggle(self):
-        enabled = self.native_mic_hotkey.get()
-        self._append(
-            "step",
-            "Nova: Lokalt mikrofonl?ge " + (
-                "valt f?r n?sta snabbkommando. Inga mikrofoner ?ppnas f?rr?n du startar testet."
-                if enabled else "avaktiverat; Atlas-l?get beh?lls."
-            ),
-        )
-        self._phase("redo", "Lokal mikrofonpilot vald" if enabled else "Atlas-l?ge valt")
+        if not self.native_mic_hotkey.get():
+            self._native_conversation_deadline = 0.0
+            self.stop_native_mic_pilot(quiet=True)
+        self._phase("redo", "Lokal mikrofon vid snabbkommando" if self.native_mic_hotkey.get()
+                    else "Skrivläge vid snabbkommando")
 
     def start_native_mic_pilot(self):
         """One explicit foreground 25-second microphone / local-STT test."""
@@ -561,9 +583,7 @@ class NovaOverlay:
             self._phase("lyssnar", "Lokalt mikrofontest p?g?r redan")
             return
         voice = self.bridge.state.voice_snapshot()
-        if self.bridge.state.online() and not (
-            voice.get("authorized") and voice.get("mode") == "native"
-        ):
+        if self.bridge.state.online() and voice.get("authorized") and voice.get("mode") != "native":
             self._append(
                 "warn",
                 "Nova: Koppla fr?n Atlas webbl?sarsamtal f?rst. "
@@ -571,7 +591,8 @@ class NovaOverlay:
             )
             self._phase("godkannande", "St?ng Atlas-r?sten f?re lokalt test")
             return
-        self.expand(listen=False)
+        if not self.expanded:
+            self.expand(listen=False)
         self._auto_voice.cancel()
         session = NativeAudioSession()
         transcribe = local_model_ready()
@@ -582,16 +603,9 @@ class NovaOverlay:
             self._phase("godkannande", "Lokal mikrofonmilj? saknas eller ?r upptagen")
             return
         self.native_mic_session = session
-        self._phase("lyssnar", "Startar lokal mikrofon ? pilot")
-        self._append(
-            "step",
-            "Nova: Ett lokalt mikrofontest har startat i h?gst 25 sekunder. "
-            "Inget ljud sparas eller skickas till Atlas. "
-            + ("S?g 'Nova, ?ppna kalendern' och pausa f?r lokal svensk transkribering. "
-               if transcribe else
-               "Endast ljudniv? och talaktivitet testas ? lokal spr?kmodell saknas. ")
-            + "Stopp, f?nsterst?ngning eller tidsgr?nsen avslutar mikrofonen."
-        )
+        self._phase("lyssnar", "Startar mikrofonen")
+        if not transcribe:
+            self._append("warn", "Den lokala svenska talmodellen saknas. Skriv ditt kommando i rutan.")
 
     def stop_native_mic_pilot(self, *, quiet: bool = False):
         session = self.native_mic_session
@@ -613,21 +627,21 @@ class NovaOverlay:
                     return
                 kind = event.get("kind")
                 if kind == "ready":
-                    self._phase("lyssnar", "Lokal mikrofon ?r ?ppen ? prata nu")
+                    self._phase("lyssnar", "Mikrofonen är öppen · prata nu")
                 elif kind == "loading":
                     self._phase("tolkar", "Laddar svensk talmodell lokalt")
                 elif kind == "level":
                     level = event.get("percent", 0)
                     if isinstance(level, (int, float)):
                         if event.get("speaking"):
-                            self._phase("lyssnar", "Tal uppt?cks ? lyssnar lokalt")
+                            self._phase("lyssnar", "Lyssnar på ditt kommando")
                         else:
                             self._phase(
                                 "lyssnar",
-                                f"Lokal mikrofon ? uppm?tt niv? {max(0, min(level, 100)):.1f} %",
+                                f"Mikrofon · ljudnivå {max(0, min(level, 100)):.1f} %",
                             )
                 elif kind == "speech_start":
-                    self._phase("lyssnar", "Tal uppt?cks ? lyssnar lokalt")
+                    self._phase("lyssnar", "Lyssnar på ditt kommando")
                 elif kind == "speech_end":
                     self._phase("tolkar", "Talavsnitt avslutat")
                 elif kind == "transcribing":
@@ -653,19 +667,34 @@ class NovaOverlay:
                     self._phase("godkannande", "Lokal mikrofon avst?ngd efter fel")
                 elif kind in ("finished", "exit"):
                     self.stop_native_mic_pilot(quiet=True)
-                    self._phase("klar", "Lokal mikrofon st?ngd ? starta igen via ?")
+                    self._phase("klar", "Mikrofon pausad · tryck Prata för att fortsätta")
         finally:
             if not self.closed:
                 self.root.after(125, self._poll_native_mic)
 
     def _received_native_transcript(self, phrase: str):
-        self._append("you", "DU (lokalt tal): " + phrase[:350])
-        # No transcript grants arbitrary tool use, file editing or publishing.
-        # Only exact user-wake-prefixed allowlisted navigation may act.
+        # Only wake-prefixed local intents reach the desktop task dispatcher.
         value = normalized(phrase)
         has_wake = value.startswith(("nova ", "nova,", "nova:", "hej nova ", "hej nova,", "hej nova:"))
+        if safe_stop_command(phrase):
+            self.stop()
+            return
         action = safe_auto_navigation(phrase) if has_wake else None
+        if has_wake and not action:
+            local = (safe_native_voice_action(phrase) or safe_browser_command(phrase)
+                     or safe_window_focus(phrase) or safe_uia_read_action(phrase)
+                     or campaign_review_intent(phrase))
+            if local or propose_code_job(phrase):
+                self.send(from_voice=True, safe_voice_action=local, transcript=phrase)
+                if (local and local.kind == "native_read" and self.phase == "klar"
+                        and self._native_conversation_deadline):
+                    self.root.after(400, self._resume_native_voice_after_reply)
+                return
+        self._append("you", "DU (lokalt tal): " + phrase[:350])
         if action and action.kind in ("open", "app"):
+            self._waiting_operator_request = None
+            self.pending = ""
+            self.pending_native_plan = None
             self.stop_native_mic_pilot(quiet=True)
             if action.kind == "open":
                 self._open_url(action.url, action.description)
@@ -679,13 +708,17 @@ class NovaOverlay:
                 self.root.after(400, self._resume_native_voice_after_reply)
             return
         bridge = getattr(self, "bridge", None)
+        if has_wake and bridge and _WORK_REQUEST.match(value):
+            self._received_voice_without_navigation(phrase)
+            return
         voice = bridge.state.voice_snapshot() if bridge else {}
-        if bridge and bridge.state.online() and voice.get("authorized") and voice.get("mode") == "native":
+        if (bridge and not self._local_voice_only and bridge.state.online()
+                and voice.get("authorized") and voice.get("mode") == "native"):
             # Native STT is untrusted input. A potentially consequential
             # instruction stays a reviewable draft until the operator clicks.
             risk_terms = ("skicka", "publicera", "radera", "betala", "kopa",
                           "kop ", "skriv kod", "koda", "implementera", "installera",
-                          "uppdatera kalender", "boka")
+                          "uppdatera", "lägg till", "lagg till", "skapa", "planera in", "boka")
             if any(part in value for part in risk_terms):
                 self.pending = phrase
                 self._received_voice_without_navigation(phrase)
@@ -703,9 +736,9 @@ class NovaOverlay:
             if not existing.strip():
                 self.command.insert("1.0", phrase)
                 self._on_input()
-                self._phase("godkannande", "Tal till utkast ? granska f?re Skicka")
+                self._phase("godkannande", "Utkast i rutan · Enter för fler alternativ")
                 return
-        self._phase("godkannande", "Tal uppfattat; inget skickades eller k?rdes")
+        self._phase("godkannande", "Ditt tidigare utkast ligger kvar i rutan")
 
     def _make_more_menu(self):
         menu = tk.Menu(self.root, tearoff=0, bg="#172135", fg=TEXT,
@@ -716,10 +749,11 @@ class NovaOverlay:
                 menu.add_command(label=label, command=callback)
             menu.add_separator()
         menu.add_command(label="Anslut Atlas", command=self.connect_atlas)
+        menu.add_command(label="Anslut Sannas röst via Brave", command=self._connect_sanna)
         menu.add_separator()
         menu.add_command(label="Testa lokal mikrofon och svenska (25 sek)",
                          command=self.start_native_mic_pilot)
-        menu.add_checkbutton(label="Lokal mikrofon med Ctrl+Alt+Space (pilot)",
+        menu.add_checkbutton(label="Starta mikrofonen med Ctrl+Alt+Space",
                              variable=self.native_mic_hotkey,
                              command=self._on_native_mic_hotkey_toggle)
         if self.native_mic_session and self.native_mic_session.running():
@@ -815,55 +849,63 @@ class NovaOverlay:
             self._phase("klar", "Samtalet pausat - tryck Ctrl+Alt+Space f?r att forts?tta")
             return
         voice = self.bridge.state.voice_snapshot()
-        if not (self.bridge.state.online() and voice.get("authorized") and voice.get("mode") == "native"):
+        if self._local_voice_only:
+            if self.bridge.state.online() and voice.get("authorized"):
+                return
+        elif not (self.bridge.state.online() and voice.get("authorized") and voice.get("mode") == "native"):
             self._phase("godkannande", "Atlas fr?nkopplad - mikrofonen ?r avst?ngd")
             return
         if self.native_mic_session and self.native_mic_session.running():
             return
         self.start_native_mic_pilot()
 
-    def _begin_native_hotkey(self):
-        """The operator requested local STT; pair Atlas without Brave's mic."""
-        if self.native_mic_session and self.native_mic_session.running():
-            self._native_conversation_deadline = 0.0
-            self.stop_native_mic_pilot()
-            return
-        self._native_conversation_deadline = time.monotonic() + 600
-        self.expand(listen=False)
-        voice = self.bridge.state.voice_snapshot()
-        if self.bridge.state.online() and voice.get("authorized") and voice.get("mode") == "native":
-            self._native_hotkey_pending_until = 0.0
-            self.start_native_mic_pilot()
-            return
-        if self.bridge.state.online():
-            self._native_conversation_deadline = 0.0
-            self._append("warn", "Nova: Avsluta det tidigare webbl?sarsamtalet innan Windows-r?stl?ge kan starta.")
-            self._phase("godkannande", "Byt till Windows-ljud p? Nova Bridge-sidan")
-            return
+    def _connect_sanna(self):
+        self.stop_native_mic_pilot(quiet=True)
+        self._local_voice_only = False
         self._native_hotkey_pending_until = time.monotonic() + 90
-        self._phase("godkannande", "Ansluter Windows-mikrofon till Atlas utan Br aves mikrofon")
+        self._native_conversation_deadline = time.monotonic() + 600
+        if self.bridge.state.online():
+            voice = self.bridge.state.voice_snapshot()
+            if voice.get("authorized") and voice.get("mode") == "native":
+                self._native_hotkey_pending_until = 0.0
+                self._start_panel_voice()
+            else:
+                self._append("nova", "Välj Windows-mikrofon på den anslutna Nova Bridge-sidan. "
+                             "Stäng den gamla fliken och välj Anslut Sannas röst igen för ny parning.")
+            return
         self.connect_atlas(auto_voice=True, native_voice=True)
 
     def _open_from_hotkey(self):
-        """An explicit hotkey opens Nova and requests a safe Atlas voice session.
-
-        This never bypasses Omnira SSO or browser microphone permission. The
-        legacy Win+H fallback applies only before a preview is configured.
-        """
+        """Show the desktop panel. Only explicit menu actions open a pairing page."""
+        if self._manual_anchor is None:
+            self._redock_near_pointer()
         self.expand(listen=False)
-        if self.native_mic_hotkey.get():
-            self._begin_native_hotkey()
+        if self.native_mic_session and self.native_mic_session.running():
             return
-        if self.bridge.state.online():
-            accepted, detail = self.bridge.state.request_voice_control("voice_resume")
-            if not accepted:
-                self._phase("godkannande", detail)
+        if not self.native_mic_hotkey.get():
+            self._phase("redo", "Skriv ditt kommando")
             return
-        target = next(iter(self.bridge.state.origins))
-        if target != PROD_ORIGIN:
-            self.connect_atlas(auto_voice=True)
+        self._start_panel_voice()
+
+    def _start_panel_voice(self):
+        voice = self.bridge.state.voice_snapshot()
+        if self.bridge.state.online() and voice.get("authorized"):
+            if voice.get("mode") != "native":
+                self.dictate()
+                return
+            task = self.bridge.state.task
+            if (voice.get("status") in ("speaking", "thinking", "transcribing")
+                    or (task and task.state in ("pending", "executing"))):
+                self._phase("tolkar", "Atlas svarar · tryck Stopp för att avbryta")
+                return
+            self._local_voice_only = False
+        else:
+            self._local_voice_only = True
+        if not local_model_ready():
+            self._phase("redo", "Talmodellen saknas · skriv i rutan")
             return
-        self.dictate()
+        self._native_conversation_deadline = time.monotonic() + 600
+        self.start_native_mic_pilot()
 
     def expand(self, listen=False):
         if not self.expanded:
@@ -933,8 +975,7 @@ class NovaOverlay:
         self.connect_atlas()
 
     def connect_atlas(self, *, auto_voice: bool = False, native_voice: bool = False):
-        if (self.native_mic_hotkey.get() and
-                0 < time.monotonic() < self._native_hotkey_pending_until):
+        if 0 < time.monotonic() < self._native_hotkey_pending_until:
             auto_voice = True
             native_voice = True
         """First sign in without key, then explicitly pair with a short-lived key.
@@ -978,15 +1019,21 @@ class NovaOverlay:
             self._append("warn", "Nova: Atlas-kopplingen kunde inte öppnas: " + str(exc))
 
     def _show_bridge_status(self):
+        waiting = self._waiting_operator_request
+        if (waiting and self.expanded and waiting == self.pending and self.bridge.state.online()
+                and self.bridge.state.voice_snapshot().get("authorized")):
+            self._waiting_operator_request = None
+            self._received_voice_without_navigation(waiting)
         if self._native_hotkey_pending_until and self.expanded:
             if time.monotonic() > self._native_hotkey_pending_until:
                 self._native_hotkey_pending_until = 0.0
-                self._phase("godkannande", "Atlas anslutning tog f?r l?ng tid - tryck Ctrl+Alt+Space igen")
+                self._phase("godkannande", "Välj Anslut Sannas röst för att försöka igen")
             elif self.bridge.state.online():
                 voice = self.bridge.state.voice_snapshot()
                 if voice.get("authorized") and voice.get("mode") == "native":
                     self._native_hotkey_pending_until = 0.0
-                    self.start_native_mic_pilot()
+                    if not self.pending:
+                        self._start_panel_voice()
         if self.expanded and hasattr(self, "bridge_var"):
             if self.bridge.state.online():
                 voice = self.bridge.state.voice_snapshot()
@@ -1007,7 +1054,7 @@ class NovaOverlay:
                     self.bridge_var.set("Atlas ansluten - starta rostsamtal i webblasaren")
                 self.bridge_status.configure(fg=SUCCESS)
             elif self._atlas_login_opened:
-                self.bridge_var.set("Atlas - klicka for att slutfora anslutningen")
+                self.bridge_var.set("Atlas · klicka för att slutföra anslutningen")
                 self.bridge_status.configure(fg=CYAN)
             else:
                 self.bridge_var.set("Atlas offline - klicka for att ansluta")
@@ -1085,44 +1132,7 @@ class NovaOverlay:
                         self._redock_near_pointer()
                     self.expand(listen=False)
                 elif event == "toggle":
-                    if self.native_mic_hotkey.get():
-                        self._begin_native_hotkey()
-                        continue
-                    voice = self.bridge.state.voice_snapshot()
-                    voice_ready = self.bridge.state.online() and voice.get("authorized") is True
-                    nova_has_focus = (
-                        self.expanded and
-                        self._focus_guard.has_focus(self.root, self.command)
-                    )
-                    if voice_ready:
-                        accepted, detail = self.bridge.state.request_voice_control("voice_toggle")
-                        if not accepted:
-                            self._append("warn", "Nova: " + detail)
-                        if nova_has_focus:
-                            self.collapse()
-                        else:
-                            if self._manual_anchor is None:
-                                self._redock_near_pointer()
-                            self.expand(listen=False)
-                    else:
-                        # A paired browser must be the sole speech input path.
-                        # Never race Win+H against Atlas and duplicate requests.
-                        if self.bridge.state.online():
-                            if self._manual_anchor is None:
-                                self._redock_near_pointer()
-                            self.expand(listen=False)
-                            self._phase("godkannande", "Godk?nn r?stsamtalet i Omnira-webbl?saren")
-                        elif next(iter(self.bridge.state.origins)) != PROD_ORIGIN:
-                            if self._manual_anchor is None:
-                                self._redock_near_pointer()
-                            self.expand(listen=False)
-                            self.connect_atlas(auto_voice=True)
-                        elif nova_has_focus:
-                            self.collapse()
-                        else:
-                            if self._manual_anchor is None:
-                                self._redock_near_pointer()
-                            self.expand(listen=True)
+                    self._open_from_hotkey()
         except queue.Empty:
             pass
         if not self.closed:
@@ -1359,10 +1369,10 @@ class NovaOverlay:
             self._append("warn", "Nova: Uppdraget hann ändras. Ge kommandot igen.")
             self._choices([])
             return
-        self.pending = None
-        self._choices([])
         task_id, detail = self.bridge.state.enqueue_operator(text)
         if task_id:
+            self.pending = None
+            self._choices([])
             self._append("step", "  ↳ Godkänt av dig. Atlas kontrollerar sina ordinarie verktygsbehörigheter.")
             self._phase("tolkar", "Atlas arbetar - avbryt med Stopp om du ångrar dig")
         else:
@@ -1455,6 +1465,12 @@ class NovaOverlay:
         self._append("step", "Nova: Kodförslaget avbröts. Ingen körning påbörjades.")
         self._phase("redo", "Redo för ett nytt uppdrag")
 
+    def _cancel_operator_request(self):
+        self.pending = ""
+        self._waiting_operator_request = None
+        self._choices([])
+        self._phase("redo", "Uppdraget avbröts")
+
     def _received_voice_without_navigation(self, text: str):
         """Actionable commands require a click before entering tool-enabled Atlas."""
         if self.bridge.state.online() and self.bridge.state.voice_snapshot().get("authorized"):
@@ -1462,12 +1478,24 @@ class NovaOverlay:
             self._choices([
                 ("Kör i Atlas (med verktyg)", lambda phrase=text: self._approved_operator_task(phrase)),
                 ("Bara råd (utan verktyg)", lambda phrase=text: self._approved_readonly_advice(phrase)),
-                ("Avbryt", lambda: self._choices([])),
+                ("Avbryt", self._cancel_operator_request),
             ])
             self._append("nova", "Nova: Det här kan behöva Atlas riktiga verktyg. "
-                         "Välj menyn ⋯ och sedan Kör i Atlas för att godkänna just detta uppdrag. "
+                         "Välj Kör i Atlas för att godkänna just detta uppdrag. "
                          "Ordinarie behörigheter och granskningar gäller fortfarande.")
-            self._phase("godkannande", "Välj menyn ... och sedan Kör i Atlas för ett verktygsuppdrag")
+            self._phase("godkannande", "Granska uppdraget och välj Kör i Atlas")
+            return
+        if _WORK_REQUEST.match(normalized(text)):
+            self.pending = text
+            self._waiting_operator_request = text
+            self._native_conversation_deadline = 0.0
+            self._append("nova", "Det uppdraget behöver Atlas. Du kan ansluta här "
+                         "och sedan granska uppdraget i rutan.")
+            self._choices([
+                ("Anslut Atlas för uppdraget", self._connect_sanna),
+                ("Avbryt", self._cancel_operator_request),
+            ])
+            self._phase("godkannande", "Arbetsorder väntar på anslutning")
             return
         if self.bridge.state.online():
             task_id, detail = self.bridge.state.enqueue(text)
@@ -1622,18 +1650,24 @@ class NovaOverlay:
         if not plan.steps:
             return
         if plan.requires_approval:
+            self._native_conversation_deadline = 0.0
+            self.stop_native_mic_pilot(quiet=True)
             self.pending_native_plan = plan
             lines = "\n".join(
                 f"  {i}. {step.description}" for i, step in enumerate(plan.steps, 1)
             )
-            self._append("nova",
-                         "Nova: Jag har förberett en lokal navigeringsplan. "
-                         "Jag gör inget förrän du godkänner den via ⋯:\n" + lines)
+            if plan.steps[0].kind == "note":
+                step = plan.steps[0]
+                self._append("nova", f"Ny anteckning i {NOTES_DIR}\n\n{step.note}")
+                approval = "Spara anteckning"
+            else:
+                self._append("nova", "Godkänn öppningarna för att köra planen:\n" + lines)
+                approval = f"Godkänn {len(plan.steps)} öppningar"
             self._choices([
-                (f"Godkänn {len(plan.steps)} öppningar", self._approve_native_plan),
+                (approval, self._approve_native_plan),
                 ("Avbryt planen", self._cancel_native_plan),
             ])
-            self._phase("godkannande", "Plan klar · välj Godkänn via ⋯")
+            self._phase("godkannande", "Granska uppgiften i rutan")
         else:
             self._execute_native_plan(plan)
 
@@ -1677,10 +1711,10 @@ class NovaOverlay:
         else:
             self._phase("klar", "Lokal arbetsplan färdig · resultat redovisat")
 
-    def send(self, *, from_voice: bool = False, safe_voice_action=None):
+    def send(self, *, from_voice: bool = False, safe_voice_action=None, transcript: str | None = None):
         if not self.expanded:
             self.expand(False)
-        text = self.command.get("1.0", "end-1c").strip()
+        text = transcript if transcript is not None else self.command.get("1.0", "end-1c").strip()
         if not text:
             self._phase("redo", "Skriv eller diktera vad jag ska göra")
             return
@@ -1695,6 +1729,8 @@ class NovaOverlay:
             self.draft = ""
             self.stop()
             return
+        self._waiting_operator_request = None
+        self.pending = ""
         self.task_epoch += 1
         # A new user instruction cancels only steps not yet dispatched.
         self.native_task_epoch += 1
@@ -1708,10 +1744,13 @@ class NovaOverlay:
         self._choices([])
         self._append("you", "DU: " + text)
         self._phase("tolkar", "Avgör vilken godkänd åtgärd som passar")
-        self.command.delete("1.0", "end")
-        self.draft = ""
+        if transcript is None:
+            self.command.delete("1.0", "end")
+            self.draft = ""
         self.transcript_var.set(text[:180])
-        code_job = propose_code_job(text)
+        plan = parse_native_task(text)
+        # A note body is literal text, even when it contains a coding request.
+        code_job = propose_code_job(text) if plan is None else None
         if code_job:
             self._present_code_job(code_job)
             return
@@ -1719,9 +1758,8 @@ class NovaOverlay:
             # A transcript that was not an exact allowlisted navigation must
             # never reach arbitrary local UI or shell execution.
             if (safe_voice_action is None or
-                    (safe_stop_command(text) or safe_auto_navigation(text) or safe_browser_command(text)
-                     or safe_window_focus(text)
-                     or safe_native_voice_action(text)
+                    (safe_stop_command(text) or safe_auto_navigation(text) or safe_native_voice_action(text)
+                     or safe_browser_command(text) or safe_window_focus(text)
                      or campaign_review_intent(text)
                      or safe_uia_read_action(text)) != safe_voice_action):
                 self._received_voice_without_navigation(text)
@@ -1730,7 +1768,6 @@ class NovaOverlay:
                 self._present_uia_read_preview(text)
                 return
             if safe_voice_action.kind in ("native_read", "native_preview"):
-                plan = parse_native_task(text)
                 if plan is None or (plan.requires_approval !=
                                     (safe_voice_action.kind == "native_preview")):
                     self._received_voice_without_navigation(text)
@@ -1739,7 +1776,6 @@ class NovaOverlay:
                 return
             action = safe_voice_action
         else:
-            plan = parse_native_task(text)
             if plan is not None:
                 self._present_native_plan(plan)
                 return
@@ -1871,6 +1907,7 @@ class NovaOverlay:
         self._append("warn", "Nova: Avbrutet. Detta stänger inte program eller "
                      "ångrar navigering som redan startats.")
         self.pending = ""
+        self._waiting_operator_request = None
 
     def quit(self):
         self._native_conversation_deadline = 0.0

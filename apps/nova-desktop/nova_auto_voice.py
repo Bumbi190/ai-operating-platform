@@ -57,6 +57,7 @@ _UIA_READ = re.compile(
 def safe_stop_command(text: str) -> Action | None:
     """An exact emergency stop outranks navigation, Atlas handoff and approvals."""
     cleaned = _TRAILING_PUNCT.sub("", normalized(text)).strip()
+    cleaned = re.sub(r"^(hej nova|nova)[,:]\s*", r"\1 ", cleaned)
     if cleaned not in {
         "stopp", "stop", "avbryt", "tyst", "sluta prata",
         "nova stopp", "nova stop", "nova avbryt", "nova tyst",

@@ -125,9 +125,9 @@ class LocalVoiceTests(unittest.TestCase):
 
     def test_native_ui_never_auto_starts_mic_at_login(self):
         overlay = (Path(__file__).resolve().parents[1] / "nova_overlay.py").read_text(encoding="utf-8")
-        self.assertIn("self.native_mic_hotkey = tk.BooleanVar(value=False)", overlay)
+        self.assertIn("self.native_mic_hotkey = tk.BooleanVar(value=True)", overlay)
         self.assertIn("Testa lokal mikrofon och svenska", overlay)
-        self.assertIn('if self.native_mic_hotkey.get():', overlay)
+        self.assertIn('if os.environ.get("NOVA_START_EXPANDED") == "1":\n            self.root.after(180, self._open_from_hotkey)', overlay)
         self.assertIn("self.stop_native_mic_pilot(quiet=True)", overlay)
         self.assertIn('def _received_native_transcript(self, phrase: str):', overlay)
         self.assertIn('has_wake = value.startswith(("nova ", "nova,", "nova:", "hej nova ", "hej nova,", "hej nova:"))', overlay)
@@ -181,6 +181,7 @@ class LocalVoiceTests(unittest.TestCase):
         ui._open_url = Mock()
         ui._start_app = Mock()
         ui.expanded = False
+        ui._local_voice_only = False
         ui.bridge = Mock()
         ui.bridge.state.voice_snapshot.return_value = {"authorized": True, "mode": "native"}
         ui.bridge.state.online.return_value = True
@@ -200,6 +201,7 @@ class LocalVoiceTests(unittest.TestCase):
         ui._start_app = Mock()
         ui._received_voice_without_navigation = Mock()
         ui.expanded = False
+        ui._local_voice_only = False
         ui.bridge = Mock()
         ui.bridge.state.voice_snapshot.return_value = {"authorized": True, "mode": "native"}
         ui.bridge.state.online.return_value = True
@@ -219,6 +221,7 @@ class LocalVoiceTests(unittest.TestCase):
         ui._native_conversation_deadline=time.monotonic()+20
         ui._phase=Mock()
         ui.start_native_mic_pilot=Mock()
+        ui._local_voice_only=False
         ui.bridge=Mock()
         ui.bridge.state.online.return_value=True
         ui.bridge.state.voice_snapshot.return_value={"authorized":True,"mode":"native"}

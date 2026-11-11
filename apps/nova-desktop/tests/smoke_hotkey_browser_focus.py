@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from nova_overlay import NovaOverlay
+from nova_overlay import NovaOverlay, work_area
 from nova_voice_intent import Interpretation
 from nova_core import Action
 
@@ -107,6 +107,17 @@ try:
         request = app.bridge.state.next()
         assert request["mode"] == "atlas_operator" and request["text"] == order
         browser.assert_not_called()
+        # Exercise the actual mapped window after expanding from a saved bottom-right anchor.
+        left, top, right, bottom = work_area()
+        app._manual_anchor = (right, bottom)
+        app.collapse()
+        app.root.update()
+        app.expand(False)
+        app.root.after(250, app.root.quit)
+        app.root.mainloop()
+        x, y = app.root.winfo_rootx(), app.root.winfo_rooty()
+        assert left <= x and x + app.root.winfo_width() <= right
+        assert top <= y and y + app.root.winfo_height() <= bottom
         print("WINDOWS_PANEL_NO_BROWSER_LOCAL_WORK_NOTE_AND_OPERATOR_APPROVAL_PASS", flush=True)
 finally:
     app.quit()

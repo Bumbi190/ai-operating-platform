@@ -330,10 +330,19 @@ class NovaOverlay:
             x = max(left, min(right - width, monitor_right - width))
             y = max(top, min(bottom - height, monitor_bottom - height))
             geometry = f"{width}x{height}{x:+d}{y:+d}"
+        self._requested_geometry = geometry
         self.root.geometry(geometry)
         self.root.lift()
+        self.root.after(60, self._settle_placement, geometry)
+
+    def _settle_placement(self, geometry):
+        # On Windows, resizing a mapped override-redirect window can retain the old origin.
+        if not self.closed and self._requested_geometry == geometry and self.root.winfo_ismapped():
+            if self.root.geometry() != geometry:
+                self.root.geometry(geometry)
 
     def _begin_drag(self, event):
+        self._requested_geometry = None
         self._drag_origin = (
             event.x_root, event.y_root, self.root.winfo_x(), self.root.winfo_y()
         )

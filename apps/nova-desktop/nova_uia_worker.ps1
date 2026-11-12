@@ -44,6 +44,10 @@ public static class NovaUiaNative {
     $root = [System.Windows.Automation.AutomationElement]::RootElement
     $action = [string]$request.action
 
+    if ($action -in @('find_desktop_window', 'read_desktop_window')) {
+        $allowedReadProcesses = $allowedProcesses + @('notepad', 'olk', 'winword')
+    }
+
     if ($action -eq 'inspect_app') {
         $processName = ([string]$request.processName).Trim().ToLowerInvariant()
         if ($processName.EndsWith('.exe')) {
@@ -124,7 +128,7 @@ public static class NovaUiaNative {
             windows = @($windows.ToArray())
         }
     }
-    elseif ($action -eq 'find_foreground_browser') {
+    elseif ($action -in @('find_foreground_browser', 'find_desktop_window')) {
         $ignoreProcessId = [int]$request.ignoreProcessId
         if ($ignoreProcessId -le 0) { throw 'invalid_ignored_process' }
 
@@ -183,7 +187,7 @@ public static class NovaUiaNative {
             windowHandle = $target.windowHandle
         }
     }
-    elseif ($action -eq 'read_window') {
+    elseif ($action -in @('read_window', 'read_desktop_window')) {
         if ($request.allowReadContent -ne $true) {
             throw 'read_not_authorized'
         }
@@ -266,7 +270,15 @@ public static class NovaUiaNative {
                 $current = $element.Current
                 if ($current.IsOffscreen -or $current.IsPassword) { continue }
                 if ($current.ControlType -ne [System.Windows.Automation.ControlType]::Document) {
-                    continue
+                    if ($action -ne 'read_desktop_window') { continue }
+                    $type = $current.ControlType.ProgrammaticName
+                    $staticLabel = $type -eq 'ControlType.Pane' -and $current.ClassName -match '^(Static$|WindowsForms[0-9]+\.STATIC\.)'
+                    if ($staticLabel -or $type -in @('ControlType.Text','ControlType.ListItem','ControlType.TreeItem','ControlType.Button')) {
+                        $label = ([string]$current.Name).Trim()
+                        if ($label -and $seen.Add($label)) { $textParts.Add($label); $sourceCount++ }
+                        continue
+                    }
+                    if ($type -ne 'ControlType.Edit') { continue }
                 }
 
                 $pattern = $null

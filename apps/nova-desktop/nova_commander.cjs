@@ -4,6 +4,7 @@ const { createRequire } = require('node:module')
 const { randomUUID } = require('node:crypto')
 const readline = require('node:readline')
 const path = require('node:path')
+const fs = require('node:fs')
 
 const entry = process.argv[2]
 const fromServer = createRequire(entry)
@@ -58,6 +59,37 @@ function knownRequest(goal, folders) {
   return null
 }
 
+const projectTools = new Set(['list_directory', 'read_file', 'get_file_info', 'edit_block', 'write_file', 'create_directory', 'move_file'])
+
+function checkProject(root, tool, args) {
+  if (!projectTools.has(tool)) throw new Error('Det här steget gäller inte en projektfil.')
+  const inputs = tool === 'move_file' ? [args.source, args.destination] : [args.path || args.file_path]
+  for (const value of inputs) {
+    if (typeof value !== 'string' || !path.isAbsolute(value) || /[:*?]/.test(value.slice(2)) ||
+        value.split(/[\\/]/).some(s => s === '..' || /[. ]$/.test(s))) throw new Error('Ogiltig projektsökväg.')
+    const absolute = path.resolve(value)
+    const relative = path.relative(root, absolute)
+    if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Sökvägen ligger utanför valt projekt.')
+    let current = root
+    for (const part of relative.split(path.sep).filter(Boolean)) {
+      current = path.join(current, part)
+      if (!fs.existsSync(current)) {
+        if (fs.lstatSync(current, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error('Ogiltig projektlänk.')
+        break
+      }
+      const real = path.relative(root, fs.realpathSync.native(current))
+      if (real.startsWith('..') || path.isAbsolute(real)) throw new Error('Länken går utanför projektet.')
+    }
+  }
+}
+
+function exactProject(goal, root) {
+  const match = goal.trim().match(/^(?:(?:kan|vill|skulle) du (?:kunna )?)?(?:byt ut|ändra|ersätt)(?: texten)? ["”«]([^"”»]+)["”»] (?:mot|till|med) ["”«]([^"”»]+)["”»] i (?:filen )?(.+?) i projekt(?:et|mappen) .+$/iu)
+  if (match) return { tool: 'edit_block', args: { file_path: path.join(root, match[3].trim()), old_string: match[1], new_string: match[2] } }
+  if (/^(?:lista|visa) (?:alla )?filer(?:na)? i projekt(?:et|mappen) [\wåäö-]+[.!?]?$/iu.test(goal.trim())) return { tool: 'list_directory', args: { path: root, depth: 1 }, directRead: true }
+  return null
+}
+
 async function propose(request, tools, history) {
   const catalog = tools.map(t => [t.name, Object.keys(t.inputSchema.properties || {}).filter(k => k !== 'origin'), t.inputSchema.required || []])
   const options = [...tools.map(t => t.name), 'klar', 'fråga']
@@ -102,10 +134,10 @@ async function main() {
   }
   const transport = new StdioClientTransport({ command: process.execPath, args: [entry], env, stderr: 'ignore' })
   await client.connect(transport)
-  const tools = (await client.listTools()).tools.filter(t => operations.has(t.name))
+  const tools = (await client.listTools()).tools.filter(t => operations.has(t.name) && (!request.project || projectTools.has(t.name)))
   if (!tools.length) throw new Error('Desktop Commander har inga tillgängliga datorverktyg.')
   const history = []
-  const exact = knownRequest(request.goal, request.folders)
+  const exact = request.project ? exactProject(request.goal, request.project) : knownRequest(request.goal, request.folders)
   for (let step = 0; step < 12 && !closed; step++) {
     const plan = step === 0 && exact ? exact : await propose(request, tools, history)
     if (plan.tool === 'fråga' || plan.tool === 'klar') {
@@ -120,6 +152,7 @@ async function main() {
         (tool.inputSchema.required || []).some(k => !Object.hasOwn(args, k))) {
       throw new Error('Nova kunde inte formulera ett giltigt verktygssteg. Förtydliga filen eller åtgärden.')
     }
+    if (request.project) checkProject(request.project, tool.name, args)
     if (history.some(h => h.verktyg === tool.name && JSON.stringify(h.argument) === JSON.stringify(args))) {
       emit({ kind: 'end', text: 'Det steget har redan körts. Se resultatet ovan.' })
       return
@@ -131,6 +164,7 @@ async function main() {
       const answer = await read()
       if (closed || answer.approve !== id) return
     }
+    if (request.project) checkProject(request.project, tool.name, args)
     emit({ kind: 'running', tool: tool.name })
     const reply = await client.callTool({ name: tool.name, arguments: args }, undefined, { timeout: 60000, signal: controller.signal })
     const raw = reply.content.filter(b => b.type === 'text').map(b => b.text).join('\n')

@@ -9,11 +9,25 @@ Tryck **Ctrl + Alt + Space** för att visa sidopanelen och börja prata med den 
 - Välj **Använd Sannas röst i Windows**. Fyra vanliga svar finns som lokalt ljud. För andra upplästa svar, ange ElevenLabs-nyckeln under **⋯**. Atlas arbetsverktyg kräver en ansluten, behörig session och ditt godkännande för uppdraget.
 
 
+## Skärmen, mejlen och följdfrågor
+
+Be Nova läsa det aktiva fönstret med **”Vad ser du på min skärm?”**. Windows delar den synliga texten och tillgängliga kontrollerna i det främsta program som stöds. Bilder och videor kräver egen bildtolkning.
+
+Under **⋯ → Anslut Gmail** eller **Anslut Strato** anger du mejladress och leverantörens inloggningsuppgifter. För Gmail används ett applösenord. För Strato används brevlådans lösenord. Nova sparar uppgifterna med Windows DPAPI för ditt användarkonto. Inkorgen läses utan att ändra lässtatus.
+
+Be exempelvis om **”Läs senaste mejlet om offert i Strato”**. **”Läs det här mejlet i Gmail”** försöker identifiera ett öppet mejl genom ämne och synlig meddelandetext bland de senaste 25 mejlen. Om flera passar, ange ämnet. Du kan säga **”Läs upp senaste mejlet i Gmail”** för att höra texten. När Sanna är vald går den begärda uppläsningstexten till ElevenLabs.
+
+Diktera **”Svara att jag kan på fredag”**. Granska avsändarkonto, mottagare, ämne och text i Nova. **”Ändra svaret till …”**, **”Lägg till …”** och **”Ta bort …”** visar ett uppdaterat utkast. När du är nöjd, säg **”Nova, skicka svaret”** eller klicka **Skicka svaret**. Nova skickar det aktuella utkastet via kontots mejlserver och visar sändningsbeskedet.
+
+Säg **”Nova, vänta”** eller tryck **Prata** under uppläsningen för att avbryta och lägga till en instruktion. **Stopp** avslutar samtalet.
+
 ## Datoruppdrag på din Windows-dator
 
 Nova använder Sannas röst när Sanna är vald. Säg exempelvis **”Hej Nova, visa filerna i Hämtade filer”** eller **”Nova, skapa en mapp som heter Kvitton på skrivbordet”**. Uppdrag kan också skrivas i panelen. Under **⋯ → Ge Nova ett datoruppdrag…** kan du beskriva uppgiften med egna ord.
 
 Nova ansluter till det lokalt installerade Desktop Commander med ditt Windows-kontos rättigheter. För en enkel listning av en namngiven standardmapp visas resultatet direkt. Övriga Desktop Commander-steg visas med verktyg och argument. Klicka **Godkänn datorsteget** för att köra steget. **Avbryt**, **Stopp** eller minimering släpper väntande godkännanden. Redan utförda ändringar består.
+
+För projekt under `%USERPROFILE%\Projects` kan du be om en specifik ändring, exempelvis **”Byt ut «utkast» mot «klart» i filen status.txt i projektet Handlarbörsen”**. Läs filnamn och ändring i panelen innan du godkänner datorsteget.
 
 På datorn anger `%LOCALAPPDATA%\Omnira\Nova\desktop-commander.json` de absoluta sökvägarna `node` (node.exe) och `entry` (Desktop Commanders installerade startfil). Fritt formulerade datoruppdrag tolkas av den befintliga lokala Ollama-modellen. Verktygskvitton visas i panelen.
 
@@ -321,7 +335,7 @@ Windows session and is available via **Ctrl+Alt+Space**.
   microphone, headset barge-in, speaker-mode Stop and calendar flow physically
   tested before any production claim.
 
-## NOT yet working
+## Limitations of the historical browser pilot
 
 - Authenticated live pairing and real Atlas AI response from the protected
   preview. Production still intentionally has no `/nova-bridge` route.
@@ -335,7 +349,7 @@ Windows session and is available via **Ctrl+Alt+Space**.
 - An app launch means only that Windows accepted the request; Nova does not
   falsely claim the app or web page is loaded.
 
-## Safety & privacy
+## Safety & privacy of the historical launcher
 
 - No keys/passwords are read or stored in the desktop client.
 - No email is sent, no social post is published, and no project code is

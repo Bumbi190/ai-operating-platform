@@ -180,6 +180,14 @@ def read_active_window(
     return read_window(target, user_requested=True, max_chars=max_chars)
 
 
+def read_desktop_window():
+    """Capture readable controls from the current desktop window, checked again at read time."""
+    target = _call_worker({"action": "find_desktop_window", "ignoreProcessId": os.getpid()})
+    return _call_worker({"action": "read_desktop_window", "allowReadContent": True,
+                         "processName": target["processName"], "windowHandle": target["windowHandle"],
+                         "processId": target["processId"], "ignoreProcessId": os.getpid(), "maxChars": 8000})
+
+
 def build_page_read_prompt(
     instruction: str,
     page_text: str,

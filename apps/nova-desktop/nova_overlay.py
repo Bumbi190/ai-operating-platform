@@ -19,7 +19,8 @@ import tkinter as tk
 from tkinter import simpledialog
 import webbrowser
 
-from nova_commander import CommanderSession, commander_request
+from nova_workspace import Workspace
+from nova_commander import CommanderSession, commander_request, project_intent
 from nova_core import (
     HotkeyListener, URLS, APP_SHORTCUTS, route, normalized,
     is_operator_request, is_calendar_read_request,
@@ -188,6 +189,8 @@ class NovaOverlay:
         # The approved preview host may persist; per-session pairing keys never do.
         local_app_data = os.environ.get("LOCALAPPDATA")
         self.spoken_reply = SpokenReply()
+        self.workspace = Workspace(self)
+        self._reading_chunks = []
         self.reply_file = Path(local_app_data or str(Path.home())) / "Omnira" / "Nova" / "reply-mode.txt"
         self.reply_mode = load_reply_mode(self.reply_file)
         self._last_unclear_audio = 0.0
@@ -213,6 +216,8 @@ class NovaOverlay:
             if local_app_data else None
         )
         self.bridge.start()
+        self._bridge_speech_id = None
+        self._bridge_speech_started = self._bridge_speech_ended = 0.0
         self.live_reply_id = None
         self.live_reply_text = ''
         self.expanded = False
@@ -615,6 +620,25 @@ class NovaOverlay:
         else:
             self._append("nova", "Lokala svar visas i rutan.")
 
+    def _read_aloud(self, body):
+        import textwrap
+        self._reading_chunks = textwrap.wrap(body, width=285)
+        if self.reply_mode not in ("sanna", "windows"):
+            self._append("nova", "Välj en röst i menyn för uppläsning.")
+            self._reading_chunks.clear()
+            return
+        self._read_next_chunk()
+
+    def _read_next_chunk(self):
+        if not self._reading_chunks:
+            return
+        try:
+            self.spoken_reply.speak(self._reading_chunks.pop(0), sanna=self.reply_mode == "sanna")
+            self._phase("talar", "Läser upp mejlet")
+        except OSError:
+            self._reading_chunks.clear()
+            self._append("warn", "Uppläsningen kunde inte starta.")
+
     def _play_reply(self, message):
         try:
             self.spoken_reply.speak(message)
@@ -640,6 +664,7 @@ class NovaOverlay:
             self._play_reply(spoken or message.removeprefix("Nova: "))
 
     def _stop_reply(self):
+        self._reading_chunks = []
         player = getattr(self, "spoken_reply", None)
         if player is not None:
             player.stop()
@@ -657,7 +682,7 @@ class NovaOverlay:
         if not self.pending_choices:
             return
         label, callback = self.pending_choices[0]
-        if label.startswith(("Godkänn", "Spara anteckning", "Kör i Atlas", "Anslut Atlas för uppdraget")):
+        if label.startswith(("Skicka svaret", "Anslut Gmail", "Anslut Strato", "Godkänn", "Spara anteckning", "Kör i Atlas", "Anslut Atlas för uppdraget")):
             self._btn(self.review_bar, label, callback, emphasis=True).pack(side="left")
             cancel_label, cancel = self.pending_choices[-1]
             self._btn(self.review_bar, cancel_label, cancel).pack(side="right")
@@ -743,8 +768,15 @@ class NovaOverlay:
                 kind = event.get("kind")
                 if self.spoken_reply.process is not None and kind in ("level", "speech_start", "speech_end", "transcribing"):
                     continue
-                if kind in ("transcript", "no_transcript") and self.spoken_reply.overlaps(
-                        event.get("audio_start"), event.get("audio_end")):
+                audio_start, audio_end = event.get("audio_start"), event.get("audio_end")
+                bridge_start = getattr(self, "_bridge_speech_started", 0.0)
+                during_bridge = bridge_start and (getattr(self, "_bridge_speech_id", None) or (
+                    isinstance(audio_start, (int, float)) and isinstance(audio_end, (int, float)) and
+                    audio_start <= self._bridge_speech_ended and audio_end >= bridge_start))
+                if kind in ("transcript", "no_transcript") and (during_bridge or self.spoken_reply.overlaps(
+                        audio_start, audio_end)):
+                    if kind == "transcript" and self._interrupt_phrase(event.get("text", "")):
+                        continue
                     if kind == "transcript" and safe_stop_command(event.get("text", "")):
                         self.stop()
                         return
@@ -822,6 +854,40 @@ class NovaOverlay:
             return "Säg nästa navigeringskommando"
         return "Säg ”Hej Nova” eller tryck Prata"
 
+    def _interrupt_reply(self, correction=""):
+        self._stop_reply()
+        self._discard_voice_interpretation()
+        if getattr(self, "_bridge_speech_id", None):
+            self._bridge_speech_id = None
+            self._bridge_speech_ended = time.monotonic() + 0.15
+        if self.bridge.state.online():
+            self.bridge.state.request_voice_control("voice_interrupt")
+            task = self.bridge.state.task
+            if task and task.mode in ("nova_voice", "nova_speech"):
+                self.bridge.state.cancel()
+        self._voice_turn_until = time.monotonic() + 15
+        if not self._conversation_active() and self.expanded:
+            self._start_panel_voice()
+        else:
+            self._resume_native_voice_after_reply()
+        self._phase("lyssnar", "Pausat · säg din ändring")
+        if correction:
+            self._received_native_transcript(correction)
+
+    def _interrupt_phrase(self, phrase):
+        # An addressed pause is distinguishable from other people in the room.
+        match = re.fullmatch(r"(?:(?:hej|okej)[ ,]+)?nova[ ,.!]+(?:avbryt svaret|pausa uppläsningen|pausa svaret|vänta|pausa)\b[ ,.!:—-]*(.*)", phrase.strip(), re.I)
+        if not match:
+            return False
+        spoken = (getattr(self, "live_reply_text", "") if getattr(self, "_bridge_speech_id", None)
+                  else getattr(self.spoken_reply, "last_text", ""))
+        echo = normalized(re.sub(r"[^\w ]", " ", spoken or ""))
+        heard = normalized(re.sub(r"[^\w ]", " ", phrase))
+        if heard and heard in echo:
+            return False
+        self._interrupt_reply(match[1].strip())
+        return True
+
     def _received_native_transcript(self, phrase: str):
         command, has_wake = native_command_text(phrase)
         value = normalized(command)
@@ -841,6 +907,12 @@ class NovaOverlay:
         if conversation and player is not None and player.process is not None and safe_stop_command(command):
             self.stop()
             return
+        if conversation and player is not None and player.process is not None and self._interrupt_phrase(phrase):
+            return
+        workspace = getattr(self, "workspace", None)
+        workspace_action = workspace.route(command) if workspace else None
+        mail_followup = (workspace_action and workspace_action[0] in ("draft", "append", "remove")
+                         and now < workspace.follow_until)
         continuation = None
         if not has_wake and conversation and now < getattr(self, "_voice_navigation_until", 0):
             continuation = navigation_followup(command, spotify_selected=getattr(self, "spotify_selected", False))
@@ -848,7 +920,7 @@ class NovaOverlay:
             (getattr(self, "_destination_question", False) and safe_auto_navigation("öppna " + answer))
             or (suggestion and (yes or no))
             or (getattr(self, "reply_mode", "") == "choose" and answer in ("bengt", "sanna")))
-        if not (has_wake or one_turn or followup or continuation):
+        if not (has_wake or one_turn or followup or continuation or mail_followup):
             return
         self._voice_turn_until = 0.0
         self._voice_answer_until = 0.0
@@ -865,6 +937,20 @@ class NovaOverlay:
         addressed = True
         if safe_stop_command(command) or (has_wake and answer in ("jag pratar i telefon", "pausa lyssningen", "stang av mikrofonen")):
             self.stop()
+            return
+        if workspace_action and not (workspace_action[0] in ("append", "remove") and project_intent(command)):
+            self._cancel_commander()
+            self._choices([])
+            self._stop_reply()
+            self._append("you", "DU (lokalt tal): " + phrase)
+            workspace.handle(workspace_action, command)
+            return
+        if workspace:
+            workspace.reset(workspace.provider)
+            self._stop_reply()
+        if conversation and project_intent(command):
+            self._append("you", "DU (lokalt tal): " + phrase)
+            self._begin_commander(commander_request(command) or command)
             return
         if continuation:
             self._destination_question = False
@@ -1124,6 +1210,8 @@ class NovaOverlay:
                        activebackground=INPUT, activeforeground=TEXT,
                        bd=1, relief="flat")
         menu.add_command(label="Ge Nova ett datoruppdrag…", command=self._enter_commander_request)
+        menu.add_command(label="Anslut Gmail…", command=lambda: self.workspace.configure("Gmail"))
+        menu.add_command(label="Anslut Strato…", command=lambda: self.workspace.configure("Strato"))
         if self.pending_choices:
             for label, callback in self.pending_choices:
                 menu.add_command(label=label, command=callback)
@@ -1290,6 +1378,11 @@ class NovaOverlay:
     def _listen_to_one_request(self):
         if getattr(self, "_commander", None):
             return
+        bridge_voice = self.bridge.state.voice_snapshot()
+        if self.spoken_reply.process is not None or (self._conversation_active() and
+                bridge_voice.get("mode") == "native" and bridge_voice.get("status") in ("speaking", "thinking")):
+            self._interrupt_reply()
+            return
         self._voice_turn_until = time.monotonic() + 15
         self._start_panel_voice()
         self._phase("lyssnar", "Lyssnar på ditt nästa uppdrag")
@@ -1355,6 +1448,8 @@ class NovaOverlay:
             self.root.after(600, lambda: self._voice_after_hotkey(request_id))
 
     def collapse(self):
+        if getattr(self, "workspace", None):
+            self.workspace.reset()
         self._voice_turn_until = self._voice_answer_until = self._voice_navigation_until = 0.0
         self._cancel_commander()
         task = self.bridge.state.task
@@ -1503,8 +1598,19 @@ class NovaOverlay:
             while True:
                 event = self.bridge.state.events.get_nowait()
                 kind = event.get("kind")
+                if (kind in ("canceled", "done", "error") and getattr(self, "_bridge_speech_id", None)
+                        and event.get("id", self._bridge_speech_id) == self._bridge_speech_id):
+                    self._bridge_speech_id = None
+                    self._bridge_speech_ended = time.monotonic() + 0.15
                 # Pairing and voice consent are shown by the live header.
                 if kind == "queued":
+                    voice = self.bridge.state.voice_snapshot()
+                    if (event.get("mode") in ("nova_speech", "nova_voice") and self._conversation_active()
+                            and voice.get("authorized") and voice.get("mode") == "native"):
+                        self._bridge_speech_id = event["id"]
+                        self._bridge_speech_started = time.monotonic()
+                        if not self.native_mic_session:
+                            self.start_native_mic_pilot()
                     self.live_reply_id = None
                     self.live_reply_text = ""
                     self._phase("tolkar", "Nova förbereder rösten" if event.get("mode") == "nova_speech" else "Atlas förbereder svar")
@@ -1558,6 +1664,8 @@ class NovaOverlay:
                 self._finish_uia_read(epoch, result)
         except queue.Empty:
             pass
+        if getattr(self, "workspace", None):
+            self.workspace.poll()
         if not self.closed:
             self.root.after(150, self._poll_bridge)
 
@@ -1573,6 +1681,11 @@ class NovaOverlay:
             pass
         if not self.closed:
             code = self.spoken_reply.poll()
+            if code == 0 and getattr(self, "_reading_chunks", None) and self.expanded:
+                self._read_next_chunk()
+                code = None
+            elif code not in (None, 0):
+                self._reading_chunks = []
             if code is not None and self._conversation_active():
                 now = time.monotonic()
                 if self._voice_suggestion or self._destination_question:
@@ -1744,6 +1857,9 @@ class NovaOverlay:
     def _open_url(self, url: str, caption: str):
         self._discard_voice_interpretation()
         self.spotify_selected = False
+        if getattr(self, "workspace", None):
+            provider = next((name for name in ("Gmail", "Strato") if URLS[name.lower()] == url), None)
+            self.workspace.reset(provider)
         self._phase("navigerar", caption)
         self._append("step", "  ↳ " + caption)
         try:
@@ -2287,6 +2403,18 @@ class NovaOverlay:
             self.command.delete("1.0", "end")
             self.draft = ""
         self.transcript_var.set((self.last_heard or text[:180]) if from_voice and transcript is not None else text[:180])
+        workspace = getattr(self, "workspace", None)
+        if workspace:
+            workspace_action = workspace.route(text)
+            if workspace_action and not (workspace_action[0] in ("append", "remove") and project_intent(text)):
+                self._stop_reply()
+                workspace.handle(workspace_action, text)
+                return
+            workspace.reset(workspace.provider)
+            self._stop_reply()
+        if project_intent(text) and not from_voice:
+            self._begin_commander(commander_request(text) or text)
+            return
         explicit_goal = commander_request(text, explicit_only=True) if not from_voice else None
         if explicit_goal:
             self._begin_commander(explicit_goal)
@@ -2463,6 +2591,8 @@ class NovaOverlay:
         self._phase("godkannande", "Exempel: Öppna Omniras projektmapp")
 
     def stop(self):
+        if getattr(self, "workspace", None):
+            self.workspace.reset()
         self._voice_turn_until = self._voice_answer_until = self._voice_navigation_until = 0.0
         self._cancel_commander()
         self._stop_reply()
@@ -2489,6 +2619,8 @@ class NovaOverlay:
 
     def quit(self):
         self._native_conversation_deadline = 0.0
+        if getattr(self, "workspace", None):
+            self.workspace.reset()
         self._cancel_commander()
         self._stop_reply()
         self._cancel_spotify_control()

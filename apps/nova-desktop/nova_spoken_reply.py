@@ -11,6 +11,7 @@ class SpokenReply:
     def __init__(self):
         self.process = None
         self.prepared = None
+        self.last_text = ""
         self.started = 0.0
         self.intervals = deque(maxlen=24)
 
@@ -53,6 +54,7 @@ class SpokenReply:
             if idle is not None:
                 idle.stdin.close()
             self.process = self._launch()
+        self.last_text = text
         self.started = time.monotonic()
         try:
             self.process.stdin.write(text[:700].encode("utf-8"))

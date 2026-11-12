@@ -1,195 +1,212 @@
-"""Omnira Premium: dependency-free Win/Tk visual theme for Nova Desktop.
-
-A true Windows Acrylic blur is not claimed: the Tk application uses transparent
-window opacity, rounded layered gradients, and carefully chosen contrast.
-No app navigation, network calls, AI requests, or secrets live in this module.
-"""
+"""Nova's native Windows UI. Small raster surfaces are rendered at the display DPI."""
 from __future__ import annotations
 
+import ctypes
+from functools import lru_cache
 import math
+import struct
+import sys
 import tkinter as tk
 from tkinter import font as tkfont
+import zlib
 
-TRANSPARENT = "#02030a"  # keyed corners are removed by Windows
-SURFACE = "#111926"
-PANEL = "#182235"
-INPUT = "#1c283c"
-ACCENT = "#ad9aff"
-CYAN = "#64e5f2"
-TEXT = "#f5f7ff"
-MUTED = "#a0b0cd"
-SUCCESS = "#70e6c5"
-WARNING = "#ffd09e"
-BORDER = "#344661"
-INITIAL_OPACITY = 0.88
-
-
-def mix_color(first: str, second: str, fraction: float) -> str:
-    """Return a deterministic RGB blend, independently testable."""
-    f = min(1.0, max(0.0, float(fraction)))
-    a = tuple(int(first[n:n + 2], 16) for n in (1, 3, 5))
-    b = tuple(int(second[n:n + 2], 16) for n in (1, 3, 5))
-    return "#" + "".join(f"{round(x + (y - x) * f):02x}" for x, y in zip(a, b))
+TRANSPARENT = "#02030a"
+SURFACE = "#191d21"
+PANEL = "#202529"
+INPUT = "#252c30"
+ACCENT = "#afddce"
+CYAN = "#91bdaf"
+TEXT = "#f2f3ef"
+MUTED = "#acb7b8"
+SUCCESS = "#a4d4bc"
+WARNING = "#edc491"
+BORDER = "#364045"
+INITIAL_OPACITY = 1.0
 
 
-def rounded_rectangle(canvas, x1, y1, x2, y2, radius, **kwargs):
-    radius = min(radius, (x2 - x1) / 2, (y2 - y1) / 2)
-    pts = [
-        x1 + radius, y1, x2 - radius, y1, x2, y1,
-        x2, y1 + radius, x2, y2 - radius, x2, y2,
-        x2 - radius, y2, x1 + radius, y2, x1, y2,
-        x1, y2 - radius, x1, y1 + radius, x1, y1,
+def enable_native_dpi():
+    if sys.platform == "win32":
+        try:
+            ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+        except AttributeError:
+            ctypes.windll.user32.SetProcessDPIAware()
+
+
+def window_scale(widget):
+    if sys.platform == "win32":
+        try:
+            dpi = ctypes.windll.user32.GetDpiForWindow(ctypes.c_void_p(widget.winfo_id()))
+            if dpi:
+                return dpi / 96
+        except AttributeError:
+            pass
+    return widget.winfo_fpixels("1i") / 96
+
+
+def rgb(color):
+    return tuple(bytes.fromhex(color[1:]))
+
+
+def blend(a, b, weight):
+    return tuple(round(c + (d - c) * weight) for c, d in zip(a, b))
+
+
+def mix_color(first, second, fraction):
+    return "#" + bytes(blend(rgb(first), rgb(second), max(0, min(1, fraction)))).hex()
+
+
+def png(width, height, rows):
+    def chunk(name, data):
+        return struct.pack(">I", len(data)) + name + data + struct.pack(">I", zlib.crc32(name + data))
+    header = struct.pack(">2I5B", width, height, 8, 2, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(
+        b"".join(b"\0" + row for row in rows), 3)) + chunk(b"IEND", b"")
+
+
+@lru_cache(maxsize=48)
+def rounded_surface(width, height, radius, fill, edge, background):
+    """Mirror the corner pixels; wide/large panels never require a pixel-by-pixel fill."""
+    radius = min(radius, width // 2, height // 2)
+    body, line, back = map(rgb, (fill, edge, background))
+    rows = []
+    for y in range(radius + 1):
+        corner = bytearray()
+        for x in range(radius):
+            distance = radius - math.hypot(max(0, radius - x - .5), max(0, radius - y - .5))
+            outer = min(1, max(0, distance + .5))
+            inner = min(1, max(0, distance - .5))
+            corner.extend(blend(blend(back, line, outer), body, inner))
+        if y >= radius:
+            corner = bytearray(bytes(line) + bytes(body) * max(0, radius - 1))
+        middle = bytes(line if y == 0 else body) * (width - radius * 2)
+        opposite = b"".join(corner[i:i + 3] for i in range(len(corner) - 3, -1, -3))
+        rows.append(bytes(corner) + middle + opposite)
+    return png(width, height, rows[:-1] + [rows[-1]] * (height - radius * 2) + rows[-2::-1])
+
+
+def _edges(points):
+    # A normalized inward-facing normal gives distance in physical pixels.
+    result = []
+    for (x, y), (end_x, end_y) in zip(points, points[1:] + points[:1]):
+        dx, dy = end_x - x, end_y - y
+        length = math.hypot(dx, dy)
+        result.append((-dy / length, dx / length, (dy * x - dx * y) / length))
+    return result
+
+
+def _coverage(value):
+    return max(0.0, min(1.0, value))
+
+
+@lru_cache(maxsize=16)
+def mark_image(size, background, hover=False):
+    # Three faces of a folded N, drawn at the target resolution.
+    faces = [
+        (_edges(((.292, .302), (.394, .302), (.394, .704), (.292, .704))), rgb("#9bbcb2")),
+        (_edges(((.606, .302), (.708, .302), (.708, .704), (.606, .704))), rgb("#b5d5ca")),
+        (_edges(((.292, .302), (.412, .302), (.708, .704), (.588, .704))), rgb("#e4eee7")),
     ]
-    return canvas.create_polygon(pts, smooth=True, splinesteps=20, **kwargs)
+    top = rgb("#35443f" if hover else "#303d39")
+    bottom = rgb("#232b2a" if hover else "#222928")
+    edge = rgb("#596c62" if hover else "#48574f")
+    back = rgb(background)
+    radius = size * .32
+    flat = size / 2 - radius - 1
+    rows = []
+    for y in range(size):
+        row = bytearray()
+        for x in range(size):
+            nx, ny = (x + .5) / size, (y + .5) / size
+            dx = max(abs(x + .5 - size / 2) - flat, 0)
+            dy = max(abs(y + .5 - size / 2) - flat, 0)
+            distance = math.hypot(dx, dy) - radius
+            tile = blend(top, bottom, .22 * nx + .78 * ny)
+            color = blend(back, edge, _coverage(.5 - distance))
+            color = blend(color, tile, _coverage(-.5 - distance))
+            if .26 < nx < .74 and .27 < ny < .74:
+                for edges, ink in faces:
+                    nearest = min(a * nx + b * ny + c for a, b, c in edges)
+                    color = blend(color, ink, _coverage(nearest * size + .5))
+            row.extend(color)
+        rows.append(bytes(row))
+    return png(size, size, rows)
 
 
-def paint_premium_panel(canvas: tk.Canvas, width: int, height: int) -> None:
-    """Draw a restrained aurora/gradient panel with rounded, transparent edges.
-
-    Tk Canvas has no clip paths or per-item alpha: each horizontal band is
-    clipped mathematically to the round rectangle, and the global Tk window
-    alpha controls the actual transparency.
-    """
-    # Soft nested perimeter traces add depth while leaving outer keyed corners.
-    for inset, color in ((1, "#26314e"), (3, "#3a3762"), (5, "#272f4f")):
-        rounded_rectangle(
-            canvas, inset, inset, width - inset, height - inset, 28,
-            fill="", outline=color, width=1,
-        )
-    rounded_rectangle(
-        canvas, 7, 7, width - 7, height - 7, 25,
-        fill="#0e1727", outline="#586084", width=1,
-    )
-    left, right, top, bottom, radius = 9, width - 9, 9, height - 9, 24
-    for y in range(top + 1, bottom - 1, 2):
-        fraction = (y - top) / max(1, bottom - top)
-        top_color = mix_color("#24314c", "#0e1727", fraction)
-        shade = mix_color(top_color, "#17122d", max(0.0, 0.34 - fraction) * 0.24)
-        dy = min(y - top, bottom - y)
-        corner_inset = 0
-        if dy < radius:
-            corner_inset = radius - math.sqrt(max(0, radius * radius - (radius - dy) ** 2))
-        canvas.create_line(
-            left + corner_inset, y, right - corner_inset, y,
-            fill=shade, width=2,
-        )
-    # Thin upper spectrum: visual signature, not a distracting neon border.
-    for i in range(80):
-        start = 68 + (width - 136) * i / 80
-        end = 68 + (width - 136) * (i + 1) / 80
-        color = mix_color("#a48dff", CYAN, i / 79)
-        canvas.create_line(start, 8, end + 0.5, 8, fill=color, width=2)
-    canvas.create_line(22, height - 13, width - 22, height - 13,
-                       fill="#293751", width=1)
+def paint_image(canvas, data, x=0, y=0):
+    # Keep the Tcl image alive for exactly as long as this canvas.
+    canvas._artwork = tk.PhotoImage(master=canvas, data=data, format="png")
+    canvas.create_image(x, y, anchor="nw", image=canvas._artwork)
 
 
-def paint_nova_orb(canvas: tk.Canvas, size=94) -> None:
-    center = size / 2
-    canvas.create_oval(7, 7, size - 7, size - 7,
-                       fill="#151b34", outline="#303b64", width=2)
-    canvas.create_oval(12, 12, size - 12, size - 12,
-                       fill="#1b2544", outline="#465181", width=1)
-    canvas.create_arc(8, 8, size - 8, size - 8, start=42, extent=117,
-                      outline=ACCENT, width=3, style="arc")
-    canvas.create_arc(8, 8, size - 8, size - 8, start=215, extent=90,
-                      outline=CYAN, width=2, style="arc", tags="nova-orbit")
-    canvas.create_oval(22, 22, size - 22, size - 22,
-                       fill="#252c55", outline="#5265a0", width=1)
-    canvas.create_text(center, center - 1, text="N",
-                       fill=TEXT, font=("Segoe UI Semibold", 30))
-    canvas.create_oval(size - 26, size - 25, size - 13, size - 12,
-                       fill=SUCCESS, outline="#162032", width=2)
+def paint_premium_panel(canvas, width, height, scale=1):
+    data = rounded_surface(width, height, round(17 * scale), SURFACE, BORDER, TRANSPARENT)
+    paint_image(canvas, data)
+
+
+def paint_nova_orb(canvas, size, background=TRANSPARENT, hover=False, inset=0):
+    canvas.delete("all")
+    data = mark_image(size - 2 * inset, background, hover)
+    paint_image(canvas, data, inset, inset)
 
 
 class PremiumButton(tk.Canvas):
-    """Accessible-ish canvas pill: focus, hover and keyboard activation."""
-
-    def __init__(
-        self, parent, label: str, command,
-        emphasis: bool = False, surface: bool = False,
-        width: int | None = None, compact: bool = False,
-    ):
-        self.label = label
-        self.command = command
-        self.emphasis = emphasis
-        self.surface = surface
+    def __init__(self, parent, label, command, emphasis=False, surface=False,
+                 width=None, compact=False, scale=1):
+        self.label, self.command = label, command
+        self.emphasis, self.surface = emphasis, surface
         self.attention = False
         self._hover = False
-        self._font = tkfont.Font(family="Segoe UI Semibold", size=9 if compact else 10)
-        natural_width = self._font.measure(label)
-        self._pixel_width = max(31, natural_width + (15 if compact else 30))
-        if width is not None:
-            self._pixel_width = max(31, self._pixel_width if len(label) > 2 else 32)
-        self._pixel_height = 31 if compact else 39
-        parent_bg = parent.cget("bg")
-        super().__init__(
-            parent, width=self._pixel_width, height=self._pixel_height,
-            bg=parent_bg, bd=0, highlightthickness=0, relief="flat",
-            cursor="hand2", takefocus=True,
-        )
-        self.bind("<Enter>", self._entered)
-        self.bind("<Leave>", self._left)
-        self.bind("<Button-1>", self._activate)
-        self.bind("<Return>", self._activate)
-        self.bind("<space>", self._activate)
+        self._scale = scale
+        icon = width is not None and len(label) <= 2
+        self._font = tkfont.Font(root=parent, family="Segoe UI Semibold",
+                                 size=-round((18 if icon else 13) * scale))
+        self._pixel_height = round((30 if compact else 34) * scale)
+        self._pixel_width = self._pixel_height if icon else self._font.measure(label) + round(24 * scale)
+        super().__init__(parent, width=self._pixel_width, height=self._pixel_height, bg=parent.cget("bg"),
+                         bd=0, highlightthickness=0, relief="flat", cursor="hand2", takefocus=True)
+        self.bind("<Enter>", lambda _e: self._highlight(True))
+        self.bind("<Leave>", lambda _e: self._highlight(False))
+        for event in ("<Button-1>", "<Return>", "<space>"):
+            self.bind(event, self._activate)
         self.bind("<FocusIn>", lambda _e: self._paint())
         self.bind("<FocusOut>", lambda _e: self._paint())
         self._paint()
 
-    def set_attention(self, value: bool):
-        self.attention = bool(value)
-        self._paint()
+    def set_attention(self, value):
+        if self.attention != bool(value):
+            self.attention = bool(value)
+            self._paint()
 
-    def _entered(self, _event):
-        self._hover = True
-        self._paint()
-
-    def _left(self, _event):
-        self._hover = False
+    def _highlight(self, value):
+        self._hover = value
         self._paint()
 
     def _activate(self, _event):
         self.command()
+        return "break"
 
     def _paint(self):
         self.delete("all")
-        width, height = self._pixel_width, self._pixel_height
         if self.emphasis:
-            fill = "#655fe0" if not self._hover else "#7974f5"
-            stroke = "#a79dff"
-            text = "#ffffff"
-        elif self.attention:
-            fill = "#383267" if not self._hover else "#49418b"
-            stroke = "#8981e3"
-            text = TEXT
+            fill, edge, text = ("#c1e6d9" if self._hover else ACCENT), ACCENT, "#15241f"
+        elif self.attention or self._hover:
+            fill, edge, text = "#303b39", "#4c6059", TEXT
         elif self.surface:
-            fill = "#1b2940" if not self._hover else "#2b3957"
-            stroke = "#3f5578"
-            text = "#dbe7fa"
+            fill, edge, text = SURFACE, SURFACE, MUTED
         else:
-            fill = "#252a50" if not self._hover else "#35376c"
-            stroke = "#5a65a4"
-            text = TEXT
-        radius = 12 if height < 36 else 15
-        rounded_rectangle(self, 1, 2, width - 1, height - 1, radius,
-                          fill=fill, outline=stroke, width=1)
-        if self.emphasis:
-            self.create_line(16, 4, width - 16, 4, fill="#b9aaff", width=1)
+            fill, edge, text = "#282e32", "#3a4246", TEXT
         if self.focus_get() is self:
-            rounded_rectangle(self, 3, 4, width - 3, height - 3, radius - 2,
-                              fill="", outline=CYAN, width=1)
-        self.create_text(width / 2, height / 2 + 0.2, text=self.label,
-                         fill=text, font=self._font)
+            edge = CYAN
+        w, h = self._pixel_width, self._pixel_height
+        paint_image(self, rounded_surface(w, h, round(9 * self._scale), fill, edge, self.cget("bg")))
+        self.create_text(w / 2, h / 2, text=self.label, fill=text, font=self._font)
 
 
 class SlimScrollbar(tk.Canvas):
-    """Dark, narrow scrollbar replacing the native white Windows scrollbar."""
-
-    def __init__(self, parent, on_scroll, **kwargs):
-        super().__init__(
-            parent, width=9, bg=PANEL, borderwidth=0, highlightthickness=0,
-            relief="flat", cursor="hand2", **kwargs,
-        )
+    def __init__(self, parent, on_scroll, scale=1, **kwargs):
+        self.scale = scale
+        super().__init__(parent, width=round(6 * scale), bg=PANEL, borderwidth=0, highlightthickness=0,
+                         relief="flat", cursor="hand2", **kwargs)
         self.first, self.last = 0.0, 1.0
         self.on_scroll = on_scroll
         self.bind("<Configure>", lambda _e: self._paint())
@@ -197,28 +214,21 @@ class SlimScrollbar(tk.Canvas):
         self.bind("<B1-Motion>", self._jump)
 
     def set(self, first, last):
-        self.first = max(0.0, min(1.0, float(first)))
-        self.last = max(self.first, min(1.0, float(last)))
+        self.first, self.last = float(first), float(last)
         self._paint()
 
     def _paint(self):
         self.delete("all")
-        width = max(9, self.winfo_width())
-        height = max(20, self.winfo_height())
-        self.create_line(width / 2, 4, width / 2, height - 4,
-                         fill="#273950", width=3)
-        if self.last - self.first >= 0.999:
+        if self.last - self.first >= .999:
             return
-        thumb_top = 4 + self.first * (height - 8)
-        thumb_end = 4 + self.last * (height - 8)
-        if thumb_end - thumb_top < 20:
-            thumb_end = thumb_top + 20
-        rounded_rectangle(self, 2, thumb_top, width - 2,
-                          min(height - 3, thumb_end), 3,
-                          fill="#827cbb", outline="#9c98d3", width=1)
+        w, h = self.winfo_width(), self.winfo_height()
+        top = max(2, self.first * h)
+        bottom = min(h - 2, max(top + 12 * self.scale, self.last * h))
+        if bottom > top:
+            self.create_line(w / 2, top, w / 2, bottom, fill="#586461",
+                             width=max(2, round(3 * self.scale)), capstyle="round")
 
     def _jump(self, event):
-        height = max(20, self.winfo_height())
-        fraction = max(0, min(1, (event.y - 4) / max(1, height - 8)))
         viewport = self.last - self.first
-        self.on_scroll(max(0, min(1 - viewport, fraction - viewport / 2)))
+        fraction = event.y / max(1, self.winfo_height()) - viewport / 2
+        self.on_scroll(max(0, min(1 - viewport, fraction)))

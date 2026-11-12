@@ -8,7 +8,6 @@ from __future__ import annotations
 import ctypes
 from ctypes import wintypes
 import json
-import math
 import os
 from pathlib import Path
 import queue
@@ -17,7 +16,7 @@ import subprocess
 import threading
 import time
 import tkinter as tk
-from tkinter import font as tkfont, simpledialog
+from tkinter import simpledialog
 import webbrowser
 
 from nova_commander import CommanderSession, commander_request
@@ -45,7 +44,7 @@ from nova_windows import list_known_windows, focus_known_window
 from nova_theme import (
     TRANSPARENT, SURFACE, PANEL, INPUT, ACCENT, CYAN, TEXT, MUTED,
     SUCCESS, WARNING, BORDER, INITIAL_OPACITY,
-    paint_premium_panel, paint_nova_orb, PremiumButton, SlimScrollbar,
+    enable_native_dpi, window_scale, paint_premium_panel, paint_nova_orb, PremiumButton, SlimScrollbar,
 )
 PROJECTS = {
     "Omnira": r"C:\Users\Andre\Projects\Omnira",
@@ -60,8 +59,8 @@ _WORK_REQUEST = re.compile(
     r"flytta|radera|betala|kop|kopa|skriv|svara|besvara|planera in|installera)\b"
 )
 
-BUBBLE_W, BUBBLE_H = 94, 94
-PANEL_W, PANEL_H = 442, 600
+BUBBLE_W, BUBBLE_H = 54, 54
+PANEL_W, PANEL_H = 416, 520
 
 
 def cursor_position() -> tuple[int, int]:
@@ -148,16 +147,6 @@ def anchored_geometry(
     return f"{width}x{height}{x:+d}{y:+d}"
 
 
-def rounded_rectangle(canvas: tk.Canvas, x1, y1, x2, y2, radius, **kwargs):
-    points = [
-        x1 + radius, y1, x2 - radius, y1, x2, y1, x2, y1 + radius,
-        x2, y2 - radius, x2, y2, x2 - radius, y2,
-        x1 + radius, y2, x1, y2, x1, y2 - radius,
-        x1, y1 + radius, x1, y1,
-    ]
-    return canvas.create_polygon(points, smooth=True, splinesteps=15, **kwargs)
-
-
 def public_project_command(command: str) -> str | None:
     """Explicit open/locate requests only; never arbitrary filesystem paths."""
     s = normalized(command)
@@ -177,7 +166,9 @@ def public_project_command(command: str) -> str | None:
 
 class NovaOverlay:
     def __init__(self):
+        enable_native_dpi()
         self.root = tk.Tk()
+        self.scale = window_scale(self.root)
         self.root.withdraw()
         self.root.title("Nova – Omnira")
         self.root.configure(bg=TRANSPARENT)
@@ -230,7 +221,7 @@ class NovaOverlay:
         self.expanded = False
         self.phase = "redo"
         self.closed = False
-        self.anim_tick = 0
+        self.phase_detail = "Redo för ett nytt uppdrag"
         self.task_epoch = 0
         self.draft = ""
         self.last_transcript = ""
@@ -278,7 +269,6 @@ class NovaOverlay:
         self.listener.start()
         self.root.after(100, self._process_events)
         self.root.after(450, self._hotkey_check)
-        self.root.after(170, self._animate)
         self.root.after(150, self._poll_bridge)
         self.root.after(160, self._poll_voice_auto)
         self.root.after(125, self._poll_native_mic)
@@ -288,11 +278,45 @@ class NovaOverlay:
         if os.environ.get("NOVA_START_EXPANDED") == "1":
             self.root.after(180, self._open_from_hotkey)
 
+    def _px(self, value):
+        return round(value * self.scale)
+
     def _setup_fonts(self):
-        self.h = ("Segoe UI Semibold", 12)
-        self.small = ("Segoe UI", 9)
-        self.body = ("Segoe UI", 10)
-        self.entry_font = ("Segoe UI", 11)
+        self.h = ("Segoe UI Semibold", -self._px(21))
+        self.small = ("Segoe UI", -self._px(13))
+        self.body = ("Segoe UI", -self._px(15))
+        self.entry_font = ("Segoe UI", -self._px(16))
+
+    def _size(self, width, height):
+        x, y = self._manual_anchor or self._dock_area[2:]
+        left, top, right, bottom = work_area((x - 1, y - 1))
+        return min(self._px(width), right - left), min(self._px(height), bottom - top)
+
+    def _refresh_scale(self):
+        scale = window_scale(self.root)
+        if abs(scale - self.scale) < .01 or self._drag_origin is not None:
+            return
+        self.scale = scale
+        self._setup_fonts()
+        if not self.expanded:
+            self._draw_collapsed()
+            return
+        self.draft = self.command.get("1.0", "end-1c")
+        cursor = self.command.index("insert")
+        selection = self.command.tag_ranges("sel")
+        focus = self.root.focus_get() is self.command
+        transcript = self.transcript_var.get()
+        bridge = self.bridge_var.get()
+        scroll = self.chat.yview()[0]
+        self._draw_expanded()
+        self.command.mark_set("insert", cursor)
+        if selection:
+            self.command.tag_add("sel", *selection)
+        self.transcript_var.set(transcript)
+        self.bridge_var.set(bridge)
+        self.chat.yview_moveto(scroll)
+        if focus:
+            self.command.focus_set()
 
     def _clear(self):
         for child in self.root.winfo_children():
@@ -301,6 +325,7 @@ class NovaOverlay:
     def _remember_active_window(self):
         """Remember the last active browser HWND and work area without reading its content."""
         try:
+            self._refresh_scale()
             self._browser.remember_foreground()
             candidate = foreground_window_rectangle()
             if candidate is not None:
@@ -331,14 +356,13 @@ class NovaOverlay:
                     PANEL_H if self.expanded else BUBBLE_H)
 
     def _place(self, width: int, height: int):
-        if self._manual_anchor is None:
-            geometry = anchored_geometry(width, height, area=self._dock_area)
-        else:
-            right, bottom = self._manual_anchor
-            left, top, monitor_right, monitor_bottom = work_area((right - 1, bottom - 1))
-            x = max(left, min(right - width, monitor_right - width))
-            y = max(top, min(bottom - height, monitor_bottom - height))
-            geometry = f"{width}x{height}{x:+d}{y:+d}"
+        width, height = self._size(width, height)
+        right, bottom = self._manual_anchor or self._dock_area[2:]
+        left, top, monitor_right, monitor_bottom = work_area((right - 1, bottom - 1))
+        margin = 0 if self._manual_anchor else self._px(18)
+        x = max(left, min(right - width - margin, monitor_right - width))
+        y = max(top, min(bottom - height - margin, monitor_bottom - height))
+        geometry = f"{width}x{height}{x:+d}{y:+d}"
         self._requested_geometry = geometry
         self.root.geometry(geometry)
         self.root.after(60, self._settle_placement, geometry)
@@ -406,16 +430,23 @@ class NovaOverlay:
         self.expanded = False
         self._clear()
         self._place(BUBBLE_W, BUBBLE_H)
-        c = self._canvas(BUBBLE_W, BUBBLE_H)
-        paint_nova_orb(c, BUBBLE_W)
+        w, h = self._size(BUBBLE_W, BUBBLE_H)
+        c = self._canvas(w, h)
+        c.configure(cursor="hand2")
+
+        def draw(hover):
+            paint_nova_orb(c, min(w, h), hover=hover, inset=self._px(2))
+
+        draw(False)
         self._bind_drag(c, self._end_bubble_drag)
         c.bind("<Button-3>", self._bubble_menu)
-        c.bind("<Enter>", lambda _e: c.configure(cursor="hand2"))
+        c.bind("<Enter>", lambda _e: draw(True))
+        c.bind("<Leave>", lambda _e: draw(False))
         self.bubble_canvas = c
 
     def _bubble_menu(self, event):
-        menu = tk.Menu(self.root, tearoff=0, bg="#172135", fg=TEXT,
-                       activebackground="#363560", activeforeground=TEXT,
+        menu = tk.Menu(self.root, tearoff=0, bg=SURFACE, fg=TEXT,
+                       activebackground=INPUT, activeforeground=TEXT,
                        bd=1, relief="flat")
         menu.add_command(label="Öppna Nova", command=self._open_from_hotkey)
         menu.add_command(label="Flytta Nova till aktivt program", command=self._redock_near_pointer)
@@ -432,111 +463,94 @@ class NovaOverlay:
         self.expanded = True
         self._clear()
         self._place(PANEL_W, PANEL_H)
-        bg = self._canvas(PANEL_W, PANEL_H)
-        paint_premium_panel(bg, PANEL_W, PANEL_H)
+        px = self._px
+        w, h = self._size(PANEL_W, PANEL_H)
+        bg = self._canvas(w, h)
+        paint_premium_panel(bg, w, h, self.scale)
         content = tk.Frame(bg, bg=SURFACE)
-        bg.create_window(18, 18, window=content, anchor="nw",
-                         width=PANEL_W - 36, height=PANEL_H - 36)
+        inset = px(16)
+        bg.create_window(inset, inset, window=content, anchor="nw",
+                         width=w - 2 * inset, height=h - 2 * inset)
+        content.columnconfigure(0, weight=1)
+        content.rowconfigure(2, weight=1)
+
         top = tk.Frame(content, bg=SURFACE)
-        top.pack(fill="x", pady=(0, 9))
-        logo = tk.Canvas(top, width=42, height=42, bg=SURFACE,
+        top.grid(row=0, column=0, sticky="ew")
+        logo = tk.Canvas(top, width=px(38), height=px(38), bg=SURFACE,
                          bd=0, highlightthickness=0)
-        logo.pack(side="left", padx=(0, 11))
-        logo.create_oval(1, 1, 40, 40, fill="#222a4d",
-                         outline="#5f6d99", width=1)
-        logo.create_arc(1, 1, 40, 40, start=48, extent=112,
-                        outline=CYAN, width=2, style="arc")
-        logo.create_arc(4, 4, 37, 37, start=214, extent=95,
-                        outline=ACCENT, width=2, style="arc")
-        logo.create_text(21, 20, text="N",
-                         font=("Segoe UI Semibold", 19), fill=TEXT)
-        labels = tk.Frame(top, bg=SURFACE)
-        labels.pack(side="left", fill="x", expand=True)
-        self._bind_drag(top)
-        self._bind_drag(logo)
-        self._bind_drag(labels)
-        tk.Label(labels, text="N O V A", bg=SURFACE, fg=TEXT,
-                 font=("Segoe UI Semibold", 14), anchor="w").pack(anchor="w")
-        tk.Label(labels, text="OMNIRA  /  DESKTOP INTELLIGENCE",
-                 bg=SURFACE, fg=CYAN,
-                 font=("Segoe UI Semibold", 7), anchor="w").pack(anchor="w")
-        # Activity strip below already shows task state; avoid repeating it here.
-        self.phase_var = tk.StringVar(value="● Redo att hjälpa")
-        self.bridge_var = tk.StringVar(value="Lokala kommandon · Anslut Sannas röst")
-        self.bridge_status = tk.Label(
-            labels, textvariable=self.bridge_var, bg=SURFACE, fg=CYAN,
-            font=("Segoe UI", 8, "underline"), anchor="w", cursor="hand2",
-        )
-        self.bridge_status.pack(anchor="w")
-        for child in labels.winfo_children():
-            if child is not self.bridge_status:
-                self._bind_drag(child)
-        self.bridge_status.bind("<Button-1>", lambda _e: self._connect_sanna())
-        # Standard window close must NOT shut down the global hotkey listener.
-        # Full termination remains available only through the explicit ⋯ menu.
+        logo.pack(side="left", padx=(0, px(10)))
+        paint_nova_orb(logo, px(38), background=SURFACE)
         self._btn(top, "×", self.collapse, width=3, surface=True).pack(side="right")
-        self._btn(top, "–", self.collapse, width=3, surface=True).pack(side="right", padx=(0, 5))
-        self.more_button = self._btn(top, "⋯", self._show_more_menu,
-                                     width=3, surface=True)
-        self.more_button.pack(side="right", padx=(0, 5))
+        self.more_button = self._btn(top, "⋯", self._show_more_menu, width=3, surface=True)
+        self.more_button.pack(side="right")
         self._refresh_more_button()
 
-        self.activity = tk.Canvas(content, width=PANEL_W-36, height=35,
-                                  bg=SURFACE, highlightthickness=0, bd=0)
-        self.activity.pack(fill="x", pady=(3, 9))
-        rounded_rectangle(self.activity, 1, 1, PANEL_W - 39, 34, 10,
-                          fill="#1a2940", outline="#324b6b", width=1)
-        self.activity.create_oval(15, 14, 23, 22, fill=CYAN, outline="")
-        self.activity_text = self.activity.create_text(
-            36, 18, anchor="w", text="Redo för ett nytt kommando",
-            fill=MUTED, font=self.small)
+        labels = tk.Frame(top, bg=SURFACE)
+        labels.pack(side="left", fill="x", expand=True)
+        title = tk.Label(labels, text="Nova", bg=SURFACE, fg=TEXT, font=self.h, anchor="w", pady=0)
+        title.pack(anchor="w")
+        for widget in (top, logo, labels, title):
+            self._bind_drag(widget)
+        self.phase_var = tk.StringVar()
+        self.bridge_var = tk.StringVar(value=self._local_voice_caption())
+        self.bridge_status = tk.Label(labels, textvariable=self.bridge_var, bg=SURFACE, fg=MUTED,
+                                      font=self.small, anchor="w", cursor="hand2", pady=0)
+        self.bridge_status.pack(fill="x")
+        self.bridge_status.bind("<Button-1>", lambda _e: self._connect_sanna())
 
-        chat_shell = tk.Frame(content, bg=BORDER, padx=1, pady=1)
-        chat_shell.pack(fill="both", expand=True)
-        chat_container = tk.Frame(chat_shell, bg=PANEL, padx=12, pady=9)
-        chat_container.pack(fill="both", expand=True)
-        scroll = SlimScrollbar(chat_container,
+        self.activity = tk.Canvas(content, height=px(25), bg=SURFACE, highlightthickness=0, bd=0)
+        self.activity.grid(row=1, column=0, sticky="ew", pady=(px(6), px(6)))
+        self.activity_dot = self.activity.create_oval(px(3), px(10), px(9), px(16), outline="", fill=CYAN)
+        self.activity_text = self.activity.create_text(px(18), px(13), anchor="w", font=self.small)
+        self._phase(self.phase, self.phase_detail)
+
+        chat_container = tk.Frame(content, bg=PANEL, padx=px(12), pady=px(7))
+        chat_container.grid(row=2, column=0, sticky="nsew")
+        scroll = SlimScrollbar(chat_container, scale=self.scale,
                                on_scroll=lambda fraction: self.chat.yview_moveto(fraction))
-        scroll.pack(side="right", fill="y", padx=(5, 0))
-        self.chat = tk.Text(chat_container, height=4, wrap="word", font=self.body,
-                            bg=PANEL, fg=TEXT, relief="flat", bd=0,
-                            padx=7, pady=9, highlightthickness=0,
-                            spacing1=2, spacing3=3,
-                            yscrollcommand=scroll.set)
-        self.chat.pack(side="left", fill="both", expand=True)
-        self.chat.tag_configure("you", foreground="#c2b9ff", spacing1=10)
-        self.chat.tag_configure("nova", foreground=TEXT, spacing1=9)
-        self.chat.tag_configure("step", foreground=CYAN, spacing1=4)
-        self.chat.tag_configure("warn", foreground=WARNING, spacing1=6)
-        self.chat.tag_configure("ok", foreground=SUCCESS, spacing1=5)
-        self.chat.config(state="disabled")
-        self._render_history()
+        scroll.pack(side="right", fill="y")
+        self.chat = tk.Text(chat_container, height=1, width=1, wrap="word", font=self.body,
+                            bg=PANEL, fg=TEXT, relief="flat", bd=0, padx=px(2), pady=0,
+                            highlightthickness=0, spacing2=px(2), yscrollcommand=scroll.set,
+                            selectbackground="#485c54", selectforeground=TEXT)
+        self.chat.pack(fill="both", expand=True)
+        self.chat.tag_configure("speaker", font=("Segoe UI Semibold", -px(12)), foreground=MUTED,
+                                spacing1=px(9), spacing3=px(1))
+        self.chat.tag_configure("user_name", foreground=ACCENT)
+        self.chat.tag_configure("you", foreground=TEXT, spacing3=px(4))
+        self.chat.tag_configure("nova", foreground=TEXT, spacing3=px(4))
+        for kind, color in (("step", MUTED), ("warn", WARNING), ("ok", SUCCESS)):
+            self.chat.tag_configure(kind, foreground=color, font=self.small, spacing1=px(4))
+        if not self.history:
+            self._append("nova", "Säg ”Hej Nova” följt av ditt uppdrag, eller skriv här.")
+        else:
+            self._render_history()
 
         self.voice_options = tk.Frame(content, bg=SURFACE)
-        self.voice_options.pack(fill="x")
+        self.voice_options.grid(row=3, column=0, sticky="ew")
         self._display_voice_options()
         self.review_bar = tk.Frame(content, bg=SURFACE)
-        self.review_bar.pack(fill="x")
+        self.review_bar.grid(row=4, column=0, sticky="ew")
         self._refresh_review_bar()
+
         live = tk.Frame(content, bg=SURFACE)
-        live.pack(fill="x", pady=(8, 0))
-        tk.Label(live, text="LIVE  /", bg=SURFACE, fg=CYAN,
-                 font=("Segoe UI Semibold", 8)).pack(side="left", padx=(0, 8))
+        live.grid(row=5, column=0, sticky="ew", pady=(px(8), px(5)))
+        tk.Label(live, text="LIVE", bg=SURFACE, fg=MUTED,
+                 font=("Segoe UI Semibold", -px(11))).pack(side="left", padx=(0, px(7)))
         self.transcript_var = tk.StringVar(value=self.last_heard or "—")
-        self.transcript_label = tk.Label(
-            live, textvariable=self.transcript_var, bg=SURFACE, fg="#c9c8ff",
-            font=self.small, anchor="w", width=35, justify="left")
+        self.transcript_label = tk.Label(live, textvariable=self.transcript_var, bg=SURFACE,
+                                         fg=MUTED, font=self.small, anchor="w", width=1)
         self.transcript_label.pack(side="left", fill="x", expand=True)
 
-        self.input_shell = tk.Frame(content, bg="#4c5c83", padx=1, pady=1)
-        self.input_shell.pack(fill="x", pady=(7, 8))
-        self.command = tk.Text(self.input_shell, height=2, wrap="word", font=self.entry_font,
-                               bg=INPUT, fg=TEXT, insertbackground=CYAN,
-                               relief="flat", padx=13, pady=7, highlightthickness=0,
-                               selectbackground="#55559a")
+        self.input_shell = tk.Frame(content, bg=BORDER, padx=1, pady=1)
+        self.input_shell.grid(row=6, column=0, sticky="ew")
+        self.command = tk.Text(self.input_shell, height=2, width=1, wrap="word", font=self.entry_font,
+                               bg=INPUT, fg=TEXT, insertbackground=TEXT, relief="flat", bd=0,
+                               padx=px(10), pady=px(6), highlightthickness=0,
+                               selectbackground="#485c54", selectforeground=TEXT)
         self.command.pack(fill="x")
         self.command.bind("<FocusIn>", lambda _e: self.input_shell.configure(bg=CYAN))
-        self.command.bind("<FocusOut>", lambda _e: self.input_shell.configure(bg="#4c5c83"))
+        self.command.bind("<FocusOut>", lambda _e: self.input_shell.configure(bg=BORDER))
         self.command.bind("<Return>", self._submit_enter)
         self.command.bind("<Control-Return>", self._submit_enter)
         self.command.bind("<Control-period>", self._stop_shortcut)
@@ -544,24 +558,15 @@ class NovaOverlay:
         self.command.bind("<KeyRelease>", self._on_input)
         self.command.insert("1.0", self.draft)
         actions = tk.Frame(content, bg=SURFACE)
-        actions.pack(fill="x")
-        self._btn(actions, "🎙 Prata", self._listen_to_one_request).pack(side="left", padx=(0, 8))
-        self._btn(actions, "Stopp", self.stop, width=8).pack(side="left", padx=(0, 8))
-        self._btn(actions, "➤ Skicka", self.send, emphasis=True).pack(side="right")
-        tk.Label(content,
-                 text="Enter skickar · Ctrl+. stoppar · Shift+Enter ny rad · Fler val under ⋯",
-                 bg=SURFACE, fg="#828ba9", font=("Segoe UI", 8)).pack(
-                     fill="x", pady=(6, 0))
-
-        if not self.history:
-            self._append("nova", "Säg exempelvis ”Hej Nova, starta Spotify”, eller tryck Prata och säg vad du vill göra.")
-        if self.draft:
-            self.transcript_var.set(self.draft[:180])
+        actions.grid(row=7, column=0, sticky="ew", pady=(px(9), 0))
+        self._btn(actions, "Prata", self._listen_to_one_request).pack(side="left", padx=(0, px(6)))
+        self._btn(actions, "Stopp", self.stop).pack(side="left")
+        self._btn(actions, "Skicka", self.send, emphasis=True).pack(side="right")
 
     def _btn(self, parent, label, callback, emphasis=False, surface=False, width=None):
         return PremiumButton(
             parent, label, callback, emphasis=emphasis,
-            surface=surface, width=width, compact=(width is not None),
+            surface=surface, width=width, compact=(width is not None), scale=self.scale,
         )
 
     def _render_history(self):
@@ -570,6 +575,13 @@ class NovaOverlay:
         self.chat.config(state="normal")
         self.chat.delete("1.0", "end")
         for kind, message in self.history:
+            if kind in ("you", "nova"):
+                speaker = "Du" if kind == "you" else "Nova"
+                if message.startswith("NOVA (ATLAS):"):
+                    speaker = "Nova · Atlas"
+                tags = ("speaker", "user_name") if kind == "you" else ("speaker",)
+                self.chat.insert("end", speaker + "\n", tags)
+                message = re.sub(r"^(?:DU(?: \(lokalt tal\))?|Nova|NOVA \(ATLAS\)):\s*", "", message)
             self.chat.insert("end", message + "\n", kind)
         self.chat.config(state="disabled")
         self.chat.see("end")
@@ -1097,8 +1109,8 @@ class NovaOverlay:
         self.root.after(75, lambda: self._poll_commander(job))
 
     def _make_more_menu(self):
-        menu = tk.Menu(self.root, tearoff=0, bg="#172135", fg=TEXT,
-                       activebackground="#363560", activeforeground=TEXT,
+        menu = tk.Menu(self.root, tearoff=0, bg=SURFACE, fg=TEXT,
+                       activebackground=INPUT, activeforeground=TEXT,
                        bd=1, relief="flat")
         menu.add_command(label="Ge Nova ett datoruppdrag…", command=self._enter_commander_request)
         if self.pending_choices:
@@ -1134,12 +1146,11 @@ class NovaOverlay:
             command=self._on_auto_voice_toggle,
         )
         menu.add_separator()
-        opacity = tk.Menu(menu, tearoff=0, bg="#172135", fg=TEXT,
-                          activebackground="#363560", activeforeground=TEXT)
-        for percent in (78, 84, 88, 94):
+        opacity = tk.Menu(menu, tearoff=0, bg=SURFACE, fg=TEXT,
+                          activebackground=INPUT, activeforeground=TEXT)
+        for percent in (78, 84, 88, 94, 100):
             opacity.add_radiobutton(
-                label=f"{100 - percent} % transparent" +
-                      (" · standard" if percent == 88 else ""),
+                label=("Heltäckande · standard" if percent == 100 else f"{100 - percent} % transparent"),
                 variable=self.opacity_percent, value=percent,
                 command=lambda value=percent: self._set_opacity(value),
             )
@@ -1156,7 +1167,7 @@ class NovaOverlay:
 
     def _set_opacity(self, percent: int):
         """User preference is session-local; no account settings are modified."""
-        percent = max(75, min(98, int(percent)))
+        percent = max(75, min(100, int(percent)))
         self.opacity = percent / 100
         self.opacity_percent.set(percent)
         self.root.attributes("-alpha", self.opacity)
@@ -1182,6 +1193,7 @@ class NovaOverlay:
 
     def _phase(self, state: str, detail: str):
         self.phase = state
+        self.phase_detail = detail
         if not self.expanded:
             return
         label, color = {
@@ -1197,10 +1209,10 @@ class NovaOverlay:
             "stoppad": ("● Stoppad", WARNING),
         }.get(state, ("● Aktiv", MUTED))
         self.phase_var.set(label)
-        # The status strip is 35px high. Never let a long sentence run into
-        # the right-hand edge; only the readable short status is displayed.
+        # Keep the status compact even when an action supplies a long description.
         short = detail if len(detail) <= 45 else detail[:44] + "…"
-        self.activity.itemconfigure(self.activity_text, text=short, fill=color)
+        self.activity.itemconfigure(self.activity_dot, fill=color)
+        self.activity.itemconfigure(self.activity_text, text=short, fill=MUTED)
 
     def _conversation_active(self):
         return (getattr(self, "_native_conversation_deadline", 0) > time.monotonic()
@@ -1418,6 +1430,10 @@ class NovaOverlay:
         except Exception as exc:
             self._append("warn", "Nova: Atlas-kopplingen kunde inte öppnas: " + str(exc))
 
+    def _local_voice_caption(self):
+        return {"windows": "Bengt · Windows-mikrofon", "sanna": "Sanna · Windows-mikrofon"}.get(
+            self.reply_mode, "Textläge · Välj röst")
+
     def _show_bridge_status(self):
         waiting = self._waiting_operator_request
         if (waiting and self.expanded and waiting == self.pending and self.bridge.state.online()
@@ -1438,7 +1454,7 @@ class NovaOverlay:
             if self.bridge.state.online():
                 voice = self.bridge.state.voice_snapshot()
                 if voice.get("authorized") and voice.get("mode") == "native":
-                    self.bridge_var.set("Nova · röst: Sanna · Windows-mikrofon")
+                    self.bridge_var.set("Sanna · Windows-mikrofon")
                 elif voice.get("authorized"):
                     labels = {
                         "idle": "pausat - tryck Ctrl+Alt+Space",
@@ -1452,14 +1468,12 @@ class NovaOverlay:
                     self.bridge_var.set("Nova-samtal - " + labels.get(voice.get("status"), "anslutet"))
                 else:
                     self.bridge_var.set("Nova ansluten · välj röstläge i Omnira")
-                self.bridge_status.configure(fg=SUCCESS)
+                self.bridge_status.configure(fg=MUTED)
             else:
                 self.bridge_var.set("Anslut Sannas röst · fortsätt inloggningen"
                                     if self._native_hotkey_pending_until
-                                    else ("Lokal uppläsning: Bengt · Anslut Sanna" if self.reply_mode == "windows"
-                                          else "Nova · röst: Sanna · Windows-mikrofon" if self.reply_mode == "sanna"
-                                          else "Lokalt textläge · Anslut Sannas röst"))
-                self.bridge_status.configure(fg=CYAN)
+                                    else self._local_voice_caption())
+                self.bridge_status.configure(fg=MUTED)
         if not self.closed:
             self.root.after(900, self._show_bridge_status)
 
@@ -1555,17 +1569,6 @@ class NovaOverlay:
                 self._append("warn", "Kontrollera ElevenLabs-nyckeln och ljudutgången." if self.reply_mode == "sanna" else "Kontrollera Windows-rösten Bengt och ljudutgången.")
             self._poll_voice_interpretations()
             self.root.after(100, self._process_events)
-
-    def _animate(self):
-        # Only the small collapsed Nova orb animates. The expanded status strip
-        # stays completely static: no fake audio level and no overlapping bars.
-        self.anim_tick = (self.anim_tick + 1) % 720
-        if not self.expanded and hasattr(self, "bubble_canvas"):
-            self.bubble_canvas.itemconfigure(
-                "nova-orbit", start=(215 + self.anim_tick * 2) % 360
-            )
-        if not self.closed:
-            self.root.after(170, self._animate)
 
     def _poll_voice_auto(self):
         """Inspect the text widget, not key events (Windows dictation can bypass them).

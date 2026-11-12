@@ -1,8 +1,10 @@
 """Nova visual theme invariants: palette contrast and bounded drawing."""
+import struct
 import unittest
+import zlib
 from nova_theme import (
     ACCENT, CYAN, TEXT, PANEL, SURFACE, BORDER, INITIAL_OPACITY,
-    mix_color, paint_premium_panel,
+    mix_color, mark_image, rounded_surface, TRANSPARENT, MUTED,
 )
 
 
@@ -11,18 +13,6 @@ def luminance(color):
     channels = [v / 12.92 if v < 0.04045 else ((v + 0.055) / 1.055) ** 2.4
                 for v in channels]
     return .2126 * channels[0] + .7152 * channels[1] + .0722 * channels[2]
-
-
-class StubCanvas:
-    def __init__(self):
-        self.polygons = 0
-        self.lines = 0
-
-    def create_polygon(self, *_args, **_kwargs):
-        self.polygons += 1
-
-    def create_line(self, *_args, **_kwargs):
-        self.lines += 1
 
 
 class ThemeTests(unittest.TestCase):
@@ -39,16 +29,23 @@ class ThemeTests(unittest.TestCase):
         for color in (ACCENT, CYAN, BORDER):
             self.assertRegex(color, r"^#[0-9a-f]{6}$")
 
-    def test_render_is_bounded(self):
-        canvas = StubCanvas()
-        paint_premium_panel(canvas, 442, 600)
-        self.assertGreaterEqual(canvas.polygons, 4)
-        self.assertGreater(canvas.lines, 250)
-        self.assertLess(canvas.lines, 600)
+    def test_mark_renders_at_native_size_with_keyed_corners(self):
+        for size in (50, 75, 100):
+            data = mark_image(size, TRANSPARENT)
+            self.assertEqual(struct.unpack(">2I", data[16:24]), (size, size))
+            offset = data.index(b"IDAT")
+            length = int.from_bytes(data[offset-4:offset], "big")
+            pixels = zlib.decompress(data[offset+4:offset+4+length])
+            self.assertEqual(len(pixels), (size*3+1)*size)
+            self.assertEqual(pixels[1:4], bytes.fromhex(TRANSPARENT[1:]))
+            self.assertNotEqual(mark_image(size, TRANSPARENT, True), data)
 
-    def test_default_alpha_is_more_transparent_than_old_panel(self):
-        self.assertLess(INITIAL_OPACITY, 0.96)
-        self.assertGreaterEqual(INITIAL_OPACITY, 0.82)
+    def test_panel_scales_without_translucent_text(self):
+        for width, height in ((416, 520), (624, 780)):
+            data = rounded_surface(width, height, 16, SURFACE, BORDER, TRANSPARENT)
+            self.assertEqual(struct.unpack(">2I", data[16:24]), (width, height))
+        self.assertGreater((luminance(MUTED)+.05)/(luminance(PANEL)+.05), 4.5)
+        self.assertEqual(INITIAL_OPACITY, 1.0)
 
 
 if __name__ == "__main__":

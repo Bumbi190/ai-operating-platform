@@ -28,8 +28,8 @@ def check():
         primary = {w.label: w for w in all_buttons}
         for label, widget in (("Chat", a.chat), ("Input", a.command),
                               ("More", a.more_button),
-                              ("Prata", primary["🎙 Prata"]),
-                              ("Skicka", primary["➤ Skicka"])):
+                              ("Prata", primary["Prata"]),
+                              ("Skicka", primary["Skicka"])):
             y = widget.winfo_rooty()
             h = widget.winfo_height()
             assert y >= a.root.winfo_rooty(), (label, y)
@@ -39,10 +39,11 @@ def check():
         button_labels = [w.label for w in all_buttons]
         assert any(isinstance(w, SlimScrollbar) for w in descendants(a.root))
         assert abs(float(a.root.attributes("-alpha")) - INITIAL_OPACITY) < 0.01
-        assert "🎙 Prata" in button_labels, button_labels
-        assert "➤ Skicka" in button_labels, button_labels
+        assert "Prata" in button_labels, button_labels
+        assert "Skicka" in button_labels, button_labels
+        assert "Stopp" in button_labels
         assert "⋯" in button_labels, button_labels
-        for label in ("Projekt", "Fönster", "Stopp", "Anslut Atlas"):
+        for label in ("Projekt", "Fönster", "Anslut Atlas"):
             assert label not in button_labels, (label, button_labels)
 
         menu = a._make_more_menu()

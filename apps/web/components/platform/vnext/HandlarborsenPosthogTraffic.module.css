@@ -300,3 +300,9 @@
   .chart { gap: 0.35rem; }
   .barValue, .dayLabel { font-size: 0.75rem; }
 }
+
+.trafficTable { width: 100%; min-width: 640px; border-collapse: collapse; text-align: left; }
+.trafficTable th, .trafficTable td { padding: 0.4rem 0.7rem 0.4rem 0; vertical-align: top; }
+.trafficTable th:first-child, .trafficTable td:first-child { white-space: nowrap; }
+.tableHint { display: none; }
+@media (max-width: 640px) { .tableHint { display: block; } }

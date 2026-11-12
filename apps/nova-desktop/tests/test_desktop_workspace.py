@@ -115,6 +115,15 @@ class WorkspaceTests(unittest.TestCase):
         ui.spoken_reply.last_text = "Nova, vänta"
         self.assertFalse(ui._interrupt_phrase("Nova, vänta"))
 
+    def test_chatgpt_screen_read_keeps_the_requested_site(self):
+        for text in ("Jättebra, Nova. Kan du se chatgipetinsidan jag har öppnat?",
+                     "Nova, kan du läsa ChatGPT-sidan som jag har öppen?"):
+            self.assertEqual(self.ws.route(text), ("page", "chatgpt"))
+        for text in ("Han undrade om Nova kan läsa sidan", "Kan du se ChatGPT-sidan och skicka ett mejl?",
+                     "Tack till Nova för att hon kan läsa sidan"):
+            self.assertIsNone(self.ws.route(text))
+        self.assertEqual(self.ws.route("Kan du läsa fliken jag har öppen?"), ("page", None))
+
     def test_named_project_routes(self):
         self.assertTrue(project_intent('Nova, byt ut "A" mot "B" i filen README.md i projektet Handlarbörsen'))
         self.assertFalse(project_intent("Öppna Omniras kalender"))

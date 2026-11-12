@@ -54,7 +54,7 @@ _UIA_READ = re.compile(
 
 
 
-_SPOKEN_NAME = re.compile(r"^(?:(?:hej|okej)[ ,]+)?(?:nova|innova)\b[.,:!?\s]*", re.I)
+_SPOKEN_NAME = re.compile(r"^(?:(?:hej|okej|jättebra|tack|toppen|bra)[ ,.!]+)?(?:nova|innova)\b[.,:!?\s]*", re.I)
 # Remove only a complete filler at the start, never part of the instruction.
 _SPOKEN_FILLER = re.compile(r"^ja(?:,?\s+det)?[,.!?]\s+", re.I)
 _SPOKEN_NAV = re.compile(r"^((?:(?:kan|vill|skulle) du )?)navgera\b", re.I)
@@ -130,20 +130,21 @@ _SPOKEN_TARGETS = {
 }
 _MEDIA_COMMAND = re.compile(
     _REQUEST_PREFIX + r"(?P<verb>tryck(?:a)? pa play|spela(?: upp)?|playa|play|"
-    r"satt(?:a)? (?:pa|igang)|starta|ateruppta|fortsatt spela|pausa|paus)"
+    r"satt(?:a)? (?:pa|i ?gang)|dra i ?gang|starta|ateruppta|fortsatt spela|fortsatt|pausa|paus)"
     r"(?: (?P<object>lite musik|musiken|musik|uppspelningen|laten|den))?"
-    r"(?: (?:i |pa )?(?P<app>spotify))?(?: nu)?(?:,? tack)?$"
+    r"(?: (?:i |pa )?(?P<app>c?spotify|spot ify))?(?: nu| igen)?(?:,? tack)?$"
 )
 
 
 def spotify_command(text: str, *, spotify_selected: bool = False) -> Action | None:
     value = _TRAILING_PUNCT.sub("", normalized(text)).strip()
+    if re.fullmatch(_REQUEST_PREFIX + r"(?:öppna|oppna|starta) (?:c?spotify|spot ify) och (?:spela(?: upp)?|satt pa|starta) (?:lite musik|musik(?:en)?|uppspelningen)(?: nu)?(?:,? tack)?", value):
+        return Action("spotify_media", "play")
     match = _MEDIA_COMMAND.fullmatch(value)
     if not match or not (match["app"] or spotify_selected):
         return None
     verb = match["verb"]
-    # "Starta Spotify" opens the app. Starting music needs a media object.
-    if verb in ("starta", "satt pa", "satta pa", "satt igang", "satta igang") and not match["object"]:
+    if not (match["app"] or match["object"]) and verb in ("starta", "fortsatt", "satt pa", "satta pa", "dra igang", "dra i gang"):
         return None
     return Action("spotify_media", "pause" if verb in ("pausa", "paus") else "play")
 
@@ -183,6 +184,10 @@ def navigation_followup(text: str, *, spotify_selected: bool) -> Action | None:
     value = _TRAILING_PUNCT.sub("", normalized(text)).strip()
     lead = re.match(r"^(?:och(?: sen)?|sen|sedan)\b[, ]+", value)
     request = value[lead.end():] if lead else value
+    if spotify_selected or "spotify" in request:
+        media = spotify_command(request, spotify_selected=spotify_selected)
+        if media and (lead or "spotify" in request or re.search(r"\b(?:musik(?:en)?|uppspelningen|laten|play)\b", request)):
+            return media
     # A named destination alone is actionable only after an explicit connector.
     if lead:
         destination = re.sub(r" (?:da|tack)$", "", request)
@@ -196,8 +201,6 @@ def navigation_followup(text: str, *, spotify_selected: bool) -> Action | None:
         action = safe_auto_navigation(request)
         if action:
             return action
-    if spotify_selected and (lead or "spotify" in request.split()):
-        return spotify_command(request, spotify_selected=True)
     return None
 
 
@@ -270,8 +273,8 @@ class AutoVoiceState:
         decision = VoiceDecision(
             text=cleaned,
             safe_navigation=(safe_stop_command(cleaned)
-                             or safe_auto_navigation(cleaned)
                              or spotify_command(cleaned, spotify_selected=spotify_selected)
+                             or safe_auto_navigation(cleaned)
                              or safe_browser_command(cleaned)
                              or safe_window_focus(cleaned)
                              or safe_native_voice_action(cleaned)

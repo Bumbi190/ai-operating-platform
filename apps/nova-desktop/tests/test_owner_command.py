@@ -123,6 +123,26 @@ class OwnerCommandTests(unittest.TestCase):
         ui._received_native_transcript("Jag sa att vi skulle öppna Spotify.")
         self.assertEqual(ui._start_app.call_count, 1)
 
+    def test_three_spoken_turns_and_a_natural_screen_question(self):
+        from nova_workspace import Workspace
+        ui = self.panel()
+        ui.workspace = Workspace(ui)
+        ui.workspace.job = Mock()
+        ui._choices = Mock()
+        ui._control_spotify = Mock()
+        ui._received_native_transcript("Hej Nova, starta Spotify.")
+        ui._received_native_transcript("Pausa musiken.")
+        ui._received_native_transcript("Fortsätt spela musiken.")
+        self.assertEqual([call.args for call in ui._control_spotify.call_args_list], [("play",), ("pause",), ("play",)])
+        ui._received_native_transcript("Jättebra, Nova. Kan du se chatgipetinsidan jag har öppnat?")
+        self.assertEqual(ui.workspace.job.call_args.args[0], "page")
+        ui._received_native_transcript("Kan du läsa sidan som jag har öppnat?")
+        self.assertEqual(ui.workspace.job.call_count, 2)
+        ui.voice_interpreter.submit.assert_not_called()
+        ui._voice_navigation_until = time.monotonic() - 1
+        ui._received_native_transcript("Kan du läsa sidan som jag har öppnat?")
+        self.assertEqual(ui.workspace.job.call_count, 2)
+
     def test_short_navigation_and_explicit_media_followups(self):
         ui = self.panel()
         ui.native_mic_session = Mock()
@@ -131,7 +151,7 @@ class OwnerCommandTests(unittest.TestCase):
         ui.spotify_selected = True
         ui._received_native_transcript("Hej Nova, starta Spotify.")
         ui._received_native_transcript("Och pausa musiken.")
-        ui._control_spotify.assert_called_once_with("pause")
+        self.assertEqual([c.args for c in ui._control_spotify.call_args_list], [("play",), ("pause",)])
         ui._received_native_transcript("Och kalendern då?")
         ui._open_url.assert_called_once()
         self.assertIn("/calendar", ui._open_url.call_args.args[0])

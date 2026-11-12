@@ -9,7 +9,7 @@ import re
 import threading
 import time
 
-from nova_auto_voice import safe_auto_navigation
+from nova_auto_voice import safe_auto_navigation, spotify_command
 from nova_core import Action, normalized
 
 LOCAL_MODEL = "qwen3:4b-instruct"
@@ -54,8 +54,8 @@ _REQUEST = re.compile(
 _SYSTEM = (
     "Tolka svenskt tal riktat till en datorassistent. Transkriptionen kan innehålla dialekt, "
     "fyllnadsord och felstavningar. Välj den ENDA tillåtna avsikt som uppfyller hela "
-    "önskemålet. open_* visar en app eller sida. Starta Spotify eller plocka fram musikappen "
-    "betyder open_spotify. play återupptar Spotify. pause pausar musiken. Ta hänsyn till "
+    "önskemålet. open_* visar en app eller sida. Öppna Spotify eller plocka fram musikappen "
+    "betyder open_spotify. Starta Spotify betyder play och återupptar musiken. pause pausar musiken. Ta hänsyn till "
     "senast vald app vid följdfrågor. Om appen är objektet för dra igång, kör eller visa "
     "ska du öppna appen. Om personen vill höra musik ska du återuppta uppspelning. "
     "Om personen har fått nog av musiken, vill ha tyst eller vill avbryta lyssnandet ska du pausa. "
@@ -98,6 +98,9 @@ def interpret(text: str, spotify_selected: bool) -> Interpretation:
         return Interpretation(None)
     if re.fullmatch(r"(?:nova[, ]+)?vi har (?:oppnat|startat) spotify[.!?]*", words):
         return Interpretation(safe_auto_navigation("öppna Spotify"), "Vill du att jag öppnar Spotify?", confirm=True)
+    media = spotify_command(text, spotify_selected=spotify_selected)
+    if media:
+        return Interpretation(media)
     choices = {"play": Action("spotify_media", "play"), "pause": Action("spotify_media", "pause")}
     grounded = set()
     for target, pattern in _DESTINATIONS.items():
@@ -182,8 +185,8 @@ def conversation_reply(text, history=()):
     prompt = ("Du är Nova, en lokal svensk datorassistent. Svara på frågan med en eller två korta "
               "meningar på svenska som passar för uppläsning. Nova Desktop kan öppna kända appar "
               "och sidor i Windows och styra Spotify. Den här svarsfunktionen ger bara text till Nova. "
-              "Säg aldrig att en åtgärd har utförts utan resultat från appen. Du får ingen fri insyn "
-              "i filer, skärm eller meddelanden. Om målet är oklart, ställ en kort följdfråga.")
+              "Säg aldrig att en åtgärd har utförts utan resultat från appen. Nova kan på begäran läsa synlig text i det aktiva fönstret. "
+              "Den här dialogen har ingen skärmtext förrän läsverktyget har körts. Om målet är oklart, ställ en kort följdfråga.")
     try:
         messages = [{"role": "system", "content": prompt}]
         for question, reply in history:

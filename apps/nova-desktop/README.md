@@ -2,11 +2,11 @@
 
 Tryck **Ctrl + Alt + Space** för att visa sidopanelen och börja prata med den lokala mikrofonen. Du kan också skriva i rutan. Under **⋯** kan du stänga av mikrofonstarten för den aktuella sessionen. Start vid Windows-inloggning aktiverar bara bubblan.
 
-- **”Nova, öppna Spotify”** begär programstart. **”Nova, kolla ledigt diskutrymme”** visar en aktuell mätning i rutan.
+- **”Nova, starta Spotify”** startar musiken och bekräftar när Spotify spelar. **”Öppna Spotify”** visar bara appen. Du kan följa upp direkt med **”Pausa musiken”**. **”Nova, kolla ledigt diskutrymme”** visar en aktuell mätning i rutan.
 - **”Nova, skapa en anteckning med texten Ring Oscar”** visar den uppfattade texten. Klicka **Spara anteckning** för att skapa en ny UTF-8-textfil under `%USERPROFILE%\Nova\Anteckningar`. Den fullständiga sökvägen visas efter sparandet.
 - **”Nova, öppna Gmail och Spotify”** visar en plan som du kan godkänna eller avbryta i panelen.
 - När panelen är öppen, säg **”Hej Nova”** följt av ditt uppdrag. Du kan också trycka **Prata** och tala en gång utan att säga namnet. **”Nova, pausa lyssningen”**, Stopp eller minimering stänger mikrofonen.
-- Välj **Använd Sannas röst i Windows**. Fyra vanliga svar finns som lokalt ljud. För andra upplästa svar, ange ElevenLabs-nyckeln under **⋯**. Atlas arbetsverktyg kräver en ansluten, behörig session och ditt godkännande för uppdraget.
+- Välj **Använd Sannas röst i Windows**. Besked om bland annat uppspelning och skärmläsning finns som lokalt ljud. För egna svar visar Nova texten och ger ett kort röstbesked. För uppläsning av hela svaret, ange ElevenLabs-nyckeln under **⋯**. Atlas arbetsverktyg kräver en ansluten, behörig session och ditt godkännande för uppdraget.
 
 
 ## Skärmen, mejlen och följdfrågor

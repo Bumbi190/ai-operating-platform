@@ -133,6 +133,7 @@ def read_window(
     *,
     user_requested: bool,
     max_chars: int = 8000,
+    expected_site: str | None = None,
 ) -> dict[str, Any]:
     """Read visible document text from a previously captured browser window."""
     if user_requested is not True:
@@ -156,6 +157,8 @@ def read_window(
     if isinstance(max_chars, bool) or not isinstance(max_chars, int):
         raise ValueError("max_chars_must_be_integer")
 
+    if expected_site not in (None, "chatgpt"):
+        raise ValueError("unsupported_site")
     limit = max(200, min(MAX_TEXT_CHARS, max_chars))
     return _call_worker({
         "action": "read_window",
@@ -165,6 +168,7 @@ def read_window(
         "windowHandle": window_handle,
         "ignoreProcessId": ignore_process_id,
         "maxChars": limit,
+        **({"expectedSite": expected_site} if expected_site else {}),
     })
 
 
@@ -172,12 +176,13 @@ def read_active_window(
     *,
     user_requested: bool,
     max_chars: int = 8000,
+    expected_site: str | None = None,
 ) -> dict[str, Any]:
     """Convenience wrapper: capture the visible browser behind Nova, then read it."""
     if user_requested is not True:
         raise UIAutomationError("explicit_user_request_required")
     target = find_foreground_browser_window()
-    return read_window(target, user_requested=True, max_chars=max_chars)
+    return read_window(target, user_requested=True, max_chars=max_chars, **({"expected_site": expected_site} if expected_site else {}))
 
 
 def read_desktop_window():

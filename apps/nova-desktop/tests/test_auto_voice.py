@@ -48,7 +48,9 @@ class AutoVoiceTests(unittest.TestCase):
             self.assertEqual(spotify_command(phrase, spotify_selected=True).url, "play")
         self.assertEqual(spotify_command("Kan du spela upp musiken på Spotify?").url, "play")
         self.assertEqual(spotify_command("Pausa Spotify tack").url, "pause")
-        for phrase in ("Starta Spotify", "Spela inte musik på Spotify", "Spela på YouTube",
+        for phrase in ("Starta Spotify", "Nova, öppna Spotify och spela musik", "Kan du sätta igång Spotify?"):
+            self.assertEqual(spotify_command(phrase).url, "play")
+        for phrase in ("Öppna Spotify", "Spela inte musik på Spotify", "Spela på YouTube",
                        "Han sa playa", "Pausa Spotify och skicka ett mejl"):
             self.assertIsNone(spotify_command(phrase, spotify_selected=True))
 

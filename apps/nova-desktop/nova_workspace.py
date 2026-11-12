@@ -8,9 +8,21 @@ import time
 from tkinter import simpledialog
 
 import nova_mail as mail
+from nova_auto_voice import native_command_text
+from nova_core import normalized
 from nova_uia import read_active_window, read_desktop_window, UIAutomationError
 
 SCREEN = re.compile(mail.PREFIX + r"(?:vad (?:ser du|står det|visas) (?:på (?:min |den här )?skärm(?:en)?|i (?:(?:det här |det aktiva )?fönstret|mitt fönster))|(?:kan du )?se vad jag har på skärmen|ser du (?:vad jag har på |min )skärm(?:en)?(?: just nu)?|(?:läs|visa)(?: upp)? (?:det som (?:står|syns) på skärmen|(?:den här |min )?skärm(?:en)?|(?:det här |det aktiva )?fönstret))[?.! ]*$", re.I)
+
+
+# Swedish dictation often spells out GPT and joins it to "sidan".
+_CHAT_PAGE = r"(?:chatt?[- ]?(?:gpt|g[ie]p[aei]t(?:e|i)?n?|gepete|g p t)(?:[- ]?(?:sidan|sida|chatten))?)"
+_PAGE = re.compile(
+    r"^(?:nova[, ]+)?(?:kan du (?:se|lasa)|ser du|vad (?:ser du|star det) pa|las)"
+    r" (?:(?:den har|den|min) )?(?P<target>" + _CHAT_PAGE + r"|sidan|webbsidan|fliken|chatten)"
+    r"(?: (?:som )?jag (?:har (?:oppnat|oppen|oppet|framme)|oppnade)| som ar oppen)?"
+    r"(?: (?:har|just nu))?[.?! ]*$"
+)
 
 
 class Workspace:
@@ -61,8 +73,11 @@ class Workspace:
                 value, error = "uncertain", str(exc)
             except mail.MailError as exc:
                 value, error = None, str(exc)
-            except UIAutomationError:
-                value, error = None, "Jag kunde inte läsa synlig text i det aktiva fönstret. Ha fönstret framme och be mig läsa det igen."
+            except UIAutomationError as exc:
+                value = None
+                error = ("Ta fram ChatGPT-fliken och be mig läsa den igen."
+                         if str(exc) == "expected_page_not_active"
+                         else "Jag kunde inte läsa synlig text i det aktiva fönstret. Ha fönstret framme och be mig läsa det igen.")
             except Exception:
                 value, error = None, "Åtgärden kunde inte slutföras. Kontrollera anslutningen och försök igen."
             self.results.put((token, kind, value, error))
@@ -81,10 +96,13 @@ class Workspace:
                 continue
             if token != self.epoch or not self.panel.expanded:
                 continue
-            if error:
+            if error and kind in ("screen", "page"):
+                self.panel._reply("warn", error, spoken="Jag kunde inte läsa fönstret. Ha sidan framme och försök igen.")
+            elif error:
                 self.panel._reply("warn", error)
-            elif kind == "screen":
-                self.panel._append("nova", "Synlig text i " + value["processName"] + "\n\n" + value["text"])
+            elif kind in ("screen", "page"):
+                self.panel._reply("nova", "Synlig text i " + value["processName"] + "\n\n" + value["text"],
+                                  spoken="Jag har läst texten i fönstret. Du ser den i chatten.")
             else:
                 self.follow_until = time.monotonic() + 25
                 self.source = value
@@ -98,16 +116,21 @@ class Workspace:
                 self.panel._phase("godkannande" if error else "klar", error or "Klart")
 
     def route(self, text):
-        if SCREEN.fullmatch(text.strip()):
+        command, _ = native_command_text(text)
+        page = _PAGE.fullmatch(normalized(command))
+        if page:
+            return "page", "chatgpt" if re.fullmatch(_CHAT_PAGE, page["target"]) else None
+        if SCREEN.fullmatch(command.strip()):
             return "screen", None
         return mail.intent(text, active=self.source is not None or self.sending is not None)
 
     def handle(self, request, text):
         action, value = request
         ui = self.panel
-        if action == "screen":
+        if action in ("screen", "page"):
             self.epoch += 1
-            self.job("screen", read_desktop_window)
+            self.job(action, read_desktop_window if action == "screen" else
+                     lambda: read_active_window(user_requested=True, expected_site=value))
             ui._phase("tolkar", "Läser det aktiva fönstret")
             return
         if self.sending:

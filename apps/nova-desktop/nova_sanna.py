@@ -14,11 +14,23 @@ MODEL = "eleven_v4"
 # This is Sanna Hartfield's public Swedish Conversational catalogue voice.
 VOICE = "4xkUqaR9MYOJHoaC1Nak"
 REPLIES = {
+    "nu spelar spotify.": "spotify-playing",
+    "musiken är pausad.": "spotify-paused",
+    "jag har läst texten i fönstret. du ser den i chatten.": "screen-read",
+    "jag kunde inte läsa fönstret. ha sidan framme och försök igen.": "screen-unavailable",
+    "du kan läsa mitt svar i chatten.": "text-answer",
+    "jag kunde inte bekräfta uppspelningen i spotify.": "spotify-unconfirmed",
     "spotify är öppet.": "spotify-open",
     "vill du att jag öppnar spotify?": "spotify-confirm",
     "öppnar omniras kalender.": "calendar",
     "ja, jag hör dig. vad vill du göra?": "greeting",
 }
+
+
+def status_speech(text, configured):
+    if configured or text.strip().casefold() in REPLIES:
+        return text
+    return "Du kan läsa mitt svar i chatten."
 
 
 def key_path():

@@ -20,6 +20,14 @@ class SpokenReplyTests(unittest.TestCase):
                 (small / name).touch()
             self.assertEqual(_preferred_model(root), small)
 
+    def test_offline_sanna_reports_each_result_without_reading_private_text(self):
+        from nova_sanna import status_speech, REPLIES
+        for text in ("Nu spelar Spotify.", "Musiken är pausad.", "Jag har läst texten i fönstret. Du ser den i chatten."):
+            self.assertEqual(status_speech(text, False), text)
+            self.assertIn(text.casefold(), REPLIES)
+        self.assertEqual(status_speech("Ett eget svar", False), "Du kan läsa mitt svar i chatten.")
+        self.assertEqual(status_speech("Ett eget svar", True), "Ett eget svar")
+
     def test_sanna_preference_and_verbatim_desktop_speech(self):
         from nova_bridge import BridgeState
         with tempfile.TemporaryDirectory() as tmp:

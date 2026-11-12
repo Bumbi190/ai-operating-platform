@@ -48,6 +48,32 @@ public static class NovaUiaNative {
         $allowedReadProcesses = $allowedProcesses + @('notepad', 'olk', 'winword')
     }
 
+    function Test-ChatGptAddress($window) {
+        $condition = New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+            [System.Windows.Automation.ControlType]::Edit
+        )
+        $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+        foreach ($edit in $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)) {
+            if ($edit.Current.IsOffscreen -or $edit.Current.IsPassword) { continue }
+            $current = $edit.Current
+            if ($current.ClassName -ne 'OmniboxViewViews' -and
+                $current.AutomationId -notin @('urlbar-input','addressEditBox') -and
+                $current.Name -notmatch '(?i)address and search bar|adress-? och s.kf.lt|adressf.lt') { continue }
+            $parent = $walker.GetParent($edit)
+            while ($null -ne $parent -and !$parent.Equals($window)) {
+                if ($parent.Current.ControlType -eq [System.Windows.Automation.ControlType]::Document) { break }
+                $parent = $walker.GetParent($parent)
+            }
+            if (!$parent -or !$parent.Equals($window)) { continue }
+            $pattern = $null
+            if (!$edit.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$pattern)) { continue }
+            $address = $pattern.Current.Value
+            if ($address -match '^(?:https://)?(?:chatgpt\.com|chat\.openai\.com)(?:/|$)') { return $true }
+        }
+        return $false
+    }
+
     if ($action -eq 'inspect_app') {
         $processName = ([string]$request.processName).Trim().ToLowerInvariant()
         if ($processName.EndsWith('.exe')) {
@@ -256,6 +282,9 @@ public static class NovaUiaNative {
             throw 'target_window_not_found'
         }
 
+        $chatPage = $action -eq 'read_window' -and $request.expectedSite -eq 'chatgpt'
+        if ($chatPage -and !(Test-ChatGptAddress $window)) { throw 'expected_page_not_active' }
+
         $maxChars = [Math]::Max(200, [Math]::Min(12000, [int]$request.maxChars))
         $descendants = $window.FindAll(
             [System.Windows.Automation.TreeScope]::Descendants,
@@ -304,6 +333,7 @@ public static class NovaUiaNative {
         }
 
         $combined = [string]::Join([Environment]::NewLine, $textParts.ToArray())
+        if ($chatPage -and !(Test-ChatGptAddress $window)) { throw 'expected_page_not_active' }
         $truncated = $combined.Length -gt $maxChars
         if ($truncated) { $combined = $combined.Substring(0, $maxChars) }
         if ([string]::IsNullOrWhiteSpace($combined)) {

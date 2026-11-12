@@ -43,7 +43,7 @@ from nova_code_jobs import CodeJobDraft, propose_code_job
 from nova_local_audio import NativeAudioSession, local_model_ready
 from nova_local_voice import CONVERSATION_SECONDS, PILOT_SECONDS
 from nova_voice_intent import VoiceInterpreter, local_greeting
-from nova_sanna import key_configured
+from nova_sanna import key_configured, status_speech
 from nova_spoken_reply import SpokenReply, load_reply_mode, save_reply_mode
 from nova_windows import list_known_windows, focus_known_window
 from nova_theme import (
@@ -654,8 +654,8 @@ class NovaOverlay:
         if getattr(self, "reply_mode", None) == "sanna" and self._conversation_active():
             text = (spoken or message.removeprefix("Nova: ")).strip()[:300]
             try:
-                self.spoken_reply.speak(text, sanna=True)
-                self._phase("talar", "Sanna läser upp svaret")
+                self.spoken_reply.speak(status_speech(text, getattr(self, "_sanna_key_ready", False)), sanna=True)
+                self._phase("talar", "Sanna svarar")
             except OSError:
                 self._append("warn", "Sannas uppläsning kunde inte starta i Windows.")
             return
@@ -916,11 +916,13 @@ class NovaOverlay:
         continuation = None
         if not has_wake and conversation and now < getattr(self, "_voice_navigation_until", 0):
             continuation = navigation_followup(command, spotify_selected=getattr(self, "spotify_selected", False))
+        screen_followup = (workspace_action and workspace_action[0] in ("screen", "page")
+                           and conversation and now < getattr(self, "_voice_navigation_until", 0))
         followup = prompted and (
             (getattr(self, "_destination_question", False) and safe_auto_navigation("öppna " + answer))
             or (suggestion and (yes or no))
             or (getattr(self, "reply_mode", "") == "choose" and answer in ("bengt", "sanna")))
-        if not (has_wake or one_turn or followup or continuation or mail_followup):
+        if not (has_wake or one_turn or followup or continuation or mail_followup or screen_followup):
             return
         self._voice_turn_until = 0.0
         self._voice_answer_until = 0.0
@@ -1008,10 +1010,14 @@ class NovaOverlay:
             self._append("you", "DU (lokalt tal): " + phrase[:350])
             self._begin_commander(explicit_goal)
             return
+        media = spotify_command(command, spotify_selected=getattr(self, "spotify_selected", False))
+        if addressed and media:
+            self._append("you", "DU (lokalt tal): " + phrase[:350])
+            self._perform_interpreted_action(media)
+            return
         action = safe_auto_navigation(command) if addressed else None
         if addressed and not action:
-            local = (spotify_command(command, spotify_selected=getattr(self, 'spotify_selected', False))
-                     or safe_native_voice_action(command) or safe_browser_command(command)
+            local = (safe_native_voice_action(command) or safe_browser_command(command)
                      or safe_window_focus(command) or safe_uia_read_action(command)
                      or campaign_review_intent(command))
             if local or propose_code_job(command):
@@ -1951,14 +1957,15 @@ class NovaOverlay:
                 status = 4
             self._media_worker = None
             if status == 0:
-                message = "Spotify spelar." if action == "play" else "Spotify är pausat."
+                message = "Nu spelar Spotify." if action == "play" else "Musiken är pausad."
             else:
                 message = {
                     2: "Hittade ingen entydig Spotify-spelare. Öppna Spotify och välj en låt.",
                     3: "Spotify kunde inte utföra kommandot. Välj en låt i spelaren.",
                     4: "Spotify har inte bekräftat att uppspelningen ändrades.",
                 }.get(status, "Kunde inte kontrollera uppspelningen i Windows.")
-            self._reply("ok" if status == 0 else "warn", "Nova: " + message)
+            self._reply("ok" if status == 0 else "warn", "Nova: " + message,
+                        spoken=message if status == 0 else "Jag kunde inte bekräfta uppspelningen i Spotify.")
             self._phase("klar" if status == 0 else "godkannande", message)
             following, self._next_media_action = self._next_media_action, None
             if following and (following != action or status != 0):
@@ -2415,6 +2422,11 @@ class NovaOverlay:
         if project_intent(text) and not from_voice:
             self._begin_commander(commander_request(text) or text)
             return
+        if not from_voice:
+            media = spotify_command(text, spotify_selected=self.spotify_selected)
+            if media:
+                self._perform_interpreted_action(media)
+                return
         explicit_goal = commander_request(text, explicit_only=True) if not from_voice else None
         if explicit_goal:
             self._begin_commander(explicit_goal)
@@ -2436,8 +2448,8 @@ class NovaOverlay:
             # A transcript that was not an exact allowlisted navigation must
             # never reach arbitrary local UI or shell execution.
             if (safe_voice_action is None or
-                    (safe_stop_command(text) or safe_auto_navigation(text) or safe_native_voice_action(text)
-                     or spotify_command(text, spotify_selected=getattr(self, "spotify_selected", False))
+                    (safe_stop_command(text) or spotify_command(text, spotify_selected=getattr(self, "spotify_selected", False))
+                     or safe_auto_navigation(text) or safe_native_voice_action(text)
                      or safe_browser_command(text) or safe_window_focus(text)
                      or campaign_review_intent(text)
                      or safe_uia_read_action(text)) != safe_voice_action):
@@ -2463,8 +2475,8 @@ class NovaOverlay:
                 self._open_project_folder(folder)
                 return
             action = (safe_uia_read_action(text) or safe_browser_command(text)
-                      or safe_window_focus(text) or campaign_review_intent(text) or safe_auto_navigation(text)
-                      or spotify_command(text, spotify_selected=self.spotify_selected) or route(text))
+                      or safe_window_focus(text) or campaign_review_intent(text)
+                      or safe_auto_navigation(text) or route(text))
         if action.kind == "uia_read_preview":
             self._present_uia_read_preview(text)
         elif action.kind == "spotify_media":

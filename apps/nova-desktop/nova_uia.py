@@ -185,6 +185,14 @@ def read_active_window(
     return read_window(target, user_requested=True, max_chars=max_chars, **({"expected_site": expected_site} if expected_site else {}))
 
 
+def browser_target(action, *, url=None, label=None):
+    if action not in ("verify_url", "read_window", "find_page_link"):
+        raise ValueError("unexpected_browser_operation")
+    result = find_foreground_browser_window()
+    return _call_worker({**result, "action": action, "expectedUrl": url, "label": label,
+                         "allowReadContent": action != "verify_url", "maxChars": 8000})
+
+
 def read_desktop_window():
     """Capture readable controls from the current desktop window, checked again at read time."""
     target = _call_worker({"action": "find_desktop_window", "ignoreProcessId": os.getpid()})

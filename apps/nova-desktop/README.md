@@ -25,6 +25,12 @@ Alma är en lokal svensk röst av Daniel Nylander, CC BY 4.0. Installera `piper-
 - Välj **⋯ → Anslut Sanna** och ange ElevenLabs-nyckeln för att använda Sanna direkt i pågående samtal. Windows skyddar nyckeln för ditt användarkonto. Atlas arbetsverktyg kräver en ansluten, behörig session och ditt godkännande för uppdraget.
 
 
+## Öppna ett mål från samtalet
+
+Nova slår upp program i Windows Start-meny. Ett unikt programnamn kan öppnas direkt. Du kan även öppna en namngiven projektmapp, Hämtade filer eller en mapp med en fullständig Windows-sökväg. Anger du en fils sökväg visas den markerad i Utforskaren. Om flera namn passar kan du precisera vilket du menar. Du kan också säga en webbadress eller följa en namngiven synlig länk. När du ber om en analys av sidan läser Nova den synliga sidtexten och knyter svaret till fliken. Exempel är ”Öppna andrehultgren.se och analysera sidan” och ”Följ länken Kontakt”. Om adressen som hördes skiljer sig från din portfolios adress frågar Nova vilken du menade.
+
+”Skruva ner musiken” sänker Spotify med tio procentenheter i Windows ljudmixer. Installera `pycaw` i Novas `.venv-audio` för denna funktion. ”Nyheter” följt av ett ämne hämtar upp till tre daterade rubriker med källa från Google Nyheter. Det är ämnet som skickas till nyhetstjänsten.
+
 ## Skärmen, mejlen och följdfrågor
 
 Be Nova läsa det aktiva fönstret med **”Vad ser du på min skärm?”**. Windows delar den synliga texten och tillgängliga kontrollerna i det främsta program som stöds. Bilder och videor kräver egen bildtolkning.

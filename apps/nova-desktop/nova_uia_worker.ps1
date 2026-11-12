@@ -48,7 +48,7 @@ public static class NovaUiaNative {
         $allowedReadProcesses = $allowedProcesses + @('notepad', 'olk', 'winword')
     }
 
-    function Test-ChatGptAddress($window) {
+    function Get-BrowserAddress($window) {
         $condition = New-Object System.Windows.Automation.PropertyCondition(
             [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
             [System.Windows.Automation.ControlType]::Edit
@@ -69,9 +69,35 @@ public static class NovaUiaNative {
             $pattern = $null
             if (!$edit.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$pattern)) { continue }
             $address = $pattern.Current.Value
-            if ($address -match '^(?:https://)?(?:chatgpt\.com|chat\.openai\.com)(?:/|$)') { return $true }
+            if ($address) { return $address }
         }
-        return $false
+        return ''
+    }
+
+    function Test-PageAddress($window) {
+        $address = Get-BrowserAddress $window
+        if (!$address) { return $false }
+        if ($request.expectedSite -eq 'chatgpt') {
+            return $address -match '^(?:https://)?(?:chatgpt\.com|chat\.openai\.com)(?:/|$)'
+        }
+        if ($address -notmatch '^https?://') {
+            # Chromium may omit the scheme in the accessible address bar.
+            $address = ([uri]$request.expectedUrl).Scheme + '://' + $address
+        }
+        try {
+            $actual = [uri]$address
+            $expected = [uri]$request.expectedUrl
+            if ($actual.IdnHost -eq $expected.IdnHost -and $actual.AbsolutePath -match '^/(?:login|sign-in)(?:/|$)' -and
+                    $expected.AbsolutePath -ne $actual.AbsolutePath) { throw 'login_needed' }
+            return ($actual.Scheme -eq $expected.Scheme -and $actual.Port -eq $expected.Port -and
+                ($actual.IdnHost -replace '^www\.','') -eq ($expected.IdnHost -replace '^www\.','') -and
+                $actual.AbsolutePath.TrimEnd('/') -ceq $expected.AbsolutePath.TrimEnd('/') -and
+                (!$expected.Query -or $actual.Query -ceq $expected.Query) -and
+                (!$expected.Fragment -or $actual.Fragment -ceq $expected.Fragment))
+        } catch {
+            if ($_.Exception.Message -eq 'login_needed') { throw }
+            return $false
+        }
     }
 
     if ($action -eq 'inspect_app') {
@@ -213,8 +239,8 @@ public static class NovaUiaNative {
             windowHandle = $target.windowHandle
         }
     }
-    elseif ($action -in @('read_window', 'read_desktop_window')) {
-        if ($request.allowReadContent -ne $true) {
+    elseif ($action -in @('read_window', 'read_desktop_window', 'verify_url', 'find_page_link')) {
+        if ($action -ne 'verify_url' -and $request.allowReadContent -ne $true) {
             throw 'read_not_authorized'
         }
 
@@ -282,8 +308,37 @@ public static class NovaUiaNative {
             throw 'target_window_not_found'
         }
 
-        $chatPage = $action -eq 'read_window' -and $request.expectedSite -eq 'chatgpt'
-        if ($chatPage -and !(Test-ChatGptAddress $window)) { throw 'expected_page_not_active' }
+        $boundPage = $request.expectedSite -eq 'chatgpt' -or !!$request.expectedUrl
+        if ($boundPage -and !(Test-PageAddress $window)) { throw 'expected_page_not_active' }
+        if ($action -eq 'verify_url') {
+            if (!$request.expectedUrl) { throw 'expected_url_missing' }
+            [Console]::Out.WriteLine('{"ok":true,"action":"verify_url"}')
+            exit
+        }
+        if ($action -eq 'find_page_link') {
+            $condition = New-Object System.Windows.Automation.PropertyCondition(
+                [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                [System.Windows.Automation.ControlType]::Hyperlink)
+            $links = New-Object 'System.Collections.Generic.HashSet[string]'
+            foreach ($link in $window.FindAll([System.Windows.Automation.TreeScope]::Descendants,$condition)) {
+                if ($link.Current.IsOffscreen -or $link.Current.Name.Trim() -ne ([string]$request.label).Trim()) { continue }
+                $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+                $parent = $walker.GetParent($link)
+                while ($parent -and !$parent.Equals($window) -and $parent.Current.ControlType -ne [System.Windows.Automation.ControlType]::Document) {
+                    $parent = $walker.GetParent($parent)
+                }
+                if (!$parent -or $parent.Current.ControlType -ne [System.Windows.Automation.ControlType]::Document) { continue }
+                $pattern = $null
+                if ($link.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$pattern)) {
+                    $href = [string]$pattern.Current.Value
+                    if ($href -match '^https?://') { [void]$links.Add($href) }
+                }
+            }
+            if ($boundPage -and !(Test-PageAddress $window)) { throw 'expected_page_not_active' }
+            if ($links.Count -ne 1) { throw 'no_unique_page_link' }
+            [Console]::Out.WriteLine((ConvertTo-Json -Compress @{ok=$true;url=@($links)[0]}))
+            exit
+        }
 
         $maxChars = [Math]::Max(200, [Math]::Min(12000, [int]$request.maxChars))
         $descendants = $window.FindAll(
@@ -333,7 +388,7 @@ public static class NovaUiaNative {
         }
 
         $combined = [string]::Join([Environment]::NewLine, $textParts.ToArray())
-        if ($chatPage -and !(Test-ChatGptAddress $window)) { throw 'expected_page_not_active' }
+        if ($boundPage -and !(Test-PageAddress $window)) { throw 'expected_page_not_active' }
         $truncated = $combined.Length -gt $maxChars
         if ($truncated) { $combined = $combined.Substring(0, $maxChars) }
         if ([string]::IsNullOrWhiteSpace($combined)) {

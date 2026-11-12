@@ -1165,6 +1165,10 @@ class NovaOverlay:
         if getattr(self, "live_call", None) and action.kind.startswith("live_"):
             if action.kind == "live_desktop":
                 self._begin_commander(action.url)
+            elif action.kind == "live_analyze":
+                self.workspace.handle(("analyze", self.workspace.last_url), self.live_call.question)
+            elif action.kind in ("live_website", "live_app_lookup", "live_volume", "live_news", "live_news_topic", "live_ask_target"):
+                self.workspace.handle((action.kind.removeprefix("live_"), action.url), self.live_call.question)
             elif action.kind == "live_screen":
                 self.workspace.handle(("screen", None), self.live_call.question)
             elif action.kind in ("live_draft", "live_inbox"):
@@ -1583,6 +1587,7 @@ class NovaOverlay:
             workspace.handle(request, text)
             return
         # Let callbacks from an older read expire while keeping the reviewed draft.
+        workspace.pending_destination = None
         workspace.epoch += 1
         plan = parse_native_task(text)
         if plan:
@@ -2093,6 +2098,9 @@ class NovaOverlay:
         if getattr(self, "workspace", None):
             provider = next((name for name in ("Gmail", "Strato") if URLS[name.lower()] == url), None)
             self.workspace.reset(provider)
+            if getattr(self, "live_call", None) and url in URLS.values():
+                self.workspace.handle(("website", url), caption)
+                return
         self._phase("navigerar", caption)
         self._append("step", "  ↳ " + caption)
         try:

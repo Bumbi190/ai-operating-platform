@@ -3,6 +3,7 @@ from collections import deque
 import os
 from pathlib import Path
 import subprocess
+import sys
 import time
 
 
@@ -35,10 +36,18 @@ class SpokenReply:
         if idle is not None:
             idle.stdin.close()  # EOF without a message exits without speaking.
 
-    def speak(self, text):
+    def speak(self, text, *, sanna=False):
+        if sanna:
+            self.discard_prepared()
         idle, self.prepared = self.prepared, None
         self.stop()
-        if idle is not None and idle.poll() is None:
+        if sanna:
+            self.process = subprocess.Popen(
+                [sys.executable, str(Path(__file__).with_name("nova_sanna.py"))],
+                stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+        elif idle is not None and idle.poll() is None:
             self.process = idle
         else:
             if idle is not None:

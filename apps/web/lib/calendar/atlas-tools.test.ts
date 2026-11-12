@@ -38,9 +38,9 @@ it('does not write an ambiguous title target or an owner supplied by the model',
  expect(await handleCalendarTool('create_calendar_event',{...fixtureCreate(),ownerUserId:USER_EMPTY},context('text'),deps())).toMatchObject({ok:false,code:'INVALID_INPUT'});
  expect((await listCalendarEvents(fixture.forUser(USER_EMPTY),fixtureRange)).events).toHaveLength(before);
 });
-it('registers only the four interactive calendar tools and retains no private draft in tool persistence',async()=>{
- expect(CALENDAR_TOOL_NAMES).toEqual(['get_calendar','create_calendar_event','update_calendar_event','cancel_calendar_event']);
- expect(CALENDAR_TOOLS).toHaveLength(4);expect(JSON.stringify(CALENDAR_TOOLS)).not.toContain('ownerUserId');expect(CALENDAR_GUIDE).toContain('följdfråga');
+it('registers only the interactive calendar tools and retains no private draft in tool persistence',async()=>{
+ expect(CALENDAR_TOOL_NAMES).toEqual(['find_calendar_post','get_calendar','create_calendar_event','update_calendar_event','cancel_calendar_event']);
+ expect(CALENDAR_TOOLS).toHaveLength(5);expect(JSON.stringify(CALENDAR_TOOLS)).not.toContain('ownerUserId');expect(CALENDAR_GUIDE).toContain('följdfråga');
  const created=await handleCalendarTool('create_calendar_event',{eventId:randomUUID(),idempotencyKey:randomUUID(),draft:fixtureDraft({title:'Hemlig titel',description:'Hemlig anteckning'})},context('text'),deps());
  const saved=persistCalendarToolData({draft:fixtureDraft({title:'Hemlig titel',description:'Hemlig anteckning'})},created);
  expect(JSON.stringify(saved)).not.toContain('Hemlig');expect(saved.result).toMatchObject({ok:true});

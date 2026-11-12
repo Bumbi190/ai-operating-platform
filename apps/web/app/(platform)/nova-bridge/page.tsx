@@ -124,7 +124,7 @@ export default function NovaBridgePage() {
         )}
 
         <p className="mt-7 text-xs leading-5 text-zinc-500">
-          Låt Omnira-fliken vara öppen för Sannas röstsvar. Datoruppdrag med Desktop Commander hanteras i Nova-fönstret i Windows.
+          Nova Desktop kan lyssna och tala i Windows. Den här fliken används när du själv ansluter till Atlas. Datoruppdrag med Desktop Commander hanteras i Nova-fönstret i Windows.
         </p>
       </div>
     </main>

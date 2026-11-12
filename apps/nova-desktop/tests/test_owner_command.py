@@ -106,3 +106,37 @@ class OwnerCommandTests(unittest.TestCase):
         self.assertEqual(commander_request("Nova, vad står i filen möte.txt?"), "vad står i filen möte.txt?")
         self.assertIsNone(commander_request("Öppna inte min dokumentmapp"))
         self.assertIsNone(commander_request("Jag pratade om min dator igår"))
+
+    def test_spotify_confirmation_and_second_navigation(self):
+        from nova_voice_intent import interpret
+        ui = self.panel()
+        ui.native_mic_session = Mock()
+        ui._open_url = Mock()
+        result = interpret("Nova, vi har öppnat Spotify.", False)
+        self.assertTrue(result.confirm)
+        ui._voice_suggestion = result.action
+        ui._voice_answer_until = time.monotonic() + 25
+        ui._received_native_transcript("Ja, öppna den.")
+        ui._start_app.assert_called_once_with(result.action)
+        ui._received_native_transcript("Och öppna kalendern.")
+        ui._open_url.assert_called_once()
+        ui._received_native_transcript("Jag sa att vi skulle öppna Spotify.")
+        self.assertEqual(ui._start_app.call_count, 1)
+
+    def test_expired_confirmation_and_unaddressed_phone_audio(self):
+        from nova_voice_intent import interpret
+        ui = self.panel()
+        ui._voice_suggestion = interpret("Nova, vi har öppnat Spotify.", False).action
+        ui._voice_answer_until = time.monotonic() - 3
+        ui._received_native_transcript("Ja, öppna den.")
+        ui._start_app.assert_not_called()
+
+    def test_stock_sanna_replies_work_without_provider_access(self):
+        import nova_sanna
+        import io, wave
+        from unittest.mock import patch
+        with patch.object(nova_sanna, 'provider_key', side_effect=AssertionError('offline')):
+            for phrase in nova_sanna.REPLIES:
+                with wave.open(io.BytesIO(nova_sanna.reply_wave(phrase))) as clip:
+                    self.assertEqual(clip.getframerate(), 24000)
+                    self.assertGreater(clip.getnframes(), 24000)

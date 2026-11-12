@@ -37,3 +37,12 @@ test('reports detail failure locally and closes details on project/week changes'
  await page.route('**/api/calendar/detail?**',r=>r.fulfill({status:503,json:{ok:false,code:'UNAVAILABLE'}}));await page.goto('/calendar?week=2026-10-26');await page.getByRole('button',{name:/Dagens film A · Utan/}).click();await expect(dialog(page)).toContainText('Innehållet kunde inte läsas');await expect(page.getByRole('button',{name:'Nästa vecka',exact:true})).toBeEnabled();
  await page.getByLabel('Visa i kalendern').selectOption('private');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('button',{name:/Dagens film A · Utan/})).toHaveCount(0);
 });
+
+test('opens the exact existing social post from a Nova calendar link without writing',async({page})=>{
+ const writes:string[]=[];
+ page.on('request',r=>{if(r.url().includes('/api/')&&r.method()!=='GET')writes.push(r.url());});
+ await page.goto('/calendar?week=2026-10-26&post=30000000-0000-4000-8000-000000000010');
+ await expect(dialog(page)).toContainText('Hela den sparade bildtexten');
+ await expect(dialog(page).getByRole('img',{name:'Familjebild',exact:true})).toBeVisible();
+ expect(writes).toEqual([]);
+});

@@ -96,6 +96,8 @@ def interpret(text: str, spotify_selected: bool) -> Interpretation:
         return Interpretation(None, "Jag kan öppna Spotify och styra uppspelningen. För ett särskilt musikval behöver du välja i spelaren.")
     if not words or len(words) > 350 or _BLOCKED.search(words):
         return Interpretation(None)
+    if re.fullmatch(r"(?:nova[, ]+)?vi har (?:oppnat|startat) spotify[.!?]*", words):
+        return Interpretation(safe_auto_navigation("öppna Spotify"), "Vill du att jag öppnar Spotify?", confirm=True)
     choices = {"play": Action("spotify_media", "play"), "pause": Action("spotify_media", "pause")}
     grounded = set()
     for target, pattern in _DESTINATIONS.items():
@@ -137,7 +139,9 @@ def interpret(text: str, spotify_selected: bool) -> Interpretation:
             return Interpretation(None)
         if key in grounded and _REQUEST.search(words):
             return Interpretation(action)
-        if key == "play":
+        if key == "open_spotify":
+            question = "Vill du att jag öppnar Spotify?"
+        elif key == "play":
             question = "Vill du att jag spelar musik i Spotify?"
         elif key == "pause":
             question = "Vill du att jag pausar Spotify?"

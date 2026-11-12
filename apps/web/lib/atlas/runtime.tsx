@@ -612,6 +612,14 @@ export function AtlasRuntimeProvider({
 
   function openWorkspace(href: string, _label?: string) {
     // P1A: tunn router.push-wrapper. P1B lägger till mjuka övergångar.
+    if (pathnameRef.current === '/calendar' && href.startsWith('/calendar?')) {
+      const target = new URL(href, window.location.origin)
+      if (target.searchParams.has('post') && target.searchParams.get('week') === new URLSearchParams(window.location.search).get('week')) {
+        window.history.replaceState(null, '', target.pathname + target.search)
+        window.dispatchEvent(new Event('omnira:calendar-post'))
+        return
+      }
+    }
     router.push(href)
   }
 
@@ -750,7 +758,7 @@ export function AtlasRuntimeProvider({
           serverTiming=mergeServerTiming(serverTiming,{contextMs:d.contextMs as number,firstTokenMs:d.firstTokenMs as number,serverTotalMs:d.serverTotalMs as number})
         }else if(d.event==='navigate'&&typeof d.href==='string'){
           setExecutiveState('delegating')
-          if(d.href.split('?')[0]!==pathnameRef.current)openWorkspace(d.href)
+          if (d.href.split('?')[0] !== pathnameRef.current || d.href.startsWith('/calendar?'))openWorkspace(d.href)
         }else if(d.event==='tool_call'&&typeof d.tool==='string'&&ATLAS_ACTION_TOOL_NAMES.has(d.tool)){
           beginExecution(d.tool)
         }else if(d.event==='tool_result'&&typeof d.tool==='string'&&ATLAS_ACTION_TOOL_NAMES.has(d.tool)){
@@ -816,7 +824,7 @@ export function AtlasRuntimeProvider({
   function handleVoiceEvent(event: StreamEvent, id: string) {
     if (event.event === 'navigate' && typeof event.href === 'string') {
       setExecutiveState('delegating')
-      if (event.href.split('?')[0] !== pathnameRef.current) openWorkspace(event.href)
+      if (event.href.split('?')[0] !== pathnameRef.current || event.href.startsWith('/calendar?')) openWorkspace(event.href)
     } else if (event.event === 'tool_call' && typeof event.tool === 'string' && ATLAS_ACTION_TOOL_NAMES.has(event.tool)) {
       beginExecution(event.tool)
     } else if (event.event === 'tool_result' && typeof event.tool === 'string' && ATLAS_ACTION_TOOL_NAMES.has(event.tool)) {

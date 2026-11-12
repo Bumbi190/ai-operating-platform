@@ -1,5 +1,6 @@
 'use client';
-import {useEffect,useState} from 'react';
+import {useEffect,useMemo,useState} from 'react';
+import {setViewSelection,setViewVisible} from '@/lib/atlas/view-client';
 import {CalendarDays,ChevronLeft,ChevronRight,Plus} from 'lucide-react';
 import type {CalendarWeekModel,CalendarEntry,CalendarUndatedReview} from '@/lib/calendar/types';
 import {addCalendarDays} from '@/lib/calendar/time';
@@ -10,7 +11,7 @@ import {CalendarEventPanel} from './CalendarEventPanel';
 import {CalendarDecisions} from './CalendarDecisions';
 import {CalendarAttention} from './CalendarAttention';
 import styles from './Calendar.module.css';
-export function CalendarWorkspace(props:{initialWeek:CalendarWeekModel;userId:string}){return <CalendarWorkspaceBody key={props.userId} {...props}/>;}
+export function CalendarWorkspace(props:{initialWeek:CalendarWeekModel;userId:string}){return <CalendarWorkspaceBody key={props.userId+':'+props.initialWeek.range.fromDate} {...props}/>;}
 function CalendarWorkspaceBody({initialWeek,userId}:{initialWeek:CalendarWeekModel;userId:string}){
  const s=useCalendarWorkspace(initialWeek,userId);
  const [undated,setUndated]=useState<CalendarUndatedReview|null>(null);
@@ -19,6 +20,29 @@ function CalendarWorkspaceBody({initialWeek,userId}:{initialWeek:CalendarWeekMod
  const newEvent:typeof s.newEvent=(...args)=>{setUndated(null);s.newEvent(...args);};
  const undatedItems=(s.model.mediaEvents?.undated??[]).filter(e=>s.filter==='all'||('projectId' in e.source&&e.source.projectId===s.filter));
  const entries=s.model.entries.filter(entry=>s.filter==='all'||(s.filter==='private'?entry.source.kind==='manual'&&entry.manualEvent?.kind==='private':entry.projectId===s.filter));
+ const visibleRefs=useMemo(()=>s.model.entries
+  .filter(e=>s.filter==='all'||(s.filter==='private'?e.manualEvent?.kind==='private':e.projectId===s.filter))
+  .map(e=>({domain:'calendar-'+e.source.kind,id:e.source.kind==='social'?e.source.postId:e.id,label:e.title})),[s.model.entries,s.filter]);
+ useEffect(()=>{
+  const ready=s.sessionReady&&!s.loading&&!s.readError&&s.week===s.model.range.fromDate;
+  const selected=ready&&s.panelOpen&&s.selected&&entries.some(e=>e.id===s.selected?.id)?s.selected:null;
+  setViewVisible(ready?visibleRefs:[]);
+  setViewSelection(selected?[{domain:'calendar-'+selected.source.kind,id:selected.source.kind==='social'?selected.source.postId:selected.id,label:selected.title}]:[]);
+  return ()=>{setViewSelection([]);setViewVisible([]);};
+ },[visibleRefs,s.selected,s.panelOpen,s.sessionReady,s.loading,s.readError,s.week,s.model.range.fromDate]);
+ const [requestedPost,setRequestedPost]=useState<string|null>(null);
+ useEffect(()=>{
+  const receive=()=>{const params=new URLSearchParams(window.location.search);setRequestedPost(params.get('post'));};
+  receive();window.addEventListener('omnira:calendar-post',receive);
+  return ()=>window.removeEventListener('omnira:calendar-post',receive);
+ },[]);
+ useEffect(()=>{
+  if(!requestedPost||!s.sessionReady||s.loading||s.readError||s.week!==s.model.range.fromDate)return;
+  const entry=s.model.entries.find(e=>e.source.kind==='social'&&e.source.postId===requestedPost);
+  if(!entry)return;
+  if(s.filter!=='all'&&s.filter!==entry.projectId){s.setFilter('all');return;}
+  setUndated(null);s.selectEntry(entry);setRequestedPost(null);
+ },[requestedPost,s.week,s.model,s.filter,s.sessionReady,s.loading,s.readError]);
  const format=(date:string)=>new Intl.DateTimeFormat('sv-SE',{day:'numeric',month:'long',timeZone:'UTC'}).format(new Date(date+'T12:00:00Z'));
  const weekNumber=(()=>{const d=new Date(s.week+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+3);const first=new Date(Date.UTC(d.getUTCFullYear(),0,4));return 1+Math.round(((d.getTime()-first.getTime())/86400000-3+(first.getUTCDay()+6)%7)/7);})();
  const sourceNames={manual:'den privata kalendern',social:'sociala publiceringar',workflows:'arbetsflöden',tasks:'uppgifter'};

@@ -2,10 +2,11 @@ import 'server-only';
 import type Anthropic from '@anthropic-ai/sdk';
 import {CalendarError,type CalendarReadDeps,type CalendarActor,type CalendarSourceRef} from './types';
 import {calendarFields,calendarId,parseCalendarMutation} from './validate';
+import {findCalendarPost} from './post-lookup';
 import {readFilteredCalendar} from './api';
 import {mutateCalendarEvent} from './store';
 import {requestCalendarSourceMove} from './source-changes';
-export const CALENDAR_TOOL_NAMES:readonly string[]=['get_calendar','create_calendar_event','update_calendar_event','cancel_calendar_event'];
+export const CALENDAR_TOOL_NAMES:readonly string[]=['find_calendar_post','get_calendar','create_calendar_event','update_calendar_event','cancel_calendar_event'];
 const id={type:'string',format:'uuid'},nullableId={anyOf:[id,{type:'null'}]};
 const time={oneOf:[
  {type:'object',additionalProperties:false,required:['kind','startUtc','endUtc','timeZone'],properties:{kind:{const:'timed'},startUtc:{type:'string',description:'Exakt UTC ISO med millisekunder, exempel 2026-10-22T12:00:00.000Z.'},endUtc:{type:['string','null'],description:'null när sluttid saknas. Hitta aldrig på längd.'},timeZone:{const:'Europe/Stockholm'}}},
@@ -14,6 +15,7 @@ const time={oneOf:[
 const draft={type:'object',additionalProperties:false,required:['kind','title','description','location','projectId','taskId','time','workStatus'],properties:{kind:{enum:['private','work_block']},title:{type:'string',minLength:1,maxLength:150},description:{type:'string',maxLength:5000},location:{type:'string',maxLength:500},projectId:nullableId,taskId:nullableId,time,workStatus:{enum:[null,'planned','in_progress','done']}}};
 const schema=(properties:Record<string,unknown>,required=Object.keys(properties))=>({type:'object' as const,properties,required,additionalProperties:false});
 export const CALENDAR_TOOLS:Anthropic.Tool[]=[
+ {name:'find_calendar_post',description:'Find and open one existing social post in the owner calendar. Use supplied dates, project name, channel, exact local clock and meaningful title words from recent turns. For a deictic request use the selected social postId. Omit unknown filters. Returns alternatives on ambiguity. Never changes or publishes content.',input_schema:schema({fromDate:{type:'string',format:'date'},toDateExclusive:{type:'string',format:'date'},project:{type:'string'},channel:{type:'string'},title:{type:'string'},localTime:{type:'string',description:'HH:mm in Stockholm'},postId:id},['fromDate','toDateExclusive'])},
  {name:'get_calendar',description:'Läs din privata kalender och ägda projekt för ett exakt lokalt datumintervall (max31dagar). Börja här innan ett namngivet möte flyttas; välj aldrig mellan flera möten utan följdfråga.',input_schema:schema({fromDate:{type:'string',format:'date'},toDateExclusive:{type:'string',format:'date'},timeZone:{const:'Europe/Stockholm'},projectId:id},['fromDate','toDateExclusive','timeZone'])},
  {name:'create_calendar_event',description:'Spara ett tydligt beställt privat möte eller arbetsblock. Stabilt eventId och idempotencyKey återanvänds vid återförsök. Startar inget agentjobb.',input_schema:schema({eventId:id,idempotencyKey:id,draft})},
  {name:'update_calendar_event',description:'Ändra exakt läst manuell post med dess version (mode=manual, mutation operation=update eller restore), eller föreslå social tidsändring (mode=source_move). Social ändring kräver ny granskning.',input_schema:schema({mode:{enum:['manual','source_move']},mutation:{type:'object',properties:{operation:{enum:['update','restore']},eventId:id,expectedVersion:{type:'integer',minimum:1},idempotencyKey:id,draft},required:['operation','eventId','expectedVersion','idempotencyKey'],additionalProperties:false},source:{type:'object',properties:{kind:{const:'social'},projectId:id,postId:id,revisionId:id,sha256:{type:'string'},jobId:nullableId},required:['kind','projectId','postId','revisionId','sha256','jobId'],additionalProperties:false},localMinute:{type:'string',description:'Exakt svensk lokal tid YYYY-MM-DDTHH:mm; tvetydig sommartid avvisas.'},idempotencyKey:id},['mode'])},
@@ -36,6 +38,22 @@ export async function handleCalendarTool(name:string,input:Record<string,unknown
   const {data:conversation,error}=await deps.adminDb.from('conversations').select('id').eq('id',context.conversationId).eq('user_id',context.actor.userId).maybeSingle();
   if(error)throw new CalendarError('UNAVAILABLE');
   if(!conversation)return {ok:false,code:'NOT_FOUND'};
+  if(name==='find_calendar_post'){
+   calendarFields(input,['fromDate','toDateExclusive','project','channel','title','localTime','postId']);
+   let projectId:string|undefined;
+   if(typeof input.project==='string'){
+    if(context.actor.projectScopeAvailable===false)throw new CalendarError('UNAVAILABLE');
+    if(!context.actor.allowedProjectIds.length)throw new CalendarError('NOT_FOUND');
+    const {data,error}=await deps.adminDb.from('projects').select('id,name').eq('owner_id',context.actor.userId).in('id',context.actor.allowedProjectIds);
+    if(error||!data)throw new CalendarError('UNAVAILABLE');
+    const requested=input.project.trim();
+    const projects=data.filter(p=>p.name.localeCompare(requested,'sv',{sensitivity:'base'})===0);
+    if(projects.length!==1)return {ok:false,code:projects.length?'AMBIGUOUS':'NOT_FOUND'};
+    projectId=projects[0].id;
+   }
+   const calendar=await readFilteredCalendar(deps,context.actor,{fromDate:input.fromDate,toDateExclusive:input.toDateExclusive,timeZone:'Europe/Stockholm',...(projectId?{projectId}:{})});
+   return findCalendarPost(calendar,input);
+  }
   if(name==='get_calendar')return {ok:true,calendar:await readFilteredCalendar(deps,context.actor,input)};
   if(name==='create_calendar_event'){
    calendarFields(input,['eventId','idempotencyKey','draft']);

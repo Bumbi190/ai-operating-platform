@@ -117,9 +117,12 @@ def focus_known_window(key: str) -> tuple[bool, str]:
     u.SetForegroundWindow.restype = wintypes.BOOL
     u.GetForegroundWindow.argtypes = []
     u.GetForegroundWindow.restype = wintypes.HWND
-    u.ShowWindow(window.handle, 9)
-    ok = bool(u.SetForegroundWindow(window.handle))
-    verified = bool(ok and int(u.GetForegroundWindow() or 0) == window.handle)
+    u.IsIconic.argtypes = [wintypes.HWND]
+    if u.IsIconic(window.handle):
+        u.ShowWindow(window.handle, 9)
+    if int(u.GetForegroundWindow() or 0) != window.handle:
+        u.SetForegroundWindow(window.handle)
+    verified = int(u.GetForegroundWindow() or 0) == window.handle
     if verified:
         return True, "Windows växlade till " + window.label + "."
     return False, ("Windows nekade att flytta fokus till " + window.label +

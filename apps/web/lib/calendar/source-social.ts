@@ -30,11 +30,11 @@ export function projectCalendarSocial(projectId:string,posts:SocialContentPost[]
   const pending=revision&&revision.id!==item.revisionId&&revision.draft.scheduledAt?{time:calendarPoint(revision.draft.scheduledAt),reviewHref:href}:null;
   const status=repeatHeld(current)&&['queued','waiting','claimed'].includes(job.state)?'needs_review':job.state;
   entries.push({id:'social:'+projectId+':'+postId,contentSource:{kind:'social',projectId,postId,revisionId:item.revisionId,sha256:item.sha256,jobId:job.id},source:{kind:'social',projectId,postId,revisionId:revision?.id??item.revisionId,sha256:revision?.sha256??item.sha256,jobId:job.id},
-   title:approved?.draft.title??'Publicering · '+job.channel,time:calendarPoint(job.scheduledAt),projectId,status,editable:!!revision,href,pendingChange:pending});
+   channel:job.channel,title:approved?.draft.title??'Publicering · '+job.channel,time:calendarPoint(job.scheduledAt),projectId,status,editable:!!revision,href,pendingChange:pending});
  }
  for(const post of posts){
   if(jobs.has(post.id)||!post.revision.draft.scheduledAt)continue;
-  entries.push({id:'social:'+projectId+':'+post.id,source:{kind:'social',projectId,postId:post.id,revisionId:post.revision.id,sha256:post.revision.sha256,jobId:null},title:post.revision.draft.title,time:calendarPoint(post.revision.draft.scheduledAt),projectId,status:repeatHeld(post)?'needs_review':post.status==='rejected'?'rejected':'proposal',editable:true,href,pendingChange:null});
+  entries.push({id:'social:'+projectId+':'+post.id,source:{kind:'social',projectId,postId:post.id,revisionId:post.revision.id,sha256:post.revision.sha256,jobId:null},channel:post.revision.draft.channel,title:post.revision.draft.title,time:calendarPoint(post.revision.draft.scheduledAt),projectId,status:repeatHeld(post)?'needs_review':post.status==='rejected'?'rejected':'proposal',editable:true,href,pendingChange:null});
  }
  if(monthlyEnabled){
   const now=resolveCalendarLocal(range.fromDate+'T00:00');

@@ -11,7 +11,7 @@ const sink = () => ({
 describe('Native Nova Sanna playback receipts', () => {
   it('sends only the approved Nova voice and verifies actual PCM output', async () => {
     const speaker = sink()
-    const request = vi.fn(async () => new Response(new Uint8Array([0, 64, 0, 64])))
+    const request = vi.fn(async (_text: string, _voice: string) => new Response(new Uint8Array([0, 64, 0, 64])))
     const player = createPcmSpeechPlayer({ notice: vi.fn() }, { request, sink: speaker })
     expect(await player.playNativeVoice('Hej!')).toBe(true)
     expect(request).toHaveBeenCalledTimes(1)

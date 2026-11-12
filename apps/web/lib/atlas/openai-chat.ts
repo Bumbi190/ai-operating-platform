@@ -3,6 +3,7 @@ import type Anthropic from '@anthropic-ai/sdk'
 import type OpenAI from 'openai'
 import {openAIChatCompletion,type OpenAIGovernanceContext} from '@/lib/ai/openai-client'
 import {openAITextOptions} from '@/lib/ai/atlas-model-policy'
+import {AtlasResponseLengthError} from '@/lib/atlas/provider-errors'
 
 type Params=Pick<Anthropic.MessageStreamParams,'model'|'max_tokens'|'system'|'messages'|'tools'|'tool_choice'>
 type Result=Pick<Anthropic.Message,'content'|'stop_reason'>
@@ -79,6 +80,7 @@ export async function openAIAtlasStream(ctx:OpenAIGovernanceContext,input:Params
    }
   }
   // Never execute partial JSON or filtered/truncated tools, and never retry here.
+  if(finish==='length')throw new AtlasResponseLengthError()
   if(finish!=='stop'&&finish!=='tool_calls')throw Error('Atlas svar avslutades innan det var komplett ('+(finish??'okänd orsak')+').')
   const content:Anthropic.ContentBlock[]=[]
   if(text)content.push({type:'text',text,citations:null})

@@ -1,7 +1,14 @@
+/** A complete provider response was prevented by its output-token limit. */
+export class AtlasResponseLengthError extends Error {
+  readonly name = 'AtlasResponseLengthError'
+  constructor() { super('ATLAS_RESPONSE_LENGTH_LIMIT') }
+}
+
 export const ATLAS_SERVICE_ERROR_CODES = [
   'ATLAS_PROVIDER_NOT_CONFIGURED',
   'ATLAS_PROVIDER_AUTHENTICATION_FAILED',
   'ATLAS_PROVIDER_REQUEST_FAILED',
+  'ATLAS_RESPONSE_LENGTH_LIMIT',
   'ATLAS_TTS_NOT_CONFIGURED',
   'ATLAS_TTS_REQUEST_FAILED',
   'ATLAS_TTS_PLAYBACK_BLOCKED',
@@ -14,6 +21,7 @@ const ATLAS_SERVICE_ERROR_MESSAGES: Record<AtlasServiceErrorCode, string> = {
   ATLAS_PROVIDER_NOT_CONFIGURED: 'Atlas AI-leverantör är inte konfigurerad i servermiljön.',
   ATLAS_PROVIDER_AUTHENTICATION_FAILED: 'Atlas AI-leverantör kunde inte autentiseras. Kontrollera serverns lokala provider-konfiguration.',
   ATLAS_PROVIDER_REQUEST_FAILED: 'Atlas kunde inte hämta ett AI-svar just nu.',
+  ATLAS_RESPONSE_LENGTH_LIMIT: 'Svaret blev för långt och avbröts. Tidigare åtgärder kan redan vara sparade. Kontrollera resultatet innan du försöker igen.',
   ATLAS_TTS_NOT_CONFIGURED: 'Atlas svarade i text, men röstleverantören är inte konfigurerad i servermiljön.',
   ATLAS_TTS_REQUEST_FAILED: 'Atlas svarade i text, men ljudet kunde inte skapas just nu.',
   ATLAS_TTS_PLAYBACK_BLOCKED: 'Atlas kunde skapa rösten men webbläsaren blockerade ljuduppspelningen. Klicka i fönstret och försök igen.',
@@ -29,6 +37,7 @@ export function getAtlasServiceErrorMessage(code: AtlasServiceErrorCode): string
 }
 
 export function classifyAnthropicError(error: unknown): AtlasServiceErrorCode {
+  if (error instanceof AtlasResponseLengthError) return 'ATLAS_RESPONSE_LENGTH_LIMIT'
   const candidate = error as { status?: unknown; message?: unknown } | null
   const status = typeof candidate?.status === 'number' ? candidate.status : null
   const message = typeof candidate?.message === 'string' ? candidate.message.toLowerCase() : ''

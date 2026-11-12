@@ -28,6 +28,7 @@ import { fetchOperatorPatterns } from '@/lib/os/patterns'
 import { buildAtlasSystemPrompt } from '@/lib/atlas/identity'
 import { isNovaReadOnlyMode, NOVA_READONLY_DIRECTIVE } from '@/lib/atlas/nova-readonly'
 import {
+  AtlasResponseLengthError,
   classifyAnthropicError,
   getAtlasServiceErrorMessage,
 } from '@/lib/atlas/provider-errors'
@@ -1286,11 +1287,14 @@ export async function POST(request: Request) {
                   ? { tool_choice: { type: 'any' as const } }
                   : {})
             : {}
+          const turnTools = sourceReadTurn && sourceReadIssued ? [] : offeredTools // one read then no more tools
+          // Voice brevity constrains spoken prose, not structured tool arguments.
+          // Every tool-enabled round needs room for a complete calendar/workflow payload.
           const modelInput = {
             model: modelPolicy.chatModel,
-            max_tokens: novaReadOnly ? (voice ? 150 : 900) : (voice ? (socialPreparationTurn || calendarPostTurn ? 4096 : 150) : (fastPath ? 1200 : 4096)),
+            max_tokens: novaReadOnly ? (voice ? 150 : 900) : (voice ? (turnTools.length > 0 ? 4096 : 150) : (fastPath ? 1200 : 4096)),
             system: systemPrompt,
-            tools: sourceReadTurn && sourceReadIssued ? [] : offeredTools, // one read then no more tools
+            tools: turnTools,
             ...toolChoice,
             messages: msgs,
           }
@@ -1585,8 +1589,9 @@ export async function POST(request: Request) {
           return
         }
         const code = classifyAnthropicError(err)
-        console.error(`[atlas-chat] Anthropic request failed (${code})`, {
-          name: err instanceof Error ? err.name : 'UnknownError',
+        console.error(`[atlas-chat] Provider request failed (${code})`, {
+          provider: openaiEconomy ? 'openai' : 'anthropic',
+          name: err instanceof AtlasResponseLengthError ? 'AtlasResponseLengthError' : err instanceof Error ? 'Error' : 'UnknownError',
           status: typeof (err as { status?: unknown } | null)?.status === 'number'
             ? (err as { status: number }).status
             : undefined,

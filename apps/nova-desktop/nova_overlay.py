@@ -20,7 +20,10 @@ from tkinter import simpledialog
 import webbrowser
 
 from nova_commander import CommanderSession, commander_request
-from nova_core import HotkeyListener, URLS, APP_SHORTCUTS, route, normalized
+from nova_core import (
+    HotkeyListener, URLS, APP_SHORTCUTS, route, normalized,
+    is_operator_request, is_calendar_read_request,
+)
 from nova_hotkey_host import HostEventListener
 from nova_focus import ForegroundFocusGuard, show_idle_bubble
 from nova_placement import (
@@ -52,14 +55,6 @@ PROJECTS = {
     "Handlarbörsen": r"C:\Users\Andre\Projects\Handlarborsen",
     "Familje-Stunden": r"C:\Users\Andre\Projects\Familje-Stunden",
 }
-# An action request can be held for explicit operator approval even while offline.
-# The words select a review path; only the authenticated tools can execute it.
-_WORK_REQUEST = re.compile(
-    r"^(?:(?:hej\s+)?nova[,:\s]+)?(?:(?:kan|skulle|vill) du\s+)?"
-    r"(?:lagg(?:a)? (?:till|in)|boka|skapa|skicka|publicera|uppdatera|"
-    r"flytta|radera|betala|kop|kopa|skriv|svara|besvara|planera in|installera)\b"
-)
-
 BUBBLE_W, BUBBLE_H = 54, 54
 PANEL_W, PANEL_H = 416, 520
 
@@ -963,18 +958,24 @@ class NovaOverlay:
             self._begin_commander(goal)
             return
         bridge = getattr(self, "bridge", None)
-        if addressed and bridge and _WORK_REQUEST.match(value):
+        if addressed and bridge and (is_operator_request(command) or is_calendar_read_request(command)):
             self.stop_native_mic_pilot(quiet=True)
             self._received_voice_without_navigation(command)
             return
         voice = bridge.state.voice_snapshot() if bridge else {}
-        if (bridge and not self._desktop_dialogue() and bridge.state.online()
+        if (bridge and bridge.state.online()
                 and voice.get("authorized") and voice.get("mode") == "native"):
+            # Output voice does not select task capabilities. Use the existing
+            # authenticated Atlas path and pause capture while it handles a turn.
+            self.stop_native_mic_pilot(quiet=True)
             # Native STT is untrusted input. A potentially consequential
             # instruction stays a reviewable draft until the operator clicks.
             risk_terms = ("skicka", "publicera", "radera", "betala", "kopa",
                           "kop ", "skriv kod", "koda", "implementera", "installera",
-                          "uppdatera", "lägg till", "lagg till", "skapa", "planera in", "boka")
+                          "uppdatera", "lagg till", "lagga till", "lagger till",
+                          "lagg in", "lagga in", "lagger in", "skapa", "planera in", "boka",
+                          "flytta", "andra ", "andrar ", "ta bort", "tar bort",
+                          "skriv", "spara", "svara", "besvara", "koper")
             if any(part in value for part in risk_terms):
                 self.pending = phrase
                 self._received_voice_without_navigation(phrase)
@@ -1315,7 +1316,8 @@ class NovaOverlay:
                     or (task and task.state in ("pending", "executing"))):
                 self._phase("tolkar", "Atlas svarar · tryck Stopp för att avbryta")
                 return
-            self._local_voice_only = self.reply_mode == "sanna"
+            # Sanna is an output voice, not a request for offline-only work.
+            self._local_voice_only = False
         else:
             self._local_voice_only = True
         if self.expanded:
@@ -2009,7 +2011,7 @@ class NovaOverlay:
                          "Ordinarie behörigheter och granskningar gäller fortfarande.")
             self._phase("godkannande", "Granska uppdraget och välj Kör i Atlas")
             return
-        if _WORK_REQUEST.match(normalized(text)):
+        if is_operator_request(text) or is_calendar_read_request(text):
             self.pending = text
             self._waiting_operator_request = text
             self._reply("nova", "Det uppdraget behöver Atlas. Du kan ansluta här "

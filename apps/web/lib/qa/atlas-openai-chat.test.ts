@@ -3,6 +3,7 @@ const call=vi.hoisted(()=>vi.fn())
 vi.mock('server-only',()=>({}))
 vi.mock('@/lib/ai/openai-client',()=>({openAIChatCompletion:call}))
 import {openAIAtlasStream} from '@/lib/atlas/openai-chat'
+import {AtlasResponseLengthError,classifyAnthropicError,getAtlasServiceErrorMessage} from '@/lib/atlas/provider-errors'
 import {GLOBAL_ONLY} from '@/lib/governance/execution-stop'
 const ctx={project:{projectId:'p'},execution:{context:'OPERATOR_INTERACTIVE' as const,scope:GLOBAL_ONLY},agent:'Atlas',operation:'Atlas Chat'}
 const input={model:'gpt-5.4-mini',max_tokens:150,system:'System',tools:[{name:'get_current_time',description:'Time',input_schema:{type:'object' as const,properties:{}}}],tool_choice:{type:'any' as const},messages:[{role:'user' as const,content:'Tid?'}]}
@@ -34,4 +35,18 @@ it('rejects invalid tool JSON without a provider retry',async()=>{
  call.mockResolvedValue(chunks([{delta:{tool_calls:[{index:0,id:'call-1',function:{name:'get_current_time',arguments:'nope'}}]},finish_reason:'tool_calls'}]))
  await expect((await openAIAtlasStream(ctx,input)).finalMessage()).rejects.toThrow()
  expect(call).toHaveBeenCalledTimes(1)
+})
+
+it.each(['{','{"timezone":"Europe/Stockholm"}'])('classifies length termination before parsing or exposing tool arguments %s',async args=>{
+ call.mockResolvedValue(chunks([{delta:{tool_calls:[{index:0,id:'call-1',function:{name:'get_current_time',arguments:args}}]},finish_reason:'length'}]))
+ const stream=await openAIAtlasStream(ctx,input)
+ const error=await stream.finalMessage().catch(error=>error)
+ expect(error).toBeInstanceOf(AtlasResponseLengthError)
+ expect(classifyAnthropicError(error)).toBe('ATLAS_RESPONSE_LENGTH_LIMIT')
+ expect(getAtlasServiceErrorMessage(classifyAnthropicError(error))).toContain('Kontrollera resultatet innan du försöker igen.')
+ expect(call).toHaveBeenCalledTimes(1)
+})
+it('keeps an unrelated provider failure separate from the response-length error',()=>{
+ expect(classifyAnthropicError(new Error('provider unavailable'))).toBe('ATLAS_PROVIDER_REQUEST_FAILED')
+ expect(classifyAnthropicError({status:401})).toBe('ATLAS_PROVIDER_AUTHENTICATION_FAILED')
 })

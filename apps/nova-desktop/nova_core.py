@@ -62,6 +62,45 @@ def normalized(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
+# This recognizes reviewable requests, never authority to execute them. Keep
+# questions, reported speech and negations out of the imperative entry point.
+_OPERATOR_REQUEST = re.compile(
+    r"^(?:(?:hej|okej|halla)\s+)?(?:nova[,:\s]+)?"
+    r"(?:(?:(?:kan|vill|skulle) du(?: (?:kunna|vilja))?|"
+    r"jag (?:vill|behover|skulle vilja)(?: garna)? att du)\s+)?"
+    r"(?:(?:hjalp(?:a|er)? mig att|hjalpa mig med att)\s+)?"
+    r"(?:lagg(?:a|er)? (?:till|in)|bok(?:a|ar)|skap(?:a|ar)|"
+    r"skicka(?:r)?|publicera(?:r)?|uppdatera(?:r)?|flytta(?:r)?|"
+    r"radera(?:r)?|betala(?:r)?|kop(?:a|er)?|skriv(?:a|er)?|"
+    r"svara(?:r)?|besvara(?:r)?|planera(?:r)? in|installera(?:r)?|"
+    r"andra(?:r)?|ta(?:r)? bort)\b"
+)
+_OPERATOR_NEGATION = re.compile(r"\b(?:inte|aldrig|lat bli)\b")
+
+
+def is_operator_request(text: str) -> bool:
+    """Select Atlas's existing review flow without approving a tool call."""
+    value = normalized(text)
+    return bool(_OPERATOR_REQUEST.match(value) and not _OPERATOR_NEGATION.search(value))
+
+
+_CALENDAR_READ_REQUEST = re.compile(
+    r"^(?:(?:hej|okej|halla)[,\s]+)?(?:nova[.,:!?\s]+)?"
+    r"(?:(?:kan|vill|skulle) du(?: kunna)?\s+)?"
+    r"(?:vad har jag(?: (?:bokat|inbokat|planerat))? (?:i|pa) (?:min )?kalender(?:n)?"
+    r"|vad (?:star|finns|ar inbokat) (?:i|pa) min kalender"
+    r"|vilka (?:moten|aktiviteter|handelser|bokningar) har jag (?:i|pa) (?:min )?kalender(?:n)?"
+    r"|(?:las(?:a)?(?: upp)?|kolla|kontrollera) (?:min kalender|mina kalenderhandelser))"
+    r"(?=$|[\s?!.,])"
+)
+
+
+def is_calendar_read_request(text: str) -> bool:
+    """Personal schedule reads need reviewed Atlas tools, not tool-free advice."""
+    value = normalized(text)
+    return bool(_CALENDAR_READ_REQUEST.match(value) and not _OPERATOR_NEGATION.search(value))
+
+
 @dataclass(frozen=True)
 class Action:
     kind: str

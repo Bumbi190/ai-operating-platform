@@ -73,13 +73,45 @@ type Turn = {
   buildContext?: BuildContext | null;
   onEvent?: (event: StreamEvent) => void;
 };
+// Chat's server budget is 120 s. Bound the complete client turn, including
+// stalled response bodies, with a small transport margin. Never replay writes.
+const TURN_TIMEOUT_MS = 130_000;
+const CREATION_TIMEOUT_MS = 30_000;
+const TURN_TIMEOUT_NOTICE =
+  "Atlas svarade inte i tid. Uppdragets resultat är inte bekräftat. Kontrollera kalendern eller uppdragets status innan du försöker igen; en ändring kan redan ha sparats.";
+const CREATION_TIMEOUT_NOTICE =
+  "Atlas kunde inte bekräfta samtalet i tid. Inget uppdrag skickades. Kontrollera dina samtal innan du försöker igen.";
+const CREATION_FAILED_NOTICE = "Konversationen kunde inte sparas. Försök igen.";
+
+/** Also settles when an injected fetch or body reader ignores AbortSignal. */
+function waitForRequest<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(signal.reason ?? new Error("Atlas request aborted"));
+    if (signal.aborted) {
+      void operation.catch(() => {});
+      onAbort();
+      return;
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
+    operation.then(
+      value => { signal.removeEventListener("abort", onAbort); resolve(value); },
+      error => { signal.removeEventListener("abort", onAbort); reject(error); },
+    );
+  });
+}
+
 export class AtlasConversationController {
   private conversations = new Map<string, ConversationSnapshot>();
   private active = empty();
   private generation = 0;
+  private sessionEpoch = 0;
+  private inFlightTurns = new Set<AbortController>();
   private listeners = new Set<() => void>();
   constructor(private request: typeof fetch = (...args) => fetch(...args)) {}
-  private creating: {generation: number; promise: Promise<string | null>} | null = null;
+  private creating: {
+    generation: number; promise: Promise<string | null>; controller: AbortController;
+  } | null = null;
+  private creationFailure: string | null = null;
   private compactPending: symbol | null = null;
   private activeTurn: {
     conversationId: string; generation: number; controller: AbortController;
@@ -106,26 +138,46 @@ export class AtlasConversationController {
     const generation = this.generation;
     if (this.creating?.generation === generation) return this.creating.promise;
     this.active = {...this.active, pending: true};
+    this.creationFailure = null;
     this.listeners.forEach(listener => listener());
+    const creationController = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      creationController.abort();
+    }, CREATION_TIMEOUT_MS);
     const promise = (async () => {
       try {
-        const response = await this.request("/api/conversations", {
+        const response = await waitForRequest(this.request("/api/conversations", {
           method: "POST", headers: {"Content-Type": "application/json"},
+          signal: creationController.signal,
           body: JSON.stringify({
             title: input.firstText.slice(0, 56),
             ...(input.projectId ? {project_id: input.projectId} : {}),
           }),
-        });
-        const row = await response.json();
+        }), creationController.signal);
+        const row = await waitForRequest(response.json(), creationController.signal);
         if (!response.ok || typeof row?.id !== "string" || !row.id.trim() || generation !== this.generation) return null;
         // This event preserves logical new-thread drafts without transferring
         // them when an existing conversation is explicitly selected.
         this.createdListeners.forEach(listener => listener(row.id));
         this.activateSnapshot({id: row.id, saved: [], state: "ok", projectId: input.projectId}, true);
         return row.id as string;
-      } catch { return null; }
+      } catch {
+        if (timedOut && generation === this.generation && !this.active.id) {
+          this.creationFailure = CREATION_TIMEOUT_NOTICE;
+          this.active = {...this.active, entries: [
+            ...this.active.entries,
+            {kind: "notice", tone: "error", text: CREATION_TIMEOUT_NOTICE},
+          ]};
+          this.listeners.forEach(listener => listener());
+        }
+        return null;
+      } finally {
+        clearTimeout(timer);
+      }
     })();
-    this.creating = {generation, promise};
+    this.creating = {generation, promise, controller: creationController};
     try { return await promise; }
     finally {
       if (this.creating?.promise === promise) this.creating = null;
@@ -144,7 +196,7 @@ export class AtlasConversationController {
     try {
       const id = await this.ensureConversation({firstText: text, inputSource: "text", projectId: input.initialProjectId});
       if (this.compactPending !== token) return {ok: false};
-      if (!id) return {ok: false, notice: "Konversationen kunde inte sparas. Försök igen."};
+      if (!id) return {ok: false, notice: this.creationFailure ?? CREATION_FAILED_NOTICE};
       return await this.sendTurn({conversationId: id, text, image: input.image, inputSource: "text", visiblePlan: null, buildContext: null});
     } finally {
       if (this.compactPending === token) this.compactPending = null;
@@ -157,6 +209,20 @@ export class AtlasConversationController {
    * be rolled back, so this does not claim transactional cancellation.
    */
   cancelActiveTurn(): boolean {
+    const creating = this.creating;
+    if (creating?.generation === this.generation && !this.active.id
+        && this.active.pending && !creating.controller.signal.aborted) {
+      this.generation++;
+      this.creating = null;
+      this.compactPending = null;
+      creating.controller.abort();
+      this.active = {...this.active, pending: false, entries: [
+        ...this.active.entries,
+        {kind: "notice", tone: "error", text: "Avbrutet av dig. Inget uppdrag skickades."},
+      ]};
+      this.listeners.forEach(listener => listener());
+      return true;
+    }
     const running = this.activeTurn;
     if (!running || running.conversationId !== this.active.id
         || !this.active.pending || running.controller.signal.aborted) return false;
@@ -218,7 +284,11 @@ export class AtlasConversationController {
   private activateSnapshot(input: Activate, preserveCompact: boolean) {
     if (this.active.id !== input.id) {
       this.generation++;
-      if (!preserveCompact) this.compactPending = null;
+      if (!preserveCompact) {
+        this.creating?.controller.abort();
+        this.creating = null;
+        this.compactPending = null;
+      }
     }
     let s = this.conversations.get(input.id);
     if (!s)
@@ -275,7 +345,15 @@ export class AtlasConversationController {
     this.update(conversationId,{testDataReviews:[...current.testDataReviews.filter(r=>r.packageView.packageId!==view.packageView.packageId),view]});
   }
   clearOnSignout() {
+    // A new signed-in session must never receive writes from an old turn,
+    // including background turns in conversations other than the active one.
+    this.sessionEpoch++;
+    for (const controller of this.inFlightTurns) controller.abort();
+    this.inFlightTurns.clear();
+    this.activeTurn = null;
+    this.creating?.controller.abort();
     this.creating = null;
+    this.creationFailure = null;
     this.compactPending = null;
     this.generation++;
     this.conversations.clear();
@@ -283,7 +361,9 @@ export class AtlasConversationController {
     this.listeners.forEach((f) => f());
   }
   deactivateConversation() {
+    this.creating?.controller.abort();
     this.creating = null;
+    this.creationFailure = null;
     this.compactPending = null;
     this.generation++;
     this.active=empty();
@@ -328,8 +408,13 @@ export class AtlasConversationController {
       return { ok: false };
     const generation = this.generation,
       id = turn.conversationId;
+    const sessionEpoch = this.sessionEpoch;
+    const isSameSession = () => this.sessionEpoch === sessionEpoch;
     const isCurrent = () =>
-      this.active.id === id && this.generation === generation;
+      isSameSession() && this.active.id === id && this.generation === generation;
+    const updateTurn = (patch: Partial<ConversationSnapshot>) => {
+      if (isSameSession()) this.update(id, patch);
+    };
     const text = turn.text.trim();
     if (!text) return { ok: false };
     if(start.studio&&!start.projectId)return {ok:false,notice:'Välj ett projekt innan Atlas fortsätter.'};
@@ -359,14 +444,21 @@ export class AtlasConversationController {
       { role: "user" as const, content: text },
     ];
     const turnController = new AbortController();
+    this.inFlightTurns.add(turnController);
     const activeTurn = { conversationId: id, generation, controller: turnController,
       reader: null as ReadableStreamDefaultReader<Uint8Array> | null };
     this.activeTurn = activeTurn;
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      turnController.abort();
+      void activeTurn.reader?.cancel().catch(() => {});
+    }, TURN_TIMEOUT_MS);
     let reply = startReply([...start.entries, { kind: "user", text }]),
       settled = false,
       completed = false,
       streaming = false;
-    this.update(id, {
+    updateTurn( {
       history,
       entries: reply.entries,
       pending: true,
@@ -374,7 +466,7 @@ export class AtlasConversationController {
     });
     let result: TurnResult = {ok: false};
     const fail = (notice: string) => {
-      this.update(id, {
+      updateTurn( {
         entries: [
           ...reply.entries,
           { kind: "notice", tone: "error", text: notice },
@@ -383,7 +475,7 @@ export class AtlasConversationController {
       return result = { ok: false, notice };
     };
     try {
-      const response = await this.request("/api/chat", {
+      const response = await waitForRequest(this.request("/api/chat", {
         method: "POST",
         signal: turnController.signal,
         headers: { "Content-Type": "application/json" },
@@ -399,14 +491,14 @@ export class AtlasConversationController {
             ...(buildContext ? { buildContext } : {}),
           }),
         ),
-      });
+      }), turnController.signal);
       if (!response.ok || !response.body)
         return fail(
           response.ok
             ? CONNECTION_FAILED_NOTICE
             : failedResponseNotice(
                 response.status,
-                await response.json().catch(() => null),
+                await waitForRequest(response.json().catch(() => null), turnController.signal),
               ),
         );
       streaming = true;
@@ -415,9 +507,9 @@ export class AtlasConversationController {
       activeTurn.reader = reader;
       let buffer = "";
       while (true) {
-        if (turnController.signal.aborted) return result = { ok: false, notice: INTERRUPTED_NOTICE };
-        const { done, value } = await reader.read();
-        if (turnController.signal.aborted) return result = { ok: false, notice: INTERRUPTED_NOTICE };
+        if (turnController.signal.aborted) throw turnController.signal.reason;
+        const { done, value } = await waitForRequest(reader.read(), turnController.signal);
+        if (turnController.signal.aborted) throw turnController.signal.reason;
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         const split = splitStreamBuffer(buffer);
@@ -435,14 +527,18 @@ export class AtlasConversationController {
             settled = true;
             completed = true;
             if (step.effect.type === "done" && step.effect.fullText)
-              this.update(id, {
+              updateTurn( {
                 history: [
                   ...history,
                   { role: "assistant", content: step.effect.fullText },
                 ],
               });
           }
-          if (event.event === "error") settled = true;
+          if (event.event === "error") {
+            settled = true;
+            const notice = reply.entries.at(-1);
+            result = {ok: false, ...(notice?.kind === "notice" ? {notice: notice.text} : {})};
+          }
           if (isCurrent()) {
             const calendarEffect=decodeCalendarEffect(event,id);
             if(calendarEffect)this.calendarListeners.forEach(listener=>listener(calendarEffect));
@@ -456,12 +552,12 @@ export class AtlasConversationController {
                   now.plan?.activeSessionId ?? start.session?.sessionId ?? null,
               });
             if (effect?.plan)
-              this.update(id, {
+              updateTurn( {
                 plan: effect.plan,
                 projectId: effect.plan.ref.projectId,
               });
             if (effect?.session)
-              this.update(id, {
+              updateTurn( {
                 session: effect.session,
                 projectId: effect.session.projectId,
                 viewedRevisionId: now.session?.sessionId === effect.session.sessionId
@@ -473,18 +569,27 @@ export class AtlasConversationController {
               });
             turn.onEvent?.(event);
           }
+          // Protocol completion is terminal even if the server leaves the
+          // connection open. Drop later frames, effects and callbacks.
+          if (settled || turnController.signal.aborted) break;
         }
-        if (!turnController.signal.aborted) this.update(id, { entries: reply.entries });
+        if (!turnController.signal.aborted) updateTurn( { entries: reply.entries });
+        if (settled) break;
       }
-      if (turnController.signal.aborted) return result = { ok: false, notice: INTERRUPTED_NOTICE };
+      if (turnController.signal.aborted) throw turnController.signal.reason;
       if (!settled) return fail(INCOMPLETE_NOTICE);
-      return result = { ok: completed };
+      return completed ? result = { ok: true } : result;
     } catch {
+      if (timedOut) return fail(TURN_TIMEOUT_NOTICE);
       if (turnController.signal.aborted) return result = { ok: false, notice: INTERRUPTED_NOTICE };
       return fail(streaming ? INTERRUPTED_NOTICE : CONNECTION_FAILED_NOTICE);
     } finally {
+      clearTimeout(timer);
+      this.inFlightTurns.delete(turnController);
+      // Cleanup is best-effort: an uncooperative cancel must not keep the UI busy.
+      void activeTurn.reader?.cancel().catch(() => {});
       if (this.activeTurn === activeTurn) this.activeTurn = null;
-      if (!turnController.signal.aborted) this.update(id, { pending: false });
+      if (!turnController.signal.aborted || timedOut) updateTurn( { pending: false });
       const event = {conversationId: id, generation, current: isCurrent(), ok: result.ok};
       this.settledListeners.forEach(listener => listener(event));
     }

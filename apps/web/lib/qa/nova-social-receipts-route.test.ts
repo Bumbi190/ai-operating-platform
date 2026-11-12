@@ -151,10 +151,12 @@ describe('preparation routing and exact multi-post results',()=>{
   expect(r.text).toContain(REV);expect(r.text).toContain(id(9));expect(r.text).not.toContain(id(12))
   expect(r.persisted).toBe(r.text)
  })
- it('keeps an unrelated spoken topic at 150 even after preparation',async()=>{
+ it('keeps an unrelated spoken topic outside social preparation with room for tools',async()=>{
   steps=[{text:'Klockan är åtta.'}]
-  await run('Vad är klockan i Tokyo?',true,[{role:'user',content:'Planera tre LinkedIn-inlägg för granskning.'}])
-  expect(calls[0].max_tokens).toBe(150)
+  const r=await run('Vad är klockan i Tokyo?',true,[{role:'user',content:'Planera tre LinkedIn-inlägg för granskning.'}])
+  expect(calls[0].max_tokens).toBe(4096)
+  expect(calls[0].tools.length).toBeGreaterThan(0)
+  expect(r.text).toBe(steps[0].text)
  })
 })
 
@@ -168,13 +170,14 @@ describe('fresh review regression matrix',()=>{
  it('answers a new imperative topic instead of inheriting social preparation',async()=>{
   steps=[{text:'Här är mötets sammanfattning.'}]
   const r=await run('Gör en sammanfattning av mötet.',true,[{role:'user',content:'Planera tre LinkedIn-inlägg för granskning.'}])
-  expect(calls[0].max_tokens).toBe(150)
+  expect(calls[0].max_tokens).toBe(4096)
   expect(r.text).toBe('Här är mötets sammanfattning.')
  })
  it('does not revive an earlier preparation across a different user topic',async()=>{
   steps=[{text:'Jag fortsätter förklaringen.'}]
-  await run('Okej, fortsätt.',true,[{role:'user',content:'Planera tre LinkedIn-inlägg för granskning.'},{role:'user',content:'Förklara hur en motor fungerar.'}])
-  expect(calls[0].max_tokens).toBe(150)
+  const r=await run('Okej, fortsätt.',true,[{role:'user',content:'Planera tre LinkedIn-inlägg för granskning.'},{role:'user',content:'Förklara hur en motor fungerar.'}])
+  expect(calls[0].max_tokens).toBe(4096)
+  expect(r.text).toBe(steps[0].text)
  })
  it('keeps a successful profile action on its existing response path',async()=>{
   const profile={description:'Marknadsplats för bilhandlare',audience:'Bilhandlare',tone:'Saklig',websiteUrl:null,callToAction:'',factualBoundaries:'',preferredMediaIds:[]}
@@ -182,13 +185,13 @@ describe('fresh review regression matrix',()=>{
   steps=[{name:'propose_social_profile',input:{projectId:PROJECT,expectedRevisionId:null,idempotencyKey:'profile-test',profile}},{text:'Profilen är sparad. Öppna /projects/handlarborsen/social#profile'}]
   const r=await run('Spara målgruppen bilhandlare i vår LinkedIn-profil',true)
   expect(rpcs.some(x=>x.name==='social_profile_save')).toBe(true)
-  expect(calls[0].max_tokens).toBe(150);expect(r.text).toContain('Profilen är sparad.')
+  expect(calls[0].max_tokens).toBe(4096);expect(r.text).toContain('Profilen är sparad.')
   expect(r.persisted).toBe(r.text)
  })
  it('preserves an ordinary workflow answer',async()=>{
   steps=[{text:'Arbetsflödesplanen finns i arbetsytan.'}]
   const r=await run('Skapa ett workflow för granskning',true)
-  expect(calls[0].max_tokens).toBe(150);expect(r.text).toContain('Arbetsflödesplanen')
+  expect(calls[0].max_tokens).toBe(4096);expect(r.text).toContain('Arbetsflödesplanen')
  })
  it('recognizes new images and genuine continuations before content fast path',async()=>{
   for(const [text,history] of [['Ta fram tre LinkedIn-inlägg med varsin ny bild',[]],['Okej, fortsätt.',[{role:'user',content:'Planera tre LinkedIn-inlägg för granskning.'}]]] as const){

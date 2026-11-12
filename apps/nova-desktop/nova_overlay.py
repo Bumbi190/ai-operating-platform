@@ -27,7 +27,7 @@ from nova_placement import (
     foreground_window_rectangle, choose_working_zone,
     read_saved_anchor, save_anchor, clear_anchor,
 )
-from nova_auto_voice import AutoVoiceState, native_command_text, safe_auto_navigation, safe_stop_command, safe_uia_read_action, safe_window_focus, spotify_command
+from nova_auto_voice import AutoVoiceState, native_command_text, navigation_followup, safe_auto_navigation, safe_stop_command, safe_uia_read_action, safe_window_focus, spotify_command
 from nova_native_tasks import (
     NOTES_DIR, TaskPlan, parse_native_task, safe_native_voice_action, execute_native_step,
 )
@@ -39,6 +39,7 @@ from nova_code_jobs import CodeJobDraft, propose_code_job
 from nova_local_audio import NativeAudioSession, local_model_ready
 from nova_local_voice import CONVERSATION_SECONDS, PILOT_SECONDS
 from nova_voice_intent import VoiceInterpreter, local_greeting
+from nova_sanna import key_configured
 from nova_spoken_reply import SpokenReply, load_reply_mode, save_reply_mode
 from nova_windows import list_known_windows, focus_known_window
 from nova_theme import (
@@ -200,6 +201,7 @@ class NovaOverlay:
         self._voice_answer_until = 0.0
         self._voice_navigation_until = 0.0
         self._sanna_key_notice = False
+        self._sanna_key_ready = key_configured()
         self._commander = None
         self._commander_review = None
         self._destination_question = False
@@ -496,7 +498,7 @@ class NovaOverlay:
         self.bridge_status = tk.Label(labels, textvariable=self.bridge_var, bg=SURFACE, fg=MUTED,
                                       font=self.small, anchor="w", cursor="hand2", pady=0)
         self.bridge_status.pack(fill="x")
-        self.bridge_status.bind("<Button-1>", lambda _e: self._connect_sanna())
+        self.bridge_status.bind("<Button-1>", lambda _e: self._choose_voice_settings())
 
         self.activity = tk.Canvas(content, height=px(25), bg=SURFACE, highlightthickness=0, bd=0)
         self.activity.grid(row=1, column=0, sticky="ew", pady=(px(6), px(6)))
@@ -748,8 +750,10 @@ class NovaOverlay:
                     continue
                 if kind in ("transcript", "no_transcript") and self.spoken_reply.overlaps(
                         event.get("audio_start"), event.get("audio_end")):
-                    if kind != "transcript" or not safe_stop_command(event.get("text", "")):
-                        continue
+                    if kind == "transcript" and safe_stop_command(event.get("text", "")):
+                        self.stop()
+                        return
+                    continue
                 if kind == "ready":
                     self._phase("lyssnar", self._listening_hint())
                 elif kind == "loading":
@@ -838,15 +842,18 @@ class NovaOverlay:
             target = safe_auto_navigation(verb)
             yes = yes or verb in ("oppna den", "oppna det", "starta den") or (target is not None and target == suggestion)
         no = answer in ("nej", "nej tack", "inte det")
-        continuation = re.sub(r"^och ", "", command, flags=re.IGNORECASE)
-        navigating = (conversation and now < getattr(self, "_voice_navigation_until", 0)
-                      and re.match(r"^(?:oppna|starta|ga till|visa|ta mig|plocka fram|kan du|skulle du|byt till|vaxla till)\b", normalized(continuation))
-                      and safe_auto_navigation(continuation))
+        player = getattr(self, "spoken_reply", None)
+        if conversation and player is not None and player.process is not None and safe_stop_command(command):
+            self.stop()
+            return
+        continuation = None
+        if not has_wake and conversation and now < getattr(self, "_voice_navigation_until", 0):
+            continuation = navigation_followup(command, spotify_selected=getattr(self, "spotify_selected", False))
         followup = prompted and (
             (getattr(self, "_destination_question", False) and safe_auto_navigation("öppna " + answer))
             or (suggestion and (yes or no))
             or (getattr(self, "reply_mode", "") == "choose" and answer in ("bengt", "sanna")))
-        if not (has_wake or one_turn or followup or navigating):
+        if not (has_wake or one_turn or followup or continuation):
             return
         self._voice_turn_until = 0.0
         self._voice_answer_until = 0.0
@@ -857,14 +864,17 @@ class NovaOverlay:
         self.last_heard = phrase[:180]
         if getattr(self, "expanded", False) and hasattr(self, "transcript_var"):
             self.transcript_var.set(self.last_heard)
-        if navigating and not has_wake:
-            command = continuation
         if conversation:
             self._voice_navigation_until = now + 20
         self._discard_voice_interpretation()
         addressed = True
         if safe_stop_command(command) or (has_wake and answer in ("jag pratar i telefon", "pausa lyssningen", "stang av mikrofonen")):
             self.stop()
+            return
+        if continuation:
+            self._destination_question = False
+            self._append("you", "DU (lokalt tal): " + phrase[:350])
+            self._perform_interpreted_action(continuation)
             return
         if conversation and getattr(self, "reply_mode", None) == "choose" and self._local_voice_only:
             choice = re.fullmatch(r"(?:(?:valj|anvand|kor med|prata med|jag vill ha) (?:rosten )?)?(bengt|sanna)(?: tack)?", answer)
@@ -1242,12 +1252,19 @@ class NovaOverlay:
             return
         self.start_native_mic_pilot()
 
+    def _choose_voice_settings(self):
+        if self.reply_mode == "sanna" and not self._sanna_key_ready:
+            self._configure_sanna()
+        else:
+            self._connect_sanna()
+
     def _configure_sanna(self):
         from nova_sanna import save_key
         key = simpledialog.askstring("Nova · Sanna", "ElevenLabs-nyckel för att läsa upp egna svar. Sparas för ditt Windows-konto.", show="•", parent=self.root)
         if key:
             try:
                 save_key(key)
+                self._sanna_key_ready = True
                 self._sanna_key_notice = False
                 self._append("nova", "Nyckeln är sparad för Sannas uppläsning.")
             except (OSError, ValueError):
@@ -1431,6 +1448,8 @@ class NovaOverlay:
             self._append("warn", "Nova: Atlas-kopplingen kunde inte öppnas: " + str(exc))
 
     def _local_voice_caption(self):
+        if self.reply_mode == "sanna" and not self._sanna_key_ready:
+            return "Sanna · Aktivera fler röstsvar"
         return {"windows": "Bengt · Windows-mikrofon", "sanna": "Sanna · Windows-mikrofon"}.get(
             self.reply_mode, "Textläge · Välj röst")
 
@@ -1454,7 +1473,7 @@ class NovaOverlay:
             if self.bridge.state.online():
                 voice = self.bridge.state.voice_snapshot()
                 if voice.get("authorized") and voice.get("mode") == "native":
-                    self.bridge_var.set("Sanna · Windows-mikrofon")
+                    self.bridge_var.set(self._local_voice_caption() if self.reply_mode == "sanna" else "Sanna · Windows-mikrofon")
                 elif voice.get("authorized"):
                     labels = {
                         "idle": "pausat - tryck Ctrl+Alt+Space",

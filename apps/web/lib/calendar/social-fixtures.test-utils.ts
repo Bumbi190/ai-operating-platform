@@ -31,6 +31,7 @@ export function initializeCalendarSocialDb(){
  fixture.sql(readFileSync(resolve(dir,readdirSync(dir).find(n=>n.endsWith('_website_build_sessions.sql'))!),'utf8'));
  vi.stubEnv('WEBSITE_BUILD_TEST_DATABASE_NAME',fixture.database);
  const db=initializeSchedulingDb();
+ fixture.sql(readFileSync(resolve(dir,'20261027215500_calendar_manual_publication_reports.sql'),'utf8'));
  // Sources test only these actual tables; a raw task has no invented deadline.
  fixture.sql(`create table workflow_instances(id uuid primary key,def_id uuid,def_version integer,closed_at timestamptz,def_key text,def_hash text,instance_key text,current_state text,status text,context jsonb,version integer,project_id uuid,wake_at timestamptz,last_tick_at timestamptz,last_tick_outcome text,created_at timestamptz,updated_at timestamptz);grant select on workflow_instances to service_role;`);
  return {...fixture,adminDb:db,testSql};

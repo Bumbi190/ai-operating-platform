@@ -63,6 +63,10 @@ def save_key(key):
         tmp.unlink(missing_ok=True)
 
 
+def key_configured():
+    return bool(os.environ.get("NOVA_ELEVENLABS_API_KEY") or os.environ.get("ELEVENLABS_API_KEY") or key_path().is_file())
+
+
 def provider_key():
     for name in ("NOVA_ELEVENLABS_API_KEY", "ELEVENLABS_API_KEY"):
         if os.environ.get(name):

@@ -178,6 +178,29 @@ def safe_auto_navigation(text: str) -> Action | None:
     return selected
 
 
+def navigation_followup(text: str, *, spotify_selected: bool) -> Action | None:
+    """Resolve a short continuation only inside an already addressed conversation."""
+    value = _TRAILING_PUNCT.sub("", normalized(text)).strip()
+    lead = re.match(r"^(?:och(?: sen)?|sen|sedan)\b[, ]+", value)
+    request = value[lead.end():] if lead else value
+    # A named destination alone is actionable only after an explicit connector.
+    if lead:
+        destination = re.sub(r" (?:da|tack)$", "", request)
+        action = safe_auto_navigation("öppna " + destination)
+        if action:
+            return action
+    # Reuse the complete-utterance parsers. Reported speech and compound
+    # instructions must not borrow the brief navigation window.
+    if lead or re.match(r"^(?:oppna|starta|ga|visa|ta|hoppa|navigera|plocka|kan du|skulle du|"
+                        r"vill du|byt|vaxla)\b", request):
+        action = safe_auto_navigation(request)
+        if action:
+            return action
+    if spotify_selected and (lead or "spotify" in request.split()):
+        return spotify_command(request, spotify_selected=True)
+    return None
+
+
 @dataclass(frozen=True)
 class VoiceDecision:
     """Receiving speech is automatic; executing any side effect is separate."""

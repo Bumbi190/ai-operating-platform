@@ -67,3 +67,31 @@ it('emits refresh metadata from the real saved social proposal',async()=>{
  expect(result).toMatchObject({ok:true,reviewRequired:true});
  expect(calendarChangedForResult('update_calendar_event',result,'50000000-0000-4000-8000-000000000001')).not.toBeNull();
 },30000);
+
+it('resolves a spoken post and saves the chosen replacement on the same draft', async()=>{
+ const {scheduleFixture}=await import('../social-launch/scheduling/fixtures.test-utils');
+ const {handleSocialContentTool}=await import('../social-launch/content/atlas-tools');
+ const {stockholmDate,stockholmMinute,weekRange}=await import('./time');
+ const f=await scheduleFixture(fixture.adminDb);
+ const projectId=f.manifest.projectId;
+ const {fromDate,toDateExclusive}=weekRange(stockholmDate(f.dueAt));
+ const ownConversation='50000000-0000-4000-8000-000000000001';
+ const result=await handleCalendarTool('find_calendar_post',{fromDate,toDateExclusive,project:'Familjen',channel:'facebook',
+  title:'Familjehelg',localTime:stockholmMinute(f.dueAt).slice(11,16)},{actor:f.principal,conversationId:ownConversation,inputSource:'voice'},
+  {sessionDb:fixture.forUser(f.principal.userId),adminDb:fixture.adminDb});
+ expect(result,JSON.stringify(result)).toMatchObject({ok:true,post:{projectId,postId:f.source.postId,revisionId:f.source.input.revisionId}});
+
+ const replacement=randomUUID();
+ fixture.sql(`insert into assets(id,project_id,kind,mime_type,byte_size,checksum_sha256,storage_bucket,storage_path,width,height)
+  values('${replacement}','${projectId}','image','image/jpeg',1024,repeat('a',64),'media-assets-private','${replacement}',320,400)`);
+ const content=await handleSocialContentTool('propose_social_content',{
+  projectId,postId:f.source.postId,planRevisionId:f.source.post.revision.planRevisionId,
+  expectedRevisionId:f.source.input.revisionId,idempotencyKey:randomUUID(),
+  draft:{...f.source.post.revision.draft,mediaIds:[replacement],scheduledAt:null},
+ },f.principal,ownConversation,fixture.adminDb);
+ expect(content).toMatchObject({publicationReady:false,posts:expect.arrayContaining([
+  expect.objectContaining({id:f.source.postId,status:'proposal',revision:expect.objectContaining({
+   draft:expect.objectContaining({mediaIds:[replacement],scheduledAt:null}),
+  })}),
+ ])});
+},30000);

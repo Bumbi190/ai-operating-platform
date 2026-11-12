@@ -8,6 +8,12 @@ const model={entries:[row],availability:{social:true},truncated:{social:false},p
 describe('voice and text calendar post lookup',()=>{
  it('matches the spoken title and Stockholm clock to one openable row',()=>{
   expect(findCalendarPost(model,{title:'Handlarbörsen en stängd mar-marknadsplats för bilhandlare',project:'Handlarbörsen',localTime:'13:00',channel:'LinkedIn'})).toMatchObject({ok:true,post:{postId,href:'/calendar?week=2026-11-09&post='+postId}})
+  const spoken = {project:'Handlarbörsen',channel:'LinkedIn',localTime:'13:00',
+   title:'Handlarbörsen en stängd mar-marknadspats för bilhandlare'}
+  expect(findCalendarPost(model,spoken)).toMatchObject({ok:true,post:{postId}})
+  expect(findCalendarPost(model,{...spoken,channel:'instagram'})).toMatchObject({ok:false,code:'NOT_FOUND'})
+  expect(findCalendarPost({...model,entries:[...model.entries,...model.entries]},spoken)).toMatchObject({ok:false,code:'AMBIGUOUS'})
+  expect(findCalendarPost(model,{title:spoken.title})).toMatchObject({ok:false,code:'NOT_FOUND'})
   expect(findCalendarPost(model,{postId,localTime:'12:00'})).toMatchObject({ok:false,code:'NOT_FOUND'})
   expect(findCalendarPost(model,{postId,channel:'instagram'})).toMatchObject({ok:false,code:'NOT_FOUND'})
  })
@@ -21,6 +27,8 @@ describe('voice and text calendar post lookup',()=>{
   expect(calendarPostIntent('Kan du byta bilden på den här posten?',[],true,true)).toBe(true)
   expect(calendarPostIntent('Ser du vad jag har på skärmen?',[],true,true)).toBe(true)
   expect(calendarPostIntent('Handlarbörsen, en stängd marknadsplats för bilhandlare. Onsdag den elfte klockan 13:00.',[first],true)).toBe(true)
+  expect(calendarPostIntent('13:00.',[first],true)).toBe(true)
+  expect(calendarPostIntent('13.00',[first],true)).toBe(true)
   expect(calendarPostIntent('Vad ser du på skärmen?',[first],true)).toBe(true)
   expect(calendarPostIntent('Visa statistik om Handlarbörsen',[first],true)).toBe(false)
  })

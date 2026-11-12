@@ -123,6 +123,41 @@ class OwnerCommandTests(unittest.TestCase):
         ui._received_native_transcript("Jag sa att vi skulle öppna Spotify.")
         self.assertEqual(ui._start_app.call_count, 1)
 
+    def test_short_navigation_and_explicit_media_followups(self):
+        ui = self.panel()
+        ui.native_mic_session = Mock()
+        ui._open_url = Mock()
+        ui._control_spotify = Mock()
+        ui.spotify_selected = True
+        ui._received_native_transcript("Hej Nova, starta Spotify.")
+        ui._received_native_transcript("Och pausa musiken.")
+        ui._control_spotify.assert_called_once_with("pause")
+        ui._received_native_transcript("Och kalendern då?")
+        ui._open_url.assert_called_once()
+        self.assertIn("/calendar", ui._open_url.call_args.args[0])
+
+    def test_followup_gate_ignores_background_mentions_and_expired_commands(self):
+        ui = self.panel()
+        ui.native_mic_session = Mock()
+        ui._open_url = Mock()
+        ui.spotify_selected = True
+        ui._voice_navigation_until = time.monotonic() + 20
+        for text in ("Kalendern är full", "Och kalendern var öppen då.", "Och öppna inte Gmail",
+                     "Och kalendern och skicka mejlet", "Jag pratade om att pausa Spotify"):
+            ui._received_native_transcript(text)
+        ui._voice_navigation_until = time.monotonic() - 1
+        ui._received_native_transcript("Och kalendern då?")
+        ui._open_url.assert_not_called()
+        ui._append.assert_not_called()
+
+    def test_plain_stop_during_spoken_reply(self):
+        ui = self.panel()
+        ui.spoken_reply = Mock()
+        ui.spoken_reply.process = object()
+        ui.stop = Mock()
+        ui._received_native_transcript("Stopp.")
+        ui.stop.assert_called_once()
+
     def test_expired_confirmation_and_unaddressed_phone_audio(self):
         from nova_voice_intent import interpret
         ui = self.panel()
@@ -130,6 +165,19 @@ class OwnerCommandTests(unittest.TestCase):
         ui._voice_answer_until = time.monotonic() - 3
         ui._received_native_transcript("Ja, öppna den.")
         ui._start_app.assert_not_called()
+
+    def test_sanna_settings_offer_native_setup_for_new_phrases(self):
+        ui = self.panel()
+        ui._sanna_key_ready = False
+        ui._configure_sanna = Mock()
+        ui._connect_sanna = Mock()
+        self.assertIn("Aktivera fler röstsvar", ui._local_voice_caption())
+        ui._choose_voice_settings()
+        ui._configure_sanna.assert_called_once()
+        ui._sanna_key_ready = True
+        self.assertIn("Windows-mikrofon", ui._local_voice_caption())
+        ui._choose_voice_settings()
+        ui._connect_sanna.assert_called_once()
 
     def test_stock_sanna_replies_work_without_provider_access(self):
         import nova_sanna

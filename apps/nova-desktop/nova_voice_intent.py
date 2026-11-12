@@ -13,6 +13,7 @@ from nova_auto_voice import safe_auto_navigation, spotify_command
 from nova_core import Action, normalized
 
 LOCAL_MODEL = "qwen3:4b-instruct"
+LIVE_CONTEXT = 4096
 
 # A model chooses among grounded operations. Paths, URLs and arguments still
 # come exclusively from Nova's existing local adapters.
@@ -209,19 +210,22 @@ class VoiceInterpreter:
         self.turn = 0
         self.history = ()
         self.last_preload = float("-inf")
+        self.preload_context = None
 
-    def prepare(self):
+    def prepare(self, *, live=False):
         # Begin loading while the microphone opens. Only an active local conversation requests this.
         now = time.monotonic()
-        if now - self.last_preload >= 90:
+        context = LIVE_CONTEXT if live else 2048
+        if now - self.last_preload >= 90 or self.preload_context != context:
             self.last_preload = now
-            threading.Thread(target=self._preload, name="NovaLocalModelLoad", daemon=True).start()
+            self.preload_context = context
+            threading.Thread(target=self._preload, args=(context,), name="NovaLocalModelLoad", daemon=True).start()
 
     @staticmethod
-    def _preload():
+    def _preload(context):
         connection = HTTPConnection("127.0.0.1", 11434, timeout=12)
         try:
-            payload = {"model": LOCAL_MODEL, "stream": False, "keep_alive": "2m", "options": {"num_ctx": 2048}}
+            payload = {"model": LOCAL_MODEL, "stream": False, "keep_alive": "5m", "options": {"num_ctx": context}}
             connection.request("POST", "/api/chat", json.dumps(payload), {"Content-Type": "application/json"})
             connection.getresponse().read(2048)
         except (OSError, HTTPException):

@@ -28,6 +28,33 @@ def rms_level(raw_pcm16: bytes) -> float:
     return sqrt(sum(int(v) * int(v) for v in samples) / len(samples)) / 32768.0
 
 
+def captured_turn(segment, buffer_end, playback_end=None):
+    """Keep PCM padding for Whisper, but match playback only against voiced frames."""
+    buffer_start = buffer_end - len(segment) / (2 * SAMPLE_RATE)
+    if playback_end is not None and buffer_start < playback_end < buffer_end:
+        offset = min(len(segment), 2 * round((playback_end - buffer_start) * SAMPLE_RATE))
+        tail = segment[offset:]
+        bounds = voiced_bounds(tail, playback_end)
+        if bounds:
+            return tail, *bounds
+    bounds = voiced_bounds(segment, buffer_start)
+    return (segment, *bounds) if bounds else None
+
+
+def voiced_bounds(pcm, start):
+    size = 2 * BLOCK_FRAMES
+    gate = SpeechGate()
+    hot = [i for i in range(0, len(pcm) - size + 1, size)
+           if rms_level(pcm[i:i + size]) >= gate.threshold]
+    if len(hot) < gate.min_voiced_frames:
+        return None
+    # One isolated noise frame in the pre-roll did not trigger the gate.
+    first = next((a for a, b in zip(hot, hot[1:]) if b - a == size), None)
+    if first is None:
+        return None
+    return start + first / (2 * SAMPLE_RATE), start + (hot[-1] + size) / (2 * SAMPLE_RATE)
+
+
 @dataclass
 class SpeechGate:
     """Energy-based, conservative VAD; NOT word recognition.

@@ -2,7 +2,7 @@
 
 Tryck **Ctrl + Alt + Space** för att visa sidopanelen och börja prata med den lokala mikrofonen. Du kan också skriva i rutan. Under **⋯** kan du stänga av mikrofonstarten för den aktuella sessionen. Start vid Windows-inloggning aktiverar bara bubblan.
 
-Välj **Samtal · Alma** för att tala fritt med Nova. Följdfrågor hör till samma samtal tills du väljer **Stopp**, minimerar panelen eller är tyst i tio minuter. **Avbryt svar** och ett uttalat **”vänta”** ger dig ordet igen. Ollama väljer bland verktygen i Windows och formulerar svar utifrån samtalet och det senast lästa resultatet. Sändning av mejl använder det granskade utkastet.
+Med en tillgänglig samtalsröst startar **Ctrl + Alt + Space** ett löpande samtal direkt. Om du öppnar från bubblan, säg **”Hej Nova”** en gång eller välj **Samtal**. Sedan kan du tala fritt med Nova. Följdfrågor hör till samma samtal tills du väljer **Stopp**, minimerar panelen eller är tyst i tio minuter. **Avbryt svar** och ett uttalat **”vänta”** ger dig ordet igen. Ollama väljer bland verktygen i Windows och formulerar svar utifrån samtalet och det senast lästa resultatet. Sändning av mejl använder det granskade utkastet.
 
 Alma är en lokal svensk röst av Daniel Nylander, CC BY 4.0. Installera `piper-tts==1.8.0` i Novas befintliga `.venv-audio` och kör `python nova_alma.py --install` från appmappen en gång. Modellen och attributionen sparas under `%LOCALAPPDATA%\Omnira\Nova\models\alma`. Med en sparad ElevenLabs-nyckel och Sanna vald heter knappen **Samtal · Sanna**. Då skickas svarets text till ElevenLabs för uppläsning. Den som väljer Bengt i menyn får **Samtal · Bengt**. [Almas modellkort och licens](https://huggingface.co/yeagersthlm/piper-voice-sv-alma)
 

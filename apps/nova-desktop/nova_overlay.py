@@ -193,6 +193,7 @@ class NovaOverlay:
         self.spoken_reply = SpokenReply()
         self.workspace = Workspace(self)
         self.live_call = None
+        self._call_on_wake = False
         self._reading_chunks = []
         self.reply_file = Path(local_app_data or str(Path.home())) / "Omnira" / "Nova" / "reply-mode.txt"
         self.reply_mode = load_reply_mode(self.reply_file)
@@ -414,7 +415,7 @@ class NovaOverlay:
         if self._dragged:
             self._save_dragged_position()
         else:
-            self._open_from_hotkey()
+            self._open_from_hotkey(wait_for_name=True)
 
     def _end_header_drag(self, _event):
         self._drag_origin = None
@@ -749,6 +750,7 @@ class NovaOverlay:
             self._phase("godkannande", "Lokal mikrofonmiljö saknas eller är upptagen")
             return
         self.native_mic_session = session
+        self.spoken_reply.on_output_end = session.playback_ended
         self._phase("startar", "Öppnar mikrofonen")
         if not transcribe:
             self._append("warn", "Den lokala svenska talmodellen saknas. Skriv ditt kommando i rutan.")
@@ -759,6 +761,7 @@ class NovaOverlay:
         player = getattr(self, "spoken_reply", None)
         if player is not None:
             player.discard_prepared()
+            player.on_output_end = None
         session = self.native_mic_session
         self.native_mic_session = None
         if session is None:
@@ -850,7 +853,8 @@ class NovaOverlay:
                         self._received_native_transcript(phrase.strip())
                 elif kind == "no_transcript":
                     self._phase("lyssnar", self._listening_hint())
-                    if time.monotonic() < self._voice_turn_until and time.monotonic() - self._last_unclear_audio > 8:
+                    if ((getattr(self, "live_call", None) or time.monotonic() < self._voice_turn_until)
+                            and time.monotonic() - self._last_unclear_audio > 8):
                         self._last_unclear_audio = time.monotonic()
                         self._reply("nova", "Jag hörde ljud men uppfattade inte orden. Kan du säga det igen?")
                 elif kind == "warning":
@@ -949,6 +953,11 @@ class NovaOverlay:
             return
         if conversation and player is not None and player.process is not None and self._interrupt_phrase(phrase):
             return
+        if conversation and has_wake and getattr(self, "_call_on_wake", False):
+            self._start_live_call()
+            if getattr(self, "live_call", None) and not answer:
+                self._reply("nova", "Ja, jag lyssnar.")
+                return
         if conversation and getattr(self, "live_call", None):
             self._live_input(re.sub(r"^Nova,\s*", "", command, flags=re.I))
             return
@@ -1439,17 +1448,23 @@ class NovaOverlay:
         self._set_reply_mode("sanna")
         self._start_panel_voice()
 
-    def _open_from_hotkey(self):
+    def _open_from_hotkey(self, *, wait_for_name=False):
         """Open the foreground panel and restore the selected voice."""
         if self._manual_anchor is None:
             self._redock_near_pointer()
         self.expand(listen=False)
-        if self.native_mic_session and self.native_mic_session.running():
-            return
         if not self.native_mic_hotkey.get():
             self._phase("redo", "Skriv ditt kommando")
             return
-        self._start_panel_voice()
+        if getattr(self, "live_call", None) and self._conversation_active():
+            self._phase("lyssnar", self._listening_hint())
+            return
+        voice_ready = self.reply_mode in ("sanna", "windows") and (self._call_voice() != "Alma" or alma_ready())
+        self._call_on_wake = wait_for_name and voice_ready
+        if not wait_for_name and voice_ready:
+            self._start_live_call()
+        elif not self.native_mic_session or not self.native_mic_session.running():
+            self._start_panel_voice()
 
     def _call_voice(self):
         if self.reply_mode == "sanna" and self._sanna_key_ready:
@@ -1462,6 +1477,7 @@ class NovaOverlay:
         return "Avbryt svar" if getattr(self, "live_call", None) else "Samtal · " + self._call_voice()
 
     def _end_live_call(self):
+        self._call_on_wake = False
         if getattr(self, "live_call", None):
             self.live_call = None
             self._sync_call_button()
@@ -1493,6 +1509,8 @@ class NovaOverlay:
         self._discard_voice_interpretation()
         self._local_voice_only = True
         now = time.monotonic()
+        self._call_on_wake = False
+        self._voice_turn_until = 0.0
         self.live_call = LiveCall(voice, now)
         self._native_conversation_deadline = now + CONVERSATION_SECONDS
         self.start_native_mic_pilot()
@@ -1501,7 +1519,7 @@ class NovaOverlay:
             self._native_conversation_deadline = 0
             return
         self._sync_call_button()
-        self.voice_interpreter.prepare()
+        self.voice_interpreter.prepare(live=True)
         self._phase("lyssnar", self._listening_hint())
         self._append("nova", "Samtalet är igång med " + voice + ". Tala fritt. Säg ”vänta” för att avbryta mitt svar eller ”avsluta samtalet” när du är klar.")
 
@@ -1553,6 +1571,7 @@ class NovaOverlay:
             self._phase("tanker", "Formulerar ett svar")
 
     def _listen_to_one_request(self):
+        self._call_on_wake = False
         if getattr(self, "_commander", None):
             return
         bridge_voice = self.bridge.state.voice_snapshot()
@@ -1601,7 +1620,7 @@ class NovaOverlay:
         self._native_conversation_deadline = time.monotonic() + CONVERSATION_SECONDS
         self.start_native_mic_pilot()
         if self.native_mic_session and self.reply_mode in ("sanna", "windows"):
-            self.voice_interpreter.prepare()
+            self.voice_interpreter.prepare(live=getattr(self, "_call_on_wake", False))
 
     def expand(self, listen=False):
         if not self.expanded:

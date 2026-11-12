@@ -16,8 +16,34 @@ import json
 from pathlib import Path
 import sys
 import time
+import os
 
-from nova_local_voice import BLOCK_FRAMES, SAMPLE_RATE, SpeechGate, CONVERSATION_SECONDS, PILOT_SECONDS
+
+from nova_local_voice import BLOCK_FRAMES, SAMPLE_RATE, SpeechGate, CONVERSATION_SECONDS, PILOT_SECONDS, captured_turn
+
+
+class PlaybackBoundary:
+    """Read the latest output timestamp without waiting or holding a Windows pipe lock."""
+    def __init__(self, fd):
+        self.fd = fd
+        self.latest = None
+        self.buffer = b""
+        os.set_blocking(fd, False)
+
+    def poll(self):
+        try:
+            while chunk := os.read(self.fd, 256):
+                self.buffer += chunk
+                while b"\n" in self.buffer:
+                    line, self.buffer = self.buffer.split(b"\n", 1)
+                    stamp = float(line)
+                    if (self.latest is None or stamp > self.latest) and 0 < stamp <= time.monotonic() + .1:
+                        self.latest = stamp
+                if len(self.buffer) > 64:
+                    self.buffer = b""
+        except (BlockingIOError, BrokenPipeError):
+            pass
+        return self.latest
 
 
 def emit(kind: str, **fields) -> None:
@@ -80,9 +106,10 @@ def _load_model(model_dir):
 
 
 class LocalTranscriber:
-    def __init__(self, model_dir):
+    def __init__(self, model_dir, *, conversation=False):
         self.model_dir = model_dir
-        self.model = _load_model(model_dir)
+        # Continuous calls run local inference and recognition at the same time.
+        self.model = _load_cpu_model(model_dir) if conversation else _load_model(model_dir)
 
     def transcribe(self, segment, scores=None):
         decode = offline_transcribe if scores is None else partial(offline_transcribe, scores=scores)
@@ -100,7 +127,7 @@ class LocalTranscriber:
 
 
 def run(*, mode: str, seconds: float, device: int | None, model_dir: Path | None,
-        conversation: bool = False) -> int:
+        conversation: bool = False, playback_boundaries: bool = False) -> int:
     limit = CONVERSATION_SECONDS if conversation and mode == "transcribe" else PILOT_SECONDS
     if mode not in ("meter", "transcribe") or not 0.5 <= seconds <= limit:
         raise ValueError("invalid pilot options")
@@ -124,6 +151,7 @@ def run(*, mode: str, seconds: float, device: int | None, model_dir: Path | None
     )
 
     gate = SpeechGate()
+    boundary = PlaybackBoundary(sys.stdin.fileno()) if playback_boundaries else None
     pending: deque[tuple[Future[tuple[str, float]], float, float]] = deque()
     since = time.monotonic()
     levels = 0
@@ -150,7 +178,7 @@ def run(*, mode: str, seconds: float, device: int | None, model_dir: Path | None
             ) as stream:
                 emit("ready", mode=mode, device=info["name"], hz=SAMPLE_RATE)
                 # Start capture first. The first words can arrive while Whisper loads.
-                model_job = pool.submit(LocalTranscriber, model_dir) if mode == "transcribe" else None
+                model_job = pool.submit(LocalTranscriber, model_dir, conversation=conversation) if mode == "transcribe" else None
 
                 def transcribe(segment):
                     scores = []
@@ -159,6 +187,7 @@ def run(*, mode: str, seconds: float, device: int | None, model_dir: Path | None
 
                 while time.monotonic() - since < seconds:
                     raw, overflow = stream.read(BLOCK_FRAMES)
+                    frame_end = time.monotonic()
                     if overflow:
                         emit("warning", code="CAPTURE_OVERFLOW")
                     kinds, segment, rms = gate.feed(bytes(raw))
@@ -177,9 +206,10 @@ def run(*, mode: str, seconds: float, device: int | None, model_dir: Path | None
                         if model_job:
                             if len(pending) < 3:
                                 emit("transcribing")
-                                end = time.monotonic()
-                                duration = len(segment) / (SAMPLE_RATE * 2)
-                                pending.append((pool.submit(transcribe, segment), end - duration, end))
+                                turn = captured_turn(segment, frame_end, boundary.poll() if boundary else None)
+                                if turn:
+                                    pcm, start, end = turn
+                                    pending.append((pool.submit(transcribe, pcm), start, end))
                             else:
                                 emit("warning", code="TRANSCRIBER_BUSY")
                 gate.clear()
@@ -203,9 +233,11 @@ def main() -> int:
     parser.add_argument("--device", type=int, default=None)
     parser.add_argument("--model-path", type=Path, default=None)
     parser.add_argument("--conversation", action="store_true")
+    parser.add_argument("--playback-boundaries", action="store_true")
     args = parser.parse_args()
     return run(mode=args.mode, seconds=args.seconds,
-               device=args.device, model_dir=args.model_path, conversation=args.conversation)
+               device=args.device, model_dir=args.model_path, conversation=args.conversation,
+               playback_boundaries=args.playback_boundaries)
 
 
 if __name__ == "__main__":

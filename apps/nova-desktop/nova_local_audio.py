@@ -83,12 +83,12 @@ class NativeAudioSession:
             "--seconds", str(float(seconds)),
         ]
         if conversation and transcribe:
-            argv.append("--conversation")
+            argv.extend(("--conversation", "--playback-boundaries"))
         if transcribe:
             argv += ["--model-path", str(MODEL_DIR)]
         # No shell=True, token, URL, code prompt or user-supplied path.
         self.process = subprocess.Popen(
-            argv, cwd=str(WORKER.parent), stdin=subprocess.DEVNULL,
+            argv, cwd=str(WORKER.parent), stdin=subprocess.PIPE if conversation and transcribe else subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             text=True, encoding="utf-8", errors="replace", bufsize=1,
@@ -103,6 +103,15 @@ class NativeAudioSession:
         self._deadman = threading.Timer(seconds + 12, self._expire)
         self._deadman.daemon = True
         self._deadman.start()
+
+    def playback_ended(self, when):
+        proc = self.process
+        if proc is not None and proc.stdin is not None:
+            try:
+                proc.stdin.write(f"{when:.6f}\n")
+                proc.stdin.flush()
+            except (OSError, ValueError):
+                pass  # Stop may already have closed this specific worker.
 
     def _expire(self) -> None:
         proc = self.process
@@ -139,6 +148,8 @@ class NativeAudioSession:
             if self._deadman:
                 self._deadman.cancel()
             try:
+                if proc.stdin is not None:
+                    proc.stdin.close()
                 proc.stdout.close()
             except OSError:
                 pass

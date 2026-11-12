@@ -95,12 +95,12 @@ class LiveCall:
 
 
 def respond(snapshot, *, reading=False):
-    from nova_voice_intent import Interpretation, LOCAL_MODEL, _local_chat
+    from nova_voice_intent import Interpretation, LIVE_CONTEXT, LOCAL_MODEL, _local_chat
     turns, evidence = snapshot
     messages = [{"role": role, "content": content} for role, content in turns]
     def chat(prompt, schema=None):
         payload = {"model": LOCAL_MODEL, "stream": False, "keep_alive": "5m",
-                   "options": {"temperature": 0, "num_ctx": 4096, "num_predict": 240},
+                   "options": {"temperature": 0, "num_ctx": LIVE_CONTEXT, "num_predict": 240},
                    "messages": [{"role": "system", "content": prompt}, *messages]}
         if schema:
             payload["format"] = schema

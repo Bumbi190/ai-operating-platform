@@ -13,5 +13,6 @@ try {
     $text = [Console]::In.ReadToEnd().Trim()
     if (!$text -or $text.Length -gt 700) { exit 2 }
     $null = $voice.Speak($text, 16)
+    [Console]::WriteLine("done")
     exit 0
 } catch { exit 4 }

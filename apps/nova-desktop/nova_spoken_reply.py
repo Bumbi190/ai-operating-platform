@@ -1,10 +1,12 @@
 """Local Windows replies. Starting, finishing and stopping are independent of Tk."""
 from collections import deque
+import io
 import os
 from pathlib import Path
 import subprocess
 import sys
 import time
+import threading
 
 
 class SpokenReply:
@@ -14,6 +16,8 @@ class SpokenReply:
         self.prepared_voice = ""
         self.last_text = ""
         self.started = 0.0
+        self.output_end = []
+        self.on_output_end = None
         self.intervals = deque(maxlen=24)
 
     @staticmethod
@@ -22,7 +26,7 @@ class SpokenReply:
         script = Path(__file__).with_name("nova_windows_speech.ps1")
         return subprocess.Popen(
             [str(binary), "-NoProfile", "-NonInteractive", "-File", str(script)],
-            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
 
@@ -39,7 +43,7 @@ class SpokenReply:
         from nova_local_audio import VENV_PYTHON
         command = ([str(VENV_PYTHON), str(Path(__file__).with_name("nova_alma.py"))] if alma else
                    [sys.executable, str(Path(__file__).with_name("nova_sanna.py"))])
-        return subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+        return subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                 stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
 
     def prepare_alma(self):
@@ -69,6 +73,10 @@ class SpokenReply:
             self.process = self._voice_worker(alma) if sanna or alma else self._launch()
         self.last_text = text
         self.started = time.monotonic()
+        self.output_end = []
+        if isinstance(self.process.stdout, io.BufferedIOBase):
+            threading.Thread(target=self._watch_output, args=(self.process.stdout, self.started, self.output_end,
+                             self.on_output_end), daemon=True).start()
         try:
             self.process.stdin.write(text[:700].encode("utf-8"))
             self.process.stdin.close()
@@ -76,15 +84,31 @@ class SpokenReply:
             self.stop()
             raise
 
+    @staticmethod
+    def _watch_output(stream, started, end_times, notify):
+        with stream:
+            line = stream.readline().strip()
+        if not line:
+            return
+        now = time.monotonic()
+        try:
+            stamp = now if line == b"done" else float(line)
+        except ValueError:
+            return
+        if started <= stamp <= now + .1:
+            end_times.append(stamp)
+            if notify:
+                notify(stamp)
+
     def overlaps(self, start, end):
         if not isinstance(start, (float, int)) or not isinstance(end, (float, int)):
             return False
-        if self.process is not None and end >= self.started:
+        if self.process is not None and end > self.started and (not self.output_end or start < self.output_end[0]):
             return True
-        return any(start <= b and end >= a for a, b in self.intervals)
+        return any(start < b and end > a for a, b in self.intervals)
 
     def _finished(self):
-        self.intervals.append((self.started, time.monotonic() + 0.12))
+        self.intervals.append((self.started, self.output_end[0] if self.output_end else time.monotonic()))
         self.process = None
 
     def poll(self):

@@ -4,6 +4,7 @@ import io
 import os
 from pathlib import Path
 import sys
+import time
 import tempfile
 import urllib.request
 import wave
@@ -56,6 +57,7 @@ def speak():
             wav.setparams((chunk.sample_channels, chunk.sample_width, chunk.sample_rate, 0, "NONE", ""))
             wav.writeframes(chunk.audio_int16_bytes)
         winsound.PlaySound(out.getvalue(), winsound.SND_MEMORY | winsound.SND_NODEFAULT)
+    print(time.monotonic(), flush=True)
     return 0
 
 

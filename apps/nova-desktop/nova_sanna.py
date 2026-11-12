@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import time
 import urllib.error
 import urllib.request
 import wave
@@ -126,6 +127,7 @@ def main():
         if wav is None:
             return 3
         winsound.PlaySound(wav, winsound.SND_MEMORY | winsound.SND_NODEFAULT)
+        print(time.monotonic(), flush=True)
         return 0
     except urllib.error.HTTPError as exc:
         return 5 if exc.code in (401, 403) else 6

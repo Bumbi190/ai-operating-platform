@@ -250,10 +250,41 @@ export async function startCmsStorageStack(siteOrigin,options={}) {
     await waitHealthy(storage,'/status','Local Supabase Storage')
     assert.equal(sql("select relrowsecurity from pg_class where oid='storage.objects'::regclass"),'t',
       'Real isolated Storage objects RLS must be enabled')
+    // Next.js layout and Studio load several owner-scoped resources concurrently.
+    // Keep the original eight active gateway slots, but wait briefly for a free
+    // slot rather than returning a transient 429 during normal cold navigation.
+    // A bounded FIFO and deadline preserve the existing overload protection.
     let inFlight=0
+    const waiters=[]
+    function acquireSlot(){
+      if(inFlight<8&&waiters.length===0){inFlight++;return Promise.resolve(true)}
+      if(waiters.length>=64)return Promise.resolve(false)
+      return new Promise(resolve=>{
+        let settled=false
+        const enter=()=>{
+          if(settled)return
+          settled=true
+          clearTimeout(timer)
+          inFlight++
+          resolve(true)
+        }
+        const timer=setTimeout(()=>{
+          if(settled)return
+          settled=true
+          const index=waiters.indexOf(enter)
+          if(index>=0)waiters.splice(index,1)
+          resolve(false)
+        },15000)
+        waiters.push(enter)
+      })
+    }
+    function releaseSlot(){
+      inFlight--
+      const next=waiters.shift()
+      if(next)next()
+    }
     gateway=httpServer(async(req,res)=>{
-      if(inFlight>=8)return res.writeHead(429,{'connection':'close'}).end()
-      inFlight++
+      if(!(await acquireSlot()))return res.writeHead(429,{'connection':'close'}).end()
       try{
         const browserOrigin=applicationDatabase&&typeof req.headers.origin==='string'&&browserOrigins.has(req.headers.origin)?req.headers.origin:null
         if(!gatewayOrigin||!matchesOrigin(req,gatewayOrigin)||(req.headers.origin&&!browserOrigin)||
@@ -275,7 +306,7 @@ export async function startCmsStorageStack(siteOrigin,options={}) {
           const value=reply.headers[name];if(value)outgoing[name]=value
         }
         res.writeHead(reply.status,outgoing).end(reply.bytes)
-      }catch(error){if(!res.headersSent)res.writeHead(error instanceof RangeError?413:502,{'connection':'close'});res.end()}finally{inFlight--}
+      }catch(error){if(!res.headersSent)res.writeHead(error instanceof RangeError?413:502,{'connection':'close'});res.end()}finally{releaseSlot()}
     })
     gateway.requestTimeout=25000
     gatewayOrigin=await listenLocally(gateway,options.gatewayPort??0)

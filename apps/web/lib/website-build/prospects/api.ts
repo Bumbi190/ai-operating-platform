@@ -11,6 +11,7 @@ import {listProspects,readProspect,saveProspect,approveProspect} from './store'
 import {searchScbCompanies,companySearchProvider} from './search'
 import {issueSearchReceipt,readSearchReceipt} from './search-receipt'
 import {localCaptureAvailable} from './capture'
+import {harveyBridgeConfigured} from './harvey-bridge'
 import {prospectReadiness} from './validation'
 import {suggestProspectImprovements} from './improvements'
 import {registerWebsite,captureWebsite,setImprovements,prepareProspectDesign,startProspectBuild,syncProspectBuild,prospectPlan} from './actions'
@@ -42,7 +43,7 @@ export async function prospectApi(request: Request,params: {prospectId?:string;a
     studioPrincipal(access,projectId)
     const db=createAdminClient(),action=body.action as string
     if(!params.prospectId){
-      if(!write)return Response.json({prospects:await listProspects(db,access,projectId),searchAvailable:companySearchProvider()==='scb',captureAvailable:localCaptureAvailable()},{headers})
+      if(!write)return Response.json({prospects:await listProspects(db,access,projectId),searchAvailable:companySearchProvider()==='scb',captureAvailable:localCaptureAvailable(),harveyBridgeAvailable:harveyBridgeConfigured()&&localCaptureAvailable()},{headers})
       if(action==='search'){
         fields(body,['action','projectId','municipalityCode','offset'])
         const result=await searchScbCompanies({municipalityCode:body.municipalityCode as string,category:'car_dealer',limit:5},body.offset as number??0)

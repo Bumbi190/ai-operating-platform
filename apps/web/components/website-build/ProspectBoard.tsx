@@ -17,7 +17,7 @@ export function ProspectBoard({projects,initialProjectId}:{projects:{id:string;n
   const [projectId,setProjectId]=useState(initialProjectId),[saved,setSaved]=useState<ProspectView[]>([]),[model,setModel]=useState<Model|null>(null)
   const listRequestVersion=useRef(0)
   const [busy,setBusy]=useState(''),[error,setError]=useState(''),[notice,setNotice]=useState(''),[municipality,setMunicipality]=useState('1293'),[candidates,setCandidates]=useState<Candidate[]>([]),[searchMeta,setSearchMeta]=useState<any>(null)
-  const [website,setWebsite]=useState(''),[improvements,setImprovements]=useState<ProspectImprovement[]>([]),[mockupId,setMockupId]=useState(''),[demoUrl,setDemoUrl]=useState(''),[captureAvailable,setCaptureAvailable]=useState(false),[searchAvailable,setSearchAvailable]=useState(false)
+  const [website,setWebsite]=useState(''),[improvements,setImprovements]=useState<ProspectImprovement[]>([]),[mockupId,setMockupId]=useState(''),[demoUrl,setDemoUrl]=useState(''),[captureAvailable,setCaptureAvailable]=useState(false),[searchAvailable,setSearchAvailable]=useState(false),[harveyBridgeAvailable,setHarveyBridgeAvailable]=useState(false)
   const apply=useCallback((result:Model)=>{
     setModel(result);setWebsite(result.prospect.content.website?.url??'');setDemoUrl(result.prospect.content.demo?.url??'')
     setImprovements(result.prospect.content.improvements.length?result.prospect.content.improvements:result.suggestions)
@@ -30,13 +30,32 @@ export function ProspectBoard({projects,initialProjectId}:{projects:{id:string;n
     const result=await request(base+'?'+new URLSearchParams({projectId}))
     // A previous project's response must never overwrite a newer selection.
     if(version!==listRequestVersion.current)return
-    setSaved(result.prospects);setCaptureAvailable(result.captureAvailable);setSearchAvailable(result.searchAvailable)
+    setSaved(result.prospects);setCaptureAvailable(result.captureAvailable);setSearchAvailable(result.searchAvailable);setHarveyBridgeAvailable(result.harveyBridgeAvailable===true)
   },[projectId])
   useEffect(()=>{
     setModel(null);setCandidates([]);setSaved([]);setError('');setSearchMeta(null)
     const version=listRequestVersion.current
     void loadList().catch(e=>{if(listRequestVersion.current===version+1)setError(e.message)})
   },[loadList])
+  // The signed company data is passed through a URL fragment; it is never sent in the HTTP GET or logs.
+  useEffect(()=>{
+    const prefix='#harveyBridge='
+    if(!window.location.hash.startsWith(prefix))return
+    const encoded=window.location.hash.slice(prefix.length)
+    window.history.replaceState(window.history.state,'',window.location.pathname+window.location.search)
+    if(encoded.length>12000){setError('Harveys källbevis är för stort. Börja om.');return}
+    let payload:unknown
+    try{payload=JSON.parse(decodeURIComponent(encoded))}catch{setError('Harveys källbevis kunde inte läsas. Börja om.');return}
+    if(!payload||typeof payload!=='object'||Array.isArray(payload)||(payload as any).evidence?.projectId!==projectId){
+      setError('Harvey-kvittot hör inte till valt projekt.');return
+    }
+    void run('Verifierar Harveys SCB-källbevis',async()=>{
+      const r=await request(base+'/harvey-bridge',{action:'consume',projectId,package:payload})
+      if(!Array.isArray(r.candidates)||r.candidates.length!==1)throw Error('SCB-källbeviset gav ingen entydig kandidat.')
+      setCandidates(r.candidates)
+      setNotice('SCB-källbeviset är verifierat. Kontrollera företaget och välj Skapa prospekt.')
+    })
+  },[projectId])
   async function run(label:string,fn:()=>Promise<void>){setBusy(label);setError('');setNotice('');try{await fn()}catch(e){setError(e instanceof Error?e.message:'Åtgärden kunde inte slutföras.')}finally{setBusy('')}}
   async function open(id:string){await run('Läser prospekt',async()=>apply(await request(base+'/'+id+'?'+new URLSearchParams({projectId}))))}
   async function change(action:string,extra:Record<string,unknown>={}){
@@ -57,7 +76,14 @@ export function ProspectBoard({projects,initialProjectId}:{projects:{id:string;n
     <div className={styles.layout}><aside className={styles.sidebar}>
       <section className={styles.panel}><p className={styles.eyebrow}>1 · HARVEY</p><h2>Hitta en bilhandlare</h2><label>Kommun<select value={municipality} disabled={disabled} onChange={e=>setMunicipality(e.target.value)}>{MUNICIPALITIES.map(m=><option key={m.code} value={m.code}>{m.name}</option>)}</select></label>
         <button disabled={disabled||!searchAvailable||!projectId} onClick={()=>void run('Söker i SCB',async()=>{const r=await request(base,{action:'search',projectId,municipalityCode:municipality,offset:0});setCandidates(r.candidates);setSearchMeta(r.meta)})}>Sök i SCB</button>
-        {!searchAvailable&&<p className={styles.muted}>SCB-sökningen är inte aktiverad i denna miljö.</p>}
+        {harveyBridgeAvailable&&<button className={styles.secondary} disabled={disabled||!projectId} onClick={()=>void run('Öppnar Harveys skyddade SCB-kontroll',async()=>{
+          const r=await request(base+'/harvey-bridge',{action:'start',projectId})
+          const url=new URL(r.url)
+          if(url.protocol!=='https:'||!/^ai-operating-platform-[a-z0-9]+-bumbi190s-projects\.vercel\.app$/.test(url.hostname))throw Error('Harvey-länken är inte tillåten.')
+          window.location.assign(url.toString())
+        })}>Verifiera Edfors via Harvey (skyddad SCB)</button>}
+        {!searchAvailable&&!harveyBridgeAvailable&&<p className={styles.muted}>SCB-sökningen är inte aktiverad i denna miljö.</p>}
+        {harveyBridgeAvailable&&<p className={styles.muted}>Harvey läser SCB på sin skyddade server. Ingen SCB-nyckel finns på datorn.</p>}
         {searchMeta&&<p className={styles.muted}>{searchMeta.areaLabel} · {searchMeta.matchedWorkplaces} relevanta arbetsställen i det lästa underlaget.{searchMeta.truncated?' Sökningen är begränsad och visar inte fullständig täckning.':''}</p>}
         <div className={styles.results}>{candidates.map(candidate=><article key={candidate.company.cfar}><strong>{candidate.company.name}</strong><span>{candidate.company.city} · {candidate.company.orgnr}</span>{candidate.company.branchName&&<span>{candidate.company.branchName}</span>}<button disabled={disabled||candidate.company.inactive} onClick={()=>void run('Skapar prospekt',async()=>{apply(await request(base,{action:'create',projectId,sourceReceipt:candidate.receipt,idempotencyKey:crypto.randomUUID()}))})}>{candidate.company.inactive?'Ej aktivt enligt SCB':'Skapa prospekt'}</button></article>)}</div>
         {searchMeta?.nextOffset!==null&&searchMeta?.nextOffset!==undefined&&<button className={styles.secondary} disabled={disabled} onClick={()=>void run('Hämtar fler företag',async()=>{const r=await request(base,{action:'search',projectId,municipalityCode:municipality,offset:searchMeta.nextOffset});setCandidates(r.candidates);setSearchMeta(r.meta)})}>Nästa fem arbetsställen</button>}

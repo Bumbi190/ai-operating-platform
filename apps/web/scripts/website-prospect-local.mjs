@@ -13,8 +13,32 @@ if(!process.argv.includes('--start'))throw Error('Explicit --start required')
 const option=name=>{const index=process.argv.indexOf(name);return index>=0?process.argv[index+1]:undefined}
 const directory=option('--directory')
 if(!directory||!isAbsolute(directory))throw Error('Absolute local --directory required')
+const harveyOrigin=option('--harvey-bridge-origin')
+if(harveyOrigin){
+  let u
+  try{u=new URL(harveyOrigin)}catch{throw Error('HARVEY_BRIDGE_ORIGIN_INVALID')}
+  if(u.protocol!=='https:'||!/^ai-operating-platform-[a-z0-9]+-bumbi190s-projects\.vercel\.app$/.test(u.hostname)||u.pathname!=='/'||u.search||u.hash||u.username||u.password||u.port){
+    throw Error('HARVEY_BRIDGE_ORIGIN_INVALID')
+  }
+}
+if(process.argv.includes('--scb-env')&&harveyOrigin)throw Error('SCB_ENV_AND_HARVEY_BRIDGE_MUTUALLY_EXCLUSIVE')
 const web=fileURLToPath(new URL('../',import.meta.url)),appOrigin='http://127.0.0.1:56994'
 mkdirSync(directory,{recursive:true})
+// This is the PUBLIC P-256 verifier only, never Harvey's branch-private signer.
+// The fixed local file lives outside Git and is provided once by the owner after approval.
+let harveyPublicJwk
+if(harveyOrigin){
+  const path=join(directory,'harvey-public-jwk.json')
+  if(!existsSync(path))throw Error('HARVEY_PUBLIC_KEY_NOT_CONFIGURED')
+  try{
+    const publicKey=JSON.parse(readFileSync(path,'utf8'))
+    if(!publicKey||typeof publicKey!=='object'||Array.isArray(publicKey)||
+       Object.keys(publicKey).sort().join(',')!=='crv,kty,x,y'||
+       publicKey.kty!=='EC'||publicKey.crv!=='P-256'||
+       typeof publicKey.x!=='string'||typeof publicKey.y!=='string')throw Error('PUBLIC_KEY_INVALID')
+    harveyPublicJwk=JSON.stringify(publicKey)
+  }catch{throw Error('HARVEY_PUBLIC_KEY_INVALID')}
+}
 const statePath=join(directory,'runtime-private.json'),receiptPath=join(directory,'runtime-receipt.json')
 let state=existsSync(statePath)?JSON.parse(readFileSync(statePath,'utf8')):null
 if(state&&(state.version!==1||state.appOrigin!==appOrigin))throw Error('LOCAL_STATE_MISMATCH')
@@ -59,7 +83,7 @@ try{
   // Read only this one explicitly requested existing secret; never copy a production env file.
   receipt.scbKeyConfigured=Boolean(scb)
   const env={...fixtureEnv,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',NEXT_PUBLIC_SUPABASE_URL:stack.url,NEXT_PUBLIC_SUPABASE_ANON_KEY:stack.anonKey,SUPABASE_SERVICE_ROLE_KEY:stack.serviceKey,
-    WEBBUILDER_PROSPECTS_ENABLED:'true',WEBBUILDER_LOCAL_CAPTURE:'isolated-local',HB_LEADFINDER_SCB_PREVIEW_ENABLED:'true',H1_SPEND_GATE:'1',CRON_SECRET:state.cronSecret,...(scb?{SCB_API_KEY:scb}:{})}
+    WEBBUILDER_PROSPECTS_ENABLED:'true',WEBBUILDER_LOCAL_CAPTURE:'isolated-local',HB_LEADFINDER_SCB_PREVIEW_ENABLED:'true',H1_SPEND_GATE:'1',CRON_SECRET:state.cronSecret,...(scb?{SCB_API_KEY:scb}:{}),...(harveyOrigin?{WEBBUILDER_HARVEY_BRIDGE_ENABLED:'true',WEBBUILDER_HARVEY_BRIDGE_ORIGIN:harveyOrigin,WEBBUILDER_HARVEY_PUBLIC_JWK:harveyPublicJwk}:{})}
   const output=createWriteStream(join(directory,'next-local.log'),{flags:'a'})
   app=spawn(process.execPath,[resolve(web,'../../node_modules/next/dist/bin/next'),'dev','-H','127.0.0.1','-p','56994'],{cwd:web,env,windowsHide:true,stdio:['ignore','pipe','pipe']})
   app.stdout.pipe(output);app.stderr.pipe(output)

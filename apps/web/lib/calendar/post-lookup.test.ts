@@ -18,6 +18,8 @@ describe('voice and text calendar post lookup',()=>{
  it('retains editorial intent across the real follow-up, without diverting a new analytics query',()=>{
   const first='Byt bilden till inlägget på LinkedIn, du ser inlägget i kalendern.'
   expect(calendarPostIntent(first,[],true)).toBe(true)
+  expect(calendarPostIntent('Kan du byta bilden på den här posten?',[],true,true)).toBe(true)
+  expect(calendarPostIntent('Ser du vad jag har på skärmen?',[],true,true)).toBe(true)
   expect(calendarPostIntent('Handlarbörsen, en stängd marknadsplats för bilhandlare. Onsdag den elfte klockan 13:00.',[first],true)).toBe(true)
   expect(calendarPostIntent('Vad ser du på skärmen?',[first],true)).toBe(true)
   expect(calendarPostIntent('Visa statistik om Handlarbörsen',[first],true)).toBe(false)

@@ -4,11 +4,13 @@ import {stockholmMinute,weekRange} from './time'
 const fold=(s:string)=>s.normalize('NFKD').replace(/\p{M}/gu,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()
 const clock=/^([01]\d|2[0-3]):[0-5]\d$/
 const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i
-export function calendarPostIntent(text:string,previous:string[],calendar:boolean) {
+export function calendarPostIntent(text:string,previous:string[],calendar:boolean,selected=false) {
  const s=fold(text)
  const subject=/\b(inlagg(?:et|en)?|kalenderpost(?:en)?|linkedin|publicering(?:en)?)\b/
  const editing=/\b(bild(?:en|byte)?|post(?:en)?|titel(?:n)?|kalendern|publicer\w*|schemalagd\w*)\b/
  const when=/\b(mandag|tisdag|onsdag|torsdag|fredag|lordag|sondag|klockan|ig[a]?r)\b|\b\d{1,2}[:.]\d{2}\b/
+ if(calendar&&(selected||/\b(?:den har|denna|oppna) (?:kalender)?posten\b/.test(s))&&
+   /\b(?:bilden|bildbyte|skarmen|framme|markerad|markerat|vilken post|vilket inlagg|ser du)\b/.test(s))return true
  if(subject.test(s)&&(editing.test(s)||when.test(s))&&(calendar||/\bkalender\w*/.test(s)))return true
  if(!calendar||!previous.slice(-4).some(t=>subject.test(fold(t))&&editing.test(fold(t))))return false
  return (when.test(s)||editing.test(s)||/\b(skarmen|framfor mig|framme|den andra|den forsta)\b/.test(s))&&

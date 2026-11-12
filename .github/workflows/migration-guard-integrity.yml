@@ -43,6 +43,8 @@ jobs:
         run: |
           node --check apps/web/scripts/migration-guard-policy.mjs
           node --check apps/web/scripts/check-migrations.mjs
+          node --check apps/web/scripts/migration-release-policy.mjs
+          node --check apps/web/scripts/migration-release-preflight.mjs
 
       - name: Run Migration Guard v2 integrity suite
         working-directory: apps/web
@@ -50,6 +52,7 @@ jobs:
           npx --no vitest run lib/qa/migration-guard-v2.test.ts \
             lib/qa/handlarborsen-watch-runs-migration.test.ts \
             lib/qa/sales-inbox-ledger-reconciliation.test.ts \
+            lib/qa/migration-release-preflight.test.ts \
             --reporter=default --reporter=json \
             --outputFile="$RUNNER_TEMP/migration-guard-integrity.json"
 
@@ -84,6 +87,14 @@ jobs:
           const journalAssertions = journal?.assertionResults ?? []
           if (journalAssertions.length < 4 || journalAssertions.some((assertion) => assertion.status !== 'passed')) {
             console.error('::error::all four journal source/ledger/catalog/receipt promotion checks must pass')
+            process.exit(1)
+          }
+
+          // Release tests use synthetic/recorded data, never hosted DB credentials.
+          const release = files.find(file => String(file.name).endsWith('/migration-release-preflight.test.ts'))
+          const releaseAssertions = release?.assertionResults ?? []
+          if (releaseAssertions.length < 50 || releaseAssertions.some(assertion => assertion.status !== 'passed')) {
+            console.error('::error::migration release safety tests must all pass without skips')
             process.exit(1)
           }
 

@@ -9,6 +9,7 @@ Stdout is JSON metadata/transcripts only, never raw audio samples.
 from __future__ import annotations
 
 import argparse
+from functools import partial
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, Future
 import json
@@ -23,7 +24,7 @@ def emit(kind: str, **fields) -> None:
     print(json.dumps({"kind": kind, **fields}), flush=True)
 
 
-def offline_transcribe(segment: bytes, model) -> str:
+def offline_transcribe(segment: bytes, model, scores=None) -> str:
     """Run the model on a short utterance in memory. No network or file writes."""
     import numpy as np
     pcm = np.frombuffer(segment, dtype="<i2").astype(np.float32) / 32768.0
@@ -45,6 +46,8 @@ def offline_transcribe(segment: bytes, model) -> str:
     for item in items:
         if item.avg_logprob < -1.3 or (item.no_speech_prob > 0.6 and item.avg_logprob < -1):
             return ""
+        if scores is not None:
+            scores.append(item.avg_logprob)
         words.append(item.text.strip())
     return " ".join(words).strip()[:500]
 
@@ -81,16 +84,19 @@ class LocalTranscriber:
         self.model_dir = model_dir
         self.model = _load_model(model_dir)
 
-    def transcribe(self, segment):
+    def transcribe(self, segment, scores=None):
+        decode = offline_transcribe if scores is None else partial(offline_transcribe, scores=scores)
         try:
-            return offline_transcribe(segment, self.model)
+            return decode(segment, self.model)
         except (RuntimeError, OSError):
             if self.model.model.device != "cuda":
                 raise
         # CUDA can first fail during decoding. Retry the same words on CPU for the rest of the session.
         self.model = None
         self.model = _load_cpu_model(self.model_dir)
-        return offline_transcribe(segment, self.model)
+        if scores is not None:
+            scores.clear()
+        return decode(segment, self.model)
 
 
 def run(*, mode: str, seconds: float, device: int | None, model_dir: Path | None,
@@ -118,16 +124,16 @@ def run(*, mode: str, seconds: float, device: int | None, model_dir: Path | None
     )
 
     gate = SpeechGate()
-    pending: deque[tuple[Future[str], float, float]] = deque()
+    pending: deque[tuple[Future[tuple[str, float]], float, float]] = deque()
     since = time.monotonic()
     levels = 0
     utterances = 0
 
     def deliver(item):
         future, start, end = item
-        phrase = future.result(timeout=8)
+        phrase, confidence = future.result(timeout=8)
         if phrase:
-            emit("transcript", text=phrase, audio_start=start, audio_end=end)
+            emit("transcript", text=phrase, confidence=confidence, audio_start=start, audio_end=end)
         else:
             emit("no_transcript", audio_start=start, audio_end=end)
 
@@ -147,7 +153,9 @@ def run(*, mode: str, seconds: float, device: int | None, model_dir: Path | None
                 model_job = pool.submit(LocalTranscriber, model_dir) if mode == "transcribe" else None
 
                 def transcribe(segment):
-                    return model_job.result().transcribe(segment)
+                    scores = []
+                    phrase = model_job.result().transcribe(segment, scores)
+                    return phrase, min(scores, default=0.0)
 
                 while time.monotonic() - since < seconds:
                     raw, overflow = stream.read(BLOCK_FRAMES)

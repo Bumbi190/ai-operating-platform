@@ -2,10 +2,14 @@
 
 Tryck **Ctrl + Alt + Space** för att visa sidopanelen och börja prata med den lokala mikrofonen. Du kan också skriva i rutan. Under **⋯** kan du stänga av mikrofonstarten för den aktuella sessionen. Start vid Windows-inloggning aktiverar bara bubblan.
 
+Välj **Samtal · Alma** för att tala fritt med Nova. Följdfrågor hör till samma samtal tills du väljer **Stopp**, minimerar panelen eller är tyst i tio minuter. **Avbryt svar** och ett uttalat **”vänta”** ger dig ordet igen. Ollama väljer bland verktygen i Windows och formulerar svar utifrån samtalet och det senast lästa resultatet. Sändning av mejl använder det granskade utkastet.
+
+Alma är en lokal svensk röst av Daniel Nylander, CC BY 4.0. Installera `piper-tts==1.8.0` i Novas befintliga `.venv-audio` och kör `python nova_alma.py --install` från appmappen en gång. Modellen och attributionen sparas under `%LOCALAPPDATA%\Omnira\Nova\models\alma`. Med en sparad ElevenLabs-nyckel och Sanna vald heter knappen **Samtal · Sanna**. Då skickas svarets text till ElevenLabs för uppläsning. Den som väljer Bengt i menyn får **Samtal · Bengt**. [Almas modellkort och licens](https://huggingface.co/yeagersthlm/piper-voice-sv-alma)
+
 - **”Nova, starta Spotify”** startar musiken och bekräftar när Spotify spelar. **”Öppna Spotify”** visar bara appen. Du kan följa upp direkt med **”Pausa musiken”**. **”Nova, kolla ledigt diskutrymme”** visar en aktuell mätning i rutan.
 - **”Nova, skapa en anteckning med texten Ring Oscar”** visar den uppfattade texten. Klicka **Spara anteckning** för att skapa en ny UTF-8-textfil under `%USERPROFILE%\Nova\Anteckningar`. Den fullständiga sökvägen visas efter sparandet.
 - **”Nova, öppna Gmail och Spotify”** visar en plan som du kan godkänna eller avbryta i panelen.
-- När panelen är öppen, säg **”Hej Nova”** följt av ditt uppdrag. Du kan också trycka **Prata** och tala en gång utan att säga namnet. **”Nova, pausa lyssningen”**, Stopp eller minimering stänger mikrofonen.
+- När panelen är öppen, säg **”Hej Nova”** följt av ditt uppdrag. Du kan också välja **⋯ → Prata · ett uppdrag** och tala en gång utan att säga namnet. **”Nova, pausa lyssningen”**, Stopp eller minimering stänger mikrofonen.
 - Välj **Använd Sannas röst i Windows**. Besked om bland annat uppspelning och skärmläsning finns som lokalt ljud. För egna svar visar Nova texten och ger ett kort röstbesked. För uppläsning av hela svaret, ange ElevenLabs-nyckeln under **⋯**. Atlas arbetsverktyg kräver en ansluten, behörig session och ditt godkännande för uppdraget.
 
 
@@ -19,7 +23,7 @@ Be exempelvis om **”Läs senaste mejlet om offert i Strato”**. **”Läs det
 
 Diktera **”Svara att jag kan på fredag”**. Granska avsändarkonto, mottagare, ämne och text i Nova. **”Ändra svaret till …”**, **”Lägg till …”** och **”Ta bort …”** visar ett uppdaterat utkast. När du är nöjd, säg **”Nova, skicka svaret”** eller klicka **Skicka svaret**. Nova skickar det aktuella utkastet via kontots mejlserver och visar sändningsbeskedet.
 
-Säg **”Nova, vänta”** eller tryck **Prata** under uppläsningen för att avbryta och lägga till en instruktion. **Stopp** avslutar samtalet.
+Säg **”Nova, vänta”** eller välj **Avbryt svar** under ett samtal för att avbryta och lägga till en instruktion. **Stopp** avslutar samtalet.
 
 ## Datoruppdrag på din Windows-dator
 

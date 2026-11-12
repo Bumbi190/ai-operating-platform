@@ -240,15 +240,25 @@ class VoiceInterpreter:
             pass
 
     def submit(self, text, spotify_selected):
+        self._enqueue(text, spotify_selected, self.history, "")
+
+    def submit_live(self, text, snapshot, *, reading=False):
+        self._enqueue(text, False, snapshot, "reading" if reading else "live")
+
+    def _enqueue(self, text, spotify_selected, history, mode):
         self.cancel()
-        self.pending.put_nowait((self.turn, text, spotify_selected, self.history))
+        self.pending.put_nowait((self.turn, text, spotify_selected, history, mode))
         if self.thread is None:
             self.thread = threading.Thread(target=self._run, name="NovaLocalIntent", daemon=True)
             self.thread.start()
 
     def _run(self):
         while True:
-            turn, text, spotify_selected, history = self.pending.get()
+            turn, text, spotify_selected, history, mode = self.pending.get()
+            if mode:
+                from nova_live import respond
+                self.results.put((turn, respond(history, reading=mode == "reading")))
+                continue
             greeting = local_greeting(text)
             question = re.sub(r"^(?:hej[ ,.]+)?(?:nova|innova)[ ,.!]+", "", normalized(text))
             if greeting:

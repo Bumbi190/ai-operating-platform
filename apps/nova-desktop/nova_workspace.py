@@ -101,15 +101,26 @@ class Workspace:
             elif error:
                 self.panel._reply("warn", error)
             elif kind in ("screen", "page"):
-                self.panel._reply("nova", "Synlig text i " + value["processName"] + "\n\n" + value["text"],
-                                  spoken="Jag har läst texten i fönstret. Du ser den i chatten.")
+                description = "Synlig text i " + value["processName"] + "\n\n" + value["text"]
+                call = getattr(self.panel, "live_call", None)
+                if call:
+                    self.panel._append("nova", description)
+                    call.observe(description)
+                    self.panel.voice_interpreter.submit_live(call.question, call.snapshot(), reading=True)
+                else:
+                    self.panel._reply("nova", description, spoken="Jag har läst texten i fönstret. Du ser den i chatten.")
             else:
                 self.follow_until = time.monotonic() + 25
                 self.source = value
                 body = value.body or "(Mejlet saknar läsbar text.)"
                 self.panel._append("nova", f"{value.provider} · {value.account}\nFrån: {value.sender}\nÄmne: {value.subject}\n\n" + body[:24000] + ("\n… (förkortat)" if len(body) > 24000 else ""))
+                call = getattr(self.panel, "live_call", None)
+                if call:
+                    call.observe("Från " + value.sender + ", ämne " + value.subject + "\n" + body)
                 if kind == "aloud":
                     self.panel._read_aloud(body[:24000])
+                elif call:
+                    self.panel.voice_interpreter.submit_live(call.question, call.snapshot(), reading=True)
                 else:
                     self.panel._reply("nova", "Mejlet visas här. Du kan diktera ett svar.")
             if error or kind != "aloud":
@@ -180,6 +191,8 @@ class Workspace:
     def show_draft(self, draft):
         self.panel._append("nova", "Granska ditt svar\n" + draft.preview())
         self.panel._choices([("Skicka svaret", lambda: self.send_reviewed(draft)), ("Kasta utkast", lambda: self.discard(draft))])
+        if getattr(self.panel, "live_call", None):
+            self.panel._reply("nova", "Här är förslaget. " + draft.text)
         self.panel._phase("godkannande", "Granska mottagaren och svaret")
 
     def discard(self, draft):

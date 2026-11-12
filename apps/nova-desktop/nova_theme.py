@@ -172,6 +172,13 @@ class PremiumButton(tk.Canvas):
         self.bind("<FocusOut>", lambda _e: self._paint())
         self._paint()
 
+    def set_label(self, label):
+        if self.label != label:
+            self.label = label
+            self._pixel_width = self._font.measure(label) + round(24 * self._scale)
+            self.configure(width=self._pixel_width)
+            self._paint()
+
     def set_attention(self, value):
         if self.attention != bool(value):
             self.attention = bool(value)

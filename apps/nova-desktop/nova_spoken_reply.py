@@ -11,6 +11,7 @@ class SpokenReply:
     def __init__(self):
         self.process = None
         self.prepared = None
+        self.prepared_voice = ""
         self.last_text = ""
         self.started = 0.0
         self.intervals = deque(maxlen=24)
@@ -29,31 +30,43 @@ class SpokenReply:
         if self.process is None and self.prepared is None:
             try:
                 self.prepared = self._launch()
+                self.prepared_voice = "windows"
             except OSError:
                 pass  # Starting again at reply time reports any persistent failure.
+
+    @staticmethod
+    def _voice_worker(alma):
+        from nova_local_audio import VENV_PYTHON
+        command = ([str(VENV_PYTHON), str(Path(__file__).with_name("nova_alma.py"))] if alma else
+                   [sys.executable, str(Path(__file__).with_name("nova_sanna.py"))])
+        return subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
+
+    def prepare_alma(self):
+        if self.process is None and self.prepared is None:
+            try:
+                self.prepared = self._voice_worker(True)
+                self.prepared_voice = "alma"
+            except OSError:
+                pass
 
     def discard_prepared(self):
         idle, self.prepared = self.prepared, None
         if idle is not None:
             idle.stdin.close()  # EOF without a message exits without speaking.
 
-    def speak(self, text, *, sanna=False):
-        if sanna:
+    def speak(self, text, *, sanna=False, alma=False):
+        voice = "alma" if alma else "sanna" if sanna else "windows"
+        if self.prepared_voice != voice:
             self.discard_prepared()
         idle, self.prepared = self.prepared, None
         self.stop()
-        if sanna:
-            self.process = subprocess.Popen(
-                [sys.executable, str(Path(__file__).with_name("nova_sanna.py"))],
-                stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-        elif idle is not None and idle.poll() is None:
+        if idle is not None and idle.poll() is None:
             self.process = idle
         else:
             if idle is not None:
                 idle.stdin.close()
-            self.process = self._launch()
+            self.process = self._voice_worker(alma) if sanna or alma else self._launch()
         self.last_text = text
         self.started = time.monotonic()
         try:

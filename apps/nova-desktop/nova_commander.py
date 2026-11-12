@@ -93,7 +93,7 @@ def known_folders():
 
 
 class CommanderSession:
-    def __init__(self, goal):
+    def __init__(self, goal, *, reference=None):
         config = Path(os.environ["LOCALAPPDATA"]) / "Omnira" / "Nova" / "desktop-commander.json"
         try:
             settings = json.loads(config.read_text(encoding="utf-8-sig"))
@@ -104,13 +104,21 @@ class CommanderSession:
         except (OSError, KeyError, TypeError, ValueError) as exc:
             raise ValueError("Nova hittar inte den lokala Desktop Commander-installationen.") from exc
         root = selected_project(goal)
+        previous = None
+        if reference:
+            project, target = reference
+            if project and root is None:
+                root = selected_project('projektet "' + project + '"')
+            if not root or (project and Path(root).name.casefold() == project.casefold()):
+                previous = target
+        self.project = Path(root).name if root else None
         self.events = queue.SimpleQueue()
         self.process = subprocess.Popen([str(node), str(Path(__file__).with_name("nova_commander.cjs")), str(entry)],
                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                        encoding="utf-8", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         threading.Thread(target=self._read, daemon=True).start()
         try:
-            self._send({"goal": goal, "model": LOCAL_MODEL, "folders": {"projekt": root} if root else folders, "project": root})
+            self._send({"goal": goal, "model": LOCAL_MODEL, "folders": {"projekt": root} if root else folders, "project": root, "previousTarget": previous})
         except OSError:
             self.close()
             raise

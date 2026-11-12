@@ -3,16 +3,32 @@ from collections import deque
 import io
 import os
 from pathlib import Path
+import re
 import subprocess
+import textwrap
 import sys
 import time
 import threading
+
+
+def speech_chunks(text, limit=540):
+    """Keep sentences together when a long reply needs multiple voice requests."""
+    chunks = []
+    current = ""
+    for sentence in re.split(r"(?<=[.!?])\s+|[\r\n]+", text.strip()):
+        for piece in textwrap.wrap(sentence, width=limit, break_on_hyphens=False):
+            if current and len(current) + len(piece) + 1 > limit:
+                chunks.append(current)
+                current = ""
+            current = (current + " " + piece).strip()
+    return chunks + ([current] if current else [])
 
 
 class SpokenReply:
     def __init__(self):
         self.process = None
         self.prepared = None
+        self.klara = None
         self.prepared_voice = ""
         self.last_text = ""
         self.started = 0.0
@@ -59,13 +75,30 @@ class SpokenReply:
         if idle is not None:
             idle.stdin.close()  # EOF without a message exits without speaking.
 
-    def speak(self, text, *, sanna=False, alma=False):
-        voice = "alma" if alma else "sanna" if sanna else "windows"
+    def prepare_klara(self):
+        from nova_klara import KlaraSession
+        if self.klara is not None and self.klara.worker.poll() is not None:
+            self.release_klara()
+        if self.klara is None:
+            self.klara = KlaraSession()
+
+    def release_klara(self):
+        if self.klara is not None:
+            self.klara.close()
+            self.klara = None
+
+    def speak(self, text, *, sanna=False, alma=False, klara=False):
+        voice = "klara" if klara else "alma" if alma else "sanna" if sanna else "windows"
         if self.prepared_voice != voice:
             self.discard_prepared()
         idle, self.prepared = self.prepared, None
         self.stop()
-        if idle is not None and idle.poll() is None:
+        if klara:
+            self.prepare_klara()
+            self.process = subprocess.Popen([sys.executable, __file__, "--play-sanna-pcm"],
+                                            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                            stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
+        elif idle is not None and idle.poll() is None:
             self.process = idle
         else:
             if idle is not None:
@@ -77,6 +110,9 @@ class SpokenReply:
         if isinstance(self.process.stdout, io.BufferedIOBase):
             threading.Thread(target=self._watch_output, args=(self.process.stdout, self.started, self.output_end,
                              self.on_output_end), daemon=True).start()
+        if klara:
+            self.klara.submit(text, self.process)
+            return
         try:
             self.process.stdin.write(text[:700].encode("utf-8"))
             self.process.stdin.close()
@@ -161,6 +197,7 @@ def play_sanna_pcm():
         wav.setparams((1, 2, 24000, 0, "NONE", "not compressed"))
         wav.writeframes(pcm)
     winsound.PlaySound(output.getvalue(), winsound.SND_MEMORY | winsound.SND_NODEFAULT)
+    print(time.monotonic(), flush=True)
     return 0
 
 

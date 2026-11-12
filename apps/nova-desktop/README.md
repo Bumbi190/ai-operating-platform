@@ -4,13 +4,25 @@ Tryck **Ctrl + Alt + Space** för att visa sidopanelen och börja prata med den 
 
 Med en tillgänglig samtalsröst startar **Ctrl + Alt + Space** ett löpande samtal direkt. Om du öppnar från bubblan, säg **”Hej Nova”** en gång eller välj **Samtal**. Sedan kan du tala fritt med Nova. Följdfrågor hör till samma samtal tills du väljer **Stopp**, minimerar panelen eller är tyst i tio minuter. **Avbryt svar** och ett uttalat **”vänta”** ger dig ordet igen. Ollama väljer bland verktygen i Windows och formulerar svar utifrån samtalet och det senast lästa resultatet. Sändning av mejl använder det granskade utkastet.
 
+Nova använder Klara för lokala samtal när hennes röstmodell är installerad. Nova förbereder röstmodellen när bubblan startar och använder den för flera svar i följd. Förberedelsen använder varken mikrofonen eller högtalaren. För att installera på en ny Windows-dator, kör följande i PowerShell från appmappen.
+
+```powershell
+$voice = Join-Path $env:LOCALAPPDATA 'Omnira\Nova\voices\kokoro-sv'
+python -m venv $voice
+$python = Join-Path $voice 'Scripts\python.exe'
+& $python -m pip install 'kokoro-sv==0.1.3' 'num2words==0.5.14'
+& $python -X utf8 nova_klara.py --install
+```
+
+Fråga exempelvis vad klockan är i Amerika och följ upp med en stad. Nova räknar från aktuell systemtid och stadens tidszon. Lägg till IANA:s stadskatalog på Windows med `python -m pip install --target "$env:LOCALAPPDATA\Omnira\Nova\timezones" tzdata`. Då används även orterna i den katalogen, exempelvis Honolulu och Reykjavik. [Klara och de svenska samtalsrösterna](https://pypi.org/project/kokoro-sv/)
+
 Alma är en lokal svensk röst av Daniel Nylander, CC BY 4.0. Installera `piper-tts==1.8.0` i Novas befintliga `.venv-audio` och kör `python nova_alma.py --install` från appmappen en gång. Modellen och attributionen sparas under `%LOCALAPPDATA%\Omnira\Nova\models\alma`. Med en sparad ElevenLabs-nyckel och Sanna vald heter knappen **Samtal · Sanna**. Då skickas svarets text till ElevenLabs för uppläsning. Den som väljer Bengt i menyn får **Samtal · Bengt**. [Almas modellkort och licens](https://huggingface.co/yeagersthlm/piper-voice-sv-alma)
 
 - **”Nova, starta Spotify”** startar musiken och bekräftar när Spotify spelar. **”Öppna Spotify”** visar bara appen. Du kan följa upp direkt med **”Pausa musiken”**. **”Nova, kolla ledigt diskutrymme”** visar en aktuell mätning i rutan.
 - **”Nova, skapa en anteckning med texten Ring Oscar”** visar den uppfattade texten. Klicka **Spara anteckning** för att skapa en ny UTF-8-textfil under `%USERPROFILE%\Nova\Anteckningar`. Den fullständiga sökvägen visas efter sparandet.
 - **”Nova, öppna Gmail och Spotify”** visar en plan som du kan godkänna eller avbryta i panelen.
 - När panelen är öppen, säg **”Hej Nova”** följt av ditt uppdrag. Du kan också välja **⋯ → Prata · ett uppdrag** och tala en gång utan att säga namnet. **”Nova, pausa lyssningen”**, Stopp eller minimering stänger mikrofonen.
-- Välj **Använd Sannas röst i Windows**. Besked om bland annat uppspelning och skärmläsning finns som lokalt ljud. För egna svar visar Nova texten och ger ett kort röstbesked. För uppläsning av hela svaret, ange ElevenLabs-nyckeln under **⋯**. Atlas arbetsverktyg kräver en ansluten, behörig session och ditt godkännande för uppdraget.
+- Välj **⋯ → Anslut Sanna** och ange ElevenLabs-nyckeln för att använda Sanna direkt i pågående samtal. Windows skyddar nyckeln för ditt användarkonto. Atlas arbetsverktyg kräver en ansluten, behörig session och ditt godkännande för uppdraget.
 
 
 ## Skärmen, mejlen och följdfrågor

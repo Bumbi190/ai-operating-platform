@@ -130,7 +130,7 @@ _SPOKEN_TARGETS = {
 }
 _MEDIA_COMMAND = re.compile(
     _REQUEST_PREFIX + r"(?P<verb>tryck(?:a)? pa play|spela(?: upp)?|playa|play|"
-    r"satt(?:a)? (?:pa|i ?gang)|dra i ?gang|starta|ateruppta|fortsatt spela|fortsatt|pausa|paus)"
+    r"satt(?:a)? (?:pa|i ?gang)|dra i ?gang|starta|ateruppta|fortsatt spela|fortsatt|pausar?|paus)"
     r"(?: (?P<object>lite musik|musiken|musik|uppspelningen|laten|den))?"
     r"(?: (?:i |pa )?(?P<app>c?spotify|spot ify))?(?: nu| igen)?(?:,? tack)?$"
 )
@@ -138,7 +138,13 @@ _MEDIA_COMMAND = re.compile(
 
 def spotify_command(text: str, *, spotify_selected: bool = False) -> Action | None:
     value = _TRAILING_PUNCT.sub("", normalized(text)).strip()
-    if re.fullmatch(_REQUEST_PREFIX + r"(?:öppna|oppna|starta) (?:c?spotify|spot ify) och (?:spela(?: upp)?|satt pa|starta) (?:lite musik|musik(?:en)?|uppspelningen)(?: nu)?(?:,? tack)?", value):
+    # Whisper sometimes returns the same complete question twice in one segment.
+    parts = [part.strip() for part in re.split(r"[?!.]+", value) if part.strip()]
+    if len(parts) > 1 and len(set(parts)) == 1:
+        value = parts[0]
+    if spotify_selected and re.fullmatch(_REQUEST_PREFIX + r"pausar? med sig(?: nu)?(?:,? tack)?", value):
+        return Action("spotify_media", "pause")
+    if re.fullmatch(_REQUEST_PREFIX + r"(?:oppna|starta|navigera(?: mig)? till|ta mig till|ga till) (?:c?spotify|spot ify) och (?:spela(?: upp)?|satt pa|starta) (?:lite musik|musik(?:en)?|uppspelningen)(?: nu)?(?:,? tack)?", value):
         return Action("spotify_media", "play")
     match = _MEDIA_COMMAND.fullmatch(value)
     if not match or not (match["app"] or spotify_selected):
@@ -146,7 +152,7 @@ def spotify_command(text: str, *, spotify_selected: bool = False) -> Action | No
     verb = match["verb"]
     if not (match["app"] or match["object"]) and verb in ("starta", "fortsatt", "satt pa", "satta pa", "dra igang", "dra i gang"):
         return None
-    return Action("spotify_media", "pause" if verb in ("pausa", "paus") else "play")
+    return Action("spotify_media", "pause" if verb in ("pausa", "pausar", "paus") else "play")
 
 
 def safe_auto_navigation(text: str) -> Action | None:

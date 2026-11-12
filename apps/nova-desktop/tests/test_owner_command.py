@@ -191,7 +191,7 @@ class OwnerCommandTests(unittest.TestCase):
         ui._sanna_key_ready = False
         ui._configure_sanna = Mock()
         ui._connect_sanna = Mock()
-        self.assertIn("Aktivera fler röstsvar", ui._local_voice_caption())
+        self.assertEqual(ui._local_voice_caption(), ui._call_voice() + " lokalt · Anslut Sanna")
         ui._choose_voice_settings()
         ui._configure_sanna.assert_called_once()
         ui._sanna_key_ready = True

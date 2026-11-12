@@ -4,6 +4,7 @@ from http.client import HTTPException
 import json
 import re
 
+from nova_clock import clock_answer
 from nova_core import Action, normalized
 from nova_auto_voice import safe_auto_navigation
 
@@ -97,6 +98,9 @@ class LiveCall:
 def respond(snapshot, *, reading=False):
     from nova_voice_intent import Interpretation, LIVE_CONTEXT, LOCAL_MODEL, _local_chat
     turns, evidence = snapshot
+    clock = None if reading else clock_answer(turns)
+    if clock is not None:
+        return Interpretation(None, clock)
     messages = [{"role": role, "content": content} for role, content in turns]
     def chat(prompt, schema=None):
         payload = {"model": LOCAL_MODEL, "stream": False, "keep_alive": "5m",
@@ -109,6 +113,7 @@ def respond(snapshot, *, reading=False):
     def answer():
         prompt = ("Du är Nova i ett svenskt samtal. Besvara det senaste yttrandet naturligt och kort. "
                   "Använd tidigare samtalsturer när användaren hänvisar till dem. "
+                  "Du kan läsa datorns klocka och styra Spotify. Om en musikbegäran är oklar, fråga vad användaren menade. "
                   "Beskriv bara en genomförd datoråtgärd om du har fått ett resultat. "
                   "Svara med en eller två meningar som passar för uppläsning.")
         if evidence:

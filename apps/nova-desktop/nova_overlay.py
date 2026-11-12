@@ -21,6 +21,7 @@ import webbrowser
 
 from nova_live import LiveCall, uncertain_short_phrase
 from nova_alma import ready as alma_ready
+from nova_klara import ready as klara_ready
 from nova_workspace import Workspace
 from nova_commander import CommanderSession, commander_request, project_intent
 from nova_core import (
@@ -46,7 +47,7 @@ from nova_local_audio import NativeAudioSession, local_model_ready
 from nova_local_voice import CONVERSATION_SECONDS, PILOT_SECONDS
 from nova_voice_intent import VoiceInterpreter, local_greeting
 from nova_sanna import key_configured, status_speech
-from nova_spoken_reply import SpokenReply, load_reply_mode, save_reply_mode
+from nova_spoken_reply import SpokenReply, speech_chunks, load_reply_mode, save_reply_mode
 from nova_windows import list_known_windows, focus_known_window
 from nova_theme import (
     TRANSPARENT, SURFACE, PANEL, INPUT, ACCENT, CYAN, TEXT, MUTED,
@@ -281,6 +282,8 @@ class NovaOverlay:
         self.root.after(400, self._remember_active_window)
         self.root.after(900, self._show_bridge_status)
         show_idle_bubble(self.root)
+        if self.reply_mode == "sanna" and self._call_voice() == "Klara":
+            self.root.after_idle(self._prepare_local_call_voice)
         if os.environ.get("NOVA_START_EXPANDED") == "1":
             self.root.after(180, self._open_from_hotkey)
 
@@ -608,8 +611,13 @@ class NovaOverlay:
             self._btn(self.voice_options, "Anslut Sanna", self._connect_sanna).pack(side="right")
 
     def _set_reply_mode(self, mode):
-        self.spoken_reply.stop()
+        self._stop_reply()
         self.reply_mode = mode
+        call = getattr(self, "live_call", None)
+        if call and mode in ("sanna", "windows"):
+            call.voice = self._call_voice()
+        if self._call_voice() != "Klara" or mode == "text":
+            self.spoken_reply.release_klara()
         self._sync_call_button()
         try:
             save_reply_mode(self.reply_file, mode)
@@ -627,8 +635,8 @@ class NovaOverlay:
             self._append("nova", "Lokala svar visas i rutan.")
 
     def _read_aloud(self, body):
-        import textwrap
-        self._reading_chunks = textwrap.wrap(body, width=285)
+        call = getattr(self, "live_call", None)
+        self._reading_chunks = speech_chunks(body, limit=200 if call and call.voice == "Klara" else 540)
         if not getattr(self, "live_call", None) and self.reply_mode not in ("sanna", "windows"):
             self._append("nova", "Välj en röst i menyn för uppläsning.")
             self._reading_chunks.clear()
@@ -641,7 +649,9 @@ class NovaOverlay:
         try:
             chunk = self._reading_chunks.pop(0)
             call = getattr(self, "live_call", None)
-            if call:
+            if call and call.voice == "Klara":
+                self.spoken_reply.speak(chunk, klara=True)
+            elif call:
                 self.spoken_reply.speak(chunk, sanna=call.voice == "Sanna", alma=call.voice == "Alma")
             else:
                 self.spoken_reply.speak(chunk, sanna=self.reply_mode == "sanna")
@@ -918,7 +928,7 @@ class NovaOverlay:
 
     def _interrupt_phrase(self, phrase):
         # An addressed pause is distinguishable from other people in the room.
-        match = re.fullmatch(r"(?:(?:hej|okej)[ ,]+)?nova[ ,.!]+(?:avbryt svaret|pausa uppläsningen|pausa svaret|vänta|pausa)\b[ ,.!:—-]*(.*)", phrase.strip(), re.I)
+        match = re.fullmatch(r"(?:(?:hej|okej)[ ,]+)?nova[ ,.!]+(?:avbryt svaret|pausa uppläsningen|pausa svaret|vänta|pausa(?=[.!? ]*$))\b[ ,.!:—-]*(.*)", phrase.strip(), re.I)
         if not match and getattr(self, "live_call", None):
             match = re.fullmatch(r"(?:(?:nej|okej)[ ,]+)?(?:vänta|avbryt svaret|pausa uppläsningen|pausa svaret)\b[ ,.!:—-]*(.*)", phrase.strip(), re.I)
         if not match:
@@ -1299,8 +1309,9 @@ class NovaOverlay:
         menu.add_command(label="Anslut Atlas", command=self.connect_atlas)
         menu.add_command(label="Läs upp lokala svar med Bengt", command=lambda: self._set_reply_mode("windows"))
         menu.add_command(label="Visa bara text lokalt", command=lambda: self._set_reply_mode("text"))
-        menu.add_command(label="Använd Sannas röst i Windows", command=self._connect_sanna)
-        menu.add_command(label="ElevenLabs-nyckel…", command=self._configure_sanna)
+        menu.add_command(label="Använd Sannas röst" if self._sanna_key_ready else "Anslut Sanna…", command=self._connect_sanna)
+        if self._sanna_key_ready:
+            menu.add_command(label="Byt ElevenLabs-nyckel…", command=self._configure_sanna)
         menu.add_separator()
         menu.add_command(label="Testa lokal mikrofon och svenska (25 sek)",
                          command=self.start_native_mic_pilot)
@@ -1438,15 +1449,19 @@ class NovaOverlay:
             try:
                 save_key(key)
                 self._sanna_key_ready = True
-                self._sync_call_button()
+                self._set_reply_mode("sanna")
                 self._sanna_key_notice = False
                 self._append("nova", "Nyckeln är sparad för Sannas uppläsning.")
             except (OSError, ValueError):
                 self._append("warn", "Nyckeln kunde inte sparas.")
 
     def _connect_sanna(self):
+        if not self._sanna_key_ready:
+            self._configure_sanna()
+            return
         self._set_reply_mode("sanna")
-        self._start_panel_voice()
+        if not getattr(self, "live_call", None):
+            self._start_panel_voice()
 
     def _open_from_hotkey(self, *, wait_for_name=False):
         """Open the foreground panel and restore the selected voice."""
@@ -1471,13 +1486,22 @@ class NovaOverlay:
             return "Sanna"
         if self.reply_mode == "windows":
             return "Bengt"
-        return "Alma"
+        return "Klara" if klara_ready() else "Alma"
+
+    def _prepare_local_call_voice(self):
+        if not self.closed and self._call_voice() == "Klara":
+            try:
+                self.spoken_reply.prepare_klara()
+            except OSError:
+                pass  # The first spoken reply retries and reports start errors.
 
     def _call_label(self):
         return "Avbryt svar" if getattr(self, "live_call", None) else "Samtal · " + self._call_voice()
 
     def _end_live_call(self):
         self._call_on_wake = False
+        if getattr(self, "spoken_reply", None):
+            self.spoken_reply.release_klara()
         if getattr(self, "live_call", None):
             self.live_call = None
             self._sync_call_button()
@@ -1511,6 +1535,7 @@ class NovaOverlay:
         now = time.monotonic()
         self._call_on_wake = False
         self._voice_turn_until = 0.0
+        self.spotify_selected = False
         self.live_call = LiveCall(voice, now)
         self._native_conversation_deadline = now + CONVERSATION_SECONDS
         self.start_native_mic_pilot()
@@ -1519,8 +1544,12 @@ class NovaOverlay:
             self._native_conversation_deadline = 0
             return
         self._sync_call_button()
+        if voice == "Klara":
+            self._prepare_local_call_voice()
         self.voice_interpreter.prepare(live=True)
         self._phase("lyssnar", self._listening_hint())
+        if self.reply_mode == "sanna" and not self._sanna_key_ready:
+            self._append("nova", "Du hör " + voice + " lokalt. Välj ⋯ → Anslut Sanna för att använda Sanna i samtalet.")
         self._append("nova", "Samtalet är igång med " + voice + ". Tala fritt. Säg ”vänta” för att avbryta mitt svar eller ”avsluta samtalet” när du är klar.")
 
     def _live_input(self, text):
@@ -1745,7 +1774,7 @@ class NovaOverlay:
         if getattr(self, "live_call", None):
             return self.live_call.voice + " · samtal i Windows"
         if self.reply_mode == "sanna" and not self._sanna_key_ready:
-            return "Sanna · Aktivera fler röstsvar"
+            return self._call_voice() + " lokalt · Anslut Sanna"
         return {"windows": "Bengt · Windows-mikrofon", "sanna": "Sanna · Windows-mikrofon"}.get(
             self.reply_mode, "Textläge · Välj röst")
 
@@ -1901,7 +1930,7 @@ class NovaOverlay:
                 self._append("warn", "Uppläsningen med " + self.live_call.voice + " misslyckades. Svaret finns i chatten.")
             elif code == 3 and self.reply_mode == "sanna":
                 if not self._sanna_key_notice:
-                    self._append("nova", "För uppläsning av egna svar med Sanna, välj ⋯ → ElevenLabs-nyckel. Standardsvaren finns i Windows.")
+                    self._append("nova", "För uppläsning av egna svar med Sanna, välj ⋯ → Anslut Sanna. Standardsvaren finns i Windows.")
                     self._sanna_key_notice = True
             elif code not in (None, 0):
                 self._append("warn", "Kontrollera ElevenLabs-nyckeln och ljudutgången." if self.reply_mode == "sanna" else "Kontrollera Windows-rösten Bengt och ljudutgången.")
@@ -2154,6 +2183,7 @@ class NovaOverlay:
                 worker.kill()
                 status = 4
             self._media_worker = None
+            self.spotify_selected = status == 0
             if status == 0:
                 message = "Nu spelar Spotify." if action == "play" else "Musiken är pausad."
             else:

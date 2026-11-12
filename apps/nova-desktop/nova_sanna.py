@@ -11,7 +11,7 @@ import urllib.error
 import urllib.request
 import wave
 
-MODEL = "eleven_v4"
+MODEL = "eleven_multilingual_v2"
 # This is Sanna Hartfield's public Swedish Conversational catalogue voice.
 VOICE = "4xkUqaR9MYOJHoaC1Nak"
 REPLIES = {

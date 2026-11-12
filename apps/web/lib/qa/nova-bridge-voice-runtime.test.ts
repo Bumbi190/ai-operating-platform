@@ -63,7 +63,7 @@ describe('Nova Desktop persistent Atlas voice bridge', () => {
     expect(bridge).toContain('current.selectNovaVoice?.()')
     expect(bridge).toContain("current.deactivate()")
     expect(bridge).toContain('voiceStatus: nativeVoice ?')
-    expect(page).toContain('Koppla Windows-r?st (Sanna)')
+    expect(page).toContain('Koppla Windows-röst (Sanna)')
     expect(page).toContain('bridge.nativeVoice')
   })
 
@@ -127,7 +127,8 @@ describe('Nova Desktop persistent Atlas voice bridge', () => {
 
   it('requires a separate browser click for microphone consent and documents hotkeys', () => {
     const page = readFileSync(join(root, 'app/(platform)/nova-bridge/page.tsx'), 'utf8')
-    expect(page).toContain('Starta röstsamtal')
+    expect(page).toContain('Använd webbläsarens mikrofon')
+    expect(page).toContain('onClick={() => void bridge.startVoice()}')
     expect(page).toContain('Ctrl + Alt + Space')
     expect(page).toContain('Ctrl + Alt + .')
     expect(page).toContain('Kalender- och andra ändringar använder Atlas vanliga behörigheter')

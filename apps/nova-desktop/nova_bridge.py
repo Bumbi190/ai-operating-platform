@@ -190,14 +190,14 @@ class BridgeState:
             return False, "Unsupported input mode"
         with self.lock:
             if not self.online():
-                return False, "Atlas-webbl\\u00e4saren \\u00e4r inte ansluten."
+                return False, "Atlas-webbläsaren är inte ansluten."
             self.voice_authorized = True
             self.voice_input_mode = mode
             self.desktop_replies = mode == "native" and desktop_replies is True
             self.voice_status = "idle" if mode == "native" else "starting"
             self.voice_status_at = time.monotonic()
             self.control_pending = None
-            return True, "R\\u00f6stsamtalet \\u00e4r godk\\u00e4nt av anv\\u00e4ndaren."
+            return True, "Röstsamtalet är godkänt av användaren."
 
     def revoke_voice(self) -> None:
         with self.lock:
@@ -211,12 +211,12 @@ class BridgeState:
 
     def request_voice_control(self, kind: str) -> tuple[bool, str]:
         if kind not in VOICE_CONTROL_KINDS:
-            return False, "Ok\\u00e4nt r\\u00f6stkommando."
+            return False, "Okänt röstkommando."
         with self.lock:
             if not self.online():
-                return False, "Atlas-webbl\\u00e4saren \\u00e4r inte ansluten."
+                return False, "Atlas-webbläsaren är inte ansluten."
             if not self.voice_authorized:
-                return False, "R\\u00f6stsamtalet beh\\u00f6ver f\\u00f6rst godk\\u00e4nnas i Omnira-webbl\\u00e4saren."
+                return False, "Röstsamtalet behöver först godkännas i Omnira-webbläsaren."
             # Emergency interruption supersedes a queued toggle. A toggle never
             # replaces another unacknowledged command, preventing double toggles.
             if kind == "voice_interrupt":
@@ -224,10 +224,10 @@ class BridgeState:
                 self.activity.notify_all()
                 return True, "Avbrottet skickades till Atlas."
             if self.control_pending:
-                return False, "Ett r\\u00f6stkommando v\\u00e4ntar redan p\\u00e5 bekr\\u00e4ftelse."
+                return False, "Ett röstkommando väntar redan på bekräftelse."
             self.control_pending = {"id": str(uuid.uuid4()), "kind": kind}
             self.activity.notify_all()
-            return True, "R\\u00f6stkommandot skickades till Atlas."
+            return True, "Röstkommandot skickades till Atlas."
 
     def next_voice_control(self) -> dict:
         with self.lock:

@@ -56,6 +56,29 @@ class OwnerCommandTests(unittest.TestCase):
         ui.start_native_mic_pilot.assert_not_called()
         ui.bridge.state.request_voice_control.assert_not_called()
 
+    def test_listening_hint_distinguishes_wake_from_an_invited_turn(self):
+        ui = self.panel()
+        ui._voice_turn_until = ui._voice_answer_until = 0.0
+        self.assertIn("Hej Nova", ui._listening_hint())
+        ui._voice_turn_until = time.monotonic() + 15
+        self.assertEqual(ui._listening_hint(), "Säg ditt uppdrag")
+        ui._voice_turn_until = 0.0
+        ui._voice_answer_until = time.monotonic() + 25
+        self.assertEqual(ui._listening_hint(), "Väntar på ditt svar")
+
+    def test_connected_event_never_prompts_again_for_an_authorized_voice(self):
+        import queue
+        ui = self.panel()
+        ui.root = Mock()
+        ui.uia_results = queue.SimpleQueue()
+        ui.bridge = Mock()
+        ui.bridge.state.voice_snapshot.return_value = {"authorized": True, "mode": "native"}
+        ui.bridge.state.events = queue.SimpleQueue()
+        ui.bridge.state.events.put({"kind": "connected"})
+        ui._poll_bridge()
+        ui._append.assert_not_called()
+        ui._phase.assert_not_called()
+
     def test_pause_by_name_stops_the_microphone(self):
         ui = self.panel()
         ui.stop = Mock()

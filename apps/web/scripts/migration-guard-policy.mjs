@@ -89,8 +89,14 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Owner cross-chat context APPLIED 20261031145817. Source-only reconciliation of
 // two parallel Harvey migrations already APPLIED 20261031120736 / 20261031120804.
 // Their exact SQL body hashes were matched to the production ledger before inclusion.
-export const EXPECTED_CANONICAL_SQL_COUNT = 174
-export const EXPECTED_ENFORCED_COUNT = 160
+// Source-only reconciliation, 2026-11-13: WebBuilder prospects SQL was ALREADY
+// applied in production as ledger 20261109111500_webbuilder_prospects. The exact
+// canonical source (file 20261108094559_) has SHA-256
+// 03dfd37e3749030523094dbdbca20b86a54b410b7be4acfa79f2ed6592b6014c
+// matching the CRLF-normalized applied statement. No SQL replay, history edit,
+// legacy allowlist expansion, emergency override, or frozen baseline adjustment.
+export const EXPECTED_CANONICAL_SQL_COUNT = 175
+export const EXPECTED_ENFORCED_COUNT = 161
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

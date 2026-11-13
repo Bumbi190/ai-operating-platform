@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   const supabaseError = searchParams.get('error')
   const supabaseErrorDescription = searchParams.get('error_description')
   if (supabaseError) {
-    console.error('[auth/callback] Supabase error:', supabaseError, supabaseErrorDescription)
+    console.error('[auth/callback] Supabase error')
     const msg = supabaseErrorDescription ?? supabaseError
     return NextResponse.redirect(
       `${origin}/login?error=${encodeURIComponent(msg)}`,
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${origin}${next}`)
     }
 
-    console.error('[auth/callback] Code exchange failed:', error.message)
+    console.error('[auth/callback] Code exchange failed')
     // Fall through to client-side page with the code still in URL
     return NextResponse.redirect(
       `${origin}/auth/confirm?code=${code}&next=${encodeURIComponent(next)}`,

@@ -79,3 +79,13 @@ Timestamp-bound UUIDv7 claims prevent old IDs from being reclaimed after bounded
 The temporary credential only authenticates dedicated Office metadata endpoints. Work status stays unknown. Real owner/ordinary Unreal acceptance for the new visit transport remains pending hosted activation and reviewed local installation.
 
 SQL SHA256 (LF-normalized): a77bbd8837122cf419c271e534b594811217caec5c9142941bd6eecd8a7fb337
+
+## Delivery follow-up: main integration and CI classification
+
+Main0c8cb611 was integrated into the Office branch without changing its approved The Prompt runtime code. The merged local check set passed250QA tests,32Office tests,45Campus tests and typecheck; the96Python tests' source is unchanged and their earlier fresh run passed. The private schema registry remains byte-identical to main.
+
+GitHub's full migration-security corpus correctly rejected office_private as unclassified. The follow-up adds only this exact non-exposed schema to the existing internal-schema registry. No migration-statement exceptions, fingerprints, runtime gate code, frozen grandfathered/legacy lists, RPC rights or SQL bytes change. New whole-corpus tests pin exactly2Office tables, enabledRLS, zero policies and no direct PUBLIC/anon/authenticated/service_role table privileges. Client grants and similarly named unreviewed schemas remain blocking.
+
+The new tests failed before registration and pass after it:215/215 across migration-security-gate, schema-security-invariant and Office migration release, plus typecheck. A separate read-only review found no Important/Critical or Minor finding in this scoped classification/test change; that reviewer did not independently execute the tests. An earlier SDF-1C CI attempt hit a5second Docker-host proof test timeout; no broker code or runtime/test deadline was relaxed. The next source delivery reruns the unchanged CI suite.
+
+Vercel's actual build log confirms the remaining hosted release block is exactly the unapplied office_visit_sessions migration. Production schema remains untouched.

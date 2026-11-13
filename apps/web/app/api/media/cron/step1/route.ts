@@ -12,7 +12,7 @@
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { runNewsHunter, type HunterCandidate } from '@/lib/media/news-hunter'
+import { runNewsHunter, type HunterCandidate, type HunterResult } from '@/lib/media/news-hunter'
 import { scoreScript, shouldRegenerate, failedQualityScore } from '@/lib/media/quality'
 import { sendPipelineAlert } from '@/lib/media/alert'
 import { callHermesScrape, callHermesRead, callHermesCompetitors, isHermesConfigured } from '@/lib/media/hermes'
@@ -204,15 +204,22 @@ export async function GET(request: Request) {
   // runNewsHunter (which always received []). It could not affect selection.
   // A separate reviewed cache/provenance pipeline can supply real trend
   // context later without extending this 60-second production cron budget.
-  const [hunterRes] = await Promise.allSettled([
-    runNewsHunter({ context: 'AUTONOMOUS' as const, scope: projectScope({ projectId: project.id }) }, db, project.id, 5, []),
-  ])
-  if (hunterRes.status === 'rejected') {
-    return NextResponse.json({ status: 'hunt_failed', error: String(hunterRes.reason) }, { status: 500 })
+  // Bound the multi-source hunt so one slow provider cannot consume the whole
+  // 60-second Vercel window before our guard can respond.
+  let hunterResult: HunterResult | null
+  try {
+    hunterResult = await withTimeout(
+      runNewsHunter({ context: 'AUTONOMOUS' as const, scope: projectScope({ projectId: project.id }) }, db, project.id, 5, []),
+      24_000,
+      null,
+    )
+  } catch (err) {
+    return NextResponse.json({ status: 'hunt_failed', error: String(err) }, { status: 500 })
   }
-  // Never run the paid News Hunter a second time to incorporate a late
-  // enrichment response. One hunt and its existing persistence only.
-  const hunterResult = hunterRes.value
+  if (!hunterResult) {
+    console.warn('[cron/step1] Hunt exceeded 24s; deferring to next scheduled retry')
+    return NextResponse.json({ status: 'hunt_deferred', reason: 'News hunter exceeded the time budget' }, { status: 503 })
+  }
 
   // ── Hermes fallback ──────────────────────────────────────────────────────
   // If the API hunt found nothing (or everything was low-virality), ask Hermes
@@ -355,12 +362,26 @@ export async function GET(request: Request) {
     : `Title: ${news.title}\nSummary: ${news.summary}\nKey insight: ${news.key_insight}\nVirality: ${news.virality_score}/100\nAudience: ${news.target_audience}\nAngle: ${news.content_angle}`
   // ── End article read ──────────────────────────────────────────────────────
 
-  // Write script
-  const scriptRes = await withRetry(() => scriptWriter.messages.create({
+  // Write the script only while there is time for QA and persistence.
+  const writerBudgetMs = Math.max(0, 53_000 - (Date.now() - t0))
+  if (writerBudgetMs < 1_500) {
+    return NextResponse.json({ status: 'script_deferred', reason: 'Insufficient function time budget' }, { status: 503 })
+  }
+  const scriptRes = await withTimeout(withRetry(() => scriptWriter.messages.create({
     model: 'claude-sonnet-4-6', max_tokens: 2000, system: SCRIPT_SYSTEM,
     messages: [{ role: 'user', content: `Write a short-form video script:\n${scriptContext}` }],
-  }))
-  let script = JSON.parse((scriptRes.content[0].type === 'text' ? scriptRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as ScriptWriterOutput
+  })), Math.min(14_000, writerBudgetMs), null)
+  if (!scriptRes) {
+    return NextResponse.json({ status: 'script_deferred', reason: 'Script writer exceeded the time budget' }, { status: 503 })
+  }
+  let script: ScriptWriterOutput
+  try {
+    script = JSON.parse((scriptRes.content[0].type === 'text' ? scriptRes.content[0].text : '').replace(/^\x60{3}(?:json)?\n?/, '').replace(/\n?\x60{3}$/, '').trim()) as ScriptWriterOutput
+  } catch {
+    // A safety warning or explanatory text is not valid script data.
+    console.warn('[cron/step1] Script writer returned non-JSON; refusing to treat it as a script')
+    return NextResponse.json({ status: 'script_invalid_format', reason: 'Script writer did not return structured data' }, { status: 502 })
+  }
 
   // Quality gate. Invalid or timed-out QA must NEVER approve content.
   // Reserve time for persistence inside Vercel's 60-second cron window.

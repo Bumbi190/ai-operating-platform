@@ -32,5 +32,5 @@ export async function handleLocalTextTool(name:string,input:Record<string,unknow
 }
 export function persistLocalTextToolData(input:Record<string,unknown>,result:unknown){
  const link=localTextReceiptLink(result)
- return {input:{...(isUuid(input.projectId)?{projectId:input.projectId}:{}),...(isUuid(input.idempotencyKey)?{idempotencyKey:input.idempotencyKey}:{})},result:link?{type:'local_text_job',...link,...(result&&typeof result==='object'&&'state' in result&&['queued','claimed','running','reviewing','escalation_pending','needs_input','succeeded','failed','cancelled','reconciling'].includes(String(result.state))?{state:result.state}:{})}:{error:'LOCAL_TEXT_UNAVAILABLE'}}
+ return {input:{...(isUuid(input.projectId)?{projectId:input.projectId}:{}),...(isUuid(input.idempotencyKey)?{idempotencyKey:input.idempotencyKey}:{})},result:link?{type:'local_text_job',...link,...(result&&typeof result==='object'&&'state' in result&&typeof result.state==='string'&&['queued','claimed','running','reviewing','escalation_pending','needs_input','succeeded','failed','cancelled','reconciling'].includes(result.state)?{state:result.state}:{})}:{error:'LOCAL_TEXT_UNAVAILABLE'}}
 }

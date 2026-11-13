@@ -50,14 +50,14 @@ export async function readLocalTextIncident(db:Db,userId:string,approvalId:strin
  const r=await rpc(db,'local_text_read_incident',{p_owner_id:userId,p_approval_id:approvalId})
  if(r.error)throw Error('LOCAL_TEXT_INCIDENT_UNAVAILABLE')
  if(r.data===null)return null
- if(!object(r.data)||!isUuid(r.data.id)||r.data.approvalId!==approvalId||!['quality','reconcile','needs_input'].includes(String(r.data.kind))||!['open','resolved'].includes(String(r.data.state))||!Number.isSafeInteger(r.data.version)||Number(r.data.version)<1||typeof r.data.acknowledged!=='boolean'||r.data.resumed!==false)throw Error('INVALID_INCIDENT')
- return {id:r.data.id,approvalId,kind:String(r.data.kind),state:String(r.data.state),version:Number(r.data.version),acknowledged:r.data.acknowledged,resumed:false as const}
+ if(!object(r.data)||!isUuid(r.data.id)||r.data.approvalId!==approvalId||typeof r.data.kind!=='string'||!['quality','reconcile','needs_input'].includes(r.data.kind)||typeof r.data.state!=='string'||!['open','resolved'].includes(r.data.state)||!Number.isSafeInteger(r.data.version)||Number(r.data.version)<1||typeof r.data.acknowledged!=='boolean'||r.data.resumed!==false)throw Error('INVALID_INCIDENT')
+ return {id:r.data.id,approvalId,kind:r.data.kind,state:r.data.state,version:Number(r.data.version),acknowledged:r.data.acknowledged,resumed:false as const}
 }
 export async function acknowledgeLocalTextIncident(db:Db,userId:string,approvalId:string,expectedVersion:number){
  if(![userId,approvalId].every(isUuid)||!Number.isSafeInteger(expectedVersion)||expectedVersion<1)return {kind:'refused',reason:'INVALID_DECISION'}
  const r=await rpc(db,'local_text_ack_incident',{p_owner_id:userId,p_approval_id:approvalId,p_expected_version:expectedVersion})
  if(r.error||!object(r.data))throw Error('LOCAL_TEXT_INCIDENT_UNAVAILABLE')
  if(r.data.kind==='refused')return {kind:'refused',reason:'INCIDENT_DECISION_REFUSED'}
- if(!['applied','duplicate'].includes(String(r.data.kind))||!object(r.data.value)||r.data.value.acknowledged!==true||r.data.value.resumed!==false)throw Error('INVALID_DECISION')
- return {kind:String(r.data.kind),acknowledged:true,resumed:false}
+ if(typeof r.data.kind!=='string'||!['applied','duplicate'].includes(r.data.kind)||!object(r.data.value)||r.data.value.acknowledged!==true||r.data.value.resumed!==false)throw Error('INVALID_DECISION')
+ return {kind:r.data.kind,acknowledged:true,resumed:false}
 }

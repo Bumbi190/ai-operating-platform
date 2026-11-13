@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseQualityScore, shouldRegenerate } from './quality'
+import { parseQualityScore, shouldRegenerate } from './quality-evaluation'
 
 const good = {
   hook_strength: 9, retention_score: 9, visual_relevance: 8,

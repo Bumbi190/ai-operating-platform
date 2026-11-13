@@ -176,15 +176,26 @@ def write_presence(path: Path, receiver: PresenceReceiver, *, now=None) -> None:
     """Write only a fresh receiver projection, never a caller-supplied dictionary."""
     if not isinstance(receiver, PresenceReceiver):
         raise TypeError('A trusted presence receiver is required, not a raw payload')
-    frame = receiver.view(now=now)
     path = Path(path)
-    descriptor, staging = tempfile.mkstemp(dir=path.parent, prefix=path.name + '.', suffix='.tmp')
-    try:
-        with os.fdopen(descriptor, 'w', encoding='utf-8') as handle:
-            json.dump(frame, handle, ensure_ascii=False, allow_nan=False)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(staging, path)
-    finally:
-        if os.path.exists(staging):
-            os.unlink(staging)
+    # A Windows native reader can briefly hold the destination without delete
+    # sharing. Windows MoveFileEx can report access denied for this too.
+    # Retry briefly, then preserve the original error; keep replacement atomic.
+    for attempt in range(8):
+        frame = receiver.view(now=now)
+        descriptor, staging = tempfile.mkstemp(dir=path.parent, prefix=path.name + '.', suffix='.tmp')
+        try:
+            # Re-read the accepted receiver on every attempt: a lock must never
+            # carry a cached positive identity across its source deadline.
+            with os.fdopen(descriptor, 'w', encoding='utf-8') as handle:
+                json.dump(frame, handle, ensure_ascii=False, allow_nan=False)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(staging, path)
+            return
+        except OSError as error:
+            if getattr(error, 'winerror', None) not in (5, 32, 33) or attempt == 7:
+                raise
+        finally:
+            if os.path.exists(staging):
+                os.unlink(staging)
+        time.sleep(0.025)

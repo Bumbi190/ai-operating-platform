@@ -89,9 +89,12 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Owner cross-chat context APPLIED 20261031145817. Source-only reconciliation of
 // two parallel Harvey migrations already APPLIED 20261031120736 / 20261031120804.
 // Their exact SQL body hashes were matched to the production ledger before inclusion.
-// Source-only recognition of webbuilder_prospects, already observed in the ledger
-// as 20261109111500. The original repository filename is preserved. This does not
-// authorize SQL execution or prove historical version parity / schema replayability.
+// Source-only reconciliation, 2026-11-13: WebBuilder prospects SQL was ALREADY
+// applied in production as ledger 20261109111500_webbuilder_prospects. The exact
+// canonical source (file 20261108094559_) has SHA-256
+// 03dfd37e3749030523094dbdbca20b86a54b410b7be4acfa79f2ed6592b6014c
+// matching the CRLF-normalized applied statement. No SQL replay, history edit,
+// legacy allowlist expansion, emergency override, or frozen baseline adjustment.
 // Office visit sessions adds one enforced migration; pending reviewed apply.
 export const EXPECTED_CANONICAL_SQL_COUNT = 176
 export const EXPECTED_ENFORCED_COUNT = 162

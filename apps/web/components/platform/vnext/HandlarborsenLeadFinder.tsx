@@ -8,6 +8,7 @@ import { filterLocalReview, normalizeLocalFilter, LOCAL_REVIEW_FILTERS, type Loc
 import styles from './HandlarborsenLeadFinder.module.css'
 import { HandlarborsenScbImportControl } from './HandlarborsenScbImportControl'
 import { HandlarborsenResearchArchive } from './HandlarborsenResearchArchive'
+import { HandlarborsenScbProbeControl } from './HandlarborsenScbProbeControl'
 import type { ArchiveReview } from '@/lib/handlarborsen/lead-finder/research-archive'
 
 type Summary = Pick<KnownContacts, 'status' | 'count' | 'externalPilotRegistryConnected'> & { reviewBlocked: true }
@@ -28,6 +29,7 @@ export interface LeadFinderProps {
   researchExtractEnabled?: boolean
   archivedResearch?: ArchiveReview
   archiveSaveEnabled?: boolean
+  scbCandidateWriteEnabled?: boolean
 }
 
 const localFilterLabels: Record<LocalReviewFilter, string> = {
@@ -122,7 +124,7 @@ function LocalReviewSection({ state, search, filter }: { state: LocalReviewState
 }
 
 /** Pure presentation: no actions, email sends, data reads or test fixtures. */
-export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search, filter, localReview = { status: 'disabled' }, localSearch = '', localFilter = 'all', importPreviewEnabled = false, importWriteEnabled = false, researchEnabled = false, researchExtractEnabled = false, archivedResearch = { status: 'disabled' }, archiveSaveEnabled = false }: LeadFinderProps) {
+export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search, filter, localReview = { status: 'disabled' }, localSearch = '', localFilter = 'all', importPreviewEnabled = false, importWriteEnabled = false, researchEnabled = false, researchExtractEnabled = false, archivedResearch = { status: 'disabled' }, archiveSaveEnabled = false, scbCandidateWriteEnabled = false }: LeadFinderProps) {
   const rows = saved.status === 'ready' ? filterCandidateViews(saved.candidates, search, filter) : []
   const total = saved.status === 'ready' ? saved.candidates.length.toString() : '—'
   const reviewCount = saved.status === 'ready'
@@ -140,6 +142,7 @@ export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search,
         <div>
           <p className={styles.kicker}>Handlarbörsen / Tillväxt</p>
           <h1>Lead Finder</h1>
+          <Link href={`/projects/${slug}/companies`}>Företag och kontaktjournal <ArrowUpRight size={14} aria-hidden="true" /></Link>
           <p>Hitta nya bilhandlare, jämför mot tidigare kontakter och förbered beslut. Inga utskick utan separat godkännande.</p>
         </div>
         <span className={styles.safety}><LockKeyhole size={15} aria-hidden="true" /> Förberedelseläge</span>
@@ -158,10 +161,15 @@ export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search,
           <div className={styles.source}>
             <Database size={20} aria-hidden="true" />
             <div><strong>SCB:s företagsregister</strong>
-              <p>{!readiness.scbKeyConfigured ? 'SCB:s live-API-nyckel saknas på servern. Den tidigare verifierade SCB-rapporten kan fortfarande granskas utan liveanrop. SCB och Tavily är två separata datakällor.' : 'SCB-nyckeln är konfigurerad. Liveanrop förblir spärrade tills testet godkänts.'}</p>
+              <p>{!readiness.scbKeyConfigured
+                ? 'SCB:s live-API-nyckel saknas på servern. Den tidigare verifierade SCB-rapporten kan fortfarande granskas utan liveanrop. SCB och Tavily är två separata datakällor.'
+                : readiness.liveSearchAvailable
+                  ? 'SCB-nyckeln är konfigurerad. Ett ägarstyrt Preview-prov är aktiverat; provet sparar inga leads och ger ingen kontaktbehörighet.'
+                  : 'SCB-nyckeln är konfigurerad. Liveanrop förblir spärrade tills ett avgränsat Preview-prov uttryckligen aktiverats.'}</p>
             </div>
-            <span className={styles.flag} data-tone="warning">{!readiness.scbKeyConfigured ? 'Inväntar nyckel' : 'Live avstängt'}</span>
+            <span className={styles.flag} data-tone={readiness.liveSearchAvailable ? 'info' : 'warning'}>{!readiness.scbKeyConfigured ? 'Inväntar nyckel' : readiness.liveSearchAvailable ? 'Preview-prov redo' : 'Live avstängt'}</span>
           </div>
+          <HandlarborsenScbProbeControl enabled={readiness.liveSearchAvailable} candidateWriteEnabled={scbCandidateWriteEnabled} />
           {researchEnabled && importPreviewEnabled ? <div className={styles.source}>
             <Search size={20} aria-hidden="true" />
             <div><strong>Tavily – manuell webbresearch</strong>

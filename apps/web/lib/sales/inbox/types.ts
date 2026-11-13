@@ -1,0 +1,11 @@
+export type InboxState='disabled'|'enabled'|'paused'|'needs_input'|'reconciling'|'revoked'
+export type InboxConfigInput={projectId:string;mailboxId:string;expectedVersion:number;folder:'INBOX';since:string;selectedContactIds:string[]}
+export type InboxCursor={uidValidity:string|null;scannedThroughUid:number;epoch:number}
+export type InboxRef={projectId:string;mailboxId:string;configVersion:number;mailboxGeneration:number;hostGeneration:number;claimId:string;batchId:string}
+export type InboxHeader={from:string;to:string;subject:string;messageId:string|null;inReplyTo:string|null;references:string[]}
+export type InboxTextState='not_selected'|'complete'|'truncated'|'unsupported'|'vanished'|'too_large'
+export type InboxRecord={uid:number;internalDate:string|null;size:number|null;headerSha256:string|null;header:InboxHeader|null;text:string|null;textState:InboxTextState;contentSha256:string|null}
+export type InboxBatch={ref:InboxRef;mode:'scan'|'selected_text';expectedCursor:InboxCursor;uidValidity:string;throughUid:number;rangeEnd:number;records:InboxRecord[]}
+export type InboxConfig={projectId:string;mailboxId:string;folder:'INBOX';since:string;selectedContactIds:string[];version:number;mailboxGeneration:number;state:InboxState;cursor:InboxCursor;lastSyncedAt:string|null;reasonCode:string|null}
+export type InboxMessage={id:string;canonicalMessageId:string;possibleDuplicate:boolean;mailboxId:string;header:InboxHeader|null;text:string|null;textState:InboxTextState;textSelected:boolean;contactId:string|null;contactState:'unlinked'|'ambiguous'|'linked';version:number;internalDate:string|null;occurrences:{uid:number;uidValidity:string}[]}
+export type InboxPage={config:InboxConfig|null;messages:InboxMessage[];nextCursor:string|null;inboxEnabled:boolean;readingEnabled:boolean;scopeCurrent:boolean;reasonCode:string|null;sendingEnabled:false}

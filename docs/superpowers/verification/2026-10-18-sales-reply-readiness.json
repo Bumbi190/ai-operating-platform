@@ -1,0 +1,164 @@
+{
+  "date": "2026-10-18",
+  "sourceHead": "c46d3c327f0841b586ce85a631ceabc929a5c63f",
+  "scope": "Prepare existing Handlarborsen pilot reply data and review UI while preserving the explicit no-send pause.",
+  "dataPrepared": {
+    "offers": {
+      "count": 2,
+      "freeMonths": [
+        6,
+        12
+      ],
+      "savedThrough": "sales_save_offer",
+      "singleTransaction": true,
+      "guard": "exact owner and initially zero project offers",
+      "exactReadback": true,
+      "termsSource": [
+        "Strato actual12-month offers8October",
+        "Resend sent Batch1 six-month offer13October"
+      ],
+      "priceTreatment": "995 SEK/month excluding VAT is historical planned price; no billing activation or automatic conversion.",
+      "extension": "six-month pilot may be separately offered up to12months, never automatic"
+    },
+    "messageLinks": {
+      "count": 4,
+      "distinctContactIds": 2,
+      "companies": [
+        "Moberg Bil",
+        "Newman Bil Hassleholm"
+      ],
+      "operation": "sales_inbox_link_message with exact current versions",
+      "autoDomainMatching": false,
+      "alternateAddress": "Newman reply linked by verified original-thread Message-ID; primary contact email unchanged; historical link is not recipient validation."
+    },
+    "selectedText": {
+      "newSpecificMessages": 4,
+      "operation": "sales_inbox_select_message_text",
+      "allFourReadCompleteByExistingWorker": true,
+      "chars": [
+        5190,
+        4018,
+        2820,
+        1788
+      ],
+      "configurationVersion": 2,
+      "mailboxGeneration": 6,
+      "automaticContactBodyScopeCount": 0,
+      "broadenedOngoingBodyScope": false
+    },
+    "registryMemory": {
+      "existingKey": "handlarborsen.sales.registry",
+      "currentProjectAndMailboxReferences": true,
+      "chars": 173,
+      "memoryCount": 12
+    }
+  },
+  "editorVerification": {
+    "existingPrivateTestOnly": true,
+    "subjectAndBodyControlsPresent": true,
+    "unsavedBodyChanged": true,
+    "cancelledWithoutSave": true,
+    "currentDraftId": "91736c50-3db6-4d68-86f8-1660672fed0f",
+    "beforeAndAfterSha256": "2cbea93b7c7bb3e1c04190d954ed857cc9a2a72ad74c7841cfd78c8384dc6b4a",
+    "newDraftRevisionCreated": false,
+    "humanTextApprovalDoesNotSend": true
+  },
+  "runtimeFix": {
+    "files": [
+      "apps/web/lib/sales/atlas-tools.ts",
+      "apps/web/lib/sales/inbox/atlas-tools.ts"
+    ],
+    "pageSummary": "computed from the same returned saved inbox page; distinct confirmed contact IDs, message and selected-complete counts, explicit returned-page-only coverage and pagination.",
+    "guide": "requires real inbox/body tool reads for inbox claims and uses saved workspaceUrl for preview/editing; suppression and recipient checks retained.",
+    "newToolsOrInputSchemas": false,
+    "permissionsExpanded": false,
+    "schemaChanged": false,
+    "workerChanged": false
+  },
+  "tests": {
+    "newTestsRed": {
+      "failed": 9,
+      "passedExistingFailureCase": 1
+    },
+    "newTestsGreen": 10,
+    "focusedPassed": 42,
+    "typecheckExit": 0,
+    "fullObserved": {
+      "total": 15147,
+      "passed": 13404,
+      "failed": 407,
+      "pending": 1332
+    },
+    "failureAnalysis": "402 exact unchanged historical identities plus5 timeout-only failures. Four passed in the five-file rerun; revenue timeout passed in a final single-test rerun at unchanged timeout. Rerun299tests had295pass/4known historicalfail. Not a full-green claim.",
+    "regressionReference": "2026-10-18-sales-inbox-evidence-regressions.json"
+  },
+  "preview": {
+    "id": "dpl_ELgPRYowmd4NPrQxJqjGFScGofo8",
+    "url": "https://ai-operating-platform-55b73ewfz-bumbi190s-projects.vercel.app",
+    "state": "READY",
+    "source": "c46d3c327f0841b586ce85a631ceabc929a5c63f",
+    "target": null,
+    "ordinaryMigrationGuard": "133/133 enforced applied;170known ledger names;no override"
+  },
+  "actualAtlasTests": {
+    "beforeFix": {
+      "conversationId": "c0b5613f-d141-4ac4-a04d-f9ac78938967",
+      "observed": "read only get_sales_workspace, claimed inbox read and5responses, offered unrelated trading navigation"
+    },
+    "afterFix": {
+      "conversationId": "3666b549-f9bd-46d8-b22a-9a32a79f7a02",
+      "freshEmptyOwnerProjectBoundConversation": true,
+      "sameNaturalPrompt": true,
+      "promptIncludedCountsOrUUIDs": false,
+      "actualTools": [
+        "get_sales_workspace",
+        "get_sales_inbox",
+        "get_sales_inbox_message for Newman",
+        "get_sales_inbox_message for latest Moberg"
+      ],
+      "correct": [
+        "both selected message bodies actually read, missingText=false",
+        "real refusals/deferrals summarized",
+        "both saved pilot offers read",
+        "outreach pause retained",
+        "correct /projects/handlarborsen/sales link",
+        "no jobs or emails created"
+      ],
+      "pageSummary": {
+        "messageCount": 7,
+        "linkedMessageCount": 4,
+        "linkedContactCount": 2,
+        "selectedCompleteMessageCount": 5,
+        "hasMore": false
+      },
+      "notPassed": [
+        "free-text opening still claimed3pilotcompanies despite authoritative2linked contacts; same answer separately recognized Eva is not another company",
+        "UTC source timestamps mislabeled Europe/Stockholm"
+      ],
+      "correctionRequested": true,
+      "independentNaturalLanguageAggregationPass": false
+    }
+  },
+  "unchanged": {
+    "contacts": 57,
+    "allSuppressed": 57,
+    "maxContactVersion": 1,
+    "initialJobs": 0,
+    "replyJobs": 1,
+    "sendJobs": 1,
+    "allSendEvents": 4,
+    "newCustomerDraftJobs": 0,
+    "newEmails": 0,
+    "sendingPolicyChanged": false,
+    "workerInstallChanged": false,
+    "merged": false,
+    "productionPromoted": false
+  },
+  "remainingBeforeFutureCustomerActivation": [
+    "Select actual future dates and intended recipients; no schedule created here.",
+    "Explicit owner decision to lift appropriate contact holds and separately configure any customer sending; bounces/unsubscribe stops retained.",
+    "Review alternate Newman reply address rather than infer it from historical linkage.",
+    "Free-text response-count and timezone claims still require correction; backend counts and direct editor are correct. A deterministic fact presentation/validation approach is the next accuracy improvement.",
+    "No universal model reliability or full139-row import claimed."
+  ]
+}

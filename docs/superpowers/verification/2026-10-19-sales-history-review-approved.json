@@ -1,0 +1,184 @@
+{
+  "approvedAt": "2026-10-19T09:52:18Z",
+  "approvalText": "Perfekt, jag godkänner :)",
+  "reviewArtifact": "Handlarborsen-granskning-Founding5-20261019.html",
+  "scope": "Register one reviewed timing rule and five partial histories only; preserve all suppression, source gaps, delivery uncertainty and original observation timestamps. No sending or scheduling.",
+  "rules": {
+    "id": "7d8f145c-8ed8-42ab-afea-3f95ab250dfe",
+    "version": 1,
+    "createdAt": "2026-10-19T09:53:11.683641+00:00",
+    "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+    "previousId": null,
+    "reviewedBy": "d63a09fb-448e-41b8-9fb2-9a608f5f1800",
+    "maxReminders": 1,
+    "minWaitSeconds": 1209600,
+    "maxSourceAgeSeconds": 900
+  },
+  "histories": [
+    {
+      "id": "7567ddd6-a7c4-4fa5-bf81-20049c177c77",
+      "recipient": "info@gpmotor.se",
+      "version": 1,
+      "reviewedBy": "d63a09fb-448e-41b8-9fb2-9a608f5f1800",
+      "createdAt": "2026-10-19T09:53:17.81026+00:00"
+    },
+    {
+      "id": "1d19551b-4913-4242-af32-af63f5a8dde7",
+      "recipient": "daniel@autolane.se",
+      "version": 1,
+      "reviewedBy": "d63a09fb-448e-41b8-9fb2-9a608f5f1800",
+      "createdAt": "2026-10-19T09:53:17.826722+00:00"
+    },
+    {
+      "id": "1170a33a-6b69-47cb-86ff-8674091d18ea",
+      "recipient": "tobias@mobergbil.se",
+      "version": 1,
+      "reviewedBy": "d63a09fb-448e-41b8-9fb2-9a608f5f1800",
+      "createdAt": "2026-10-19T09:53:17.831322+00:00"
+    },
+    {
+      "id": "6c718ebd-6d43-479d-95d1-de716554ef95",
+      "recipient": "zeljko.barnjak@tjanstebilsexperten.se",
+      "version": 1,
+      "reviewedBy": "d63a09fb-448e-41b8-9fb2-9a608f5f1800",
+      "createdAt": "2026-10-19T09:53:17.834519+00:00"
+    },
+    {
+      "id": "e6ddac61-5d17-41ba-977a-d067e193bf2d",
+      "recipient": "huni.hallsson@newmanbil.se",
+      "version": 1,
+      "reviewedBy": "d63a09fb-448e-41b8-9fb2-9a608f5f1800",
+      "createdAt": "2026-10-19T09:53:17.843358+00:00"
+    }
+  ],
+  "verification": {
+    "strictContentComparisonPassed": true,
+    "contactRowsBeforeHash": "f37f80260e89372bccc895f97789f5d7",
+    "contactRowsAfterHash": "f37f80260e89372bccc895f97789f5d7",
+    "held": 139,
+    "initialPreparationAllowed": 0,
+    "customerSendingEnabled": false,
+    "ruleCount": 1,
+    "historyCount": 5,
+    "initialJobs": 0,
+    "replyJobs": 1,
+    "sendJobs": 1,
+    "sendEvents": 4,
+    "offers": 2,
+    "memoryCount": 18,
+    "other16MemoriesUnchanged": true,
+    "evaluatedAt": "2026-10-19T09:53:58.859149+00:00"
+  },
+  "atlasMemory": {
+    "status": "owner_reviewed_partial",
+    "key": "handlarborsen.sales.history_review_status",
+    "preflightKey": "handlarborsen.sales.preflight_requirement",
+    "readBackExactMatch": true
+  },
+  "timingRows": [
+    {
+      "blockers": [
+        "CONTACT_SUPPRESSED",
+        "HISTORY_REVIEW_REQUIRED",
+        "NOT_INITIAL_CONTACT",
+        "SEND_UNCERTAIN",
+        "SOURCE_GAP",
+        "SOURCE_STALE"
+      ],
+      "contactId": "6c6960cf-8bb3-46b7-99bc-e7ce1e756d55",
+      "recipient": "daniel@autolane.se",
+      "reminderCount": null,
+      "sourceThrough": "2026-10-19T09:31:06.445424+00:00",
+      "contactVersion": 1,
+      "ruleRevisionId": "7d8f145c-8ed8-42ab-afea-3f95ab250dfe",
+      "intervalFloorAt": null,
+      "historyRevisionId": "1d19551b-4913-4242-af32-af63f5a8dde7",
+      "latestObservedOutboundAt": null,
+      "initialPreparationAllowed": false
+    },
+    {
+      "blockers": [
+        "CONTACT_SUPPRESSED",
+        "HISTORY_REVIEW_REQUIRED",
+        "NOT_INITIAL_CONTACT",
+        "SEND_UNCERTAIN",
+        "SOURCE_GAP",
+        "SOURCE_STALE"
+      ],
+      "contactId": "7f92bfaf-d48f-4fb3-bdf6-9961e9506259",
+      "recipient": "info@gpmotor.se",
+      "reminderCount": null,
+      "sourceThrough": "2026-10-19T09:31:06.445424+00:00",
+      "contactVersion": 1,
+      "ruleRevisionId": "7d8f145c-8ed8-42ab-afea-3f95ab250dfe",
+      "intervalFloorAt": null,
+      "historyRevisionId": "7567ddd6-a7c4-4fa5-bf81-20049c177c77",
+      "latestObservedOutboundAt": null,
+      "initialPreparationAllowed": false
+    },
+    {
+      "blockers": [
+        "CONTACT_SUPPRESSED",
+        "EVENT_CLASSIFICATION_REQUIRED",
+        "HISTORY_REVIEW_REQUIRED",
+        "NOT_INITIAL_CONTACT",
+        "REPLY_REVIEW_REQUIRED",
+        "SEND_UNCERTAIN",
+        "SOURCE_GAP",
+        "SOURCE_STALE"
+      ],
+      "contactId": "b401f228-1db1-4ab3-b8ef-1023ad22dcb2",
+      "recipient": "tobias@mobergbil.se",
+      "reminderCount": null,
+      "sourceThrough": "2026-10-19T09:31:06.445424+00:00",
+      "contactVersion": 1,
+      "ruleRevisionId": "7d8f145c-8ed8-42ab-afea-3f95ab250dfe",
+      "intervalFloorAt": null,
+      "historyRevisionId": "1170a33a-6b69-47cb-86ff-8674091d18ea",
+      "latestObservedOutboundAt": null,
+      "initialPreparationAllowed": false
+    },
+    {
+      "blockers": [
+        "CONTACT_SUPPRESSED",
+        "HISTORY_REVIEW_REQUIRED",
+        "NOT_INITIAL_CONTACT",
+        "SEND_UNCERTAIN",
+        "SOURCE_GAP",
+        "SOURCE_STALE"
+      ],
+      "contactId": "d8212e35-3bfa-4cf4-b9ed-30509bdb3617",
+      "recipient": "huni.hallsson@newmanbil.se",
+      "reminderCount": null,
+      "sourceThrough": "2026-10-19T09:31:06.445424+00:00",
+      "contactVersion": 1,
+      "ruleRevisionId": "7d8f145c-8ed8-42ab-afea-3f95ab250dfe",
+      "intervalFloorAt": null,
+      "historyRevisionId": "e6ddac61-5d17-41ba-977a-d067e193bf2d",
+      "latestObservedOutboundAt": null,
+      "initialPreparationAllowed": false
+    },
+    {
+      "blockers": [
+        "CONTACT_SUPPRESSED",
+        "HISTORY_REVIEW_REQUIRED",
+        "NOT_INITIAL_CONTACT",
+        "SEND_UNCERTAIN",
+        "SOURCE_GAP",
+        "SOURCE_STALE"
+      ],
+      "contactId": "78ad0318-7f1b-4379-aa9c-e8557de7da05",
+      "recipient": "zeljko.barnjak@tjanstebilsexperten.se",
+      "reminderCount": null,
+      "sourceThrough": "2026-10-19T09:31:06.445424+00:00",
+      "contactVersion": 1,
+      "ruleRevisionId": "7d8f145c-8ed8-42ab-afea-3f95ab250dfe",
+      "intervalFloorAt": null,
+      "historyRevisionId": "6c718ebd-6d43-479d-95d1-de716554ef95",
+      "latestObservedOutboundAt": null,
+      "initialPreparationAllowed": false
+    }
+  ],
+  "knownLimitations": "Partial historical snapshots retain SOURCE_GAP, SOURCE_STALE, SEND_UNCERTAIN and related blockers. reminderCount/intervalFloor may remain null. Eva Newman-thread context is retained separately, not merged into the primary recipient. No eligibility or send decision.",
+  "supersedesPendingCheckpoint": "2026-10-19-sales-history-review-pending.json"
+}

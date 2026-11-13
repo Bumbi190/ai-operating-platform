@@ -13,6 +13,7 @@ import {
   Plus,
   MessageSquare,
   Activity,
+  Building2,
   type LucideIcon,
 } from 'lucide-react'
 import vnextStyles from './SidebarVNext.module.css'
@@ -29,6 +30,7 @@ import {
   sidebarProjectsFor,
 } from '@/lib/nav/sidebar-visibility'
 import { vnextNavGroupsFor } from '@/lib/nav/vnext-nav'
+import { HANDLARBORSEN_PROJECT_ID } from '@/lib/atlas/handlarborsen-test-data/contracts'
 
 interface Project {
   id: string
@@ -377,6 +379,7 @@ export function Sidebar({
                     >
                       {[
                         ...projectNav,
+                        ...(project.id === HANDLARBORSEN_PROJECT_ID ? [{ href: '/companies', label: 'Företag', icon: Building2 }] : []),
                         ...(project.slug === 'ai-media-automation' ? mediaProjectNav : []),
                       ].map((item) => {
                         const Icon = item.icon

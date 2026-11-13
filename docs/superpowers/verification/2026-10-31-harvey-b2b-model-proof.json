@@ -1,0 +1,72 @@
+{
+  "checkedAt": "2026-10-31T10:22:32.231328+00:00",
+  "synthetic": true,
+  "providerProofOnly": true,
+  "databaseProof": false,
+  "customerSending": false,
+  "readiness": {
+    "ready": true,
+    "version": "2.1.296",
+    "executable": "C:\\Users\\Andre\\.local\\bin\\claude.EXE",
+    "sendingEnabled": false
+  },
+  "results": [
+    {
+      "case": "pilot_initial",
+      "status": "validated",
+      "draft": {
+        "contactId": "460d7267-e32e-45e6-902b-70ddbac28188",
+        "contactVersion": 1,
+        "offerRevisionId": "9dfdfcf8-2271-4987-8227-caa8ce5d5991",
+        "senderEmail": "operator@example.invalid",
+        "toEmail": "recipient@example.invalid",
+        "subject": "Två månader gratis på Testbörsen för Fiktiva Testbolaget AB?",
+        "body": "Hej,\n\nJag hör av mig från Testbörsen. Testbörsen är en stängd B2B-marknadsplats för företag.\n\nVi erbjuder Fiktiva Testbolaget AB två månaders kostnadsfri provperiod.\n\nVill ni testa Testbörsen under två månader?\n\nVänliga hälsningar\nTestbörsen",
+        "evidenceIds": [],
+        "questions": [
+          "Vilket namn och vilken roll ska stå i signaturen?",
+          "Finns det någon observation om Fiktiva Testbolaget AB med käll-ID som vi kan nämna? Underlaget saknar evidens och webbplats.",
+          "Vad gör Fiktiva Testbolaget AB och vilket behov kan Testbörsen lösa för dem? Branschen anges bara som 'Syntetisk verifiering'.",
+          "Finns det fler bekräftade produktfakta om vad företag kan göra på marknadsplatsen?"
+        ]
+      }
+    },
+    {
+      "case": "service_initial",
+      "status": "validated",
+      "draft": {
+        "contactId": "4a7fcd7d-61b5-4596-8db3-0ecac5532670",
+        "contactVersion": 1,
+        "offerRevisionId": "395d7a74-977a-4feb-8f6b-1b286022b1f7",
+        "senderEmail": "operator@example.invalid",
+        "toEmail": "recipient@example.invalid",
+        "subject": "Konceptstartsida för Fiktiva Testbolaget AB",
+        "body": "Hej,\n\nDet här är ett mejl från Teststudion. Vi kan ta fram en avgränsad konceptstartsida med tre avsnitt åt Fiktiva Testbolaget AB. Den är tänkt som underlag för att diskutera en ny webbplats.\n\nErbjudandet gäller bara konceptstartsidan. Publicering och en fullständig webbplats ingår inte. En slutlig webbplats, pris och publicering avtalas i så fall separat.\n\nÄr ni intresserade av en sådan konceptstartsida?\n\nHälsningar\nTeststudion",
+        "evidenceIds": [],
+        "questions": [
+          "Vilket namn och vilken roll ska stå i signaturen? Underlaget anger bara projektnamnet Teststudion.",
+          "Finns det en namngiven kontaktperson hos Fiktiva Testbolaget AB som mejlet ska hälsa på?",
+          "Det finns inga observationer med käll-ID i underlaget. Ska mejlet ha en relevant observation om mottagaren? I så fall behövs bekräftad källdata.",
+          "Vad mer ska mottagaren veta om Teststudion? Underlaget anger inte bransch eller beskrivning utöver projektnamnet.",
+          "Ska mejlet säga att utkastet är skrivet med AI-stöd innan det skickas?"
+        ]
+      }
+    },
+    {
+      "case": "service_commercial_reply",
+      "status": "validated",
+      "draft": {
+        "subject": "Svar: Fråga om konceptstartsida",
+        "body": "Hej,\n\nTack för din fråga.\n\nKonceptstartsidan från Teststudion är en avgränsad startsida med tre avsnitt. Den är tänkt som underlag när vi diskuterar en ny webbplats.\n\nNej, den publiceras inte direkt. Publicering ingår inte i erbjudandet, och det gör inte heller en fullständig kundwebbplats. Om ni vill gå vidare avtalas slutlig webbplats, pris och publicering separat.\n\nHör gärna av dig om du har fler frågor.\n\nVänliga hälsningar",
+        "evidenceIds": [
+          "ca0a1560-a6ff-4ce0-8fea-df1d16f84c5f"
+        ],
+        "questions": [
+          "Underlaget anger inte vad de tre avsnitten innehåller. Vill du lägga till det i svaret, eftersom mottagaren frågar vad som ingår?",
+          "Ingen bekräftad signatur finns i underlaget, så utkastet saknar namn efter hälsningsfrasen. Vilken signatur ska användas?"
+        ]
+      }
+    }
+  ],
+  "status": "validated"
+}

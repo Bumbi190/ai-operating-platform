@@ -1,0 +1,3 @@
+import type {SendJobSummary} from '../sending/types'
+export type ConfirmInitialSend={projectId:string;revisionId:string;expectedRevisionHash:string;expectedMailboxGeneration:number;expectedHistoryRevisionId:string;expectedRuleRevisionId:string;expectedPolicyVersion:number;acceptHistoryGap:boolean;idempotencyKey:string}
+export type InitialSendPreview={available:true;revisionId:string;revisionHash:string;mailboxGeneration:number|null;historyRevisionId:string|null;ruleRevisionId:string|null;policyVersion:number|null;requiresHistoryGapAcceptance:boolean;canConfirm:boolean;blockedReason:string|null;job:SendJobSummary|null}

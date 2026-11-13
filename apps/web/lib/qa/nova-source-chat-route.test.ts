@@ -257,10 +257,12 @@ describe('Nova source inspection end-to-end chat route: no live provider', () =>
     })
     expect(state.network).toEqual([])
   })
-  it('Strato inbox priority never authorizes a forged Nova source tool, even with both intents', async () => {
+  it('Strato model-tool priority refuses a forged Nova source tool when both intents are present', async () => {
     vi.stubEnv('HB_STRATO_INBOX_READ_ENABLED', 'true')
+    // "mejl" reaches the protected Strato tool path; the narrower deterministic
+    // report classifier deliberately recognizes "inkorg" separately below.
     const { frames } = await ask({
-      question: 'Nova, visa Handlarbörsens Strato-inkorg och GitHub-koden i app/page.tsx',
+      question: 'Nova, visa Handlarbörsens Strato-mejl och GitHub-koden i app/page.tsx',
     })
     expect(state.calls[0].tools).toEqual([
       'get_handlarborsen_strato_inbox', 'get_handlarborsen_strato_message',
@@ -270,6 +272,22 @@ describe('Nova source inspection end-to-end chat route: no live provider', () =>
     expect(frames.find(f => f.event === 'tool_result')?.result).toEqual({
       ok: false, code: 'source_turn_required',
     })
+    expect(state.network).toEqual([])
+  })
+  it('deterministic inbox report priority bypasses the model and cannot inspect GitHub source', async () => {
+    vi.stubEnv('HB_STRATO_INBOX_READ_ENABLED', 'true')
+    state.extraTools = ['nova_inspect_project_source']
+    const { response, frames } = await ask({
+      question: 'Nova, visa Handlarbörsens Strato-inkorg och GitHub-koden i app/page.tsx',
+    })
+    expect(response.status).toBe(200)
+    expect(state.calls).toHaveLength(0)
+    expect(state.dispatches).toHaveLength(0)
+    expect(frames.some(f => f.event === 'timing' && f.reqType === 'sales_inbox_report')).toBe(true)
+    // This synthetic conversation is not project-bound. The real reader must
+    // report unavailable, rather than inventing inbox facts or source evidence.
+    expect(frames.filter(f => f.event === 'text').map(f => f.text).join('')).toContain('kunde inte verifieras')
+    expect(frames.filter(f => f.event === 'tool_result')).toHaveLength(0)
     expect(state.network).toEqual([])
   })
   it('even if a model forges a write-capable tool during the source-only turn, no work runs', async () => {
@@ -340,6 +358,7 @@ describe('Nova source inspection end-to-end chat route: no live provider', () =>
     ['Nova original request', 'standard', 'Nova, granska Handlarbörsens kunskapskällor och visa mig vilka beslut du behöver från mig.', undefined],
     ['Atlas alias and combined GitHub wording', 'standard', 'Atlas, granska Handlarbörsens kunskapskällor och kontrollera GitHub-koden.', undefined],
     ['No-name direct knowledge review in content mode', 'standard', 'Granska Handlarbörsens kunskapskällor.', 'content'],
+    ['Curator priority over deterministic inbox report', 'standard', 'Nova, granska Handlarbörsens kunskapskällor och visa Strato-inkorgen.', undefined],
     ['Economy provider cannot bypass unavailable curator', 'openai_economy', 'Atlas, granska Handlarbörsens kunskapsdokument.', undefined],
   ] as const)('pending Source Curator is a tool-free real chat turn: %s', async (_label, profile, question, mode) => {
     // Strongest boundary: both the GitHub reader and Strato would otherwise

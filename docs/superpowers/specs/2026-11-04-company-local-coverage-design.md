@@ -1,0 +1,9 @@
+# Local company source coverage
+
+Continue same PR386 from e5b2b39 under owner continuation and autonomous standard. User screenshot observes a successful SCB result (not independent browser verification), nationwide restaurant cap warning and two visually identical company cards.
+
+Root cause: source.ts fetches two nationwide SNI pages before municipality filtering. Official saved SCB v1 OpenAPI has GET /v{v}/arbetsstallen/kommun/{kommunKod} with identical aePartialDataCollectionResponseData as the industry route. Choose municipality-first then exact primary SNI filter. Raising caps or silently hiding truncation is rejected. Keep fixed host/key handling, 5000 rows/page, two pages, 10000 rows, no retries, five reviewed identities/UI page, privacy/legal-form rules and owner/project gates unchanged. Existing industry/client callers retain their current path; a narrow municipal workplace fetcher uses the shared HTTP transport.
+
+Expose branch name and CFAR on each source card; do not collapse separate workplaces by orgnr/name. Add sourceScope and municipalityCode metadata, explain municipal primary-industry subset, bounded coverage and omissions. Truncated municipal populations remain visibly incomplete. This increment fixes foundation before website evidence, saving leads or Webbuilder registration. No source/DB/secret/environment/send/worker changes, production release or new cost.
+
+Acceptance: raw HTTP tests find selected-SNI company on second municipal page and reject wrong municipality/category rows; two-page cap/strict code validation/no fallback preserved. UI shows distinct branches and CFAR plus source scope on desktop/mobile. Focused regressions, TypeScript, browser checks and independent review. Screenshot confirms user observed live results in prior version only; new version live proof remains separate.

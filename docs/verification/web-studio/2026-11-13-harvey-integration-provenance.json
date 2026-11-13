@@ -1,0 +1,188 @@
+{
+  "purpose": "source-only-integration-not-release-authority",
+  "harveyHead": "7cc4cc091cd6358da382810dd55cc45b92068a39",
+  "mainHead": "8f1b2581d1376afeeebc7d5c86d3dd0483533afc",
+  "dependencyPrHeads": [
+    {
+      "number": 633,
+      "head": "9bed77315d253a054c32d607c65f508ecfe6fe42",
+      "headRef": "feat/webbuilder-etapp1-release-20261108",
+      "base": "117150aec5a445fc9e38bfffc59db273f51e843a",
+      "baseRef": "codex/atlas-builder-references-20261017",
+      "state": "open",
+      "draft": true,
+      "mergeableState": "clean"
+    },
+    {
+      "number": 368,
+      "head": "117150aec5a445fc9e38bfffc59db273f51e843a",
+      "headRef": "codex/atlas-builder-references-20261017",
+      "base": "063588aa27b6a7a5483f5f1b062ce95aea0b4c50",
+      "baseRef": "main",
+      "state": "open",
+      "draft": true,
+      "mergeableState": "clean"
+    }
+  ],
+  "sourceAudit": [
+    {
+      "name": "Harvey",
+      "head": "7cc4cc091cd6358da382810dd55cc45b92068a39",
+      "catalogCount": 172,
+      "migrations": []
+    },
+    {
+      "name": "main",
+      "head": "8f1b2581d1376afeeebc7d5c86d3dd0483533afc",
+      "catalogCount": 174,
+      "migrations": [
+        {
+          "file": "apps/web/supabase/migrations/20261104110000_project_total_allowance.sql",
+          "sha256": "3522149a5519af153655c1f7fbb5348063306af13311edfb344ac8db8ed979e2",
+          "lfSha256": "3522149a5519af153655c1f7fbb5348063306af13311edfb344ac8db8ed979e2",
+          "bytes": 8102,
+          "introducedBy": "946039f7f6d5181f1b0bd78c72ce704f51f429d9 Add owner-approved PostHog dashboard reads (#613)"
+        },
+        {
+          "file": "apps/web/supabase/migrations/20261104135920_posthog_approved_read.sql",
+          "sha256": "31610ee2209085726932b5fc5108b3d4967654b8b39bcd5ddfc07bade741b795",
+          "lfSha256": "31610ee2209085726932b5fc5108b3d4967654b8b39bcd5ddfc07bade741b795",
+          "bytes": 6937,
+          "introducedBy": "946039f7f6d5181f1b0bd78c72ce704f51f429d9 Add owner-approved PostHog dashboard reads (#613)"
+        }
+      ]
+    },
+    {
+      "name": "PR368",
+      "head": "117150aec5a445fc9e38bfffc59db273f51e843a",
+      "catalogCount": 174,
+      "migrations": [
+        {
+          "file": "apps/web/supabase/migrations/20261104110000_project_total_allowance.sql",
+          "sha256": "3522149a5519af153655c1f7fbb5348063306af13311edfb344ac8db8ed979e2",
+          "lfSha256": "3522149a5519af153655c1f7fbb5348063306af13311edfb344ac8db8ed979e2",
+          "bytes": 8102,
+          "introducedBy": "9a5a2692a6a8c19b285815ebd8a11a11adf1bdea feat(studio): enforce a nonrenewing total allowance at dispatch"
+        },
+        {
+          "file": "apps/web/supabase/migrations/20261104135920_posthog_approved_read.sql",
+          "sha256": "c40c2a05a06e09beea1667665d4b7aa43a4813bf1c4215a6d03354260d3d242b",
+          "lfSha256": "c40c2a05a06e09beea1667665d4b7aa43a4813bf1c4215a6d03354260d3d242b",
+          "bytes": 6936,
+          "introducedBy": "99d54e10e8bc5ff86189fb8abb556fbd8fa03d9a chore(studio): reconcile installed PostHog migration for preview"
+        }
+      ]
+    },
+    {
+      "name": "PR633",
+      "head": "9bed77315d253a054c32d607c65f508ecfe6fe42",
+      "catalogCount": 175,
+      "migrations": [
+        {
+          "file": "apps/web/supabase/migrations/20261104110000_project_total_allowance.sql",
+          "sha256": "3522149a5519af153655c1f7fbb5348063306af13311edfb344ac8db8ed979e2",
+          "lfSha256": "3522149a5519af153655c1f7fbb5348063306af13311edfb344ac8db8ed979e2",
+          "bytes": 8102,
+          "introducedBy": "9a5a2692a6a8c19b285815ebd8a11a11adf1bdea feat(studio): enforce a nonrenewing total allowance at dispatch"
+        },
+        {
+          "file": "apps/web/supabase/migrations/20261104135920_posthog_approved_read.sql",
+          "sha256": "c40c2a05a06e09beea1667665d4b7aa43a4813bf1c4215a6d03354260d3d242b",
+          "lfSha256": "c40c2a05a06e09beea1667665d4b7aa43a4813bf1c4215a6d03354260d3d242b",
+          "bytes": 6936,
+          "introducedBy": "99d54e10e8bc5ff86189fb8abb556fbd8fa03d9a chore(studio): reconcile installed PostHog migration for preview"
+        },
+        {
+          "file": "apps/web/supabase/migrations/20261108094559_webbuilder_prospects.sql",
+          "sha256": "03dfd37e3749030523094dbdbca20b86a54b410b7be4acfa79f2ed6592b6014c",
+          "lfSha256": "03dfd37e3749030523094dbdbca20b86a54b410b7be4acfa79f2ed6592b6014c",
+          "bytes": 15784,
+          "introducedBy": "0b2dec4d8ae4313d02279b4fe51861566693f516 feat(webbuilder): isolate Etapp 1 prospect evidence and no-paid concept pipeline"
+        }
+      ]
+    }
+  ],
+  "prospectCatalogObservation": {
+    "projectId": "iboepohjwrhtgshrqaol",
+    "method": "supabase.execute_sql/SELECT-catalog-only",
+    "rows": [
+      {
+        "database_name": "postgres",
+        "observed_at": "2026-11-13 06:23:06.82672+00",
+        "table_name": "website_prospect_decisions",
+        "rls": true,
+        "force_rls": false,
+        "policy_count": 1,
+        "anon_any_grant": false,
+        "authenticated_any_grant": true,
+        "authenticated_select": true,
+        "authenticated_mutation": false,
+        "service_select": true,
+        "policies": [
+          {
+            "cmd": "SELECT",
+            "name": "website_prospect_decision_owner_read",
+            "qual": "((reviewed_by = ( SELECT auth.uid() AS uid)) AND (EXISTS ( SELECT 1\n   FROM website_prospects p\n  WHERE ((p.id = website_prospect_decisions.prospect_id) AND (p.project_id = website_prospect_decisions.project_id) AND (p.created_by = ( SELECT auth.uid() AS uid))))))",
+            "roles": [
+              "authenticated"
+            ],
+            "with_check": null
+          }
+        ]
+      },
+      {
+        "database_name": "postgres",
+        "observed_at": "2026-11-13 06:23:06.82672+00",
+        "table_name": "website_prospect_revisions",
+        "rls": true,
+        "force_rls": false,
+        "policy_count": 1,
+        "anon_any_grant": false,
+        "authenticated_any_grant": true,
+        "authenticated_select": true,
+        "authenticated_mutation": false,
+        "service_select": true,
+        "policies": [
+          {
+            "cmd": "SELECT",
+            "name": "website_prospect_revision_owner_read",
+            "qual": "(EXISTS ( SELECT 1\n   FROM website_prospects p\n  WHERE ((p.id = website_prospect_revisions.prospect_id) AND (p.project_id = website_prospect_revisions.project_id) AND (p.created_by = ( SELECT auth.uid() AS uid)))))",
+            "roles": [
+              "authenticated"
+            ],
+            "with_check": null
+          }
+        ]
+      },
+      {
+        "database_name": "postgres",
+        "observed_at": "2026-11-13 06:23:06.82672+00",
+        "table_name": "website_prospects",
+        "rls": true,
+        "force_rls": false,
+        "policy_count": 1,
+        "anon_any_grant": false,
+        "authenticated_any_grant": true,
+        "authenticated_select": true,
+        "authenticated_mutation": false,
+        "service_select": true,
+        "policies": [
+          {
+            "cmd": "SELECT",
+            "name": "website_prospect_owner_read",
+            "qual": "((created_by = ( SELECT auth.uid() AS uid)) AND (EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = website_prospects.project_id) AND (p.owner_id = ( SELECT auth.uid() AS uid))))))",
+            "roles": [
+              "authenticated"
+            ],
+            "with_check": null
+          }
+        ]
+      }
+    ]
+  },
+  "limitations": [
+    "No new SQL migration, rename, reapplication, history repair or release exception.",
+    "Original release observation and its pin are unchanged; historical debt continues to block mutation.",
+    "No source data, keys or live customer test used."
+  ]
+}

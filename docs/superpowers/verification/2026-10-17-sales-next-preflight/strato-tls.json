@@ -1,0 +1,26 @@
+{
+  "observedAt": "2026-10-17T13:59:46.201707+00:00",
+  "authenticationAttempted": false,
+  "mailRead": false,
+  "mailSent": false,
+  "smtp": {
+    "tcpTls": true,
+    "tlsVersion": "TLSv1.3",
+    "certificateVerified": true,
+    "ehlo": 250,
+    "authMechanisms": [
+      "PLAIN",
+      "LOGIN"
+    ]
+  },
+  "imap": {
+    "tcpTls": true,
+    "tlsVersion": "TLSv1.3",
+    "certificateVerified": true,
+    "capabilityStatus": "OK",
+    "authMechanisms": [
+      "AUTH=PLAIN",
+      "AUTH=LOGIN"
+    ]
+  }
+}

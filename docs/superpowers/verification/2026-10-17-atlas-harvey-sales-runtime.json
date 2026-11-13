@@ -1,0 +1,235 @@
+{
+  "qualifiedAt": "2026-10-17T13:11:29.755032+00:00",
+  "scope": "Standalone synthetic native Claude runtime only; no deployed operator session, production worker registration or queue dispatch proved",
+  "authentication": {
+    "loggedIn": true,
+    "authMethod": "claude.ai",
+    "apiProvider": "firstParty",
+    "subscriptionType": "pro"
+  },
+  "attempts": [
+    {
+      "kind": "standalone-synthetic-runtime-qualification",
+      "attemptId": "d375aba5-a664-4549-a5ba-954f0bb63a21",
+      "status": "failed",
+      "reservedAt": "2026-10-17T13:07:30.980644+00:00",
+      "cliVersion": "2.1.296",
+      "dispatchLimit": 1,
+      "productionJob": false,
+      "sendingEnabled": false,
+      "model": "CLI default (observed below)",
+      "ruling": "One standalone qualification with fictional example.invalid identities, before production worker enrollment. This does not qualify production queue/session behavior. No real business data or mailbox access. Receipt is fsynced before dispatch; no retry or API fallback.",
+      "observedInit": {
+        "tools": [],
+        "mcp_servers": [],
+        "model": "claude-opus-5-5",
+        "permissionMode": "auto",
+        "plugins": [
+          {
+            "name": "cc-plugin-agents-md",
+            "path": "builtin",
+            "source": "cc-plugin-agents-md@builtin"
+          },
+          {
+            "name": "cc-plugin-plugin-authoring",
+            "path": "builtin",
+            "source": "cc-plugin-plugin-authoring@builtin"
+          }
+        ],
+        "skills": [],
+        "slash_commands": []
+      },
+      "assistantContentTypes": [
+        "text"
+      ],
+      "observedResult": {
+        "subtype": "success",
+        "is_error": false,
+        "duration_ms": 15921,
+        "duration_api_ms": 14269,
+        "num_turns": 1,
+        "total_cost_usd": 0.036608
+      },
+      "modelUsageModels": [
+        "claude-opus-5-5"
+      ],
+      "errorCode": "NON_TEXT_RESULT",
+      "elapsedSeconds": 17.016,
+      "finishedAt": "2026-10-17T13:07:48.009128+00:00"
+    },
+    {
+      "kind": "standalone-synthetic-runtime-qualification",
+      "attemptId": "5de4e71e-67b0-4844-8c21-9bf4d5f972e5",
+      "status": "failed",
+      "reservedAt": "2026-10-17T13:09:33.281365+00:00",
+      "cliVersion": "2.1.296",
+      "dispatchLimit": 1,
+      "productionJob": false,
+      "sendingEnabled": false,
+      "model": "CLI default (observed below)",
+      "ruling": "Second deliberate qualification after RED/GREEN parser compatibility fix; prior failed receipt remains and no automatic retry occurred. One standalone qualification with fictional example.invalid identities, before production worker enrollment. This does not qualify production queue/session behavior. No real business data or mailbox access. Receipt is fsynced before dispatch; no retry or API fallback.",
+      "observedInit": {
+        "tools": [],
+        "mcp_servers": [],
+        "model": "claude-opus-5-5",
+        "permissionMode": "auto",
+        "plugins": [
+          {
+            "name": "cc-plugin-agents-md",
+            "path": "builtin",
+            "source": "cc-plugin-agents-md@builtin"
+          },
+          {
+            "name": "cc-plugin-plugin-authoring",
+            "path": "builtin",
+            "source": "cc-plugin-plugin-authoring@builtin"
+          }
+        ],
+        "skills": [],
+        "slash_commands": []
+      },
+      "assistantContentTypes": [
+        "thinking",
+        "text"
+      ],
+      "observedResult": {
+        "subtype": "success",
+        "is_error": false,
+        "duration_ms": 14810,
+        "duration_api_ms": 14275,
+        "num_turns": 1,
+        "total_cost_usd": 0.03432
+      },
+      "modelUsageModels": [
+        "claude-opus-5-5"
+      ],
+      "errorCode": "JSONDecodeError",
+      "elapsedSeconds": 15.219,
+      "finishedAt": "2026-10-17T13:09:48.505820+00:00"
+    },
+    {
+      "kind": "standalone-synthetic-runtime-qualification",
+      "attemptId": "cf762b33-7f53-4a90-bb8e-058d639fcce3",
+      "status": "failed",
+      "reservedAt": "2026-10-17T13:10:26.358227+00:00",
+      "cliVersion": "2.1.296",
+      "dispatchLimit": 1,
+      "productionJob": false,
+      "sendingEnabled": false,
+      "model": "CLI default (observed below)",
+      "ruling": "Third deliberate synthetic diagnostic, recording only final fictional draft text to diagnose strict JSON refusal; total qualification dispatch cap four, no automatic retry. One standalone qualification with fictional example.invalid identities, before production worker enrollment. This does not qualify production queue/session behavior. No real business data or mailbox access. Receipt is fsynced before dispatch; no retry or API fallback.",
+      "observedInit": {
+        "tools": [],
+        "mcp_servers": [],
+        "model": "claude-opus-5-5",
+        "permissionMode": "auto",
+        "plugins": [
+          {
+            "name": "cc-plugin-agents-md",
+            "path": "builtin",
+            "source": "cc-plugin-agents-md@builtin"
+          },
+          {
+            "name": "cc-plugin-plugin-authoring",
+            "path": "builtin",
+            "source": "cc-plugin-plugin-authoring@builtin"
+          }
+        ],
+        "skills": [],
+        "slash_commands": []
+      },
+      "assistantContentTypes": [
+        "thinking",
+        "text"
+      ],
+      "observedResult": {
+        "subtype": "success",
+        "is_error": false,
+        "duration_ms": 11240,
+        "duration_api_ms": 11118,
+        "num_turns": 1,
+        "total_cost_usd": 0.02428
+      },
+      "modelUsageModels": [
+        "claude-opus-5-5"
+      ],
+      "syntheticResultText": "```json\n{\n  \"subject\": \"Pilot för Fiktiva Testbil AB på Handlarbörsen – 12 månader gratis\",\n  \"body\": \"Hej,\\n\\nVi på Handlarbörsen bygger en stängd marknadsplats för svenska bilhandlare.\\n\\nVi vill erbjuda Fiktiva Testbil AB, Testfilial, att vara med i vårt pilotprogram. Erbjudandet är 12 månader gratis.\\n\\nVore det intressant för er att vara med i piloten?\\n\\nVänliga hälsningar\\nHandlarbörsen\",\n  \"evidenceIds\": [],\n  \"questions\": [\n    \"Det finns inga observationer med käll-ID om handlaren. Finns det någon bekräftad observation som kan göra mejlet mer personligt?\",\n    \"Erbjudandetexten lyder '12 månader gratis i ett fiktivt pilotprogram'. Ska ordet 'fiktivt' stå med i mejlet, eller är det bara en markering för testdata?\",\n    \"Vilket namn och vilken roll ska stå i signaturen? Just nu står bara 'Handlarbörsen'.\",\n    \"Finns det fler bekräftade produktfakta, till exempel vad handlare kan göra på marknadsplatsen, som får nämnas?\"\n  ]\n}\n```",
+      "errorCode": "JSONDecodeError",
+      "elapsedSeconds": 11.656,
+      "finishedAt": "2026-10-17T13:10:38.015659+00:00"
+    },
+    {
+      "kind": "standalone-synthetic-runtime-qualification",
+      "attemptId": "8d9155d2-aa45-448d-a5f3-b474876dc4ba",
+      "status": "passed",
+      "reservedAt": "2026-10-17T13:11:16.451449+00:00",
+      "cliVersion": "2.1.296",
+      "dispatchLimit": 1,
+      "productionJob": false,
+      "sendingEnabled": false,
+      "model": "CLI default (observed below)",
+      "ruling": "Fourth and final qualification after observed JSON-fence compatibility regression fix. Prior receipts retained; no automatic retry. One standalone qualification with fictional example.invalid identities, before production worker enrollment. This does not qualify production queue/session behavior. No real business data or mailbox access. Receipt is fsynced before dispatch; no retry or API fallback.",
+      "observedInit": {
+        "tools": [],
+        "mcp_servers": [],
+        "model": "claude-opus-5-5",
+        "permissionMode": "auto",
+        "plugins": [
+          {
+            "name": "cc-plugin-agents-md",
+            "path": "builtin",
+            "source": "cc-plugin-agents-md@builtin"
+          },
+          {
+            "name": "cc-plugin-plugin-authoring",
+            "path": "builtin",
+            "source": "cc-plugin-plugin-authoring@builtin"
+          }
+        ],
+        "skills": [],
+        "slash_commands": []
+      },
+      "assistantContentTypes": [
+        "thinking",
+        "text"
+      ],
+      "observedResult": {
+        "subtype": "success",
+        "is_error": false,
+        "duration_ms": 12882,
+        "duration_api_ms": 12762,
+        "num_turns": 1,
+        "total_cost_usd": 0.025967999999999998
+      },
+      "modelUsageModels": [
+        "claude-opus-5-5"
+      ],
+      "draft": {
+        "contactId": "cc000000-0000-4000-8000-000000000001",
+        "contactVersion": 1,
+        "offerRevisionId": "cc000000-0000-4000-8000-000000000002",
+        "senderEmail": "info@example.invalid",
+        "toEmail": "dealer@example.invalid",
+        "subject": "Pilot på Handlarbörsen för Fiktiva Testbil AB",
+        "body": "Hej,\n\nDet här mejlet kommer från Handlarbörsen, en stängd marknadsplats för svenska bilhandlare.\n\nVi vill erbjuda Fiktiva Testbil AB, Testfilial, att vara med i vår pilot: 12 månader gratis i ett fiktivt pilotprogram.\n\nÄr det intressant för er att vara med i piloten?\n\nVänliga hälsningar\nHandlarbörsen",
+        "evidenceIds": [],
+        "questions": [
+          "Det finns inga observationer med käll-ID för kontakten. Finns det någon verifierad uppgift om Fiktiva Testbil AB eller Testfilial som mejlet kan referera till?",
+          "Vad ingår konkret i piloten (funktioner, villkor, vad som händer efter 12 månader)? Det finns inga bekräftade uppgifter om detta.",
+          "Erbjudandetexten innehåller ordet 'fiktivt'. Ska den exakta formuleringen stå kvar i ett riktigt utskick, eller finns en bekräftad erbjudandetext för produktion?",
+          "Vem ska stå som avsändare i signaturen? Ska det vara ett namn och en roll, eller bara Handlarbörsen?",
+          "Hur ska det framgå för mottagaren att utkastet är AI-genererat, om det ska framgå?",
+          "Vilken roll har kontaktpersonen (till exempel ägare, VD eller inköpare)? Svaret avgör vilken tonjustering som passar."
+        ]
+      },
+      "elapsedSeconds": 13.297,
+      "finishedAt": "2026-10-17T13:11:29.755032+00:00"
+    }
+  ],
+  "limitations": [
+    "CLI cost fields are estimates, not proof of additional charges or a subscription invoice.",
+    "No provider-internal retry, retention or telemetry audit.",
+    "No real contacts, SMTP/IMAP, Strato login, worker enrollment or production feature activation.",
+    "Initial three qualification attempts failed visibly; no automatic retry occurred. Fourth deliberate qualification passed after regression fixes."
+  ]
+}

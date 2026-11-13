@@ -1,0 +1,12 @@
+const c=require('node:crypto');
+const {publicKey,privateKey}=c.generateKeyPairSync('rsa',{modulusLength:3072,publicExponent:65537});
+const der=privateKey.export({type:'pkcs8',format:'der'});
+const label=Buffer.from('OmniraSales/strato/v1\nfixture-project\nfixture-worker\nfixture-setup\nfixture-kid');
+const key=c.randomBytes(32),iv=c.randomBytes(12),clear=Buffer.from('{"email":"test@example.invalid","password":"synthetic-only"}');
+const cipher=c.createCipheriv('aes-256-gcm',key,iv,{authTagLength:16});cipher.setAAD(label);
+const sealed=Buffer.concat([cipher.update(clear),cipher.final(),cipher.getAuthTag()]);
+const wrapped=c.publicEncrypt({key:publicKey,oaepHash:'sha256',oaepLabel:label,padding:c.constants.RSA_PKCS1_OAEP_PADDING},key);
+const unwrapped=c.privateDecrypt({key:privateKey,oaepHash:'sha256',oaepLabel:label,padding:c.constants.RSA_PKCS1_OAEP_PADDING},wrapped);
+const decipher=c.createDecipheriv('aes-256-gcm',unwrapped,iv,{authTagLength:16});decipher.setAAD(label);decipher.setAuthTag(sealed.subarray(-16));
+const opened=Buffer.concat([decipher.update(sealed.subarray(0,-16)),decipher.final()]);
+console.log(JSON.stringify({nodeVersion:process.version,rsaBits:3072,privatePkcs8Base64Bytes:Buffer.byteLength(der.toString('base64')),credentialBlobLimit:2560,wrappedKeyBytes:wrapped.length,roundtrip:opened.equals(clear),realMailboxCredential:false,privateKeyPersisted:false}));

@@ -1,8 +1,8 @@
 /** Actual browser controller -> HTTP route boundary -> Python visit relay -> receiver/file.
- * Synthetic owner, DB rows, game lease and upstream HTTP socket. No real login/TLS/Unreal.
+ * Installed fixed bootstrap -> actual visit.main. Synthetic owner, DB rows, game lease and upstream HTTP socket; no real login/TLS/Unreal.
  */
 import assert from 'node:assert/strict'
-import {spawn} from 'node:child_process'
+import {spawn,execFileSync} from 'node:child_process'
 import {createServer} from 'node:http'
 import {once} from 'node:events'
 import {mkdtemp,readFile,rm} from 'node:fs/promises'
@@ -41,13 +41,25 @@ const server=createServer(async(req,res)=>{
 })
 server.listen(0,'127.0.0.1');await once(server,'listening')
 const port=server.address().port
-const python=spawn(process.env.OFFICE_TEST_PYTHON??'python',['-u','-c',`
-import http.client,json,sys,threading
+const executable=process.env.OFFICE_TEST_PYTHON??'python'
+const bundle=execFileSync(executable,['-B','-c',`
+import sys
 from pathlib import Path
-from office_visit_relay import OfficeVisitRelay
+sys.path.insert(0,sys.argv[1])
+from office_entry_install import prepare_bundle
+print(prepare_bundle(Path(sys.argv[1]),Path(sys.argv[2])))
+`,join(root,'scripts','office-launcher'),join(output,'installed')],{encoding:'utf8'}).trim()
+const python=spawn(executable,['-I','-B','-u','-c',`
+import http.client,json,sys,threading,runpy
+from pathlib import Path
+from urllib.parse import urlsplit,parse_qs
+entry=runpy.run_path(str(Path(sys.argv[3])/'office_entry.py'))
+base=entry['verify_bundle']();sys.path.insert(0,str(base))
+import office_visit
 class Lease:
  live=True
  def alive(self):return self.live
+ def close(self):pass
 class Client:
  def call(self,path,visit,secret):
   c=http.client.HTTPConnection('127.0.0.1',int(sys.argv[2]),timeout=3)
@@ -61,20 +73,28 @@ class Client:
   if not permitted():raise RuntimeError('Stopped')
   return self.call('presence',visit,secret)
  def revoke(self,visit,secret):return self.call('revoke',visit,secret)
-lease=Lease();r=OfficeVisitRelay(Path(sys.argv[1]),lease,Client());r.start()
-print(json.dumps({'port':r.port,'key':r.session_key}),flush=True)
+lease=Lease()
+office_visit.default_target=lambda:None
+office_visit.check_native=lambda target:Path(sys.argv[1])
+office_visit.WindowsBackend=lambda:None
+office_visit.acquire_office_process=lambda target,backend:lease
+office_visit.OfficeVisitClient=Client
+def open_fixture(url):
+ values=parse_qs(urlsplit(url).fragment)
+ print(json.dumps({'port':int(values['officePort'][0]),'key':values['officeKey'][0],'bundledEntry':True}),flush=True)
+ return True
+office_visit.webbrowser.open=open_fixture
 def close_game():sys.stdin.readline();lease.live=False
 threading.Thread(target=close_game,daemon=True).start()
-try:r._halt.wait(30)
-finally:r.stop()
-`,output,String(port)],{cwd:root,env:{...process.env,PYTHONPATH:join(root,'scripts','office-launcher')},stdio:['pipe','pipe','pipe']})
+raise SystemExit(entry['main'](['omnira-office://visit']))
+`,output,String(port),bundle],{cwd:root,env:{...process.env,PYTHONPATH:'ignored-by-isolated-entry'},stdio:['pipe','pipe','pipe']})
 let controller=null,errors=''
 python.stderr.on('data',chunk=>errors+=chunk.toString().slice(0,2000))
 const waitFor=async(test,ms=11000)=>{const end=Date.now()+ms;while(!await test()&&Date.now()<end)await new Promise(r=>setTimeout(r,50));assert(await test())}
 try{
  const lines=createInterface({input:python.stdout})
  const first=await Promise.race([once(lines,'line'),once(python,'exit').then(()=>{throw Error('Fixture relay failed')})]);lines.close()
- const paired=JSON.parse(first[0]);let scrubbed=false
+ const paired=JSON.parse(first[0]);assert.equal(paired.bundledEntry,true);let scrubbed=false
  const pair=consumeOfficePairing({hash:'#officePort='+paired.port+'&officeKey='+paired.key+'&officeVisit=2',pathname:'/atlas/office/connect',search:''},{state:null,replaceState(){scrubbed=true}})
  assert.equal(pair.protocol,2);assert(scrubbed)
  const browserCalls=[]
@@ -94,7 +114,7 @@ try{
  assert.equal(errors,'');assert.equal(revoked,true)
  assert.equal(JSON.parse(await readFile(path,'utf8')).identity,'unknown')
  const stoppedReads=reads;await new Promise(r=>setTimeout(r,300));assert.equal(reads,stoppedReads)
- console.log(JSON.stringify({status:'synthetic_visit_transport_verified',nativeReads:reads,browserDetached:true,gameExitCleared:true,realOwner:false,realUnreal:false}))
+ console.log(JSON.stringify({status:'synthetic_bundled_entry_visit_transport_verified',nativeReads:reads,browserDetached:true,gameExitCleared:true,realOwner:false,realUnreal:false}))
 }finally{
  controller?.detach()
  if(python.exitCode===null){python.stdin.end('\n');await Promise.race([once(python,'exit'),new Promise(r=>setTimeout(r,6000))]);if(python.exitCode===null)python.kill()}

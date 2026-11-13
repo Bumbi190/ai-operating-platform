@@ -25,6 +25,14 @@ const links = nodes.filter(n => n.tagName === 'a')
 const href = n => n.attrs.find(a => a.name === 'href')?.value
 const opening = links.filter(n => href(n) === 'omnira-office://open')
 assert.equal(opening.length, 1, 'Office needs one explicit local protocol launch action')
+const visits = links.filter(n => href(n) === 'omnira-office://visit')
+assert.equal(visits.length, 1, 'Office needs one explicit process-bound visit action')
+const helpId = visits[0].attrs.find(a => a.name === 'aria-describedby')?.value
+assert(helpId && nodes.some(n => n.attrs?.some(a => a.name === 'id' && a.value === helpId)))
+assert(html.includes('Anslut för kontorsbesöket'), 'Explain the explicit approval after launch')
+assert(html.includes('bekräftad'), 'Do not claim a connection merely from opening the link')
+assert(html.includes('fyra timmar'), 'Explain the bounded visit lifetime')
+
 assert(links.some(n => href(n) === 'http://127.0.0.1:4180/atlas/campus-preview'))
 assert(links.some(n => href(n) === '/atlas'))
 assert(!html.includes('javascript:') && !html.includes('file://'))

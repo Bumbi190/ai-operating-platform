@@ -50,11 +50,25 @@ export default function OmniraOfficePage() {
             &Ouml;ppna den aktuella Unreal-v&auml;rlden i ett eget f&ouml;nster p&aring; din dator.
           </p>
           <a
+            href="omnira-office://visit"
+            aria-describedby="unreal-office-visit-help"
+            className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-lg border border-cyan-400/40 bg-cyan-600/25 px-4 py-2 font-medium text-cyan-100 transition hover:bg-cyan-600/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300"
+          >
+            Öppna Office och anslut <ExternalLink size={17} aria-hidden="true" />
+          </a>
+          <p id="unreal-office-visit-help" className="mt-4 text-xs leading-relaxed text-slate-400">
+            Kräver den uppdaterade Office-startaren på din Windows-dator.
+            Välj figur, projekt och agent på sidan som öppnas och tryck på
+            &quot;Anslut för kontorsbesöket&quot;. När anslutningen är bekräftad kan du stänga sidan.
+            Kopplingen avslutas när Office stängs, senast efter fyra timmar.
+            Det valda agentnamnet visas i kontoret; arbetsstatus är ännu inte verifierad.
+          </p>
+          <a
             href="omnira-office://open"
             aria-describedby="unreal-office-help"
-            className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-lg border border-indigo-400/40 bg-indigo-600/25 px-4 py-2 font-medium text-indigo-100 transition hover:bg-indigo-600/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo-300"
+            className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg border border-indigo-400/40 bg-indigo-600/25 px-4 py-2 font-medium text-indigo-100 transition hover:bg-indigo-600/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo-300"
           >
-            &Ouml;ppna Unreal Office <ExternalLink size={17} aria-hidden="true" />
+            Öppna utan agentanslutning <ExternalLink size={17} aria-hidden="true" />
           </a>
           <p id="unreal-office-help" className="mt-4 text-xs leading-relaxed text-slate-400">
             Kr&auml;ver Windows-datorn d&auml;r Office och den lokala Office-startaren &auml;r installerade.

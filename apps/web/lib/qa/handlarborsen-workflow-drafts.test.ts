@@ -133,11 +133,12 @@ describe('Handlarbörsen paper workflow drafts', () => {
     expect(markup).not.toMatch(/<button\b|<form\b|<a\b|onClick|\b(?:Run|Approve|Publish|Kör|Godkänn|Publicera)\b/)
   })
 
-  it('overview places drafts after Atlas evidence using the shared report and explicit time', () => {
+  it('overview hides test-inclusive legacy workflow proposals instead of treating them as dealer decisions', () => {
     const r = report()
     const markup = renderToStaticMarkup(React.createElement(HandlarborsenOverview, { report: r, reportHref: null, now: NOW }))
-    expect(markup.indexOf('id="hb-workflow-drafts"')).toBeGreaterThan(markup.indexOf('id="hb-atlas-evidence"'))
-    expect(markup).toContain('10 registrerade, 6 verifierade')
+    expect(markup).toContain('Testdata ingår i den äldre rapporten')
+    expect(markup).not.toContain('id="hb-workflow-drafts"')
+    expect(markup).not.toContain('10 registrerade, 6 verifierade')
     const stale = renderToStaticMarkup(React.createElement(HandlarborsenOverview, { report: r, reportHref: null, now: new Date('2026-10-14T11:00:00Z') }))
     expect(stale).not.toContain('data-paper-draft="review_company_status"')
     expect(renderToStaticMarkup(React.createElement(HandlarborsenOverview, { report: emptyReport('no_snapshot'), reportHref: null, now: NOW }))).toContain('Blockerat underlag')

@@ -56,11 +56,12 @@ const LIVE_SCB_CANDIDATE_MIGRATION = 'handlarborsen_scb_live_preview_candidates'
 const EDITORIAL_MIGRATION = 'sales_editorial_only_drafts' as const
 const INITIAL_SEND_MIGRATION = 'sales_initial_sending' as const
 // This historical state predates both the live-SCB bridge and editorial-only mode.
+const DEPENDENCY_MIGRATIONS = ['posthog_approved_read', 'project_total_allowance', 'webbuilder_prospects'] as const
 const preLiveScbRepositoryState = {
   ...repositoryState,
-  sqlFiles: repositoryState.sqlFiles.filter(file => ![LIVE_SCB_CANDIDATE_MIGRATION,EDITORIAL_MIGRATION,INITIAL_SEND_MIGRATION].some(name=>file.endsWith('_'+name+'.sql'))),
-  repositoryNames: repositoryState.repositoryNames.filter(name => name !== LIVE_SCB_CANDIDATE_MIGRATION && name !== EDITORIAL_MIGRATION && name !== INITIAL_SEND_MIGRATION),
-  enforcedNames: repositoryState.enforcedNames.filter(name => name !== LIVE_SCB_CANDIDATE_MIGRATION && name !== EDITORIAL_MIGRATION && name !== INITIAL_SEND_MIGRATION),
+  sqlFiles: repositoryState.sqlFiles.filter(file => ![LIVE_SCB_CANDIDATE_MIGRATION,EDITORIAL_MIGRATION,INITIAL_SEND_MIGRATION,...DEPENDENCY_MIGRATIONS].some(name=>file.endsWith('_'+name+'.sql'))),
+  repositoryNames: repositoryState.repositoryNames.filter(name => name !== LIVE_SCB_CANDIDATE_MIGRATION && name !== EDITORIAL_MIGRATION && name !== INITIAL_SEND_MIGRATION && !DEPENDENCY_MIGRATIONS.some(dependency => dependency === name)),
+  enforcedNames: repositoryState.enforcedNames.filter(name => name !== LIVE_SCB_CANDIDATE_MIGRATION && name !== EDITORIAL_MIGRATION && name !== INITIAL_SEND_MIGRATION && !DEPENDENCY_MIGRATIONS.some(dependency => dependency === name)),
 }
 
 // The verified production history once P1E is applied: 135 rows = every enforced migration (all
@@ -118,14 +119,14 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
   // NOTE ON 3B1A: these two counts describe the CANONICAL CORPUS, so they move as soon
   // as the file exists. The production APPLY is a separate fact, and it has NOT happened
   // for 3B1A — see the ledger assertion below, which is deliberately left RED.
-  it('pins policy v2 and the current 172/158/14/30 counts', () => {
+  it('pins policy v2 and the current 175/161/14/30 counts', () => {
     expect(MIGRATION_GUARD_POLICY_VERSION).toBe(2)
-    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(172)
-    expect(EXPECTED_ENFORCED_COUNT).toBe(158)
+    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(175)
+    expect(EXPECTED_ENFORCED_COUNT).toBe(161)
     expect(GRANDFATHERED_MIGRATION_NAMES).toHaveLength(14)
     expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).toHaveLength(30)
-    expect(repositoryState.sqlFiles).toHaveLength(172)
-    expect(repositoryState.enforcedNames).toHaveLength(158)
+    expect(repositoryState.sqlFiles).toHaveLength(175)
+    expect(repositoryState.enforcedNames).toHaveLength(161)
   })
 
   it('proves the Higgsfield code and database change require one coordinated release', () => {
@@ -137,12 +138,12 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
       repositoryNames: repositoryState.repositoryNames.filter(name => name !== migration),
       enforcedNames: repositoryState.enforcedNames.filter(name => name !== migration),
     }
-    expect(previous.sqlFiles).toHaveLength(171)
-    expect(previous.enforcedNames).toHaveLength(157)
+    expect(previous.sqlFiles).toHaveLength(174)
+    expect(previous.enforcedNames).toHaveLength(160)
     const beforeApply = [...previous.enforcedNames, ...GRANDFATHERED_PRESENT_IN_VERIFIED_LEDGER, ...LEGACY_ONLY_PRODUCTION_LEDGER_NAMES]
     const afterApply = [...beforeApply, migration]
-    expect(beforeApply).toHaveLength(194)
-    expect(afterApply).toHaveLength(195)
+    expect(beforeApply).toHaveLength(197)
+    expect(afterApply).toHaveLength(198)
     expect(() => evaluateAppliedMigrationLedger(beforeApply, previous)).not.toThrow()
     expect(() => evaluateAppliedMigrationLedger(beforeApply, repositoryState)).toThrow(/higgsfield_mcp_readonly/)
     expect(() => evaluateAppliedMigrationLedger(afterApply, previous)).toThrow(/unknown migration name/)
@@ -161,10 +162,10 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
       enforcedNames: repositoryState.enforcedNames.filter(name => name !== migration),
     }
     const beforeApply = hypotheticalPostApplyLedger.filter(name => name !== migration)
-    expect(previous.sqlFiles).toHaveLength(171)
-    expect(previous.enforcedNames).toHaveLength(157)
-    expect(beforeApply).toHaveLength(194)
-    expect(hypotheticalPostApplyLedger).toHaveLength(195)
+    expect(previous.sqlFiles).toHaveLength(174)
+    expect(previous.enforcedNames).toHaveLength(160)
+    expect(beforeApply).toHaveLength(197)
+    expect(hypotheticalPostApplyLedger).toHaveLength(198)
     expect(() => evaluateAppliedMigrationLedger(beforeApply, previous)).not.toThrow()
     expect(() => evaluateAppliedMigrationLedger(beforeApply, repositoryState)).toThrow(/social_owner_crosschat_context/)
     expect(() => evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger, previous)).toThrow(/unknown migration name/)
@@ -330,7 +331,7 @@ describe('Migration Guard v2 — production ledger set integrity', () => {
     // P1E (`handlarborsen_guarded_snapshot_store`, file 20261010130000) takes the enforced set
     // from 97 to 98 and this fixture from 134 to 135. Not applied yet: this line records the
     // post-apply state and is true only after the operator-approved apply.
-    expect(result.appliedLedgerCount).toBe(195)
+    expect(result.appliedLedgerCount).toBe(198)
     expect(result.unknownLedgerNames).toEqual([])
     expect(result.duplicateLedgerNames).toEqual([])
   })
@@ -468,9 +469,9 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
     expect(result).toMatchObject({
       skipped: false,
       policyVersion: 2,
-      canonicalSqlCount: 172,
-      enforcedCount: 158,
-      appliedLedgerCount: 195,
+      canonicalSqlCount: 175,
+      enforcedCount: 161,
+      appliedLedgerCount: 198,
     })
   })
 })
@@ -479,8 +480,8 @@ it('fails closed before the live SCB candidate provenance migration is applied',
   const name = LIVE_SCB_CANDIDATE_MIGRATION
   expect(repositoryState.enforcedNames).toContain(name)
   const before = hypotheticalPostApplyLedger.filter(n => n !== name)
-  expect(before).toHaveLength(194)
-  expect(hypotheticalPostApplyLedger).toHaveLength(195)
+  expect(before).toHaveLength(197)
+  expect(hypotheticalPostApplyLedger).toHaveLength(198)
   expect(() => evaluateAppliedMigrationLedger(before, repositoryState)).toThrow(/handlarborsen_scb_live_preview_candidates/)
   expect(() => evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger, repositoryState)).not.toThrow()
 })
@@ -517,7 +518,7 @@ it("rejects a synthetic ledger missing the reconciled sales migration",()=>{expe
 
 it('refuses the pre-apply ledger while Atlas metrics definition migration is pending',()=>{
   const preApply=hypotheticalPostApplyLedger.filter(n=>!TEST_DATA_RELEASE_MIGRATIONS.includes(n))
-  expect(preApply).toHaveLength(192)
+  expect(preApply).toHaveLength(hypotheticalPostApplyLedger.length - TEST_DATA_RELEASE_MIGRATIONS.length)
   expect(()=>evaluateAppliedMigrationLedger(preApply,repositoryState)).toThrow(/handlarborsen_metrics_definition/)
 })
 
@@ -661,9 +662,9 @@ it.each(SOURCE_SYNC_MIGRATIONS)('keeps reconciled %s enforced in both directions
     enforcedNames: repositoryState.enforcedNames.filter(n => n !== name),
   }
   const beforeApply = hypotheticalPostApplyLedger.filter(n => n !== name)
-  expect(previous.sqlFiles).toHaveLength(171)
-  expect(previous.enforcedNames).toHaveLength(157)
-  expect(beforeApply).toHaveLength(194)
+  expect(previous.sqlFiles).toHaveLength(174)
+  expect(previous.enforcedNames).toHaveLength(160)
+  expect(beforeApply).toHaveLength(197)
   expect(() => evaluateAppliedMigrationLedger(beforeApply, previous)).not.toThrow()
   expect(() => evaluateAppliedMigrationLedger(beforeApply, repositoryState)).toThrow(new RegExp(name))
   expect(() => evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger, previous)).toThrow(/unknown migration name/)
@@ -717,7 +718,7 @@ it('keeps editorial-only drafts blocked until their exact migration is applied o
  expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain(EDITORIAL_MIGRATION)
  expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).not.toContain(EDITORIAL_MIGRATION)
  const before=hypotheticalPostApplyLedger.filter(n=>n!==EDITORIAL_MIGRATION)
- expect(before).toHaveLength(194)
+ expect(before).toHaveLength(197)
  expect(()=>evaluateAppliedMigrationLedger(before,repositoryState)).toThrow(/sales_editorial_only_drafts/)
  expect(()=>evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger,repositoryState)).not.toThrow()
  expect(()=>evaluateAppliedMigrationLedger([...hypotheticalPostApplyLedger,EDITORIAL_MIGRATION],repositoryState)).toThrow(/duplicate/)
@@ -728,8 +729,24 @@ it('initial outreach remains enforced once, and a current ledger without it refu
  expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain(INITIAL_SEND_MIGRATION)
  expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).not.toContain(INITIAL_SEND_MIGRATION)
  const current=hypotheticalPostApplyLedger.filter(n=>n!==INITIAL_SEND_MIGRATION)
- expect(current).toHaveLength(194)
+ expect(current).toHaveLength(197)
  expect(()=>evaluateAppliedMigrationLedger(current,repositoryState)).toThrow(/sales_initial_sending/)
  expect(()=>evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger,repositoryState)).not.toThrow()
  expect(()=>evaluateAppliedMigrationLedger([...hypotheticalPostApplyLedger,INITIAL_SEND_MIGRATION],repositoryState)).toThrow(/duplicate/)
+})
+
+it('enforces PostHog and the four source-reconciled applied migrations',()=>{
+ for(const name of ['posthog_approved_read','handlarborsen_scb_live_preview_candidates','project_total_allowance','sales_editorial_only_drafts','sales_initial_sending']){
+  expect(repositoryState.enforcedNames).toContain(name)
+  expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain(name)
+  expect(()=>evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger.filter(n=>n!==name),repositoryState)).toThrow(new RegExp(name))
+ }
+})
+
+it.each(DEPENDENCY_MIGRATIONS)('requires source-reconciled dependency %s exactly once without grandfathering', name => {
+  expect(repositoryState.enforcedNames.filter(n => n === name)).toHaveLength(1)
+  expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain(name)
+  expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).not.toContain(name)
+  expect(() => evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger.filter(n => n !== name), repositoryState)).toThrow(new RegExp(name))
+  expect(() => evaluateAppliedMigrationLedger([...hypotheticalPostApplyLedger, name], repositoryState)).toThrow(/duplicate/)
 })

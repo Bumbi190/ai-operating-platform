@@ -100,8 +100,10 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Forward-only constraint reconciliation only; no grandfathering or bypass.
 // Nov 2 explicit editorial-only drafts: one new enforced migration, no allowlist changes.
 // Controlled initial outreach: 172/158, enforced; pending reviewed live application.
-export const EXPECTED_CANONICAL_SQL_COUNT = 172
-export const EXPECTED_ENFORCED_COUNT = 158
+// Source-only dependency reconciliation: two exact SQL files from main, one
+// from reviewed PR #633. No apply, version repair, new exception or SQL rewrite.
+export const EXPECTED_CANONICAL_SQL_COUNT = 175
+export const EXPECTED_ENFORCED_COUNT = 161
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

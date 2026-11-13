@@ -8,6 +8,9 @@ import { HandlarborsenInsights } from './HandlarborsenInsights'
 import { HandlarborsenWorkflowDrafts } from './HandlarborsenWorkflowDrafts'
 import { HandlarborsenTrends } from './HandlarborsenTrends'
 import { HandlarborsenPosthogTraffic } from './HandlarborsenPosthogTraffic'
+import { HandlarborsenRealDealerKpis } from './HandlarborsenRealDealerKpis'
+import type { RealDealerMetricsV3 } from '@/lib/atlas/project-analytics/handlarborsen-real-dealer-v3'
+import { HandlarborsenRegistrationJourney } from './HandlarborsenRegistrationJourney'
 import { HandlarborsenExecutiveSummary } from './HandlarborsenExecutiveSummary'
 import styles from './HandlarborsenExecutiveSummary.module.css'
 import { AnalysisDraftHistoryLink } from './AnalysisDraftHistoryLink'
@@ -27,6 +30,7 @@ export function HandlarborsenOverview({
   report,
   reportHref,
   traffic,
+  realDealerMetrics,
   projectSlug,
   analysisSelectors,
   candidateMemory = null,
@@ -46,6 +50,7 @@ export function HandlarborsenOverview({
   candidateReviewEnabled?: boolean
   candidateAudience?: 'owner' | 'collaborator'
   traffic?: HandlarborsenTraffic | null
+  realDealerMetrics?: RealDealerMetricsV3 | null
   now?: Date
 }) {
   const model = buildHandlarborsenOverview(report)
@@ -70,21 +75,25 @@ export function HandlarborsenOverview({
     return (
       <>
         {communicationShortcut}
+        {realDealerMetrics && <HandlarborsenRealDealerKpis data={realDealerMetrics} />}
         <HandlarborsenCandidateReviewNotice memory={candidateMemory} enabled={candidateMemoryEnabled} audience={candidateAudience} reviews={candidateReviews} reviewEnabled={candidateReviewEnabled} />
         <KpiOverviewNote {...common} title={model.title} text={model.text} tone={model.tone} />
         {traffic && <HandlarborsenPosthogTraffic traffic={traffic} />}
+        <HandlarborsenRegistrationJourney report={report} traffic={traffic} realDealerMetrics={realDealerMetrics} now={now} />
         {projectSlug && <AnalysisDraftHistoryLink projectSlug={projectSlug} />}
-        <HandlarborsenWorkflowDrafts report={report} now={now} />
+        {(!report.latest || report.latest.dataScope === 'production_excluding_quarantined_test') && <HandlarborsenWorkflowDrafts report={report} now={now} />}
       </>
     )
   }
   return (
     <>
       {communicationShortcut}
+      {realDealerMetrics && <HandlarborsenRealDealerKpis data={realDealerMetrics} />}
       <HandlarborsenCandidateReviewNotice memory={candidateMemory} enabled={candidateMemoryEnabled} audience={candidateAudience} reviews={candidateReviews} reviewEnabled={candidateReviewEnabled} />
       <HandlarborsenExecutiveSummary report={report} model={model} traffic={traffic} now={now} />
       <HandlarborsenTrends report={report} />
       {traffic && <HandlarborsenPosthogTraffic traffic={traffic} />}
+      <HandlarborsenRegistrationJourney report={report} traffic={traffic} realDealerMetrics={realDealerMetrics} now={now} />
       <details className={styles.deepDive}>
         <summary>
           <span>Fördjupning · alla nyckeltal, aktivitet och analysunderlag</span>
@@ -109,7 +118,7 @@ export function HandlarborsenOverview({
             projectSlug={projectSlug}
             analysisSelectors={analysisSelectors}
           />
-          <HandlarborsenWorkflowDrafts report={report} now={now} />
+          {(!report.latest || report.latest.dataScope === 'production_excluding_quarantined_test') && <HandlarborsenWorkflowDrafts report={report} now={now} />}
           {projectSlug && <AnalysisDraftHistoryLink projectSlug={projectSlug} />}
         </div>
       </details>

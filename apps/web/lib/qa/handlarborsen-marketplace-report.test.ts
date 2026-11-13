@@ -28,13 +28,19 @@ import {
 
 const NOW = new Date('2026-10-10T11:00:00.000Z')
 
+// Production v1 retains historical/test-inclusive raw figures for audit only.
+// It must never be offered to Atlas as evidence of real registered dealers.
+
 function row(overrides: Record<string, unknown> = {}, metrics: Partial<Record<MarketplaceMetricKey, number | null>> = {}) {
   const base: Record<string, unknown> = {
     project_id: HANDLARBORSEN_PROJECT_ID,
     snapshot_date: '2026-10-10',
     observed_at: '2026-10-10T10:22:00.000Z',
     captured_at: '2026-10-10T10:22:01.000Z',
-    schema_version: 1,
+    schema_version: 2,
+    definition_id: 'handlarborsen-production-v2',
+    data_scope: 'production_excluding_quarantined_test',
+    excluded_test_organisations: 1,
     window_hours: 24,
     completeness: 'complete',
     unavailable: {},
@@ -117,7 +123,7 @@ describe('buildMarketplaceReport', () => {
 
   it.each([
     ['wrong project', { project_id: '00000000-0000-0000-0000-000000000001' }],
-    ['wrong schema', { schema_version: 2 }],
+    ['wrong schema', { schema_version: 9 }],
     ['wrong window', { window_hours: 12 }],
     ['bad completeness', { completeness: 'full' }],
     ['complete but a metric is null', {}],
@@ -203,6 +209,21 @@ describe('history and comparison', () => {
 })
 
 describe('Atlas fact block', () => {
+  it('does not present v1 test-inclusive totals as genuine trader statistics', () => {
+    const legacy = buildMarketplaceReport([row({
+      schema_version: 1,
+      definition_id: 'handlarborsen-legacy-v1',
+      data_scope: 'legacy_all_organisations',
+      excluded_test_organisations: null,
+      companies_registered_total: 11,
+      companies_verified_total: 3,
+    })], NOW)
+    expect(legacy.latest?.dataScope).toBe('legacy_all_organisations')
+    const text = renderHandlarborsenFactBlock(legacy) ?? ''
+    expect(text).toContain('ÄLDRE TESTINKLUDERANDE STATISTIK')
+    expect(text).not.toContain('Registrerade företag: 11')
+    expect(text).not.toContain('Verifierade företag: 3')
+  })
   it('lists all 11 metrics in Swedish with the quality line, from stored values', () => {
     const text = renderHandlarborsenFactBlock(buildMarketplaceReport([row()], NOW))!
     expect(text).toContain(FACT_BLOCK_HEADER)

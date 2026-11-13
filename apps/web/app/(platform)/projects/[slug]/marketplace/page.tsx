@@ -1,3 +1,4 @@
+import { readRealDealerMetricsV3 } from '@/lib/atlas/project-analytics/handlarborsen-real-dealer-v3'
 import { notFound } from 'next/navigation'
 import { getProjectBySlug } from '@/lib/project/get-project'
 import { loadHandlarborsenMarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-read'
@@ -21,5 +22,8 @@ export default async function MarketplaceReportPage({ params }: { params: { slug
   const result = await loadHandlarborsenMarketplaceReport(project, { allowedProjectIds: [project.id] })
   if (result.status === 'not_permitted') notFound()
 
-  return <HandlarborsenMarketplaceReport slug={project.slug} name={project.name} report={result.report} />
+  const realDealerMetrics = result.report.state === 'not_enabled'
+    ? { status: 'unavailable' as const, reason: 'not_permitted' as const }
+    : await readRealDealerMetricsV3([project.id])
+  return <HandlarborsenMarketplaceReport slug={project.slug} name={project.name} report={result.report} realDealerMetrics={realDealerMetrics} />
 }

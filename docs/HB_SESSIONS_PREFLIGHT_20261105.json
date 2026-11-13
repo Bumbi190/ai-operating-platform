@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-11-05T13:57:19.702Z",
+  "repository": "Bumbi190/ai-operating-platform",
+  "project": "Omnira",
+  "task": "Handlarborsen PostHog sessions display",
+  "workId": "HB-SESSIONS-20261105",
+  "proposedBranch": "feat/hb-registration-journey-overview-20261104",
+  "mainSha": "bcc6ddf0c1dd544699af4b257402dbc8231aa8ef",
+  "openPrCount": 123,
+  "worktreeCount": 249,
+  "decision": "review_required",
+  "code": "matching_local_branch",
+  "candidates": [],
+  "branchMatches": [],
+  "worktreeMatches": [
+    {
+      "branch": "feat/hb-registration-journey-overview-20261104",
+      "path": "C:/Users/Andre/Projects/Omnira/.worktrees/hb-registration-journey-overview-20261104",
+      "locked": false
+    }
+  ],
+  "reason": "Reuse this clean completed statistics branch after merged PR627 for the bounded sessions read and display follow-up; no new branch",
+  "limitations": "Metadata/local-name similarity is a hint; review actual file scope and agent ownership before new work.",
+  "sideEffects": "None. No branch, worktree, PR, commit, deployment or API mutation is performed."
+}

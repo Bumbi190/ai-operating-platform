@@ -9,6 +9,10 @@ import { loadHandlarborsenMarketplaceReport } from '@/lib/atlas/project-analytic
 import { readHandlarborsenSalesOverview } from '@/lib/atlas/project-analytics/handlarborsen-sales-overview'
 import { readHandlarborsenReplyLifecycle } from '@/lib/atlas/project-analytics/handlarborsen-reply-lifecycle'
 import { compareHandlarborsenWorkflowEvidence } from '@/lib/atlas/project-analytics/handlarborsen-evidence-comparison'
+import { loadHandlarborsenTraffic } from '@/lib/atlas/project-analytics/handlarborsen-posthog-traffic'
+import { deriveHandlarborsenGrowthBrief } from '@/lib/atlas/project-analytics/handlarborsen-growth-brief'
+import { emptyReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-report'
+import { readRealDealerMetricsV3 } from '@/lib/atlas/project-analytics/handlarborsen-real-dealer-v3'
 
 /**
  * Operator-only, read-only bridges from Atlas's already ingested sources.
@@ -17,6 +21,7 @@ import { compareHandlarborsenWorkflowEvidence } from '@/lib/atlas/project-analyt
  */
 export const HANDLARBORSEN_READ_TOOL_NAMES = [
   'handlarborsen_statistics',
+  'handlarborsen_growth_brief',
   'handlarborsen_latest_mail',
   'handlarborsen_sales_overview',
   'handlarborsen_reply_lifecycle',
@@ -25,6 +30,11 @@ export const HANDLARBORSEN_READ_TOOL_NAMES = [
 export type HandlarborsenReadTool = (typeof HANDLARBORSEN_READ_TOOL_NAMES)[number]
 
 export const HANDLARBORSEN_READ_TOOLS = [
+  {
+    name: 'handlarborsen_growth_brief',
+    description: 'Läs Handlarbörsens källstyrda, regelbaserade tillväxtunderlag från granskade företags-snapshots och samtyckesstyrda PostHog-sidvisningar på /registrera. Endast projektägare; inga personuppgifter, identifierare, konverteringsgrader eller automatiska åtgärder. Redovisa källor, datum och osäkerheter; formulera endast förslag till manuell granskning.',
+    input_schema: { type: 'object' as const, properties: {}, required: [] },
+  },
   {
     name: 'handlarborsen_statistics',
     description: 'Läs verklig, senast sparad statistik från Handlarbörsens marknadsplats: företag, verifierade företag, fordon, bud och affärer. Ange datum, datakvalitet och om jämförelsen är jämförbar. Statistiken är aggregerad och innehåller INTE namnet på den senaste verifierade handlaren. Läs endast; skapa aldrig påhittade tal.',
@@ -83,12 +93,61 @@ export async function handleHandlarborsenReadTool(name: HandlarborsenReadTool, c
   if (!userId || !assertProjectAllowed(HANDLARBORSEN_PROJECT_ID, allowedProjectIds)) {
     return { status: 'not_permitted' as const }
   }
+  if (name === 'handlarborsen_growth_brief') {
+    const source = await loadHandlarborsenMarketplaceReport(fixedProject, { allowedProjectIds }, { db, now: context.now })
+    if (source.status !== 'ok') return { status: 'not_permitted' as const }
+    // Both reads are scoped to the same fixed project and verified owner allow-list.
+    // A failed traffic read contributes no fabricated zeros or visitor identities.
+    const traffic = await loadHandlarborsenTraffic(fixedProject, { allowedProjectIds })
+    if (!traffic) return { status: 'not_permitted' as const }
+    // Never reuse historical test-inclusive v1/v2 company totals as real dealer KPIs.
+    const brief = deriveHandlarborsenGrowthBrief(emptyReport('no_snapshot'), traffic, context.now ?? new Date())
+    const real = await readRealDealerMetricsV3(allowedProjectIds, context.now ?? new Date())
+    if (real.status === 'available') {
+      const validTraffic = traffic.status === 'available' && typeof traffic.registrationPageviews === 'number'
+        && Number.isSafeInteger(traffic.registrationPageviews) && traffic.registrationPageviews >= 0
+      return {
+        status: 'ok' as const,
+        readiness: validTraffic ? 'review' as const : 'insufficient_data' as const,
+        source: 'handlarborsen_classified_real_external_v3',
+        observations: [
+          ...brief.observations,
+          `Handlarbörsen har ${real.registered} klassificerade riktiga externa handlare, varav ${real.verified} verifierade.`,
+          `${real.testOrganisations} verifierade testorganisationer och ${real.internalOrganisations} interna skyddade bolag ingår inte i handlarantalet.`,
+          `${real.unclassifiedOrganisations} oklassade organisationer redovisas separat och räknas inte som riktiga handlare.`,
+        ],
+        manualChecks: [
+          ...brief.checks.filter(item => !item.includes('företagsrapport')),
+          'Kontrollera separat hur många verifierade externa handlare som har publicerat fordon före slutsatser om aktivering.',
+        ],
+        provenance: [...brief.provenance, `Handlarbörsen · explicit v3-API · classified_real_external_dealers · observerad ${real.observedAt}`],
+        limitation: 'Klassificerat verkliga externa handlare är ett separat urval från samtyckesbaserade PostHog-sidvisningar. Ingen konverteringsgrad beräknas. Klassificering är inte ett bevis för aktiv användning eller betalning. Inga åtgärder har utförts.',
+      }
+    }
+    return {
+      status: 'ok' as const,
+      readiness: 'insufficient_data' as const,
+      source: 'handlarborsen_verified_growth_brief',
+      v3Availability: real.reason,
+      observations: brief.observations,
+      manualChecks: brief.checks,
+      provenance: brief.provenance,
+      limitation: 'Detta är ett regelbaserat, källstyrt granskningsunderlag. Sidvisningar är inte unika personer eller registreringar. Ingen konverteringsgrad är verifierad. Inga åtgärder har utförts.',
+    }
+  }
   if (name === 'handlarborsen_statistics') {
     const source = await loadHandlarborsenMarketplaceReport(fixedProject, { allowedProjectIds }, { db, now: context.now })
     if (source.status !== 'ok') return { status: 'not_permitted' as const }
     const { report } = source
     if (report.state !== 'ok' || !report.latest) return { status: 'unavailable' as const, reason: report.state }
     const { latest, history } = report
+    if (latest.dataScope !== 'production_excluding_quarantined_test') {
+      return {
+        status: 'unavailable' as const, reason: 'legacy_includes_test_organisations',
+        snapshotDate: latest.snapshotDate, dataScope: latest.dataScope ?? null,
+        limitation: 'Äldre råstatistik innehåller testorganisationer och skyddade bolag. Antal verkliga registrerade eller verifierade bilhandlare får inte räknas härifrån. Värdena finns kvar endast i revisionsunderlaget.',
+      }
+    }
     return {
       status: 'ok' as const,
       source: 'handlarborsen_marketplace_snapshots',
@@ -103,9 +162,7 @@ export async function handleHandlarborsenReadTool(name: HandlarborsenReadTool, c
       comparison: history.comparison,
       limitation: [
         'Snapshotens företagstal är aggregerade. Ingen företagsidentitet finns i denna datakälla; påstå aldrig vilket företag som senast verifierats.',
-        latest.dataScope === 'legacy_all_organisations'
-          ? 'VARNING: legacy_all_organisations inkluderar historiska testorganisationer. Tolka INTE verifierade som antalet riktiga aktiva bilhandlare, och dra INTE en tillväxtslutsats från statusändringar utan jämförbar källa.'
-          : 'Kvalitetskontrollera alltid urvalet och definitionen före en tillväxtslutsats.',
+        'Kvalitetskontrollera alltid urvalet. Att organisationer inte är i karantän innebär INTE automatiskt att de är riktiga bilhandlare eller godkända pilotkunder.',
       ].join(' '),
     }
   }

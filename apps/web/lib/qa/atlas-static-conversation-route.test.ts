@@ -494,3 +494,21 @@ describe('stored-context summary requests retain project reads and tools', () =>
     })
   }
 })
+
+
+describe('integrated growth evidence routing in content mode', () => {
+  it.each([
+    'Nova, hur utvecklas Handlarbörsen och vad bör vi prioritera för att få fler handlare?',
+    'Hur ser registreringsintresset ut?',
+  ])('offers only the owner-scoped read tool for %s', async content => {
+    const { res } = await post({ mode: 'content', messages: [
+      { role: 'user', content: 'Vi granskar Handlarbörsen.' },
+      { role: 'assistant', content: 'Vilka siffror vill du granska?' },
+      { role: 'user', content },
+    ] })
+    expect(res.status).toBe(200)
+    expect(streamCalls).toHaveLength(1)
+    expect((streamCalls[0].tools as Array<{name: string}>).map(tool => tool.name))
+      .toEqual(['handlarborsen_growth_brief'])
+  })
+})

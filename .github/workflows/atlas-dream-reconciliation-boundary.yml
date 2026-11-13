@@ -114,4 +114,8 @@ jobs:
 
       - name: Typecheck
         working-directory: apps/web
+        # The full app graph exceeds Node's default ~2 GiB heap in CI.
+        # This increases headroom without changing any TypeScript checks.
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: npx --no tsc --noEmit --incremental false

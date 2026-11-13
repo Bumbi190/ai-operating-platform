@@ -22,6 +22,14 @@ export function HandlarborsenPosthogTraffic({
   traffic: HandlarborsenTraffic;
 }) {
   const connected = traffic.status === "available";
+  const sessions = connected && traffic.sessions?.status === "available" ? traffic.sessions.count : null;
+  const sessionNote = sessions !== null
+    ? "PostHog-sessioner · cookieless · 7 UTC-dagar"
+    : connected && traffic.sessions?.status === "missing_permission"
+      ? "Läsbehörighet för sessioner saknas"
+      : connected && traffic.sessions?.status === "unavailable"
+        ? "Sessionsdata kunde inte verifieras"
+        : "Inväntar verifierad sessionsmätning";
   const hasData = connected && traffic.totalPageviews > 0;
   const peak = connected
     ? Math.max(1, ...traffic.days.map((row) => row.pageviews))
@@ -32,6 +40,11 @@ export function HandlarborsenPosthogTraffic({
       headline: "Inväntar anslutning",
       text: "Datakällan är förberedd, men Omnira har ännu ingen godkänd, läsbehörig anslutning till Handlarbörsens PostHog-projekt.",
       status: "Ej ansluten",
+    },
+    missing_permission: {
+      headline: "Läsbehörighet för trafik saknas",
+      text: "Kontrollera nyckelns projektåtkomst och läsbehörigheten query:read i PostHog. Dashboardanslutningen är separat.",
+      status: "Behörighet krävs",
     },
     unavailable: {
       headline: "Trafikdata kunde inte hämtas",
@@ -44,8 +57,8 @@ export function HandlarborsenPosthogTraffic({
       status: "Inga händelser",
     },
     available: {
-      headline: "Verifierad händelsedata",
-      text: "De här siffrorna visar mottagna sidvisningshändelser, inte registrerade bilhandlare eller ett exakt antal personer online.",
+      headline: "Inga sidvisningar under perioden",
+      text: "PostHog returnerade noll sidvisningar för perioden. Övriga mätvärden redovisas separat.",
       status: "Data mottagen",
     },
   }[traffic.status];
@@ -86,29 +99,41 @@ export function HandlarborsenPosthogTraffic({
         </div>
         <div className={styles.metric}>
           <span className={styles.metricLabel}>
-            <Users size={16} aria-hidden="true" /> Unika besökare
+            <Users size={16} aria-hidden="true" /> Unika besökare idag
           </span>
-          <strong className={styles.metricValue}>—</strong>
+          <strong className={styles.metricValue}>{connected && traffic.visitorsToday !== undefined ? number(traffic.visitorsToday) : "—"}</strong>
           <span className={styles.metricNote}>
-            Inväntar verifierad identitetsmetod
+            {connected && traffic.visitorsToday !== undefined ? "PostHog dagliga unika · UTC · inte antal bilhandlare" : "Inväntar verifierad identitetsmetod"}
           </span>
         </div>
         <div className={styles.metric}>
           <span className={styles.metricLabel}>
             <Activity size={16} aria-hidden="true" /> Sessioner
           </span>
-          <strong className={styles.metricValue}>—</strong>
-          <span className={styles.metricNote}>
-            Inväntar verifierad sessionsmätning
-          </span>
+          <strong className={styles.metricValue}>{sessions === null ? "—" : number(sessions)}</strong>
+          <span className={styles.metricNote}>{sessionNote}</span>
         </div>
       </div>
+      {connected && traffic.registrationPageviews !== undefined && (
+        <div className={styles.chartSurface}>
+          <h3>Intresse för registrering</h3>
+          <p><strong>{number(traffic.registrationPageviews)}</strong> sidvisningar på /registrera under de senaste sju UTC-dagarna.</p>
+          <p>Detta är visningar av registreringssidan, inte påbörjade eller slutförda registreringar. En besökare kan öppna sidan flera gånger.</p>
+        </div>
+      )}
+      {connected && traffic.registrationSubmissions !== undefined && (
+        <div className={styles.chartSurface}>
+          <h3>Inskickade registreringar</h3>
+          <p><strong>{number(traffic.registrationSubmissions)}</strong> mottagna inskickshändelser med analyssamtycke under de senaste sju UTC-dagarna.</p>
+          <p>Siffran är samtyckt analys, inte alla registreringar. Den visar inte verifierad e-post eller godkända handlare.</p>
+        </div>
+      )}
       <div className={styles.chartSurface}>
         <div className={styles.chartHeading}>
           <div>
             <h3>Sidvisningar per dag</h3>
             <p>
-              {hasData
+              {connected
                 ? traffic.firstDate + "–" + traffic.lastDate + " · UTC"
                 : "Grafen fylls först med verkliga mätvärden"}
             </p>
@@ -158,6 +183,23 @@ export function HandlarborsenPosthogTraffic({
           </div>
         )}
       </div>
+
+      {connected && traffic.days.some(row => row.visitors !== undefined) && (
+        <div className={styles.chartSurface}>
+          <h3>Daglig trafik · UTC</h3>
+          <p className={styles.tableHint}>Rulla i sidled för fler kolumner på en liten skärm.</p>
+          <div style={{overflowX:"auto"}} role="region" aria-label="Daglig trafik, rulla i sidled för fler kolumner" tabIndex={0}>
+          <table className={styles.trafficTable}>
+            <thead><tr><th>Datum</th><th>Sidvisningar</th><th>Dagliga unika besökare</th><th>Visningar /registrera</th><th>Inskick (analys)</th></tr></thead>
+            <tbody>{traffic.days.map(row => <tr key={row.date}><td>{row.date}</td><td>{number(row.pageviews)}</td><td>{row.visitors === undefined ? "—" : number(row.visitors)}</td><td>{row.registrationPageviews === undefined ? "—" : number(row.registrationPageviews)}</td><td>{row.registrationSubmissions === undefined ? "—" : number(row.registrationSubmissions)}</td></tr>)}</tbody>
+          </table>
+          </div>
+          <p>Dagliga unika besökare summeras inte till ett unikt antal för hela veckan. Dagens siffror är ännu ofullständiga. Endast handlarborsen.se och www.handlarborsen.se ingår.</p>
+        </div>
+      )}
+      {sessions !== null && (
+        <p className={styles.metricNote}>Sessioner är PostHogs cookieless-mätning för hela perioden, inte ett exakt antal personer.</p>
+      )}
       <footer className={styles.footer}>
         <span>
           {connected

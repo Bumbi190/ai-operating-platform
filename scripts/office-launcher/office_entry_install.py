@@ -15,6 +15,8 @@ MODULES = (
     'office_visit_client.py', 'office_visit_process.py', 'office_visit_relay.py',
     'office_activity.py', 'office_activity_native.py',
     'install_unreal_presence.py', 'style_unreal_presence.py',
+    'office_activity_install.py', 'install_office_activity.py',
+    'verify_office_activity_install_runtime.py', 'office_activity_stage.py', 'office_activity_stage_guard.py',
 )
 LEGACY_OWNER = 'Omnira.OfficeLauncher.v1'
 VISIT_OWNER = 'Omnira.OfficeVisitLauncher.v1'

@@ -10,12 +10,10 @@ SCHEMA = 'omnira.office.private-presence.v2'
 KIND = 'step_request_waiting_for_reply'
 
 def check_activity_native(target):
-    """Production capability stays OFF until a saved-v2 finalizer is reviewed.
-
-    Hash-only receipts cannot replace the existing actor binding, fresh-process
-    and presentation dependency audits. Synthetic transport tests inject this
-    boundary explicitly; local native proofs never enable the ordinary launcher.
-    """
+    """Only a canonical saved receiver with independent acceptance may enable v2."""
+    if (target.project.parent/'Saved/OfficeActivityInstall/installation.json').exists():
+        from office_activity_install import check_canonical
+        return check_canonical(target,Path(__file__).resolve().parent)
     if (target.project.parent/'Saved/OfficeActivitySetup/installation.json').exists():
         raise ValueError('Saved activity receiver finalization is not yet supported')
     return None

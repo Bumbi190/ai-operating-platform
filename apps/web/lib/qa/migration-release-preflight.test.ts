@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createHash } from 'node:crypto'
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync, existsSync, rmSync, mkdirSync, renameSync, symlinkSync, unlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -328,5 +328,68 @@ describe('read-only preflight boundary', () => {
     expect(result).toMatchObject({ ok: false, allowsMutation: false })
     expect(result.issues.some((x: any) => x.code === 'VERSION_MISMATCH')).toBe(true)
     expect(result.issues.some((x: any) => x.code === 'UNTRUSTED_OBSERVATION')).toBe(false)
+  })
+})
+
+describe('preflight descriptor and path integrity',()=>{
+  function readCase(mode:string){
+    const dir=mkdtempSync(resolve(tmpdir(),'omnira-preflight-read-'));temporaryDirs.push(dir)
+    const dataDir=resolve(dir,'input');mkdirSync(dataDir)
+    const victim=resolve(dataDir,'observation.json'),replacement=resolve(dir,'replacement.json')
+    const original=readFileSync(resolve('../../docs/verification/web-studio/2026-11-12-migration-version-audit.json'))
+    writeFileSync(victim,original);writeFileSync(replacement,original)
+    const events=resolve(dir,'events.json'),hook=resolve(dir,'read-hook.cjs')
+    if(mode==='symlink') { unlinkSync(victim);symlinkSync(replacement,victim,'file') }
+    if(mode==='parent-link'){
+      const actual=resolve(dir,'actual');renameSync(dataDir,actual);symlinkSync(actual,dataDir,'junction')
+    }
+    if(mode==='directory'){unlinkSync(victim);mkdirSync(victim)}
+    if(mode==='oversized')writeFileSync(victim,Buffer.alloc(5*1024*1024+1,32))
+    writeFileSync(hook,[
+      "const fs=require('node:fs'),path=require('node:path'),{syncBuiltinESMExports}=require('node:module');",
+      'const victim='+JSON.stringify(victim)+',replacement='+JSON.stringify(replacement)+',events='+JSON.stringify(events)+',mode='+JSON.stringify(mode)+';',
+      'const raw={open:fs.openSync,stat:fs.lstatSync,read:fs.readSync,readFile:fs.readFileSync,write:fs.writeFileSync,rename:fs.renameSync,copy:fs.copyFileSync,symlink:fs.symlinkSync,append:fs.appendFileSync};',
+      'let targetFd,triggered=false;',
+      "const matches=p=>typeof p==='string'&&path.resolve(p)===victim;",
+      'const trigger=kind=>{',
+      'if(triggered)return;triggered=true;',
+      "if(kind==='replace'||kind==='symlink'){raw.rename(victim,victim+'.old');if(kind==='symlink')raw.symlink(replacement,victim,'file');else raw.copy(replacement,victim)}",
+      "else if(kind==='grow')raw.append(victim,Buffer.alloc(5*1024*1024+1,32));",
+      "else if(kind==='rewrite')raw.write(victim,Buffer.from('CHANGED CONTENT'));",
+      'raw.write(events,JSON.stringify({mode,triggered,kind}));};',
+      "fs.openSync=(p,...args)=>{const fd=raw.open(p,...args);if(matches(p)){targetFd=fd;if(mode==='replace-after-open')trigger('replace')}return fd;};",
+      "fs.lstatSync=(p,...args)=>{const stat=raw.stat(p,...args);if(matches(p)&&mode==='replace-after-stat')trigger('replace');if(matches(p)&&mode==='symlink-after-stat')trigger('symlink');return stat;};",
+      "fs.readSync=(fd,...args)=>{const count=raw.read(fd,...args);if(fd===targetFd&&count>0&&mode==='grow-during-read')trigger('grow');if(fd===targetFd&&count>0&&mode==='rewrite-during-read')trigger('rewrite');return count;};",
+      "fs.readFileSync=(p,...args)=>{const data=raw.readFile(p,...args);if(matches(p)){if(mode==='replace-after-open')trigger('replace');if(mode==='grow-during-read')trigger('grow');if(mode==='rewrite-during-read')trigger('rewrite')}return data;};",
+      'syncBuiltinESMExports();',
+    ].join('\n'))
+    const child=spawnSync(process.execPath,['--require',hook,resolve('scripts/migration-release-preflight.mjs'),
+      '--target-project',projectId,'--target-database','postgres','--expected-head',head,
+      '--observation-file',mode==='missing'?resolve(dir,'missing.json'):victim],{
+      cwd:resolve('.'),encoding:'utf8',timeout:10000,
+    })
+    expect(child.error).toBeUndefined()
+    return {child,result:JSON.parse(child.stdout),events:existsSync(events)?JSON.parse(readFileSync(events,'utf8')):null}
+  }
+  it('reads a stable real observation and still blocks historical database release',()=>{
+    const {child,result}=readCase('stable')
+    expect(child.status).toBe(1)
+    expect(result).toMatchObject({ok:false,allowsMutation:false})
+    expect(result.issues.filter((x:any)=>x.code==='VERSION_MISMATCH')).toHaveLength(156)
+    expect(result.issues.some((x:any)=>['INVALID_INPUT_FILE','INPUT_READ_FAILED'].includes(x.code))).toBe(false)
+  })
+  it.each(['replace-after-stat','symlink-after-stat','replace-after-open','grow-during-read','rewrite-during-read'])(
+    'fails closed after a real filesystem change: %s',mode=>{
+      const {child,result,events}=readCase(mode)
+      expect(events).toMatchObject({mode,triggered:true})
+      expect(child.status).toBe(2)
+      expect(result).toMatchObject({ok:false,allowsMutation:false,pending:[]})
+      expect(result.issues).toEqual([{code:'INVALID_INPUT_FILE'}])
+    })
+  it.each(['symlink','parent-link','directory','oversized','missing'])('rejects unsafe or invalid input path: %s',mode=>{
+    const {child,result}=readCase(mode)
+    expect(child.status).toBe(2)
+    expect(result).toMatchObject({ok:false,allowsMutation:false,pending:[]})
+    expect(result.issues[0].code).toMatch(/^(INVALID_INPUT_FILE|INPUT_READ_FAILED)$/)
   })
 })

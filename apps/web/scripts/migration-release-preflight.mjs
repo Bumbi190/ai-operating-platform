@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, lstatSync } from 'node:fs'
+import { readdirSync, lstatSync, openSync, fstatSync, readSync, closeSync, constants } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -25,10 +25,51 @@ function parseArguments(argv) {
   if (!args.has('--expected-head')) throw new Error('EXPECTED_HEAD_REQUIRED')
   return args
 }
+function sameFile(left, right) {
+  return left.dev === right.dev && left.ino === right.ino &&
+    left.size === right.size && left.mtimeNs === right.mtimeNs && left.ctimeNs === right.ctimeNs
+}
+function inputPathSnapshot(file) {
+  const entries = []
+  for (let current = resolve(file);;) {
+    const stat = lstatSync(current, { bigint: true })
+    if (stat.isSymbolicLink() || (entries.length === 0 ? !stat.isFile() : !stat.isDirectory())) throw new Error('INVALID_INPUT_FILE')
+    entries.push({ path: current, stat })
+    const parent = dirname(current)
+    if (parent === current) return entries
+    current = parent
+  }
+}
 function readBounded(file) {
-  const stat = lstatSync(file)
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 5 * 1024 * 1024) throw new Error('INVALID_INPUT_FILE')
-  return readFileSync(file, 'utf8')
+  // Open once; every byte and content check uses this descriptor, never a re-opened path.
+  // O_NOFOLLOW is unavailable on Windows, so path/descriptor identity is also checked
+  // before and after reading, including parent links and junctions on every platform.
+  const fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0))
+  try {
+    const before = fstatSync(fd, { bigint: true })
+    if (!before.isFile() || before.ino === 0n || before.nlink !== 1n || before.size > 5n * 1024n * 1024n) throw new Error('INVALID_INPUT_FILE')
+    const pathsBefore = inputPathSnapshot(file)
+    if (!sameFile(before, pathsBefore[0].stat)) throw new Error('INVALID_INPUT_FILE')
+    // One extra byte detects growth without an unbounded read or allocation.
+    const bytes = Buffer.alloc(Number(before.size) + 1)
+    let length = 0
+    while (length < bytes.length) {
+      const count = readSync(fd, bytes, length, bytes.length - length, length)
+      if (count === 0) break
+      length += count
+    }
+    const after = fstatSync(fd, { bigint: true })
+    const pathsAfter = inputPathSnapshot(file)
+    if (BigInt(length) !== before.size || !sameFile(before, after) ||
+        !sameFile(after, pathsAfter[0].stat) || pathsBefore.length !== pathsAfter.length ||
+        pathsBefore.some((entry, i) => entry.path !== pathsAfter[i].path ||
+          entry.stat.dev !== pathsAfter[i].stat.dev || entry.stat.ino !== pathsAfter[i].stat.ino)) {
+      throw new Error('INVALID_INPUT_FILE')
+    }
+    return bytes.subarray(0, length).toString('utf8')
+  } finally {
+    closeSync(fd)
+  }
 }
 function main(argv) {
   // Reject extra commands and override flags before reading any input or running Git.

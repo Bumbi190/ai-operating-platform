@@ -1,6 +1,6 @@
 import {describe,it,expect,vi} from 'vitest'
 import {generateKeyPairSync,verify as verifySignature} from 'node:crypto'
-import {canonicalHarveyProof,evidenceAudience,handleHarveyScbBridge,type BridgeCompany,type HarveyBridgeDeps} from '@/lib/handlarborsen/lead-finder/webbuilder-scb-bridge'
+import {canonicalHarveyProof,evidenceAudience,handleHarveyScbBridge,renderHarveyScbConfirmation,type BridgeCompany,type HarveyBridgeDeps} from '@/lib/handlarborsen/lead-finder/webbuilder-scb-bridge'
 const projectId='a8d240af-e58e-446d-b293-6cae1fd6daa8'
 const nonce='A'.repeat(43)
 const base='https://ai-operating-platform-5kwwm9s0c-bumbi190s-projects.vercel.app'
@@ -89,5 +89,44 @@ describe('Harvey isolated SCB bridge – read-only attestation',()=>{
   it('does not return raw provider errors or issue a receipt when evidence minting fails',async()=>{
     const r=await handleHarveyScbBridge(request('POST'),{...deps(),attest:async()=>{throw Error('private token 123')}})
     expect(r.status).toBe(503);expect(await r.text()).not.toContain('private token')
+  })
+})
+
+describe('SCB bridge HTML and external content boundaries',()=>{
+  const attacks=[
+    ['attribute breakout','"><img src=x onerror=alert(1)>','&quot;&gt;&lt;img src=x onerror=alert(1)&gt;'],
+    ['script tag',"<script>alert('x')</script>",'&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt;'],
+    ['entity and quotes','Åbergs & Söner "Bil" \'Östra\'','Åbergs &amp; Söner &quot;Bil&quot; &#39;Östra&#39;'],
+  ] as const
+  it.each(attacks)('renders %s as inert attribute text in both form fields',(_label,payload,encoded)=>{
+    const html=renderHarveyScbConfirmation(payload,payload)
+    expect(html).toContain('name="projectId" value="'+encoded+'"')
+    expect(html).toContain('name="nonce" value="'+encoded+'"')
+    expect(html).not.toContain('<script>')
+    expect(html).not.toContain('<img')
+  })
+  it.each(['"><svg onload=alert(1)>','javascript:alert(1)',"<script>alert('x')</script>",'&quot; onfocus=alert(1)'])(
+    'rejects hostile GET and POST parameters before source work: %s',async payload=>{
+      const find=vi.fn(async()=>company)
+      for(const method of ['GET','POST'] as const)for(const field of ['projectId','nonce']){
+        const params=new URLSearchParams({projectId,nonce});params.set(field,payload)
+        const r=await handleHarveyScbBridge(request(method,method==='GET'?{query:'?'+params}:{body:params.toString()}),{...deps(),findCompany:find})
+        expect(r.status).toBe(400)
+        expect(r.headers.get('content-type')).toContain('application/json')
+        expect(await r.text()).not.toContain(payload)
+      }
+      expect(find).not.toHaveBeenCalled()
+    })
+  it('preserves Swedish company data only inside the encoded evidence fragment',async()=>{
+    const external={...company,name:'Åbergs & Söner "Bil" <script>alert(1)</script>',branchName:'Östra <img src=x onerror=alert(1)>',city:'Hässleholm'}
+    const r=await handleHarveyScbBridge(request('POST'),{...deps(),findCompany:async()=>external})
+    expect(r.status).toBe(303)
+    expect(await r.text()).toBe('')
+    const location=r.headers.get('location')!
+    expect(location).not.toContain('<script>')
+    expect(location).not.toContain('<img')
+    const url=new URL(location)
+    expect(url.origin).toBe('http://localhost:56994')
+    expect(JSON.parse(decodeURIComponent(url.hash.slice('#harveyBridge='.length))).evidence.company).toEqual(external)
   })
 })

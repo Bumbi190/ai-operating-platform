@@ -8,6 +8,7 @@ import {createScbWorkplaceMunicipalityFetcher,fetchScbLegalEntityByOrgnr,SCB_LIV
 import {paginateScb} from './scb-source'
 import {evaluateScbCompany,parseLegalOrgnr} from './scb-status-policy'
 import type {ScbRegisterRecord} from './types'
+import {escapeHtml} from '@/lib/website-build/preview-runtime'
 
 export const HARVEY_EVIDENCE_SCOPE='omnira.webbuilder.scb.evidence.v1'
 export const HARVEY_PILOT_ORGNR='5566391735'
@@ -95,8 +96,8 @@ async function fetchPilotCompany():Promise<BridgeCompany|null>{
     restricted:review.marketing.post.code===2||review.marketing.email.code===2||review.marketing.phone.code===2||review.marketing.phone.code===3,
     inactive:false}
 }
-function html(projectId:string,nonce:string){
-  const form='<form method="post"><input type="hidden" name="projectId" value="'+projectId+'"><input type="hidden" name="nonce" value="'+nonce+'"><button type="submit">Verifiera Edfors Bil hos SCB</button></form>'
+export function renderHarveyScbConfirmation(projectId:string,nonce:string){
+  const form='<form method="post"><input type="hidden" name="projectId" value="'+escapeHtml(projectId)+'"><input type="hidden" name="nonce" value="'+escapeHtml(nonce)+'"><button type="submit">Verifiera Edfors Bil hos SCB</button></form>'
   return '<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Harvey · SCB-verifiering</title></head><body><main><h1>Verifiera Edfors Bil</h1><p>Endast läsning från SCB. Inga kontakter eller produktionsskrivningar.</p>'+form+'</main></body></html>'
 }
 export async function handleHarveyScbBridge(request:Request,deps:HarveyBridgeDeps={}):Promise<Response>{
@@ -127,7 +128,7 @@ export async function handleHarveyScbBridge(request:Request,deps:HarveyBridgeDep
   }catch{return reply(400,'invalid_request')}
   const input=parseInput(params)
   if(!input)return reply(400,'invalid_request')
-  if(request.method==='GET')return new Response(html(input.projectId,input.nonce),{
+  if(request.method==='GET')return new Response(renderHarveyScbConfirmation(input.projectId,input.nonce),{
     headers:{...headers,'content-type':'text/html; charset=utf-8','content-security-policy':"default-src 'none'; form-action 'self'; style-src 'unsafe-inline'; base-uri 'none'"}
   })
   let company:BridgeCompany|null

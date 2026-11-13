@@ -13,7 +13,8 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runNewsHunter, type HunterCandidate } from '@/lib/media/news-hunter'
-import { scoreScript, shouldRegenerate } from '@/lib/media/quality'
+import { scoreScript, shouldRegenerate, failedQualityScore } from '@/lib/media/quality'
+import { sendPipelineAlert } from '@/lib/media/alert'
 import { callHermesScrape, callHermesRead, callHermesCompetitors, isHermesConfigured } from '@/lib/media/hermes'
 import { Anthropic } from '@anthropic-ai/sdk'
 import { logRun } from '@/lib/media/run-log'
@@ -361,19 +362,41 @@ export async function GET(request: Request) {
   }))
   let script = JSON.parse((scriptRes.content[0].type === 'text' ? scriptRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as ScriptWriterOutput
 
-  // Quality gate
+  // Quality gate. Invalid or timed-out QA must NEVER approve content.
+  // Reserve time for persistence inside Vercel's 60-second cron window.
   const sourceContext = fullArticleText || `${news.title}\n${news.summary}\n${news.key_insight}`
-  const qualityScore  = await scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext)
+  const qaBudgetMs = Math.max(0, 52_000 - (Date.now() - t0))
+  let qualityScore = qaBudgetMs >= 1_500
+    ? await withTimeout(
+        scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext),
+        Math.min(8_000, qaBudgetMs),
+        failedQualityScore('Quality check timed out — manual editorial review required.'),
+      )
+    : failedQualityScore('No time left for editorial QA — manual review required.')
 
-  // Skip the (expensive) regenerate pass if we're low on budget — better to ship a
-  // slightly weaker hook than to 504 and save nothing.
-  if (shouldRegenerate(qualityScore) && Date.now() - t0 < 40_000) {
-    const rewriteRes = await withRetry(() => scriptRewriter.messages.create({
+  // Rewrite only when there is time for a second, independent quality check.
+  // A new script must never inherit an older script's approval.
+  if (shouldRegenerate(qualityScore) && Date.now() - t0 < 25_000
+      && !qualityScore.verdict.startsWith('Quality check invalid')) {
+    const rewriteRes = await withTimeout(withRetry(() => scriptRewriter.messages.create({
       model: 'claude-sonnet-4-6', max_tokens: 2000, system: SCRIPT_SYSTEM,
       messages: [{ role: 'user', content: `Rewrite — previous rejected.\nSTORY:\n${scriptContext}\nREJECTED HOOK: "${script.hook}"\nVERDICT: ${qualityScore.verdict}\nWEAK SPOTS: ${qualityScore.weak_spots.join(', ')}\nFix everything. Hook must score 8+.` }],
-    }))
-    script = JSON.parse((rewriteRes.content[0].type === 'text' ? rewriteRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as ScriptWriterOutput
+    })), 12_000, null)
+    if (rewriteRes) {
+      try {
+        script = JSON.parse((rewriteRes.content[0].type === 'text' ? rewriteRes.content[0].text : '').replace(/^\x60{3}(?:json)?\n?/, '').replace(/\n?\x60{3}$/, '').trim()) as ScriptWriterOutput
+        qualityScore = await withTimeout(
+          scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext),
+          8_000,
+          failedQualityScore('Rewritten script was not re-scored in time — manual review required.'),
+        )
+      } catch {
+        qualityScore = failedQualityScore('Rewrite response invalid or quality check failed — manual review required.')
+      }
+    }
   }
+
+  const scriptStatus = shouldRegenerate(qualityScore) ? 'pending_review' : 'approved'
 
   // Save script — voice_status='none' signals step2 to pick it up
   const { data: scriptRow } = await db.from('media_scripts').insert({
@@ -381,7 +404,7 @@ export async function GET(request: Request) {
     hook: script.hook, script: script.script, captions: script.captions,
     hashtags: script.hashtags, cta: script.cta, tone: script.tone,
     estimated_duration: script.estimated_duration, raw_output: toJson(script),
-    quality_score: toJson(qualityScore), status: 'approved',
+    quality_score: toJson(qualityScore), status: scriptStatus,
     voice_status: 'none', video_status: 'none', version: 1,
     topic: classifyTopic(script.hook, script.script), format: 'reel',
     generated_at: new Date().toISOString(),
@@ -390,15 +413,24 @@ export async function GET(request: Request) {
   if (!scriptRow) return NextResponse.json({ error: 'Failed to save script' }, { status: 500 })
   if (newsItemId) await db.from('media_news_items').update({ status: 'scripted' }).eq('id', newsItemId)
 
-  console.log(`[cron/step1] Done — scriptId: ${scriptRow.id}, hook: "${script.hook}", quality: ${qualityScore.overall.toFixed(1)}/10`)
+  console.log(`[cron/step1] Saved — scriptId: ${scriptRow.id}, status: ${scriptStatus}, quality: ${qualityScore.overall.toFixed(1)}/10`)
+  if (scriptStatus === 'pending_review') {
+    // A draft counts for deduplication but must not disappear silently.
+    await withTimeout(sendPipelineAlert({
+      cronRoute: 'cron/step1', step: 'quality_review',
+      error: qualityScore.verdict, severity: 'warning',
+      context: { scriptId: scriptRow.id, note: 'Saved for manual approval; no voice/render/publish.' },
+    }), 2_000, undefined)
+  }
 
   const scriptRunId = await logRun({ workflow: 'Generate Script', context: { scriptId: scriptRow.id, hook: script.hook } })
   // Spårbarhet: stämpla run_id på scriptet → kedjan news → script → run kan följas bakåt.
   if (scriptRunId) { try { await db.from('media_scripts').update({ run_id: scriptRunId }).eq('id', scriptRow.id) } catch { /* non-blocking */ } }
 
   return NextResponse.json({
-    status: 'step1_done',
+    status: scriptStatus === 'approved' ? 'step1_done' : 'step1_review_required',
     scriptId: scriptRow.id,
+    editorialStatus: scriptStatus,
     hook: script.hook,
     quality: qualityScore.overall,
     next: 'step2 will run in 5 min',

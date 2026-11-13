@@ -91,8 +91,11 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Their exact SQL body hashes were matched to the production ledger before inclusion.
 // Source-only reconciliation: posthog_approved_read already applied 20261104135920.
 // Exact installed statement SHA c40c2a05a06e09beea1667665d4b7aa43a4813bf1c4215a6d03354260d3d242b.
-export const EXPECTED_CANONICAL_SQL_COUNT = 174
-export const EXPECTED_ENFORCED_COUNT = 160
+// Etapp 1 adds one enforced, owner-scoped WebBuilder prospect migration.
+// Its absence from the hosted production ledger must remain a release blocker
+// until a separate owner-reviewed migration apply; never grandfather or bypass it.
+export const EXPECTED_CANONICAL_SQL_COUNT = 175
+export const EXPECTED_ENFORCED_COUNT = 161
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

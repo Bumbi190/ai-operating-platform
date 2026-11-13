@@ -5,6 +5,14 @@ import {createHash} from 'node:crypto'
 import {inspectCanonicalMigrationFiles,evaluateAppliedMigrationLedger,GRANDFATHERED_MIGRATION_NAMES,LEGACY_ONLY_PRODUCTION_LEDGER_NAMES} from '../../scripts/migration-guard-policy.mjs'
 const root=resolve(__dirname,'../../../..'),dir=resolve(root,'apps/web/supabase/migrations')
 const observedPosthog=JSON.parse(readFileSync(resolve(root,'docs/verification/web-studio/2026-11-04-posthog-ledger-observation.json'),'utf8')).migrationNames as string[]
+const currentProduction=JSON.parse(readFileSync(resolve(root,'docs/verification/web-studio/2026-11-09-production-ledger-observation.json'),'utf8'))
+function expectCurrentProductionLedger(state:ReturnType<typeof inspectCanonicalMigrationFiles>){
+ expect(currentProduction.migrationNames).toHaveLength(198)
+ expect(currentProduction.migration.version).toBe('20261109111500')
+ expect(currentProduction.migration.name).toBe('webbuilder_prospects')
+ expect(currentProduction.migration.statementSha256).toBe('669fdaca272a4140a210b222e003895e9f7c171b0d0ae9265d69e9382c32e5d9')
+ expect(evaluateAppliedMigrationLedger(currentProduction.migrationNames,state)).toMatchObject({canonicalSqlCount:175,enforcedCount:161,appliedLedgerCount:198,unknownLedgerNames:[],duplicateLedgerNames:[]})
+}
 const name='human_story_exact_claim',filename='20261031204433_'+name+'.sql'
 const observation=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-01-web-studio-exact-claim-observation.json'),'utf8'))
 const state=()=>inspectCanonicalMigrationFiles(readdirSync(dir))
@@ -30,9 +38,12 @@ describe('exact-claim source history, not migration execution',()=>{
   const current=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-04-web-studio-initial-send-observation.json'),'utf8'))
   // The immutable real195-name capture predates the proposed allowance.
  expect(()=>evaluateAppliedMigrationLedger(current.migration_names,state())).toThrow(/project_total_allowance/)
- // The historical allowance extension is still incomplete; the separately observed PostHog ledger passes.
+ // The 197-name PostHog snapshot remains historical; the new 198-name production observation is checked below.
  expect(()=>evaluateAppliedMigrationLedger([...current.migration_names,'project_total_allowance'],state())).toThrow(/posthog_approved_read/)
- expect(evaluateAppliedMigrationLedger(observedPosthog,state())).toMatchObject({enforcedCount:160,appliedLedgerCount:197,unknownLedgerNames:[],duplicateLedgerNames:[]})
+ expect(observedPosthog).toHaveLength(197)
+ expect(observedPosthog).not.toContain('webbuilder_prospects')
+ expect(()=>evaluateAppliedMigrationLedger(observedPosthog,state())).toThrow(/webbuilder_prospects/)
+ expectCurrentProductionLedger(state())
   expect(GRANDFATHERED_MIGRATION_NAMES).toHaveLength(14);expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).toHaveLength(30)
   expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain(name);expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).not.toContain(name)
  })
@@ -40,7 +51,7 @@ describe('exact-claim source history, not migration execution',()=>{
   const names=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-04-web-studio-initial-send-observation.json'),'utf8')).migration_names as string[],current=state()
   expect(()=>evaluateAppliedMigrationLedger(names.filter(n=>n!==name),current)).toThrow(/human_story_exact_claim/)
   expect(()=>evaluateAppliedMigrationLedger([...names,name],current)).toThrow(/duplicate/)
-  expect(()=>evaluateAppliedMigrationLedger([...observedPosthog,'unreviewed_future_change'],current)).toThrow(/unknown/)
+  expect(()=>evaluateAppliedMigrationLedger([...currentProduction.migrationNames,'unreviewed_future_change'],current)).toThrow(/unknown/)
  })
  it('retains ordinary worker routing, exact lane permission and predecessor guards',()=>{
   const source=sql()

@@ -5,6 +5,14 @@ import {createHash} from 'node:crypto'
 import {inspectCanonicalMigrationFiles,evaluateAppliedMigrationLedger,GRANDFATHERED_MIGRATION_NAMES,LEGACY_ONLY_PRODUCTION_LEDGER_NAMES} from '../../scripts/migration-guard-policy.mjs'
 const root=resolve(__dirname,'../../../..'),dir=resolve(root,'apps/web/supabase/migrations')
 const observedPosthog=JSON.parse(readFileSync(resolve(root,'docs/verification/web-studio/2026-11-04-posthog-ledger-observation.json'),'utf8')).migrationNames as string[]
+const currentProduction=JSON.parse(readFileSync(resolve(root,'docs/verification/web-studio/2026-11-09-production-ledger-observation.json'),'utf8'))
+function expectCurrentProductionLedger(state:ReturnType<typeof inspectCanonicalMigrationFiles>){
+ expect(currentProduction.migrationNames).toHaveLength(198)
+ expect(currentProduction.migration.version).toBe('20261109111500')
+ expect(currentProduction.migration.name).toBe('webbuilder_prospects')
+ expect(currentProduction.migration.statementSha256).toBe('669fdaca272a4140a210b222e003895e9f7c171b0d0ae9265d69e9382c32e5d9')
+ expect(evaluateAppliedMigrationLedger(currentProduction.migrationNames,state)).toMatchObject({canonicalSqlCount:175,enforcedCount:161,appliedLedgerCount:198,unknownLedgerNames:[],duplicateLedgerNames:[]})
+}
 const observation=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-02-web-studio-harvey-observation.json'),'utf8'))
 const state=()=>inspectCanonicalMigrationFiles(readdirSync(dir))
 const latest=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-04-web-studio-initial-send-observation.json'),'utf8'))
@@ -19,7 +27,7 @@ describe('Studio source-only reconciliation of already applied Harvey migrations
  it('preserves the real195-name observation and enforces the pending allowance',()=>{
   const current=state()
   expect(names).toHaveLength(195);expect(new Set(names).size).toBe(195)
-  expect(current.sqlFiles).toHaveLength(174);expect(current.enforcedNames).toHaveLength(160)
+  expect(current.sqlFiles).toHaveLength(175);expect(current.enforcedNames).toHaveLength(161)
   for(const name of targets){
    expect(current.enforcedNames).toContain(name)
    expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain(name)
@@ -27,9 +35,12 @@ describe('Studio source-only reconciliation of already applied Harvey migrations
   }
   // The immutable real195-name capture predates the proposed allowance.
  expect(()=>evaluateAppliedMigrationLedger(names,current)).toThrow(/project_total_allowance/)
- // The historical allowance extension is still incomplete; the separately observed PostHog ledger passes.
+ // The 197-name PostHog snapshot remains historical; the new 198-name production observation is checked below.
  expect(()=>evaluateAppliedMigrationLedger([...names,'project_total_allowance'],current)).toThrow(/posthog_approved_read/)
- expect(evaluateAppliedMigrationLedger(observedPosthog,current)).toMatchObject({enforcedCount:160,appliedLedgerCount:197,unknownLedgerNames:[],duplicateLedgerNames:[]})
+ expect(observedPosthog).toHaveLength(197)
+ expect(observedPosthog).not.toContain('webbuilder_prospects')
+ expect(()=>evaluateAppliedMigrationLedger(observedPosthog,current)).toThrow(/webbuilder_prospects/)
+ expectCurrentProductionLedger(current)
  })
  it.each(targets)('rejects a ledger missing the enforced migration %s',name=>{
   expect(()=>evaluateAppliedMigrationLedger(names.filter(n=>n!==name),state())).toThrow(/not applied/)
@@ -38,7 +49,7 @@ describe('Studio source-only reconciliation of already applied Harvey migrations
   expect(()=>evaluateAppliedMigrationLedger([...names,name],state())).toThrow(/duplicate/)
  })
  it('still rejects an unrelated unknown migration',()=>{
-  expect(()=>evaluateAppliedMigrationLedger([...observedPosthog,'unreviewed_future_schema'],state())).toThrow(/unknown/)
+  expect(()=>evaluateAppliedMigrationLedger([...currentProduction.migrationNames,'unreviewed_future_schema'],state())).toThrow(/unknown/)
  })
  it('preserves the historical192-name snapshot and reports its missing Harvey migrations',()=>{
   const prior=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-01-web-studio-campaign-observation.json'),'utf8')).migration_names

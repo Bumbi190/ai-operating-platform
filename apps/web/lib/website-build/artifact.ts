@@ -236,6 +236,13 @@ export function compileWebsiteArtifact(input: unknown): WebsiteArtifact {
   if(Object.hasOwn(draft,'cinematicPreset'))fail('TRUSTED_PRESET_REQUIRES_APPROVED_CONSTRUCTOR')
   if (draft.format !== 'static-website.v1') fail('INVALID_FORMAT')
   const title = text(draft.title, 200)
+  let prospectDescription = ''
+  if (Object.hasOwn(draft, 'prospectConcept')) {
+    const binding = record(draft.prospectConcept)
+    if (Object.keys(binding).sort().join(',') !== 'description,inputSha256,version' || binding.version !== 1 || typeof binding.inputSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(binding.inputSha256)) fail('INVALID_PROSPECT_DESIGN')
+    prospectDescription = text(binding.description, 400)
+    if (!prospectDescription.trim()) fail('INVALID_PROSPECT_DESIGN')
+  }
   if (!title.trim() || !Array.isArray(draft.pages) || !draft.pages.length || draft.pages.length > WEBSITE_BUILD_LIMITS.pages) fail('INVALID_PAGES')
   const sharedCss = draft.css === undefined ? '' : text(draft.css)
   const rawPages = draft.pages.map(record)
@@ -263,7 +270,7 @@ export function compileWebsiteArtifact(input: unknown): WebsiteArtifact {
     const config = scriptJson({ behaviors, pages: keys, vehicle3dAssets })
     const hasModel3d=behaviors.some(behavior=>behavior.kind==='model3d')
     const model3dScript=hasModel3d?`<script type="module" src="${MODEL3D_RUNTIME_ASSET.path}" integrity="${model3dRuntimeIntegrity}" crossorigin="anonymous"></script>`:''
-    const html = `<!doctype html><html lang="sv"><head><meta http-equiv="Content-Security-Policy" content="${escapeHtml(websiteCsp(`'sha256-${scriptHash}'`,{model3d:hasModel3d}))}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(pageTitle || title)}</title><style>*,*::before,*::after{box-sizing:border-box}body{margin:0}[hidden]{display:none!important}img{max-width:100%;height:auto}${css}</style></head><body>${markup.html}<script type="application/json" id="__atlas_config">${config}</script><script id="__atlas_runtime">${WEBSITE_RUNTIME}</script>${model3dScript}</body></html>`
+    const html = `<!doctype html><html lang="sv"><head><meta http-equiv="Content-Security-Policy" content="${escapeHtml(websiteCsp(`'sha256-${scriptHash}'`,{model3d:hasModel3d}))}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${prospectDescription ? `<meta name="description" content="${escapeHtml(prospectDescription)}"><meta name="robots" content="noindex,nofollow">` : ''}<title>${escapeHtml(pageTitle || title)}</title><style>*,*::before,*::after{box-sizing:border-box}body{margin:0}[hidden]{display:none!important}img{max-width:100%;height:auto}${css}</style></head><body>${markup.html}<script type="application/json" id="__atlas_config">${config}</script><script id="__atlas_runtime">${WEBSITE_RUNTIME}</script>${model3dScript}</body></html>`
     return { key: keys[index], title: pageTitle, html }
   })
   const assets=[

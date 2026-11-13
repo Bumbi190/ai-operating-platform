@@ -2,6 +2,8 @@ import 'server-only'
 import {cinematicReference,assertCinematicArtifact} from '../studio/cinematic-binding'
 import {WebsiteBuildPermanentError} from '../feedback-interpretation'
 import type {DesignReference,WebsiteArtifact} from '../types'
+import {approvedProspectDraft} from '../prospects/template'
+import {compileWebsiteArtifact} from '../artifact'
 export function approvedWebsitePageKeys(reference:DesignReference|null|undefined):string[]|null{
  if(!reference)return null
  const pages=reference.approvedPages
@@ -12,6 +14,9 @@ export function approvedWebsitePageKeys(reference:DesignReference|null|undefined
  return keys
 }
 export function assertApprovedWebsiteScope(artifact:WebsiteArtifact,reference:DesignReference|null|undefined):void{
+ let prospect:ReturnType<typeof approvedProspectDraft>
+ try{prospect=approvedProspectDraft(reference)}catch{throw new WebsiteBuildPermanentError('INVALID_DESIGN_REFERENCE')}
+ if(prospect&&compileWebsiteArtifact(prospect).sha256!==artifact.sha256)throw new WebsiteBuildPermanentError('PROSPECT_DESIGN_MISMATCH')
  let binding:ReturnType<typeof cinematicReference>
  try{binding=cinematicReference(reference)}catch{throw new WebsiteBuildPermanentError('INVALID_DESIGN_REFERENCE')}
  if(binding){if(artifact.cinematicPreset?.binding.sha256!==binding.sha256)throw new WebsiteBuildPermanentError('CINEMATIC_BINDING_STALE');try{assertCinematicArtifact(artifact)}catch{throw new WebsiteBuildPermanentError('CINEMATIC_ARTIFACT_MISMATCH')}}

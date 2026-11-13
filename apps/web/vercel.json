@@ -24,5 +24,10 @@
         "dub1"
       ]
     }
+  },
+  "git": {
+    "deploymentEnabled": {
+      "feat/webbuilder-etapp1-release-20261108": false
+    }
   }
 }

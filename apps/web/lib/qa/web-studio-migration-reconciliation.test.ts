@@ -5,6 +5,14 @@ import {createHash} from 'node:crypto'
 import {inspectCanonicalMigrationFiles,evaluateAppliedMigrationLedger,LEGACY_ONLY_PRODUCTION_LEDGER_NAMES,GRANDFATHERED_MIGRATION_NAMES} from '../../scripts/migration-guard-policy.mjs'
 const root=resolve(__dirname,'../../../..'),directory=resolve(root,'apps/web/supabase/migrations')
 const observedPosthog=JSON.parse(readFileSync(resolve(root,'docs/verification/web-studio/2026-11-04-posthog-ledger-observation.json'),'utf8')).migrationNames as string[]
+const currentProduction=JSON.parse(readFileSync(resolve(root,'docs/verification/web-studio/2026-11-09-production-ledger-observation.json'),'utf8'))
+function expectCurrentProductionLedger(state:ReturnType<typeof inspectCanonicalMigrationFiles>){
+ expect(currentProduction.migrationNames).toHaveLength(198)
+ expect(currentProduction.migration.version).toBe('20261109111500')
+ expect(currentProduction.migration.name).toBe('webbuilder_prospects')
+ expect(currentProduction.migration.statementSha256).toBe('669fdaca272a4140a210b222e003895e9f7c171b0d0ae9265d69e9382c32e5d9')
+ expect(evaluateAppliedMigrationLedger(currentProduction.migrationNames,state)).toMatchObject({canonicalSqlCount:175,enforcedCount:161,appliedLedgerCount:198,unknownLedgerNames:[],duplicateLedgerNames:[]})
+}
 const provenance=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-10-31-web-studio-migration-provenance.json'),'utf8')) as {migrations:Array<{file:string;sha256:string}>}
 const known=['sales_b2b_offers','sales_discovery_candidates','social_owner_crosschat_context']
 describe('exact canonical cross-track migration reconciliation',()=>{
@@ -14,7 +22,7 @@ describe('exact canonical cross-track migration reconciliation',()=>{
  })
  it('recognizes the three canonical names but still rejects a genuinely unknown ledger name',()=>{
   const state=inspectCanonicalMigrationFiles(readdirSync(directory))
-  expect(state.sqlFiles).toHaveLength(174);expect(state.enforcedNames).toHaveLength(160)
+  expect(state.sqlFiles).toHaveLength(175);expect(state.enforcedNames).toHaveLength(161)
   for(const name of known)expect(state.enforcedNames).toContain(name)
   const ledger=[...state.enforcedNames,...GRANDFATHERED_MIGRATION_NAMES,...LEGACY_ONLY_PRODUCTION_LEDGER_NAMES]
   expect(()=>evaluateAppliedMigrationLedger(ledger,state)).not.toThrow()
@@ -32,9 +40,12 @@ it('validates the actual read-only ledger snapshot without weakening missing/unk
  const current=JSON.parse(readFileSync(resolve(root,'docs/verification/2026-11-04-web-studio-initial-send-observation.json'),'utf8'))
  // The immutable real195-name capture predates the proposed allowance.
  expect(()=>evaluateAppliedMigrationLedger(current.migration_names,state)).toThrow(/project_total_allowance/)
- // The historical allowance extension is still incomplete; the separately observed PostHog ledger passes.
+ // The 197-name PostHog snapshot remains historical; the new 198-name production observation is checked below.
  expect(()=>evaluateAppliedMigrationLedger([...current.migration_names,'project_total_allowance'],state)).toThrow(/posthog_approved_read/)
- expect(evaluateAppliedMigrationLedger(observedPosthog,state)).toMatchObject({enforcedCount:160,appliedLedgerCount:197,unknownLedgerNames:[],duplicateLedgerNames:[]})
+ expect(observedPosthog).toHaveLength(197)
+ expect(observedPosthog).not.toContain('webbuilder_prospects')
+ expect(()=>evaluateAppliedMigrationLedger(observedPosthog,state)).toThrow(/webbuilder_prospects/)
+ expectCurrentProductionLedger(state)
  for(const name of known)expect(()=>evaluateAppliedMigrationLedger(current.migration_names.filter((n:string)=>n!==name),state)).toThrow(new RegExp(name))
 })
 
@@ -43,7 +54,10 @@ it('preserves the historical post-install ledger and exact reviewed allowance SQ
  const state=inspectCanonicalMigrationFiles(readdirSync(directory))
  expect(receipt.migration_names).toHaveLength(196)
  expect(()=>evaluateAppliedMigrationLedger(receipt.migration_names,state)).toThrow(/posthog_approved_read/)
- expect(evaluateAppliedMigrationLedger(observedPosthog,state)).toMatchObject({enforcedCount:160,appliedLedgerCount:197,unknownLedgerNames:[],duplicateLedgerNames:[]})
+ expect(observedPosthog).toHaveLength(197)
+ expect(observedPosthog).not.toContain('webbuilder_prospects')
+ expect(()=>evaluateAppliedMigrationLedger(observedPosthog,state)).toThrow(/webbuilder_prospects/)
+ expectCurrentProductionLedger(state)
  const sql=readFileSync(resolve(directory,'20261104110000_project_total_allowance.sql'),'utf8').replaceAll('\r\n','\n')
  expect(receipt.migration[0].statement_sha256).toBe(createHash('sha256').update(sql).digest('hex'))
  expect(receipt.active_caps).toBe(0)

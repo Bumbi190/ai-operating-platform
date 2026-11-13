@@ -84,6 +84,19 @@ describe('collaborator middleware HTTP isolation', () => {
     expect((await middleware(req('/projects/handlarborsen'))).headers.get('location'))
       .toBe('https://app.omniraos.se/organization/projects/handlarborsen')
   })
+  it('allows audited read-only Office and shared-calendar pages, never owner calendar APIs', async () => {
+    expect((await middleware(req('/organization/office'))).status).toBe(200)
+    expect((await middleware(req('/organization/calendar'))).status).toBe(200)
+    expect((await middleware(req('/atlas/office'))).headers.get('location'))
+      .toBe('https://app.omniraos.se/organization')
+    expect((await middleware(req('/atlas/office/connect'))).status).toBe(403)
+    expect((await middleware(req('/api/calendar'))).status).toBe(403)
+    expect((await middleware(req('/api/calendar', 'POST'))).status).toBe(403)
+    expect((await middleware(req('/api/calendar/decisions', 'POST'))).status).toBe(403)
+    state.member = { role: 'collaborator', revoked_at: '2026-11-13T12:00:00Z' }
+    expect((await middleware(req('/organization/office'))).status).toBe(403)
+    expect((await middleware(req('/organization/calendar'))).status).toBe(403)
+  })
   it('rejects revoked collaborators even on allowed endpoints', async () => {
     state.member = { role: 'collaborator', revoked_at: '2026-10-13T20:00:00Z' }
     expect((await middleware(req('/api/organization/projects'))).status).toBe(403)

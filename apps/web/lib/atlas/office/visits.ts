@@ -1,11 +1,13 @@
 /** Dedicated Office metadata boundary. Never general API-key authentication. */
 import { createHash } from 'node:crypto'
+import type { VisitActivity } from './activity'
 
 export interface VisitOwner { ownerId: string; sessionId: string }
-export type VisitRPC = 'office_visit_create' | 'office_visit_presence' | 'office_visit_revoke'
+export type VisitRPC = 'office_visit_create' | 'office_visit_activity_create' | 'office_visit_presence' | 'office_visit_revoke'
 export interface VisitDependencies {
   owner(): Promise<VisitOwner | null>
   rpc(name: VisitRPC, args: Record<string, string | null>): Promise<unknown>
+  activity?(facts: unknown, selection: { projectId: string; agentId: string }, now: number): VisitActivity
 }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const HEADERS = { 'Cache-Control': 'private, no-store, max-age=0', 'X-Content-Type-Options': 'nosniff', 'Vary': 'Cookie' }
@@ -102,15 +104,17 @@ function metadata(value: unknown) {
   const row = record(value)
   for (const key of ['visitId', 'projectId', 'agentId']) if (typeof row[key] !== 'string' || !UUID.test(row[key] as string)) throw new Rejected(503)
   if (row.avatarId !== 'office-familje-pling') throw new Rejected(503)
+  if (row.readScope !== undefined && (row.readScope !== 'step_activity_v1' || row.nativeActivityProtocol !== 1)) throw new Rejected(503)
   const times = ['createdAt', 'expiresAt', 'leaseUntil'].map(key => typeof row[key] === 'string' ? Date.parse(row[key] as string) : NaN)
   const [created, expiry, lease] = times, now = Date.now()
   if (!times.every(Number.isFinite) || created > now + 2000 || expiry <= now || lease <= now
       || expiry - created > 14400000 || expiry <= created || lease > expiry || lease > now + 32000) throw new Rejected(503)
   return { visitId: row.visitId as string, avatarId: row.avatarId, projectId: row.projectId as string, agentId: row.agentId as string,
-    createdAt: row.createdAt as string, expiresAt: row.expiresAt as string, leaseUntil: row.leaseUntil as string }
+    createdAt: row.createdAt as string, expiresAt: row.expiresAt as string, leaseUntil: row.leaseUntil as string,
+    ...(row.readScope === 'step_activity_v1' ? { readScope: 'step_activity_v1' as const, nativeActivityProtocol: 1 as const } : {}) }
 }
 
-function presence(value: unknown) {
+function presence(value: unknown, classify?: VisitDependencies['activity']) {
   const row = record(value), visit = metadata(row)
   if (typeof row.generatedAt !== 'string' || !Number.isFinite(Date.parse(row.generatedAt))
       || Date.now() - Date.parse(row.generatedAt) >= 20000 || Date.parse(row.generatedAt) > Date.now() + 2000) throw new Rejected(503)
@@ -121,12 +125,14 @@ function presence(value: unknown) {
     return text
   }
   const project = { id: visit.projectId, slug: name('projectSlug', 64), name: name('projectName', 80) }
+  if (visit.readScope && !classify) throw new Rejected(503)
+  const activity = visit.readScope ? classify!(row.activityFacts, visit, Date.parse(row.generatedAt as string)) : { available: false, step: null }
   return { ...visit, generatedAt: row.generatedAt,
     binding: { schemaVersion: 1, source: 'AUTHENTICATED_PROJECT_AGENT_MATCH_V036', verifiedIdentity: true,
       verifiedAt: row.generatedAt, character: 'pling', public3dBinding: 'none', project, agent: { id: visit.agentId, name: name('agentName', 80) } },
     snapshot: { schemaVersion: 2, dataSource: 'authorized_organisation_read', generatedAt: row.generatedAt,
-      availability: { projects: true, agents: true, stepEvidence: false },
-      projects: [{ id: project.id, slug: project.slug, agents: [{ id: visit.agentId, executionEvidence: 'unavailable', stepRequest: null }] }] } }
+      availability: { projects: true, agents: true, stepEvidence: activity.available },
+      projects: [{ id: project.id, slug: project.slug, agents: [{ id: visit.agentId, executionEvidence: 'unavailable', stepRequest: activity.step }] }] } }
 }
 
 export function createVisitHandlers(deps: VisitDependencies) {
@@ -137,6 +143,19 @@ export function createVisitHandlers(deps: VisitDependencies) {
   }
   const owner = async () => { const user = await deps.owner(); if (!user || !UUID.test(user.ownerId) || !UUID.test(user.sessionId)) throw new Rejected(401); return user }
   return {
+    activityCreate: guarded(async request => {
+      sameOrigin(request)
+      const user = await owner()
+      const data = await body(request, ['visitId', 'secretDigest', 'projectId', 'agentId', 'avatarId', 'readScope', 'nativeActivityProtocol'])
+      if (data.readScope !== 'step_activity_v1' || data.nativeActivityProtocol !== '1'
+          || !UUID.test(data.projectId) || !UUID.test(data.agentId) || !/^[0-9a-f]{64}$/.test(data.secretDigest)
+          || data.avatarId !== 'office-familje-pling') throw new Rejected(400)
+      const result = metadata(await deps.rpc('office_visit_activity_create', { p_owner: user.ownerId, p_session: user.sessionId,
+        p_visit: data.visitId, p_digest: data.secretDigest, p_project: data.projectId, p_agent: data.agentId, p_avatar: data.avatarId }))
+      if (result.visitId !== data.visitId || result.projectId !== data.projectId || result.agentId !== data.agentId
+          || result.readScope !== 'step_activity_v1') throw new Rejected(503)
+      return reply(200, result)
+    }),
     create: guarded(async request => {
       sameOrigin(request)
       const user = await owner()
@@ -145,12 +164,12 @@ export function createVisitHandlers(deps: VisitDependencies) {
           || data.avatarId !== 'office-familje-pling') throw new Rejected(400)
       const result = metadata(await deps.rpc('office_visit_create', { p_owner: user.ownerId, p_session: user.sessionId,
         p_visit: data.visitId, p_digest: data.secretDigest, p_project: data.projectId, p_agent: data.agentId, p_avatar: data.avatarId }))
-      if (result.visitId !== data.visitId || result.projectId !== data.projectId || result.agentId !== data.agentId) throw new Rejected(503)
+      if (result.visitId !== data.visitId || result.projectId !== data.projectId || result.agentId !== data.agentId || result.readScope !== undefined) throw new Rejected(503)
       return reply(200, result)
     }),
     presence: guarded(async request => {
       const digest = nativeDigest(request), data = await body(request, ['visitId'])
-      const result = presence(await deps.rpc('office_visit_presence', { p_visit: data.visitId, p_digest: digest }))
+      const result = presence(await deps.rpc('office_visit_presence', { p_visit: data.visitId, p_digest: digest }), deps.activity)
       if (result.visitId !== data.visitId) throw new Rejected(503)
       return reply(200, result)
     }),

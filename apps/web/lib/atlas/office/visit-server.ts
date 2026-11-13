@@ -2,8 +2,10 @@ import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createVisitHandlers, type VisitRPC } from './visits'
+import { projectVisitActivity } from './activity'
 
 export const officeVisitHandlers = createVisitHandlers({
+  activity: projectVisitActivity,
   async owner() {
     const client = await createClient()
     const user = await client.auth.getUser()
@@ -14,7 +16,7 @@ export const officeVisitHandlers = createVisitHandlers({
     return { ownerId: user.data.user.id, sessionId: claims.data.claims.session_id }
   },
   async rpc(name, args) {
-    // Only these three reviewed functions, until generated database types are updated.
+    // Only the dedicated reviewed Office functions, until generated types are updated.
     const db = createAdminClient()
     const call = db.rpc.bind(db) as unknown as (name: VisitRPC, args: Record<string, string | null>) => Promise<{ data: unknown; error: unknown }>
     const result = await call(name, args)

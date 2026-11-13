@@ -26,6 +26,8 @@ export function OfficeConnectionPanel({ projects, authenticated, sourceAvailable
   const running = useRef(false)
   const [hasPairing, setHasPairing] = useState(false)
   const [visitMode, setVisitMode] = useState(false)
+  const [activityAvailable, setActivityAvailable] = useState(false)
+  const [activityConsent, setActivityConsent] = useState(false)
   const [probing, setProbing] = useState(false)
   const [avatars, setAvatars] = useState<string[]>([])
   const [avatarId, setAvatarId] = useState('')
@@ -73,16 +75,20 @@ export function OfficeConnectionPanel({ projects, authenticated, sourceAvailable
     probe.current = attempt
     setProbing(true)
     try {
-      const choices = pair.current.protocol === 2
-        ? await (await import('@/lib/atlas/office/visit-connection')).probeOfficeVisit(pair.current, fetch, attempt.signal)
-        : await probeOfficeRelay(pair.current, fetch, attempt.signal)
+      const capabilities = pair.current.protocol === 2
+        ? await (await import('@/lib/atlas/office/visit-connection')).probeOfficeVisitCapabilities(pair.current, fetch, attempt.signal)
+        : { avatars: await probeOfficeRelay(pair.current, fetch, attempt.signal), activityAvailable: false }
       if (mounted.current && probe.current === attempt && !attempt.signal.aborted) {
-        setAvatars(choices)
+        setAvatars(capabilities.avatars)
+        setActivityAvailable(capabilities.activityAvailable)
+        setActivityConsent(false)
         setState({ phase: 'stopped', message: 'Datorn är ansluten · välj figur och agent' })
       }
     } catch {
       if (mounted.current && probe.current === attempt && !attempt.signal.aborted) {
         setAvatars([])
+        setActivityAvailable(false)
+        setActivityConsent(false)
         setState({ phase: 'unavailable', message: 'Datorn kunde inte anslutas. Öppna en ny Office-anslutning och försök igen.' })
       }
     } finally {
@@ -104,6 +110,7 @@ export function OfficeConnectionPanel({ projects, authenticated, sourceAvailable
         ? (await import('@/lib/atlas/office/visit-connection')).OfficeVisitConnection : OfficeConnection
       if (!mounted.current || document.hidden || attempt !== starts.current) { running.current = false; return }
       const controller = new Controller(pair.current, {
+        ...(activityConsent && activityAvailable ? { activity: true } : {}),
         onState: next => {
           if (mounted.current && connection.current === controller) {
             running.current = next.phase === 'connecting' || next.phase === 'fresh' || next.phase === 'detached'
@@ -160,13 +167,19 @@ export function OfficeConnectionPanel({ projects, authenticated, sourceAvailable
             {project?.agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
           </select>
         </div>
+        {visitMode && activityAvailable ? <label className="flex items-start gap-3 text-sm leading-relaxed text-slate-300">
+          <input type="checkbox" checked={activityConsent} disabled={active} onChange={event => setActivityConsent(event.target.checked)} className="mt-1 h-5 w-5 shrink-0" />
+          <span>Läs även registrerad stegaktivitet för den valda agenten under besöket. Endast tekniska aktivitetsuppgifter läses, utan promptar eller svarstexter. Detta startar inga uppdrag och bevisar inte att agenten arbetar just nu.</span>
+        </label> : null}
         <div className="flex flex-wrap gap-3">
-          <button type="button" disabled={!authenticated || !sourceAvailable || active || probing || !avatars.includes(avatarId) || !projectId || !agentId} onClick={() => { void start() }} className={BUTTON_STYLE + ' bg-cyan-950'}>{visitMode ? 'Anslut för kontorsbesöket' : 'Koppla vald agent'}</button>
+          <button type="button" disabled={!authenticated || !sourceAvailable || active || probing || !avatars.includes(avatarId) || !projectId || !agentId} onClick={() => { void start() }} className={BUTTON_STYLE + ' bg-cyan-950'}>{visitMode ? (activityConsent ? 'Anslut med stegaktivitet' : 'Anslut för kontorsbesöket') : 'Koppla vald agent'}</button>
           <button type="button" disabled={!active} onClick={() => { void connection.current?.stop() }} className={BUTTON_STYLE}>Koppla från</button>
         </div>
         <p role="status" aria-live="polite" className="border-t border-slate-700 pt-5 text-sm text-cyan-100">{state.message}</p>
         <p className="text-sm leading-relaxed text-slate-400">{visitMode
-          ? 'Endast vald agents identitet läses. Efter bekräftad anslutning kan sidan stängas. Anslutningen avslutas när Office stängs eller senast efter fyra timmar. Arbetsstatus är okänd; samtal och uppdrag aktiveras separat.'
+          ? activityConsent
+            ? 'Vald agents identitet och registrerade stegaktivitet läses. Efter bekräftad anslutning kan sidan stängas. Anslutningen avslutas när Office stängs eller senast efter fyra timmar. Indikeringen bevisar inte pågående körning; samtal och uppdrag aktiveras separat.'
+            : 'Endast vald agents identitet läses. Efter bekräftad anslutning kan sidan stängas. Anslutningen avslutas när Office stängs eller senast efter fyra timmar. Arbetsstatus är okänd; samtal och uppdrag aktiveras separat.'
           : 'Uppgifterna hålls aktuella medan sidan är öppen och synlig. Samtal och uppdrag aktiveras separat.'}</p>
       </section>
     </main>

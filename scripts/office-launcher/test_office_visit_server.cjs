@@ -7,7 +7,9 @@ function load({claims={sub:U,role:'authenticated',session_id:S},user={id:U},clai
   const m=new Module(file,module);cache[file]=m;m.paths=Module._nodeModulePaths(path.dirname(file));const orig=m.require.bind(m)
   m.require=id=>id==='server-only'?{}:id==='@/lib/supabase/server'?{createClient:async()=>({auth:{getUser:async()=>({data:{user},error:null}),getClaims:async()=>({data:{claims},error:claimsError})}})}:
    id==='@/lib/supabase/admin'?{createAdminClient:()=>({rpc:async(name,args)=>{calls.push({name,args});return{data:null,error:null}}})}:
-   id==='./visits'?moduleAt('apps/web/lib/atlas/office/visits.ts'):orig(id)
+   id==='./visits'?moduleAt('apps/web/lib/atlas/office/visits.ts'):
+   id==='./activity'?moduleAt('apps/web/lib/atlas/office/activity.ts'):
+   id==='../campus/step-evidence'?moduleAt('apps/web/lib/atlas/campus/step-evidence.ts'):orig(id)
   m._compile(ts.transpileModule(fs.readFileSync(file,'utf8'),{fileName:file,compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,file);return m.exports
  }
  return{handlers:moduleAt('apps/web/lib/atlas/office/visit-server.ts').officeVisitHandlers,calls}

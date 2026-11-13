@@ -19,8 +19,8 @@ it('blocks the captured real pre-Office ledger and accepts only the hypothetical
   expect(observation.databaseMutationsPerformed).toBe(false)
   expect(observation.migrationNames).not.toContain(name)
   expect(() => evaluateAppliedMigrationLedger(observation.migrationNames, state)).toThrow(/office_visit_sessions/)
-  const hypotheticalAfterApply = [...observation.migrationNames, name]
+  const hypotheticalAfterApply = [...observation.migrationNames, name, 'office_step_activity']
   expect(evaluateAppliedMigrationLedger(hypotheticalAfterApply, state)).toMatchObject({
-    canonicalSqlCount: 176, enforcedCount: 162, appliedLedgerCount: 199,
+    canonicalSqlCount: 177, enforcedCount: 163, appliedLedgerCount: 200,
   })
 })

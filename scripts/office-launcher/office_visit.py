@@ -7,6 +7,7 @@ from office_pairing import check_native
 from office_visit_client import OfficeVisitClient
 from office_visit_process import acquire_office_process
 from office_visit_relay import OfficeVisitRelay
+from office_activity import check_activity_native
 
 
 def main(args):
@@ -15,8 +16,9 @@ def main(args):
     relay=lease=None
     try:
         target=default_target();output=check_native(target)
+        activity_output=check_activity_native(target)
         # Acquire the exact existing writer lease BEFORE launching game/browser/listener.
-        relay=OfficeVisitRelay(output,None,OfficeVisitClient())
+        relay=OfficeVisitRelay(output,None,OfficeVisitClient(),activity=activity_output is not None)
         output.mkdir(parents=True,exist_ok=True);relay._acquire_writer()
         lease=acquire_office_process(target,WindowsBackend());relay.process=lease
         # start() retains this same lease; it must not acquire a competing handle.

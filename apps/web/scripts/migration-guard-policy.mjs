@@ -92,8 +92,9 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Source-only recognition of webbuilder_prospects, already observed in the ledger
 // as 20261109111500. The original repository filename is preserved. This does not
 // authorize SQL execution or prove historical version parity / schema replayability.
-export const EXPECTED_CANONICAL_SQL_COUNT = 175
-export const EXPECTED_ENFORCED_COUNT = 161
+// Office visit sessions adds one enforced migration; pending reviewed apply.
+export const EXPECTED_CANONICAL_SQL_COUNT = 176
+export const EXPECTED_ENFORCED_COUNT = 162
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

@@ -1,8 +1,8 @@
 /** Read-only, opt-in browser transport. No sessions, keys or source DTOs are persisted. */
-export interface OfficePairing { port: number; key: string }
+export interface OfficePairing { port: number; key: string; protocol?: 2 }
 export interface OfficeSelection { avatarId: string; projectId: string; agentId: string }
 export interface OfficeState {
-  phase: 'connecting' | 'fresh' | 'unavailable' | 'stopped'
+  phase: 'connecting' | 'fresh' | 'unavailable' | 'stopped' | 'detached'
   message: string
 }
 type Fetcher = typeof fetch
@@ -23,9 +23,11 @@ export function consumeOfficePairing(
   const hash = location.hash
   history.replaceState(history.state, '', location.pathname + location.search)
   const values = new URLSearchParams(hash.replace(/^#/, ''))
-  if (values.size !== 2 || values.getAll('officePort').length !== 1 || values.getAll('officeKey').length !== 1) return null
+  const visit = values.getAll('officeVisit')
+  if ((values.size !== 2 && values.size !== 3) || (values.size === 3 && (visit.length !== 1 || visit[0] !== '2'))
+      || values.getAll('officePort').length !== 1 || values.getAll('officeKey').length !== 1) return null
   const port = values.get('officePort') ?? ''
-  const pair = { port: Number(port), key: values.get('officeKey') ?? '' }
+  const pair: OfficePairing = { port: Number(port), key: values.get('officeKey') ?? '', ...(visit[0] === '2' ? { protocol: 2 as const } : {}) }
   return /^[1-9][0-9]{3,4}$/.test(port) && validPairing(pair) ? pair : null
 }
 

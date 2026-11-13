@@ -2,7 +2,7 @@
 
 P0 inspects allowlisted apps. P1 captures the topmost visible browser behind
 Nova's overlay, then reads its visible document text after explicit approval.
-This module cannot click, type, submit, launch apps, or change app state.
+A requested document read can select an existing browser tab.
 """
 from __future__ import annotations
 

@@ -57,7 +57,7 @@ public static class NovaUiaNative {
         foreach ($edit in $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)) {
             if ($edit.Current.IsOffscreen -or $edit.Current.IsPassword) { continue }
             $current = $edit.Current
-            if ($current.ClassName -ne 'OmniboxViewViews' -and
+            if ($current.ClassName -notin @('OmniboxViewViews','BraveOmniboxViewViews') -and
                 $current.AutomationId -notin @('urlbar-input','addressEditBox') -and
                 $current.Name -notmatch '(?i)address and search bar|adress-? och s.kf.lt|adressf.lt') { continue }
             $parent = $walker.GetParent($edit)
@@ -100,7 +100,116 @@ public static class NovaUiaNative {
         }
     }
 
-    if ($action -eq 'inspect_app') {
+    function Get-VerifiedTabAddress($window, $expectedUrl, $numbered) {
+        $address = Get-BrowserAddress $window
+        if (!$address) { return }
+        $expected = if ($expectedUrl) { [uri]$expectedUrl }
+        if ($address -notmatch '^https?://') {
+            $scheme = if ($expected) { $expected.Scheme } else { 'https' }
+            $address = $scheme + '://' + $address
+        }
+        $actual = $null
+        if (![uri]::TryCreate($address, [UriKind]::Absolute, [ref]$actual) -or
+                $actual.Scheme -notin @('http','https') -or $actual.UserInfo) { return }
+        if (!$expected) { return $actual }
+        $domainMatches = $actual.IdnHost -eq $expected.IdnHost
+        # A known dictation spelling is accepted only with a matching numbered
+        # heading on an already-open document. Never navigate to either address.
+        if ($numbered -and $expected.IdnHost -eq 'hermots.omniway.se' -and $actual.IdnHost -eq 'hermods.omniway.se') {
+            $domainMatches = $true
+        }
+        if ($domainMatches -and $actual.Scheme -eq $expected.Scheme -and $actual.Port -eq $expected.Port -and
+            ($expected.AbsolutePath -eq '/' -or $actual.AbsolutePath -ceq $expected.AbsolutePath) -and
+            (!$expected.Query -or $actual.Query -ceq $expected.Query) -and
+            (!$expected.Fragment -or $actual.Fragment -ceq $expected.Fragment)) { return $actual }
+    }
+
+    function Read-NamedTab {
+        if ($request.allowReadContent -ne $true) { throw 'read_not_authorized' }
+        $browser = [string]$request.browser
+        $heading = [string]$request.heading
+        if ($browser -and $browser -notin $allowedReadProcesses) { throw 'invalid_browser' }
+        if ($heading -and $heading -notmatch '^(lektion|kapitel|avsnitt|modul) [0-9]{1,3}$') { throw 'invalid_heading' }
+        $expectedUrl = [string]$request.expectedUrl
+        if ($expectedUrl -and $expectedUrl -notmatch '^https?://') { throw 'invalid_tab_address' }
+        $titlePattern = '(?i)(?<!\w)' + [regex]::Escape($heading) + '(?!\w)'
+        $bodyPattern = '(?im)^\s*' + [regex]::Escape($heading) + '(?!\w)'
+        $tabCondition = New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::TabItem)
+        $docCondition = New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Document)
+        $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+        $candidates = @()
+        foreach ($window in $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)) {
+            $process = Get-Process -Id $window.Current.ProcessId -ErrorAction SilentlyContinue
+            if (!$process -or $process.ProcessName -notin $allowedReadProcesses -or
+                ($browser -and $browser -ne $process.ProcessName) -or $window.Current.IsOffscreen) { continue }
+            if ($request.windowHandle -and $window.Current.NativeWindowHandle -ne [long]$request.windowHandle) { continue }
+            $prior = $null
+            $windowCandidates = @()
+            foreach ($tab in $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $tabCondition)) {
+                $parent = $walker.GetParent($tab)
+                while ($parent -and !$parent.Equals($window) -and $parent.Current.ControlType -ne [System.Windows.Automation.ControlType]::Document) {
+                    $parent = $walker.GetParent($parent)
+                }
+                if (!$parent -or !$parent.Equals($window)) { continue }
+                $selection = $null
+                if (!$tab.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern,[ref]$selection)) { continue }
+                $selected = $selection.Current.IsSelected
+                if ($selected) { $prior = $selection }
+                if ($heading) {
+                    if ($tab.Current.Name -notmatch $titlePattern) { continue }
+                } elseif (!$selected) { continue }
+                if ($selected -and !(Get-VerifiedTabAddress $window $expectedUrl $heading)) { continue }
+                $windowCandidates += @{ tab=$tab; selection=$selection; window=$window }
+            }
+            foreach ($match in $windowCandidates) { $match.prior = $prior; $candidates += $match }
+        }
+        if (!$candidates.Count) { throw 'tab_not_found' }
+        if ($candidates.Count -ne 1) { throw 'tab_not_unique' }
+        $item = $candidates[0]
+        $switched = !$item.selection.Current.IsSelected
+        if ($switched) { $item.selection.Select() }
+        try {
+            $deadline = [DateTime]::UtcNow.AddSeconds(3)
+            do {
+                if ($switched) { Start-Sleep -Milliseconds 120 }
+                if (!$item.selection.Current.IsSelected -or ($heading -and $item.tab.Current.Name -notmatch $titlePattern)) { throw 'requested_tab_changed' }
+                $uri = Get-VerifiedTabAddress $item.window $expectedUrl $heading
+                $best = ''
+                if ($uri) {
+                    foreach ($document in $item.window.FindAll([System.Windows.Automation.TreeScope]::Descendants,$docCondition)) {
+                        $pattern = $null
+                        if ($document.Current.IsOffscreen -or !$document.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern,[ref]$pattern)) { continue }
+                        $body = $pattern.DocumentRange.GetText(32001)
+                        if ($heading) {
+                            $start = [regex]::Match($body, $bodyPattern)
+                            if (!$start.Success) { continue }
+                            $body = $body.Substring($start.Index)
+                        }
+                        if ($body.Length -gt $best.Length -and ($body -split '\s+').Count -ge 25) { $best = $body }
+                    }
+                }
+                if ($best) {
+                    $after = Get-VerifiedTabAddress $item.window $expectedUrl $heading
+                    if (!$after -or $after.AbsoluteUri -cne $uri.AbsoluteUri -or !$item.selection.Current.IsSelected -or
+                        ($heading -and $item.tab.Current.Name -notmatch $titlePattern)) { throw 'requested_tab_changed' }
+                    $title = ($item.tab.Current.Name -split '\s+[\u2013\u2014-]\s+(?:Minnesanv.ndning|Memory usage)')[0]
+                    return @{ok=$true;title=$title;host=$uri.IdnHost;text=$best.Substring(0,[Math]::Min(24000,$best.Length)).Trim();truncated=($best.Length -gt 24000)}
+                }
+            } while ($switched -and [DateTime]::UtcNow -lt $deadline)
+            if (!$uri) { throw 'tab_not_found' }
+            throw 'lesson_text_missing'
+        } catch {
+            if ($switched -and $item.prior -and $item.selection.Current.IsSelected) { $item.prior.Select() }
+            throw
+        }
+    }
+
+    if ($action -eq 'read_named_tab') {
+        $result = Read-NamedTab
+    }
+    elseif ($action -eq 'inspect_app') {
         $processName = ([string]$request.processName).Trim().ToLowerInvariant()
         if ($processName.EndsWith('.exe')) {
             $processName = $processName.Substring(0, $processName.Length - 4)

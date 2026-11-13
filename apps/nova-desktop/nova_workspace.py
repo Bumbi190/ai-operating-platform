@@ -12,6 +12,7 @@ import threading
 import time
 from tkinter import simpledialog
 
+import nova_open_tab as open_tab
 import nova_mail as mail
 import nova_destinations as destinations
 from nova_commander import known_folders, selected_project
@@ -87,6 +88,15 @@ class Workspace:
             except mail.MailError as exc:
                 value, error = None, str(exc)
             except UIAutomationError as exc:
+                if kind == "read_tab":
+                    reason = {
+                        "tab_not_found": "Jag hittar ingen öppen flik som stämmer med uppgiften. Ta fram rätt flik och säg vilken rubrik du ser.",
+                        "tab_not_unique": "Flera öppna flikar stämmer med uppgiften. Vilken webbläsare och adress gäller det?",
+                        "lesson_text_missing": "Jag hittade fliken men fick inte fram texten under den rubriken. Är själva lektionen öppen?",
+                        "requested_tab_changed": "Fliken ändrades medan jag läste. Ta fram den igen så fortsätter vi.",
+                    }.get(str(exc), "Jag kunde inte läsa texten i den öppna fliken.")
+                    self.results.put((token, kind, None, reason))
+                    return
                 if str(exc) == "login_needed":
                     self.results.put((token, kind, None, "Webbläsaren visar inloggningen. Logga in i fliken och be mig fortsätta till sidan."))
                     return
@@ -119,7 +129,7 @@ class Workspace:
                 continue
             if token != self.epoch or not self.panel.expanded:
                 continue
-            if kind in ("app_lookup", "visit", "link", "news", "volume", "analyze", "analysis_reply"):
+            if kind in ("app_lookup", "visit", "link", "news", "volume", "analyze", "read_tab", "analysis_reply"):
                 self.finish_desktop(kind, value, error)
                 continue
             if error and kind in ("screen", "page"):
@@ -154,6 +164,10 @@ class Workspace:
 
     def route(self, text):
         command, _ = native_command_text(text)
+        prior = self.pending_destination
+        tab = open_tab.intent(command, prior[1] if prior and prior[0] == "tab_context" else None)
+        if tab:
+            return tab
         page = _PAGE.fullmatch(normalized(command))
         if page:
             return "page", "chatgpt" if re.fullmatch(_CHAT_PAGE, page["target"]) else None
@@ -171,6 +185,16 @@ class Workspace:
                       "app_lookup", "volume", "which_volume", "news", "news_topic", "analyze",
                       "known_folder", "local_item", "project_folder"):
             self.handle_desktop(action, value, text)
+            return
+        if action in ("tab_context", "read_tab"):
+            self.epoch += 1
+            self.last_url = None
+            self.pending_destination = ("tab_context", value)
+            if action == "tab_context":
+                ui._reply("nova", "Vilken flik vill du att jag läser? Säg gärna sidans rubrik eller adress.")
+            else:
+                ui._phase("tolkar", "Letar efter texten i den öppna fliken")
+                self.job("read_tab", lambda: (text, open_tab.read_tab(value)))
             return
         if action in ("screen", "page"):
             self.epoch += 1
@@ -292,7 +316,8 @@ class Workspace:
             self.job("news", lambda: headlines(value))
         elif action == "which_volume":
             self.pending_destination = (action, value)
-            ui._reply("nova", "Menar du volymen i Spotify?")
+            verb = "höja" if value == "up" else "sänka"
+            ui._reply("nova", f"Menar du att jag ska {verb} volymen i Spotify?")
         else:
             def volume():
                 script = Path(__file__).with_name("nova_volume.py")
@@ -315,6 +340,13 @@ class Workspace:
                 ui._reply("ok", "Webbläsaren visar " + url.removeprefix("https://").rstrip("/") + ".")
         elif kind == "link":
             self.handle_desktop("website", value, "")
+        elif kind == "read_tab":
+            instruction, page = value
+            ui._append("step", "Läser " + page["title"] + " på " + page["host"] + ".")
+            call = getattr(ui, "live_call", None)
+            if call:
+                call.observe(page["title"] + "\n" + page["text"])
+            self.job("analysis_reply", lambda: open_tab.summarize(instruction, page))
         elif kind == "analyze":
             from nova_live import LiveCall, respond
             instruction, page = value

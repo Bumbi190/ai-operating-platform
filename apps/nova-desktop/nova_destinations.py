@@ -18,7 +18,7 @@ LEAD = r"^(?:(?:hej nova|nova|perfekt|okej|nej[, ]+men|och)[,!. ]+)*(?:(?:(?:kan
 NAV = re.compile(LEAD + r"(?:öppna(?: upp)?|starta|navigera(?: mig)? till|ta mig till|gå (?:in på|till)|plocka fram|ta fram|visa mig)\b[, ]*(.*)", re.I)
 WEB_TOKEN = re.compile(r"(?<![\w@/])(?:(?:https?://)?(?:[\w-]+\.)+[a-zåäö]{2,63}|https?://(?:localhost|(?:\d{1,3}\.){3}\d{1,3}))(?::\d{1,5})?(?:[/#?][^\s,<>]*)?(?![\w@])", re.I)
 ANALYZE = re.compile(LEAD + r"(?:analysera|granska|sammanfatta|las(?: upp)?) (?:den har |den aktiva |den oppna )?(?:webb)?(?:sidan|fliken)(?: (?:at|for) mig)?[.!? ]*$")
-VOLUME = re.compile(LEAD + r"(?:(?:skruva|dra|vrid|satt) (?P<dir>ner|ned|upp|lagre|hogre)(?: (?:pa|for))? (?:musiken|spotify|volymen|ljudet)|(?P<verb>sank|hoj) (?:musiken|volymen|ljudet)(?: (?:i|pa|for) spotify)?)(?: (?:lite|ett snapp|tack))?[.!? ]*$")
+VOLUME = re.compile(LEAD + r"(?:(?:skruva|dra|vrid|satt) (?P<dir>ner|ned|upp|lagre|hogre)(?: (?:pa|for))? (?:musiken|spotify|volymen|ljudet)|(?P<verb>sanka?|hoja?) (?:musiken|volymen|ljudet)(?: (?:i|pa|for) spotify)?)(?: (?:lite|ett snapp|tack))?[.!? ]*$")
 NEWS = re.compile(LEAD + r"(?:(?:las(?: upp)?|ge mig|visa|beratta|spela upp|hora|lyssna pa) (?:de |dagens |senaste |de senaste )*)?(?:news|nyheter(?:na)?)(?: (?:om|inom) (.+))?$")
 NAME = re.compile(r"[\wÅÄÖåäö &()+.'-]{1,80}")
 NEGATED = re.compile(r"\b(?:inte|aldrig|lat bli|om jag|om du|han sa|hon sa)\b")
@@ -117,9 +117,13 @@ def request(text, *, pending=None, last_url=None, spotify=False):
         return ("news", re.split(r"\s+(?:om|inom)\s+", text.strip(" .!?"), maxsplit=1, flags=re.I)[-1]) if news[1] else ("news_topic", None)
     if ANALYZE.fullmatch(words):
         return "analyze", None if "aktiva" in words or "den har" in words else last_url
+    if spotify:
+        unclear = re.fullmatch(LEAD + r"(hoja?|sanka?) (?:bloden|floden)(?: lite)?", words)
+        if unclear:
+            return "which_volume", "up" if unclear[1].startswith("hoj") else "down"
     vol = VOLUME.fullmatch(words)
     if vol:
-        direction = "down" if (vol["dir"] or vol["verb"]) in ("ner", "ned", "lagre", "sank") else "up"
+        direction = "down" if (vol["dir"] or vol["verb"]) in ("ner", "ned", "lagre", "sank", "sanka") else "up"
         return ("volume" if spotify or re.search(r"musik|spotify", words) else "which_volume"), direction
     link = re.fullmatch(LEAD + r"(?:folj|oppna|klicka pa) (?:den synliga )?lanken (?:till )?([\w -]{1,80})", words)
     if link:

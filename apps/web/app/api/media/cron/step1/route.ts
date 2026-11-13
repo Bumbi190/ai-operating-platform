@@ -370,7 +370,10 @@ export async function GET(request: Request) {
   const scriptRes = await withTimeout(withRetry(() => scriptWriter.messages.create({
     model: 'claude-sonnet-4-6', max_tokens: 2000, system: SCRIPT_SYSTEM,
     messages: [{ role: 'user', content: `Write a short-form video script:\n${scriptContext}` }],
-  })), Math.min(14_000, writerBudgetMs), null)
+  })).catch(err => {
+    console.error('[cron/step1] Script writer failed:', err instanceof Error ? err.message : String(err))
+    return null
+  }), Math.min(14_000, writerBudgetMs), null)
   if (!scriptRes) {
     return NextResponse.json({ status: 'script_deferred', reason: 'Script writer exceeded the time budget' }, { status: 503 })
   }
@@ -389,7 +392,10 @@ export async function GET(request: Request) {
   const qaBudgetMs = Math.max(0, 52_000 - (Date.now() - t0))
   let qualityScore = qaBudgetMs >= 1_500
     ? await withTimeout(
-        scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext),
+        scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext).catch(err => {
+          console.error('[cron/step1] Editorial QA request failed:', err instanceof Error ? err.message : String(err))
+          return failedQualityScore('Quality evaluator request failed — manual review required.')
+        }),
         Math.min(8_000, qaBudgetMs),
         failedQualityScore('Quality check timed out — manual editorial review required.'),
       )
@@ -397,17 +403,22 @@ export async function GET(request: Request) {
 
   // Rewrite only when there is time for a second, independent quality check.
   // A new script must never inherit an older script's approval.
-  if (shouldRegenerate(qualityScore) && Date.now() - t0 < 25_000
-      && !qualityScore.verdict.startsWith('Quality check invalid')) {
+  if (shouldRegenerate(qualityScore) && qualityScore.overall > 0 && Date.now() - t0 < 25_000) {
     const rewriteRes = await withTimeout(withRetry(() => scriptRewriter.messages.create({
       model: 'claude-sonnet-4-6', max_tokens: 2000, system: SCRIPT_SYSTEM,
       messages: [{ role: 'user', content: `Rewrite — previous rejected.\nSTORY:\n${scriptContext}\nREJECTED HOOK: "${script.hook}"\nVERDICT: ${qualityScore.verdict}\nWEAK SPOTS: ${qualityScore.weak_spots.join(', ')}\nFix everything. Hook must score 8+.` }],
-    })), 12_000, null)
+    })).catch(err => {
+      console.error('[cron/step1] Rewrite failed; keeping original for review:', err instanceof Error ? err.message : String(err))
+      return null
+    }), 12_000, null)
     if (rewriteRes) {
       try {
         script = JSON.parse((rewriteRes.content[0].type === 'text' ? rewriteRes.content[0].text : '').replace(/^\x60{3}(?:json)?\n?/, '').replace(/\n?\x60{3}$/, '').trim()) as ScriptWriterOutput
         qualityScore = await withTimeout(
-          scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext),
+          scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext).catch(err => {
+          console.error('[cron/step1] Editorial QA request failed:', err instanceof Error ? err.message : String(err))
+          return failedQualityScore('Quality evaluator request failed — manual review required.')
+        }),
           8_000,
           failedQualityScore('Rewritten script was not re-scored in time — manual review required.'),
         )

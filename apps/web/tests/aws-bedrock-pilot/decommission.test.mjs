@@ -13,11 +13,15 @@ test('paid Nova pilot endpoint is removed after the successful one-shot', () => 
   assert.equal(existsSync(resolve(app, 'app/api/bedrock-pilot-converse/diagnostics.ts')), false)
 })
 
-test('unused Bedrock runtime dependency removed; no new default credential chain', () => {
+test('SDK is pinned exclusively for dormant governed adapter, not the retired API endpoint', () => {
   const pkg = JSON.parse(readFileSync(resolve(app, 'package.json'), 'utf8'))
   const lock = JSON.parse(readFileSync(resolve(root, 'package-lock.json'), 'utf8'))
-  assert.equal(pkg.dependencies?.['@aws-sdk/client-bedrock-runtime'], undefined)
-  assert.equal(lock.packages?.['apps/web']?.dependencies?.['@aws-sdk/client-bedrock-runtime'], undefined)
+  assert.equal(pkg.dependencies?.['@aws-sdk/client-bedrock-runtime'], '3.986.0')
+  assert.equal(lock.packages?.['apps/web']?.dependencies?.['@aws-sdk/client-bedrock-runtime'], '3.986.0')
+  const adapter = readFileSync(resolve(app, 'lib/ai/bedrock-pilot/governed-client.ts'), 'utf8')
+  assert.ok(adapter.includes('credentials: shortLivedCredentials'))
+  assert.equal(adapter.includes('AWS_SECRET_ACCESS_KEY'), false)
+  assert.equal(existsSync(resolve(app, 'app/api/bedrock-pilot-converse/route.ts')), false)
 })
 
 test('manual preview page cannot call any billable Bedrock endpoint', () => {

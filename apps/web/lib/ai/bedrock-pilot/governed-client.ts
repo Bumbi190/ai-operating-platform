@@ -30,13 +30,14 @@ import {
   type ManualReviewRequest,
 } from './manual-review-contract'
 import { obtainPreviewCredentials } from './sts-credentials'
+import { assertManualBedrockOperatorGrant, type ManualBedrockOperatorGrant } from './operator-grant'
 
 const MODEL_ID = 'amazon.nova-micro-v1:0'
 const REGION = 'us-east-1'
 
 export type GovernedBedrockReviewContext = Readonly<{
-  /** Must come from an authenticated server-side human approval, never JSON. */
-  operatorApprovalVerified: boolean
+  /** Non-forgeable proof minted from a verified operator session and project ownership. */
+  operatorGrant: ManualBedrockOperatorGrant
   projectId: string
   execution: ExecutionContract
   agent: 'Editorial QA'
@@ -54,8 +55,8 @@ export type GovernedBedrockReviewResult = Readonly<{
 
 /**
  * Internal entry point; intentionally not wired to any API route or scheduler.
- * Callers must verify operator auth and source ownership on the server first.
- * Passing an untrusted client-controlled 'operatorApprovalVerified' is forbidden.
+ * A caller must obtain a minted grant using resolveManualBedrockOperatorGrant;
+ * JSON objects and caller-supplied booleans cannot authorize this adapter.
  */
 export async function runGovernedBedrockManualReview(input: {
   ctx: GovernedBedrockReviewContext
@@ -64,13 +65,15 @@ export async function runGovernedBedrockManualReview(input: {
   vercelOidcToken: string
 }): Promise<GovernedBedrockReviewResult> {
   const { ctx, request } = input
+  // This is the critical authority check: neither JSON nor a plain object can pass.
+  assertManualBedrockOperatorGrant(ctx.operatorGrant, request.projectId)
   const scope = ctx.execution.scope
   const prepared = prepareManualEditorialReview({
     pilotEnabled: process.env.BEDROCK_GOVERNED_PILOT_ENABLED === 'true',
     environment: process.env.VERCEL_ENV,
     branch: process.env.VERCEL_GIT_COMMIT_REF,
     hardSpendGate: isSpendGateEnforced(),
-    operatorApproved: ctx.operatorApprovalVerified === true,
+    operatorApproved: true, // minted grant has been verified above
     operation: 'manual_editorial_quality_review',
     executionContext: ctx.execution.context,
     executionScopeKind: scope.kind,

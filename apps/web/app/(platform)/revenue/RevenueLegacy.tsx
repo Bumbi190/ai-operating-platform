@@ -223,9 +223,10 @@ export async function RevenueLegacy() {
   // AI cost (month to date, USD)
   let totalAiCostUSD = 0
   const aiCostByProject = new Map<string, number>()
-  const tokensByProvider: Record<'anthropic' | 'openai', { in: number; out: number; cost: number }> = {
+  const tokensByProvider: Record<ReturnType<typeof getModelPricing>['provider'], { in: number; out: number; cost: number }> = {
     anthropic: { in: 0, out: 0, cost: 0 },
     openai:    { in: 0, out: 0, cost: 0 },
+    'aws-bedrock': { in: 0, out: 0, cost: 0 },
   }
 
   for (const log of runLogs) {

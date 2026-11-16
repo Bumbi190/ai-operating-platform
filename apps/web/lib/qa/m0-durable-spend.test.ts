@@ -358,6 +358,8 @@ describe('M0 permanent guards', () => {
   it('priced cost logging happens ONLY inside the governed adapters (their run() bodies settle it)', () => {
     const GOVERNED = new Set([
       'lib/ai/anthropic.ts', 'lib/ai/openai-client.ts', 'lib/media/elevenlabs.ts', 'lib/media/image-client.ts',
+      // Preview-only Bedrock adapter meters only inside withGovernedSpend.
+      'lib/ai/bedrock-pilot/governed-client.ts',
     ])
     const callers = all.filter(f => f !== 'lib/cost/track.ts'
       && /\blog(Llm|Image|Voice)Cost\(/.test(readFileSync(join(ROOT, f), 'utf8').replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, '')))

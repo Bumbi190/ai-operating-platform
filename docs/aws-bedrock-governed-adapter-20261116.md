@@ -9,6 +9,7 @@
 
 ## Kod och beroenden
 - lib/ai/bedrock-pilot/manual-review-contract.ts: ren begäran-/scope-/storleksvalidering, utan nätverk.
+- lib/ai/bedrock-pilot/operator-decision.ts och operator-grant.ts: befintlig verifierad plattformoperatör + projektägarskap; servern skapar ett oförfalskbart WeakMap-registrerat behörighetsbevis. JSON-kopior och vanliga booleanvärden avvisas.
 - lib/ai/bedrock-pilot/sts-credentials.ts: fast OIDC/STS-roll och region, tidsbegränsade credentials, aldrig gamla AWS-nycklar.
 - lib/ai/bedrock-pilot/governed-client.ts: oanvänd server-side adapter med withGovernedSpend, tokenWindowCeiling, getRates, logLlmCost, admitPhysicalRequest, watchExecutionAuthority och composeAbortSignals.
 - @aws-sdk/client-bedrock-runtime@3.986.0, explicita credentials och maxAttempts=1. Ingen automatisk retry eller fallback.
@@ -16,7 +17,7 @@
 - bedrock:InvokeModel-rollen kan användas via förhandsgranskad OIDC men är i AWS bunden till Vercel-projekt + environment:preview, INTE specifikt Git-branch. Applikationens exakta grenbegränsning är kompletterande skydd.
 
 ## Order of operations för framtida körning
-1. **Verifiera användaren på servern**. operatorApprovalVerified är ett internt antagande i den oanvända modulen; den är INTE en fristående, verifierad autentiseringsmekanism. Exponera inte detta som ett JSON-fält och kalla inte funktionen från offentlig route utan ett separat granskat principal-/auth-bevis.
+1. **Verifiera användaren på servern** med resolveManualBedrockOperatorGrant(projectId): befintlig Supabase-session, plattformoperatör och samma projektägare måste alla stämma. Adaptern kräver ett äkta mintat behörighetsbevis, inte ett externt operatorApproved-boolean. Ingen publik route finns; en framtida route måste ha separat CSRF-/auth-/projektgranskning innan den kan nå adaptern.
 2. Välj rätt projekt och ExecutionContract med context=OPERATOR_EXECUTION, scope=PROJECT och samma verifierade projekt-ID.
 3. Validera 2–6 manuellt angivna HTTPS-källutdrag och max 8192 bytes prompt, max 256 utdata-tokens. Källutdragen är operatörssuppladdade: modellen får INTE påstå att den har verifierat dem.
 4. Verifiera Preview/branch, hård spend-gate, separat aktiveringsflagga och OIDC-token. STS före budgetreservation eftersom rollantagandet inte är modellkonsumtion.
@@ -26,9 +27,10 @@
 8. Returnera enbart text för **manuell redaktionell QA**; aldrig automatiskt publicera, återanropa en annan modell eller flytta The Prompts News Hunter till Bedrock.
 
 ## QA och återstående releasegates
-- Riktade Node-enhetstester för konfiguration, STS, dokumentgränser, kodstruktur och prisregister.
-- Vercel Preview-bygg ska gå till READY för exakt senaste SHA.
-- TypeScript och full repo-qa krävs innan riktig integration: Vercels vanliga Next-bygg har tidigare uttryckligen hoppat över TypeScript-validering och lint, vilket ett grönt build därmed inte bevisar.
+- Riktade Node-tester: 63/63 godkända för kontrakt, STS, isolering och prisregister före denna auth-förbättring. Nytt Vitest-test med 5/5 för oförfalskbart operatörsbevis och 6/6 mot den riktiga withGovernedSpend-gränsen med SIMULERADE budget-/STOP-/modellseams.
+- Full TypeScript-kontroll (tsc --noEmit --incremental false): 0 fel efter att RevenueLegacy utökats för aws-bedrock-leverantören. Vercels vanliga Next-bygg hoppar över TS/lint, så det är en separat kontroll.
+- Vercel Preview för exakt senaste SHA krävs; ännu ingen ny merge eller produktionsdeployment.
+- Full repo-qa och kritiska regressioner behöver fortsatt granskning innan aktivering.
 - Inga betalda regressionstester förrän verifierad autentisering, prisspårning och operatörsbeslut finns.
 - Kontrollera i AWS Billing att tidigare anrop belastat krediterna; 10 USD Budget är endast en varning.
 - Arbeta endast i denna testgren; bevara originalprojekt, migreringar och produktionsmiljö.

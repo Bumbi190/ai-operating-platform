@@ -9,8 +9,8 @@
  * the one a future change is most likely to break by accident — someone adds a
  * feature, copies the nearest example, and a 34th ungoverned spend path exists.
  * A guard that could be satisfied by a broad exclusion would be worse than no
- * guard, so the allowlist is exactly five files and is asserted to be exactly
- * those five.
+ * guard, so the allowlist is exactly six reviewed files and is asserted to be exactly
+ * those six.
  *
  * The LIFECYCLE tests drive `withGovernedSpend` against a fake reservation layer
  * and assert the ordering properties that make the boundary meaningful: nothing
@@ -37,6 +37,7 @@ const SCANNED_DIRS = ['app', 'lib']
 const SANCTIONED = new Set([
   'lib/ai/anthropic.ts',
   'lib/ai/openai-client.ts',
+  'lib/ai/bedrock-pilot/governed-client.ts',
   'lib/media/image-client.ts',
   'lib/media/elevenlabs.ts',
     'lib/media/elevenlabs-realtime.ts',
@@ -72,6 +73,8 @@ function code(src: string): string {
 const FORBIDDEN: { label: string; re: RegExp }[] = [
   { label: 'Anthropic SDK constructor', re: /new\s+Anthropic\s*\(/ },
   { label: 'OpenAI SDK constructor',    re: /new\s+OpenAI\s*\(/ },
+  { label: 'Bedrock SDK import',        re: /@aws-sdk\/client-bedrock-runtime/ },
+  { label: 'Bedrock SDK constructor',   re: /new\s+BedrockRuntimeClient\s*\(/ },
   { label: 'Ideogram hostname',         re: /api\.ideogram\.ai/ },
   { label: 'OpenAI hostname',           re: /api\.openai\.com/ },
   { label: 'ElevenLabs hostname',       re: /api\.elevenlabs\.io/ },
@@ -85,9 +88,10 @@ describe('provider escape guard', () => {
     expect(files.length).toBeGreaterThan(200)
   })
 
-  it('the allowlist is exactly the five sanctioned adapters', () => {
+  it('the allowlist is exactly the six sanctioned adapters', () => {
     expect([...SANCTIONED].sort()).toEqual([
       'lib/ai/anthropic.ts',
+      'lib/ai/bedrock-pilot/governed-client.ts',
       'lib/ai/openai-client.ts',
       'lib/media/elevenlabs-realtime.ts',
       'lib/media/elevenlabs.ts',

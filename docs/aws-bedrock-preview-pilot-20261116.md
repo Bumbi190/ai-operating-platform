@@ -16,12 +16,10 @@ Klicka på knappen Verifiera AWS-anslutningen (inga modellkostnader).
 Förväntat svar: Godkänt: Vercel OIDC till AWS STS fungerar, ingen modell anropad.
 Andra svar: felsök endast i pilotgrenen. Låt IAM:s trust policy och gamla AWS-variabler vara orörda.
 
-## Efter grönt OIDC-test – manuellt Nova Micro-test
-- AWS Activate-krediter kan enligt AWS användas till berättigade Bedrock-modeller; kontrollera senare faktisk kredittillämpning i Billing.
-- Klicka enbart en gång på 'Kör ett Nova Micro-test' på samma Preview-sida för ett verkligt, mycket litet inferensanrop.
-- Modell: amazon.nova-micro-v1:0, us-east-1. Fast systemgenererad testtext; högst 48 utdata-tokens. Ingen användardata skickas. Testet utlöses aldrig automatiskt.
-- AWS-bedrock klienten får endast temporära STS-credentials från OIDC, inte AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY i Vercel.
-- Kontrollera svaret och tokenantal. Budget 10 USD/mån är en varning, inte en hård spärr.
+## Avslutat manuellt Nova Micro-test
+- Modell: amazon.nova-micro-v1:0, us-east-1. Verifierat svar: Hej; 15 indatatokens och 3 utdatatokens.
+- Det manuella engångstestet är färdigt. Den tidigare avgiftsbelagda POST-routen tas bort i denna revision. Kör inga fler betalda tester utan en granskad anslutning till Omniras gemensamma kostnadsspärr.
+- Se docs/aws-bedrock-readiness-20261116.md för teknisk överlämning, kreditosäkerhet och städkriterier.
 
 ## Efter pilot
 Städa bort de temporära endpoints och grenens env-variabler innan radering av pilotgrenen. Ändra inte andra projekt eller produktionsnycklar.

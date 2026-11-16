@@ -27,7 +27,7 @@
  * spend had already happened. Denial has to cost nothing.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const ME = 'user-me'
 const MINE = '11111111-1111-1111-1111-111111111111'
@@ -61,7 +61,7 @@ function fakeDb(tables: Record<string, any[]>) {
         return q
       },
       limit: (n: number) => { rec.ops.push(['limit', String(n), n]); rows = rows.slice(0, n); return q },
-      single: async () => ({ data: rows[0] ?? { id: 'new-row' }, error: null }),
+      single: async () => ({ data: rows[0] ?? (rec.writes.length ? { id: 'new-row' } : null), error: null }),
       maybeSingle: async () => ({ data: rows[0] ?? null, error: null }),
       then: (ok: any, err?: any) => Promise.resolve({ data: rows, error: null }).then(ok, err),
     }
@@ -86,7 +86,7 @@ function seed(newsItems: any[] = []) {
 }
 
 vi.mock('@/lib/supabase/server', () => ({
-  createClient: async () => ({ auth: { getUser: async () => ({ data: { user: CURRENT_USER } }) } }),
+  createClient: async () => ({ auth: { getUser: async () => ({ data: { user: AUTH_RESULTS ? AUTH_RESULTS.shift() : CURRENT_USER } }) } }),
 }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => CURRENT.db }))
 
@@ -99,11 +99,14 @@ const SCRIPT_JSON = JSON.stringify({
   cta: 'cta', tone: 'insider', estimated_duration: '~22s', difficulty: 'intermediate',
 })
 let CLAUDE_TURN = 0
+let AUTH_RESULTS: ({ id: string } | null)[] | undefined
+let FAIL_PROVIDER = false
 vi.mock('@/lib/ai/anthropic', () => ({
   getAnthropic: () => ({
     messages: {
       create: async () => {
         note('anthropic')
+        if (FAIL_PROVIDER) throw new Error('Synthetic provider failure')
         const body = CLAUDE_TURN++ === 0 ? NEWS_JSON : SCRIPT_JSON
         return { content: [{ type: 'text', text: body }] }
       },
@@ -155,7 +158,115 @@ async function drain(res: Response): Promise<string> {
 const writesFor = (seen: Seen[]) => seen.flatMap(s => s.writes)
 const opsOn = (seen: Seen[], table: string) => seen.filter(s => s.table === table).flatMap(s => s.ops)
 
-beforeEach(() => { CURRENT_USER = { id: ME }; CURRENT = fakeDb(seed()); CALLS = []; CLAUDE_TURN = 0 })
+beforeEach(() => { CURRENT_USER = { id: ME }; CURRENT = fakeDb(seed()); CALLS = []; CLAUDE_TURN = 0; AUTH_RESULTS = undefined; FAIL_PROVIDER = false; vi.resetModules(); vi.stubGlobal('fetch', async () => { note('unexpected-http-handoff'); return new Response('data: {}\n\n') }) })
+afterEach(() => { vi.unstubAllGlobals() })
+
+describe('Critical #29 — daily internal handoff security', () => {
+  it('does not send session cookies to the origin supplied by the caller', async () => {
+    CURRENT = fakeDb(seed([{
+      id: 'approved-owned-story', project_id: MINE, status: 'approved',
+      virality_score: 10, created_at: new Date().toISOString(),
+      title: 'Synthetic story', summary: 'Synthetic summary', key_insight: 'Synthetic insight',
+    }]))
+    const originalFetch = globalThis.fetch
+    const network: { url: string; cookie: string | null }[] = []
+    globalThis.fetch = async (input, init) => {
+      network.push({ url: String(input), cookie: new Headers(init?.headers).get('cookie') })
+      return new Response('data: {"step":"done"}\n\n', {
+        headers: { 'Content-Type': 'text/event-stream' },
+      })
+    }
+    try {
+      vi.resetModules()
+      const { POST } = await import('@/app/api/media/pipeline/daily/route')
+      const response = await POST(new Request('https://attacker.invalid/api/media/pipeline/daily', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json', Cookie: 'session=synthetic-session-only',
+          Origin: 'https://attacker.invalid', Host: 'attacker.invalid',
+          'X-Forwarded-Host': 'attacker.invalid', 'X-Forwarded-Proto': 'https',
+          Forwarded: 'host=attacker.invalid;proto=https',
+        },
+        body: JSON.stringify({ project_id: MINE }),
+      }))
+      await drain(response)
+      expect(network, 'credentials must not leave daily through an HTTP handoff').toEqual([])
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+})
+
+describe('Daily internal handoff — authentication and response fidelity', () => {
+  const request = (signal?: AbortSignal) => new Request('https://attacker.invalid/api/media/pipeline/daily', {
+    method: 'POST', signal,
+    headers: { 'Content-Type': 'application/json', Cookie: 'session=synthetic-only',
+      Origin: 'https://other.invalid', Host: 'spoof.invalid',
+      'X-Forwarded-Host': 'proxy.invalid', 'X-Forwarded-Proto': 'http' },
+    body: JSON.stringify({ project_id: MINE }),
+  })
+  beforeEach(() => {
+    CURRENT = fakeDb(seed([{ id: 'owned', project_id: MINE, status: 'approved',
+      virality_score: 1, created_at: new Date().toISOString(), title: 'Svensk syntetisk artikel ÅÄÖ', summary: 'S' }]))
+  })
+
+  it('returns the full handler 401 if the second session check fails', async () => {
+    AUTH_RESULTS = [{ id: ME }, null]
+    const { POST } = await import('@/app/api/media/pipeline/daily/route')
+    const response = await POST(request())
+    expect(response.status).toBe(401)
+    expect(await response.text()).toBe('Unauthorized')
+    expect(CALLS).toEqual([])
+    expect(writesFor(CURRENT.seen)).toEqual([])
+  })
+
+  it('rechecks the project for a changed user at the full handler boundary', async () => {
+    AUTH_RESULTS = [{ id: ME }, { id: 'user-other' }]
+    const { POST } = await import('@/app/api/media/pipeline/daily/route')
+    const response = await POST(request())
+    expect(response.status).toBe(404)
+    expect(CALLS).toEqual([])
+    expect(writesFor(CURRENT.seen)).toEqual([])
+  })
+
+  it('returns a real SSE error and closes when the existing provider fails', async () => {
+    FAIL_PROVIDER = true
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { POST } = await import('@/app/api/media/pipeline/daily/route')
+      const response = await POST(request())
+      expect(response.status).toBe(200)
+      expect(response.headers.get('content-type')).toBe('text/event-stream')
+      const body = await drain(response)
+      expect(body).toContain('"step":"analyzing"')
+      expect(body).toContain('"step":"error"')
+      expect(body).toContain('Synthetic provider failure')
+      expect(CALLS).toEqual(['anthropic'])
+      expect(writesFor(CURRENT.seen)).toEqual([])
+    } finally { errorLog.mockRestore() }
+  })
+
+  it('does not enter the full pipeline without an approved recent article', async () => {
+    CURRENT = fakeDb(seed([]))
+    const { POST } = await import('@/app/api/media/pipeline/daily/route')
+    const response = await POST(request())
+    expect(response.status).toBe(404)
+    expect(CALLS).toEqual([])
+    expect(writesFor(CURRENT.seen)).toEqual([])
+  })
+
+  it('returns normal SSE progress and completion through the internal handoff', async () => {
+    const { POST } = await import('@/app/api/media/pipeline/daily/route')
+    const response = await POST(request())
+    const body = await drain(response)
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toBe('text/event-stream')
+    expect(body).toContain('"step":"done"')
+    expect(body).not.toContain('"step":"error"')
+    expect(writesFor(CURRENT.seen).length).toBeGreaterThan(0)
+  })
+})
 
 // ═══ A · pipeline/full ═══════════════════════════════════════════════════════
 
@@ -252,7 +363,7 @@ describe('9V-3c · pipeline/daily — an operator route, not a machine one', () 
       story('mine-lower',   MINE,   10, RECENT),
       story('theirs-higher', THEIRS, 99, RECENT),
     ]))
-    ;(globalThis as any).fetch = async () => { note('forward-to-full'); return new Response('data: {}\n\n') }
+    vi.stubGlobal('fetch', async () => { note('unexpected-http-handoff'); return new Response('data: {}\n\n') })
   })
 
   it('a foreign project reads nothing and forwards nothing', async () => {
@@ -288,7 +399,10 @@ describe('9V-3c · pipeline/daily — an operator route, not a machine one', () 
   it('the authorized project is the one forwarded to the full pipeline', async () => {
     const res = await post({ project_id: MINE })
     expect(res.status).toBe(200)
-    expect(CALLS).toContain('forward-to-full')
+    await drain(res)
+    expect(CALLS).toContain('anthropic')
+    expect(CALLS).not.toContain('unexpected-http-handoff')
+    expect(writesFor(CURRENT.seen).every((row: any) => !('project_id' in row) || row.project_id === MINE)).toBe(true)
   })
 
   it('an unauthenticated request never reaches a query', async () => {

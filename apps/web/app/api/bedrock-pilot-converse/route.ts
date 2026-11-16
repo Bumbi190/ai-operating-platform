@@ -4,6 +4,7 @@
  * No existing long-lived AWS credentials; temporary STS credentials only.
  */
 import { BedrockRuntimeClient, ConverseCommand } from '@aws-sdk/client-bedrock-runtime'
+import { classifyBedrockAccessDenial } from './diagnostics'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -114,6 +115,7 @@ export async function POST(request: Request): Promise<Response> {
     return json(502, {
       status: 'bedrock_inference_not_verified',
       reason: allowed.includes(name) ? name : 'unknown_error',
+      diagnostic: name === 'AccessDeniedException' ? classifyBedrockAccessDenial(error) : 'not_applicable',
     })
   } finally {
     client.destroy()

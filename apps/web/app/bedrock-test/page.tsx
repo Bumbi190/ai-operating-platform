@@ -14,6 +14,7 @@ type NovaResult = {
   inputTokens?: number
   outputTokens?: number
   reason?: string
+  diagnostic?: string
 }
 
 export default function BedrockPilotCheckPage() {
@@ -92,7 +93,7 @@ export default function BedrockPilotCheckPage() {
         <div role="status" aria-live="polite" style={{ marginTop: 15 }}>
           {novaResult && (novaSuccess
             ? <p>Godkänt! <strong>{novaResult.answer}</strong> · indata {novaResult.inputTokens ?? '–'} tokens · utdata {novaResult.outputTokens ?? '–'} tokens.</p>
-            : <p>Modelltest inte verifierat: {novaResult.status}{novaResult.reason ? ' (' + novaResult.reason + ')' : ''}. Inga produktionsändringar.</p>)}
+            : <p>Modelltest inte verifierat: {novaResult.status}{novaResult.reason ? ' (' + novaResult.reason + ')' : ''}{novaResult.diagnostic ? ' – diagnos: ' + novaResult.diagnostic : ''}. Inga produktionsändringar.</p>)}
         </div>
       </section>
       <p style={{ fontSize: 12, opacity: 0.7, marginTop: 28 }}>Tillfällig pilotsida · Endast feat/omnira-bedrock-pilot-20261116 · Ska tas bort efter test.</p>

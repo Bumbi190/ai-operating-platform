@@ -33,3 +33,11 @@ Den nya lib/ai/bedrock-pilot/shadow-policy.ts anropar ingen modell och auktorise
 - Senaste Preview måste vara READY och tidigare betalda routen ska ge 404.
 - Behåll evidens i Git-historiken, men rör inte AWS-kontot, budgeten, gamla nycklar eller andra projekt.
 - Ta bort AWS_BEDROCK_ROLE_ARN och AWS_BEDROCK_REGION från testgrenen i Vercel när inga aktiva tester kräver dem. Radera först därefter endast feat/omnira-bedrock-pilot-20261116.
+
+## Fortsättning: offline granskningsplan och kanonisk prisbok
+- Nova Micro är registrerad som provider aws-bedrock i lib/ai/pricing.ts med samma verifierade bruttopriser som tidigare test.
+- Modellens maximala inputkontext 128K tokens finns i lib/cost/spend-ceiling.ts för framtida token_windowCeiling; det är ett fullständigt tak, inte en uppskattning baserad på promptens längd.
+- planManualEditorialReview i lib/ai/bedrock-pilot/shadow-policy.ts är en icke-dispatchande planeringsfunktion som kräver isolerad Preview, explicit flagga, hård spend-gate, giltigt projekt, avgränsade in/utdata och minst två referenser. Planens returnerade canDispatch är alltid false.
+- Även när planeringen lyckas måste en kommande faktisk adapter anropa withGovernedSpend med OPERATOR_EXECUTION och gemensam settlement-telemetri, använda riktig OIDC och respektera löpande STOP/authority.
+- Arbetsunderlaget docs/theprompt-google-school-editorial-review-20261116.md granskar de faktiska orden i v03.1:s originalröst mot Googles, WIREDs och AP:s uppgifter. Den visuella videon är godkänd, men nyhetsmanuset är ännu inte faktamässigt klartecknat för publicering.
+- Allt är kvar i temporär Git-gren. Inga nya AWS-modellanrop eller publiceringar genom denna fortsättning.

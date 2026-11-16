@@ -105,3 +105,61 @@ export function boundNovaMicroPilotGrossUsd(maxOutputTokens: number): number {
   return (NOVA_MICRO_CONTEXT_WINDOW_TOKENS * NOVA_MICRO_INPUT_PER_MILLION_USD
     + maxOutputTokens * NOVA_MICRO_OUTPUT_PER_MILLION_USD) / 1_000_000
 }
+
+/**
+ * Offline handoff to the canonical spend-governed adapter.
+ * Sources are operator-supplied references, NOT evidence of verified facts.
+ * This module never requests URLs, reserves budget, or authorises AWS calls.
+ */
+export type ManualEditorialPlanInput = ShadowCandidate & {
+  sourceUrls: readonly string[]
+  fxUsdSek: number
+}
+
+export type ManualEditorialPlan =
+  | { status: 'refused'; reason: string; canDispatch: false }
+  | {
+      status: 'review_plan_ready'
+      canDispatch: false
+      provider: 'aws-bedrock'
+      modelId: typeof NOVA_MICRO_PILOT_MODEL
+      region: typeof NOVA_MICRO_PILOT_REGION
+      operation: 'manual_editorial_quality_review'
+      grossUsdCeiling: number
+      grossSekCeilingUnrounded: number
+      sourceReferences: number
+      sourcesFactChecked: false
+      requiredGate: 'withGovernedSpend'
+      requiredExecution: 'OPERATOR_EXECUTION'
+      requiresHumanPublicationApproval: true
+    }
+
+export function planManualEditorialReview(input: ManualEditorialPlanInput): ManualEditorialPlan {
+  const eligible = evaluateBedrockShadowCandidate(input)
+  if (eligible.status === 'refused') return eligible
+  if (!Number.isFinite(input.fxUsdSek) || input.fxUsdSek <= 0 || input.fxUsdSek > 1_000) {
+    return { status: 'refused', reason: 'fx_rate_unverified', canDispatch: false }
+  }
+  if (!Array.isArray(input.sourceUrls) || input.sourceUrls.length < 2 ||
+      input.sourceUrls.length > 12 ||
+      input.sourceUrls.some(url => typeof url !== 'string' || !/^https:\/\/[^\s]+$/i.test(url)) ||
+      new Set(input.sourceUrls).size !== input.sourceUrls.length) {
+    return { status: 'refused', reason: 'source_references_required', canDispatch: false }
+  }
+  const grossUsdCeiling = boundNovaMicroPilotGrossUsd(input.maxOutputTokens)
+  return {
+    status: 'review_plan_ready',
+    canDispatch: false,
+    provider: 'aws-bedrock',
+    modelId: NOVA_MICRO_PILOT_MODEL,
+    region: NOVA_MICRO_PILOT_REGION,
+    operation: 'manual_editorial_quality_review',
+    grossUsdCeiling,
+    grossSekCeilingUnrounded: grossUsdCeiling * input.fxUsdSek,
+    sourceReferences: input.sourceUrls.length,
+    sourcesFactChecked: false,
+    requiredGate: 'withGovernedSpend',
+    requiredExecution: 'OPERATOR_EXECUTION',
+    requiresHumanPublicationApproval: true,
+  }
+}

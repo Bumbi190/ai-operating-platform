@@ -8,10 +8,12 @@ export interface ModelPricing {
   outputPer1M: number  // USD per 1M output tokens
   perImage?: number    // USD per image (for image models)
   label: string
-  provider: 'anthropic' | 'openai'
+  provider: 'anthropic' | 'openai' | 'aws-bedrock'
 }
 
 export const MODEL_PRICING: Record<string, ModelPricing> = {
+  // AWS Bedrock, Amazon Nova Micro, standard on-demand in us-east-1, verified 2026-11-16.
+  'amazon.nova-micro-v1:0': { inputPer1M: 0.035, outputPer1M: 0.14, label: 'Amazon Nova Micro', provider: 'aws-bedrock' },
   // Anthropic
   'claude-opus-4-6':              { inputPer1M: 15.00, outputPer1M: 75.00, label: 'Claude Opus 4.6',    provider: 'anthropic' },
   'claude-sonnet-4-6':            { inputPer1M: 3.00,  outputPer1M: 15.00, label: 'Claude Sonnet 4.6',  provider: 'anthropic' },

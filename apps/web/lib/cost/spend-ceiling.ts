@@ -105,6 +105,8 @@ export function ceilToLedgerScale(sek: number): number {
  * ceiling refuses outright, so 200k is the bound for every listed Claude model.
  */
 export const CONTEXT_WINDOW_TOKENS: Readonly<Record<string, number>> = Object.freeze({
+  // Amazon Nova Micro: max input 128K tokens, catalog 2026-11-16.
+  'amazon.nova-micro-v1:0': 128_000,
   'claude-opus-4-6': 200_000,
   'claude-sonnet-4-6': 200_000,
   'claude-haiku-4-5': 200_000,

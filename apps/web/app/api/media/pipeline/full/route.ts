@@ -54,15 +54,29 @@ function sseEvent(controller: ReadableStreamDefaultController, payload: Record<s
 }
 
 // Retry wrapper for transient Anthropic 529 overloaded errors
-async function withRetry<T>(fn: () => Promise<T>, attempts = 4, baseDelayMs = 3000): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, signal: AbortSignal, attempts = 4, baseDelayMs = 3000): Promise<T> {
   for (let i = 0; i < attempts; i++) {
+    signal.throwIfAborted()
     try {
       return await fn()
     } catch (err) {
+      signal.throwIfAborted()
       const msg = err instanceof Error ? err.message : ''
       const isOverloaded = msg.includes('overloaded') || msg.includes('529')
       if (!isOverloaded || i === attempts - 1) throw err
-      await new Promise(r => setTimeout(r, baseDelayMs * Math.pow(2, i)))
+      await new Promise<void>((resolve, reject) => {
+        const abort = () => {
+          signal.removeEventListener('abort', abort)
+          clearTimeout(timer)
+          reject(signal.reason)
+        }
+        const timer = setTimeout(() => {
+          signal.removeEventListener('abort', abort)
+          resolve()
+        }, baseDelayMs * Math.pow(2, i))
+        signal.addEventListener('abort', abort, { once: true })
+        if (signal.aborted) abort()
+      })
     }
   }
   throw new Error('Max retries exceeded')
@@ -168,8 +182,11 @@ Return ONLY valid JSON (no markdown fences):
 // ─── Main handler ─────────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
+  if (request.signal.aborted) return new Response(null, { status: 499 })
   const supabase = await createClient()
+  if (request.signal.aborted) return new Response(null, { status: 499 })
   const { data: { user } } = await supabase.auth.getUser()
+  if (request.signal.aborted) return new Response(null, { status: 499 })
   if (!user) return new Response('Unauthorized', { status: 401 })
 
   const { text, project_id, mode = 'lite' } = await request.json() as {
@@ -177,6 +194,7 @@ export async function POST(request: Request) {
     project_id: string
     mode?: PipelineMode
   }
+  if (request.signal.aborted) return new Response(null, { status: 499 })
   if (!text?.trim() || !project_id) {
     return new Response('text and project_id required', { status: 400 })
   }
@@ -199,28 +217,61 @@ export async function POST(request: Request) {
   // not authorization. `lib/cost/governed-spend.ts` has no session check and no
   // allow-list; it attributes to a fixed platform slug. This is the guard.
   const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+  if (request.signal.aborted) return new Response(null, { status: 499 })
   if (!assertProjectAllowed(project_id, allowedProjectIds)) {
     return new Response('Project not found', { status: 404 })
   }
 
+  const cancellation = new AbortController()
+  const signal = cancellation.signal
+  let closed = false
+  let output: ReadableStreamDefaultController<Uint8Array> | undefined
+  const close = () => {
+    request.signal.removeEventListener('abort', abort)
+    if (!closed) {
+      closed = true
+      output?.close()
+    }
+  }
+  const abort = () => {
+    cancellation.abort()
+    close()
+  }
+  // Non-cancellable work already in flight can finish; its result must never
+  // start another provider, upload or write after cancellation is observed.
+  const step = async <T,>(operation: () => T | PromiseLike<T>): Promise<T> => {
+    signal.throwIfAborted()
+    const value = await operation()
+    signal.throwIfAborted()
+    return value
+  }
+
   const claude = getAnthropic({
+    signal,
     project: MEDIA_PIPELINE_PROJECT, execution: { context: 'OPERATOR_EXECUTION', scope: projectScope({ projectId: project_id }) }, agent: 'Pipeline', operation: 'Full Pipeline',
   })
 
-  const stream = new ReadableStream({
-    async start(controller) {
-      const emit = (payload: Record<string, unknown>) => sseEvent(controller, payload)
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      output = controller
+      request.signal.addEventListener('abort', abort, { once: true })
+      if (request.signal.aborted) abort()
+      const emit = (payload: Record<string, unknown>) => {
+        signal.throwIfAborted()
+        sseEvent(controller, payload)
+      }
 
+      void (async () => {
       try {
         // ── Step 1: Analyze article ──────────────────────────────────────────
         emit({ step: 'analyzing', label: 'Analyserar artikel...', progress: 5 })
 
-        const newsRes = await withRetry(() => claude.messages.create({
+        const newsRes = await step(() => withRetry(() => claude.messages.create({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 800,
           system: NEWS_SYSTEM,
           messages: [{ role: 'user', content: `Analyze this article for short-form video:\n\n${text}` }],
-        }))
+        }, { signal }), signal))
         const newsRaw = newsRes.content[0].type === 'text' ? newsRes.content[0].text : ''
         const newsClean = newsRaw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
         const news = JSON.parse(newsClean) as NewsHunterOutput
@@ -228,7 +279,7 @@ export async function POST(request: Request) {
         emit({ step: 'news_done', label: `Nyhet: "${news.title}"`, progress: 20 })
 
         // ── Step 2: Save news item (auto-approved) ───────────────────────────
-        const { data: newsItem } = await db
+        const { data: newsItem } = await step(() => db
           .from('media_news_items')
           .insert({
             project_id,
@@ -244,12 +295,13 @@ export async function POST(request: Request) {
             raw_output: toJson(news),
           })
           .select('id')
-          .single()
+          .abortSignal(signal)
+          .single())
 
         // ── Step 3: Write script ─────────────────────────────────────────────
         emit({ step: 'scripting', label: 'Skriver manus...', progress: 30 })
 
-        const scriptRes = await withRetry(() => claude.messages.create({
+        const scriptRes = await step(() => withRetry(() => claude.messages.create({
           model: 'claude-sonnet-4-6',
           max_tokens: 2000,
           system: SCRIPT_SYSTEM,
@@ -264,7 +316,7 @@ Virality score: ${news.virality_score}/100
 Audience: ${news.target_audience}
 Angle: ${news.content_angle}`,
           }],
-        }))
+        }, { signal }), signal))
         const scriptRaw = scriptRes.content[0].type === 'text' ? scriptRes.content[0].text : ''
         const scriptClean = scriptRaw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
         let script = JSON.parse(scriptClean) as ScriptWriterOutput
@@ -273,7 +325,7 @@ Angle: ${news.content_angle}`,
         emit({ step: 'quality_check', label: 'Kvalitetsgranskning...', progress: 38 })
 
         const sourceContext = `${news.title}\n${news.summary}\n${news.key_insight}`
-        const qualityScore = await scoreScript({ context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) }, script.hook, script.script, sourceContext)
+        const qualityScore = await step(() => scoreScript({ context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) }, script.hook, script.script, sourceContext))
 
         if (shouldRegenerate(qualityScore)) {
           emit({
@@ -284,7 +336,7 @@ Angle: ${news.content_angle}`,
           })
 
           // One auto-regeneration attempt with explicit weakness feedback
-          const rewriteRes = await withRetry(() => claude.messages.create({
+          const rewriteRes = await step(() => withRetry(() => claude.messages.create({
             model: 'claude-sonnet-4-6',
             max_tokens: 2000,
             system: SCRIPT_SYSTEM,
@@ -303,7 +355,7 @@ WEAK SPOTS: ${qualityScore.weak_spots.join(', ')}
 
 Write a significantly stronger version. Fix every weak spot. The hook must score 8+ on insider energy and specificity.`,
             }],
-          }))
+          }, { signal }), signal))
           const rewriteRaw = rewriteRes.content[0].type === 'text' ? rewriteRes.content[0].text : ''
           const rewriteClean = rewriteRaw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
           script = JSON.parse(rewriteClean) as ScriptWriterOutput
@@ -317,7 +369,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
         })
 
         // ── Step 4: Save script (auto-approved) ──────────────────────────────
-        const { data: scriptRow } = await db
+        const { data: scriptRow } = await step(() => db
           .from('media_scripts')
           .insert({
             project_id,
@@ -337,40 +389,41 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
             version: 1,
           })
           .select('id')
-          .single()
+          .abortSignal(signal)
+          .single())
 
         if (!scriptRow) throw new Error('Kunde inte spara manus till databasen')
         const scriptId = scriptRow.id
 
         // Mark news as scripted
         if (newsItem?.id) {
-          await db.from('media_news_items').update({ status: 'scripted' }).eq('id', newsItem.id)
+          await step(() => db.from('media_news_items').update({ status: 'scripted' }).eq('id', newsItem.id).abortSignal(signal))
         }
 
         // ── Step 5: Voice generation (Victoria) ──────────────────────────────
         emit({ step: 'voice', label: 'Genererar röst (Victoria)...', progress: 50 })
 
-        await db.from('media_scripts').update({ voice_status: 'generating' }).eq('id', scriptId)
+        await step(() => db.from('media_scripts').update({ voice_status: 'generating' }).eq('id', scriptId).abortSignal(signal))
 
-        const voiceResult = await generateVoiceover(script.script, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) }, 'victoria')
+        const voiceResult = await step(() => generateVoiceover(script.script, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) }, 'victoria'))
 
         // ── Step 6: Upload audio + timing ────────────────────────────────────
         emit({ step: 'uploading_audio', label: 'Laddar upp ljud...', progress: 62 })
 
         const [audioUrl, timingUrl] = await Promise.all([
-          uploadAudio(project_id, scriptId, voiceResult.audioBuffer),
-          uploadTimingData(project_id, scriptId, {
+          step(() => uploadAudio(project_id, scriptId, voiceResult.audioBuffer)),
+          step(() => uploadTimingData(project_id, scriptId, {
             words: voiceResult.words,
             durationMs: voiceResult.durationMs,
-          }),
+          })),
         ])
 
-        await db.from('media_scripts').update({
+        await step(() => db.from('media_scripts').update({
           audio_url: audioUrl,
           timing_url: timingUrl,
           duration_ms: voiceResult.durationMs,
           voice_status: 'ready',
-        }).eq('id', scriptId)
+        }).eq('id', scriptId).abortSignal(signal))
 
         emit({ step: 'voice_done', label: `Röst klar (${(voiceResult.durationMs / 1000).toFixed(1)}s)`, progress: 70 })
 
@@ -380,19 +433,19 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
         if (isLite) {
           emit({ step: 'images', label: 'Genererar 5 scenbilder (Ideogram)...', progress: 74 })
           const [imageUrls3, backgroundMusicUrl] = await Promise.all([
-            generateNewsImages(news.title, script.script, 5, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) }),
-            getBackgroundMusicUrl(musicMood),
+            step(() => generateNewsImages(news.title, script.script, 5, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) })),
+            step(() => getBackgroundMusicUrl(musicMood)),
           ])
 
           emit({ step: 'uploading_images', label: 'Laddar upp bilder...', progress: 88 })
           const storedUrls3 = await Promise.all(
-            imageUrls3.map((url, i) => uploadSceneImage(project_id, scriptId, i, url)),
+            imageUrls3.map((url, i) => step(() => uploadSceneImage(project_id, scriptId, i, url))),
           )
-          await db.from('media_scripts').update({
+          await step(() => db.from('media_scripts').update({
             images: storedUrls3,
             composition: 'SimpleNewsReel',
             background_music_url: backgroundMusicUrl,
-          }).eq('id', scriptId)
+          }).eq('id', scriptId).abortSignal(signal))
 
           emit({
             step: 'done',
@@ -408,16 +461,16 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
           })
         } else {
           emit({ step: 'images', label: 'Genererar 5 scener (Ideogram)...', progress: 74 })
-          const sceneImages = await generateSceneImages(script.script, script.hook, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) })
+          const sceneImages = await step(() => generateSceneImages(script.script, script.hook, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) }))
 
           emit({ step: 'uploading_images', label: 'Laddar upp bilder...', progress: 88 })
           const imageUrls = await Promise.all(
-            sceneImages.map((img, i) => uploadSceneImage(project_id, scriptId, i, img.url)),
+            sceneImages.map((img, i) => step(() => uploadSceneImage(project_id, scriptId, i, img.url))),
           )
-          await db.from('media_scripts').update({
+          await step(() => db.from('media_scripts').update({
             images: imageUrls,
             composition: 'ShortFormVideo',
-          }).eq('id', scriptId)
+          }).eq('id', scriptId).abortSignal(signal))
 
           emit({
             step: 'done',
@@ -434,12 +487,20 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
         }
 
       } catch (err) {
+        if (signal.aborted) return
         const message = err instanceof Error ? err.message : 'Okänt fel'
         console.error('[pipeline/full]', message)
         sseEvent(controller, { step: 'error', message })
       } finally {
-        controller.close()
+        close()
       }
+      })()
+    },
+    cancel() {
+      // The stream is already closed by its consumer; never close it twice.
+      closed = true
+      cancellation.abort()
+      request.signal.removeEventListener('abort', abort)
     },
   })
 

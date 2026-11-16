@@ -5,7 +5,8 @@ import {spawn,spawnSync} from 'node:child_process'
 import {createHmac,randomBytes,randomUUID} from 'node:crypto'
 import {createServer as httpServer,request as httpRequest} from 'node:http'
 import {mkdtemp,rm} from 'node:fs/promises'
-import {existsSync,readFileSync,writeFileSync,mkdirSync} from 'node:fs'
+import {createInterface} from 'node:readline'
+import {Writable} from 'node:stream'
 import path from 'node:path'
 import {createServer as tcpServer} from 'node:net'
 import {freemem,tmpdir} from 'node:os'
@@ -14,6 +15,266 @@ const LOCAL_TEST_IMAGES={...REFERENCE_TEST_IMAGES,storage:'supabase/storage-api:
 
 export const fixtureEnv=Object.fromEntries(Object.entries(process.env).filter(([key])=>
   /^(path|systemroot|windir|comspec|pathext|temp|tmp|home|userprofile|appdata|localappdata|programfiles|programfiles\(x86\)|programdata|playwright_browsers_path)$/i.test(key)))
+// A directory capability, not a realpath/check followed by a pathname read.
+// Windows resolves each component relative to a verified directory handle, and opens the
+// final file with NtCreateFile/FILE_OPEN_REPARSE_POINT, without sharing writes/deletion. Inspection
+// and I/O use that same handle. Unsupported platforms fail before private I/O.
+// This short-lived native child has no listener; its only channel is private IPC.
+const privateNames=new Set(['runtime-private.json','stack-private.json','harvey-public-jwk.json','runtime-receipt.json','next-local.log','scb.env'])
+const privateDirectoryPeers=new WeakMap()
+const privateIoSource=String.raw`
+using System;
+using System.IO;
+using System.Text;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
+using System.Web.Script.Serialization;
+using Microsoft.Win32.SafeHandles;
+public static class PrivateLocalFiles {
+  [StructLayout(LayoutKind.Sequential)] struct Info {
+    public uint Attributes; public System.Runtime.InteropServices.ComTypes.FILETIME Creation,Access,Write;
+    public uint Volume,SizeHigh,SizeLow,Links,IndexHigh,IndexLow;
+  }
+  [StructLayout(LayoutKind.Sequential)] struct Unicode {public ushort Length,MaximumLength;public IntPtr Buffer;}
+  [StructLayout(LayoutKind.Sequential)] struct Attributes {public int Length;public IntPtr Root,Name;public uint Flags;public IntPtr Security,Qos;}
+  [StructLayout(LayoutKind.Sequential)] struct IoStatus {public IntPtr Status,Information;}
+  [DllImport("ntdll.dll")] static extern int NtCreateFile(out SafeFileHandle h,uint access,ref Attributes a,out IoStatus io,IntPtr allocation,uint attributes,uint share,uint disposition,uint options,IntPtr ea,uint eaLength);
+  [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern SafeFileHandle CreateFileW(string p,uint a,uint s,IntPtr sa,uint d,uint f,IntPtr t);
+  [DllImport("kernel32.dll",SetLastError=true)] static extern bool GetFileInformationByHandle(SafeFileHandle h,out Info i);
+  [DllImport("kernel32.dll")] static extern uint GetFileType(SafeFileHandle h);
+  [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool ConvertStringSecurityDescriptorToSecurityDescriptorW(string s,uint r,out IntPtr d,out uint size);
+  [DllImport("advapi32.dll")] static extern uint GetSecurityInfo(SafeFileHandle h,int type,uint info,out IntPtr owner,out IntPtr group,out IntPtr dacl,out IntPtr sacl,out IntPtr sd);
+  [DllImport("advapi32.dll")] static extern uint GetSecurityDescriptorLength(IntPtr sd);
+  [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr p);
+  [DllImport("kernel32.dll",CharSet=CharSet.Unicode)] static extern uint GetDriveTypeW(string root);
+  [DllImport("kernel32.dll",CharSet=CharSet.Unicode)] static extern uint GetFinalPathNameByHandleW(SafeFileHandle h,StringBuilder b,uint n,uint flags);
+  [DllImport("advapi32.dll")] static extern bool GetTokenInformation(IntPtr h,int c,IntPtr b,int n,out int size);
+  static string LogonSid(){using(var id=WindowsIdentity.GetCurrent()){int n;GetTokenInformation(id.Token,28,IntPtr.Zero,0,out n);if(n<16||n>1024)throw new IOException();IntPtr p=Marshal.AllocHGlobal(n);try{if(!GetTokenInformation(id.Token,28,p,n,out n)||Marshal.ReadInt32(p)!=1)throw new IOException();return new SecurityIdentifier(Marshal.ReadIntPtr(p,IntPtr.Size==8?8:4)).Value;}finally{Marshal.FreeHGlobal(p);}}}
+  static readonly string Logon=LogonSid();
+  static readonly string Sid=WindowsIdentity.GetCurrent().User.Value;
+  static readonly HashSet<string> Names=new HashSet<string>{"runtime-private.json","stack-private.json","harvey-public-jwk.json","runtime-receipt.json","next-local.log","scb.env"};
+  static readonly JavaScriptSerializer Json=new JavaScriptSerializer{MaxJsonLength=4000000};
+  static Info Inspect(SafeFileHandle h,bool directory) {
+    Info i;
+    if(h.IsInvalid||GetFileType(h)!=1||!GetFileInformationByHandle(h,out i))throw new IOException();
+    if((i.Attributes&0x400)!=0||((i.Attributes&0x10)!=0)!=directory||(!directory&&i.Links!=1))throw new IOException();
+    return i;
+  }
+  static void PrivateAcl(SafeFileHandle h) {
+    IntPtr owner,group,dacl,sacl,sd;
+    if(GetSecurityInfo(h,1,5,out owner,out group,out dacl,out sacl,out sd)!=0)throw new IOException();
+    try {
+      byte[] bytes=new byte[GetSecurityDescriptorLength(sd)]; Marshal.Copy(sd,bytes,0,bytes.Length);
+      var descriptor=new RawSecurityDescriptor(bytes,0);
+      if(descriptor.Owner==null||descriptor.Owner.Value!=Sid||descriptor.DiscretionaryAcl==null)throw new IOException();
+      foreach(GenericAce ace in descriptor.DiscretionaryAcl) {
+        var access=ace as QualifiedAce;
+        if(access!=null&&access.AceQualifier==AceQualifier.AccessAllowed&&access.AccessMask!=0&&access.SecurityIdentifier.Value!=Sid&&access.SecurityIdentifier.Value!=Logon&&access.SecurityIdentifier.Value!="S-1-5-18"&&access.SecurityIdentifier.Value!="S-1-5-32-544")throw new IOException();
+      }
+    } finally {LocalFree(sd);}
+  }
+  static IntPtr Security() {
+    IntPtr sd;uint size;
+    if(!ConvertStringSecurityDescriptorToSecurityDescriptorW("O:"+Sid+"D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;"+Sid+")",1,out sd,out size))throw new IOException();
+    return sd;
+  }
+  static SafeFileHandle OpenRelative(SafeFileHandle root,string name,bool directory,uint access,uint disposition,IntPtr security,out bool missing) {
+    var unicode=new Unicode{Length=(ushort)(name.Length*2),MaximumLength=(ushort)(name.Length*2),Buffer=Marshal.StringToHGlobalUni(name)};
+    IntPtr up=Marshal.AllocHGlobal(Marshal.SizeOf(typeof(Unicode)));
+    try {
+      Marshal.StructureToPtr(unicode,up,false);
+      var attributes=new Attributes{Length=Marshal.SizeOf(typeof(Attributes)),Root=root.DangerousGetHandle(),Name=up,Flags=0x1040,Security=security};
+      SafeFileHandle file;IoStatus io;
+      int status=NtCreateFile(out file,access|0x100000,ref attributes,out io,IntPtr.Zero,0,1,disposition,0x200020u|(directory?1u:0x40u),IntPtr.Zero,0);
+      missing=status==unchecked((int)0xC0000034);
+      if(status<0) {if(file!=null)file.Dispose();if(missing)return null;throw new IOException();}
+      return file;
+    } finally {Marshal.FreeHGlobal(up);Marshal.FreeHGlobal(unicode.Buffer);}
+  }
+  static SafeFileHandle PinRoot(string root,bool create,List<SafeFileHandle> pins) {
+    if(root.Length<4||!Char.IsLetter(root[0])||root[1]!=':'||root[2]!='\\')throw new IOException();
+    var parts=root.Substring(3).Split('\\');
+    foreach(string part in parts)if(part.Length==0||part=="."||part==".."||part.EndsWith(".")||part.EndsWith(" ")||part.IndexOfAny(new char[]{':','/','\0','*','?','"','<','>','|'})>=0||System.Text.RegularExpressions.Regex.IsMatch(part,@"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)",System.Text.RegularExpressions.RegexOptions.IgnoreCase))throw new IOException();
+    var drive=CreateFileW(root.Substring(0,3),0x80,1,IntPtr.Zero,3,0x02200000,IntPtr.Zero);
+    pins.Add(drive);Inspect(drive,true);
+    var volume=new StringBuilder(32768);
+    if(GetDriveTypeW(root.Substring(0,3))!=3||GetFinalPathNameByHandleW(drive,volume,32768,1)!=49||!volume.ToString().StartsWith(@"\\?\Volume{"))throw new IOException();
+    SafeFileHandle current=drive;
+    foreach(string part in parts) {
+      IntPtr sd=create?Security():IntPtr.Zero;SafeFileHandle handle;bool missing;
+      try {handle=OpenRelative(current,part,true,0x20080,create?3u:1u,sd,out missing);}finally{if(sd!=IntPtr.Zero)LocalFree(sd);}
+      if(handle==null)throw new IOException();
+      pins.Add(handle);Inspect(handle,true);current=handle;
+    }
+    PrivateAcl(current);return current;
+  }
+  [StructLayout(LayoutKind.Sequential)] struct BasicProcess {public IntPtr Reserved,Peb,R2,R3,Pid,Parent;}
+  [DllImport("iphlpapi.dll")] static extern uint GetExtendedTcpTable(IntPtr table,ref int size,bool sort,int family,int type,int reserved);
+  [DllImport("ntdll.dll")] static extern int NtQueryInformationProcess(IntPtr p,int type,out BasicProcess info,int size,out int returned);
+  static bool Peer(Dictionary<string,object> command) {
+    int server=Convert.ToInt32(command["serverPort"]),client=Convert.ToInt32(command["clientPort"]),expected=Convert.ToInt32(command["expectedPid"]);
+    bool descendants=(bool)command["descendants"];
+    if(server<1||server>65535||client<1||client>65535||expected<1)throw new IOException();
+    int size=0;if(GetExtendedTcpTable(IntPtr.Zero,ref size,false,2,5,0)!=122||size<4||size>16777216)throw new IOException();
+    IntPtr table=Marshal.AllocHGlobal(size);
+    try {
+      if(GetExtendedTcpTable(table,ref size,false,2,5,0)!=0)throw new IOException();
+      int count=Marshal.ReadInt32(table);if(count<0||4L+24L*count>size)throw new IOException();
+      for(int i=0;i<count;i++) {
+        IntPtr row=IntPtr.Add(table,4+24*i);
+        if(Marshal.ReadInt32(row)!=5||Marshal.ReadInt32(row,4)!=0x0100007f||Marshal.ReadInt32(row,12)!=0x0100007f||(Marshal.ReadByte(row,8)*256+Marshal.ReadByte(row,9))!=server||(Marshal.ReadByte(row,16)*256+Marshal.ReadByte(row,17))!=client)continue;
+        int pid=Marshal.ReadInt32(row,20);
+        for(int depth=0;depth<5;depth++) {
+          if(pid==expected)return true;
+          if(!descendants||pid<1)return false;
+          using(var process=System.Diagnostics.Process.GetProcessById(pid)) {
+            BasicProcess info;int returned;
+            if(NtQueryInformationProcess(process.Handle,0,out info,Marshal.SizeOf(typeof(BasicProcess)),out returned)!=0)return false;
+            pid=info.Parent.ToInt32();
+          }
+        }
+        return false;
+      }
+      return false;
+    } finally {Marshal.FreeHGlobal(table);}
+  }
+
+  static object Operation(SafeFileHandle root,Dictionary<string,object> command) {
+    if((string)command["mode"]=="peer")return Peer(command);
+    string name=(string)command["name"],mode=(string)command["mode"];
+    if(!Names.Contains(name)||!(mode=="read"||mode=="write"||mode=="create"||mode=="append")||(name=="next-local.log"&&mode!="append")||(mode=="append"&&name!="next-local.log"))throw new IOException();
+    bool read=mode=="read";uint disposition=read?1u:mode=="create"?2u:3u;
+    byte[] data=read?null:Convert.FromBase64String((string)command["data"]);
+    if(data!=null&&data.Length>1048576)throw new IOException();
+    IntPtr sd=read?IntPtr.Zero:Security();SafeFileHandle file;bool missing;
+    try {file=OpenRelative(root,name,false,read?0x80020000u:0xC0020000u,disposition,sd,out missing);}finally{if(sd!=IntPtr.Zero)LocalFree(sd);}
+    if(file==null) {if(read&&missing)return null;throw new IOException();}
+    using(file) {
+      var info=Inspect(file,false);PrivateAcl(file);
+      long limit=name=="next-local.log"?16777216:1048576;
+      if(info.SizeHigh!=0||info.SizeLow>limit)throw new IOException();
+      using(var stream=new FileStream(file,read?FileAccess.Read:FileAccess.ReadWrite)) {
+        if(read) {
+          byte[] bytes=new byte[(int)stream.Length];int total=0,count;
+          while(total<bytes.Length&&(count=stream.Read(bytes,total,bytes.Length-total))>0)total+=count;
+          if(total!=bytes.Length)throw new IOException();
+          return Convert.ToBase64String(bytes);
+        }
+        if(mode=="append") {if(stream.Length+data.Length>limit)throw new IOException();stream.Position=stream.Length;}
+        else {stream.SetLength(0);}
+        stream.Write(data,0,data.Length);stream.Flush(true);return true;
+      }
+    }
+  }
+  static void Reply(object value) {Console.WriteLine(Json.Serialize(value));Console.Out.Flush();}
+  public static void Run() {
+    var pins=new List<SafeFileHandle>();
+    try {
+      var init=Json.Deserialize<Dictionary<string,object>>(Console.ReadLine());
+      SafeFileHandle root=PinRoot((string)init["root"],(bool)init["create"],pins);Reply(new {ready=true});
+      string line;
+      while((line=Console.ReadLine())!=null) {
+        try {Reply(new {ok=true,value=Operation(root,Json.Deserialize<Dictionary<string,object>>(line))});}
+        catch {Reply(new {ok=false});}
+      }
+    } catch {Reply(new {ready=false});}
+    finally {for(int i=pins.Count-1;i>=0;i--)pins[i].Dispose();}
+  }
+}
+`
+
+export async function openPrivateLocalDirectory(directory,{create=false}={}) {
+  // No insecure fallback on Node versions/platforms without the required native
+  // semantics. Never send a path through a command line or invoke a user shell.
+  if(process.platform!=='win32'||typeof directory!=='string'||!path.win32.isAbsolute(directory)||directory!==path.win32.normalize(directory))throw Error('PRIVATE_LOCAL_IO_UNAVAILABLE')
+  const script="$ErrorActionPreference='Stop'; try { Add-Type -TypeDefinition @'\n"+privateIoSource+"\n'@ -ReferencedAssemblies System.Web.Extensions; [PrivateLocalFiles]::Run() } catch { [Console]::Out.WriteLine('{\"ready\":false}') }"
+  const child=spawn('C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{env:fixtureEnv,windowsHide:true,stdio:['pipe','pipe','ignore']})
+  const lines=createInterface({input:child.stdout,crlfDelay:Infinity})
+  let pending,closed=false
+  const fail=()=>{closed=true;if(pending){clearTimeout(pending.timer);pending.reject(Error('PRIVATE_LOCAL_IO_FAILED'));pending=undefined}}
+  child.on('error',fail);child.on('exit',fail);child.stdin.on('error',fail)
+  lines.on('line',line=>{if(!pending)return;const current=pending;pending=undefined;clearTimeout(current.timer);try{current.resolve(JSON.parse(line))}catch{current.reject(Error('PRIVATE_LOCAL_IO_FAILED'))}})
+  let tail=Promise.resolve()
+  const exchange=command=>{
+    const result=tail.then(()=>new Promise((resolve,reject)=>{
+      if(closed){reject(Error('PRIVATE_LOCAL_IO_FAILED'));return}
+      pending={resolve,reject,timer:setTimeout(()=>{fail();child.kill()},15000)}
+      child.stdin.write(JSON.stringify(command)+'\n')
+    }))
+    tail=result.catch(()=>{});return result
+  }
+  const ready=await exchange({root:directory,create}).catch(()=>null)
+  if(!ready?.ready){child.kill();throw Error('PRIVATE_LOCAL_IO_UNAVAILABLE')}
+  const operation=async(mode,name,data)=>{
+    if(!privateNames.has(name))throw Error('PRIVATE_LOCAL_FILE_DENIED')
+    const reply=await exchange({mode,name,...(data===undefined?{}:{data:Buffer.from(data).toString('base64')})})
+    if(!reply.ok)throw Error('PRIVATE_LOCAL_FILE_DENIED')
+    return mode==='read'?(reply.value===null?null:Buffer.from(reply.value,'base64').toString('utf8')):undefined
+  }
+  const capability={
+    read:name=>operation('read',name),
+    write:(name,data,{exclusive=false}={})=>operation(exclusive?'create':'write',name,data),
+    log:()=>new Writable({write(chunk,encoding,callback){operation('append','next-local.log',chunk).then(()=>callback(),()=>callback(Error('PRIVATE_LOCAL_LOG_FAILED')))}}),
+    async close(){await tail;child.stdin.end();await new Promise(resolve=>{if(closed)resolve();else child.once('exit',resolve)});lines.close()},
+  }
+  privateDirectoryPeers.set(capability,async command=>{const result=await exchange(command);if(!result.ok||result.value!==true)throw Error('LOCAL_PEER_DENIED')})
+  return capability
+}
+
+// No DNS, proxy, configurable URL or redirects. Before sending even HTTP
+// headers, verify the peer of this established socket, not a port checked
+// earlier. The OS must identify our gateway PID or the started Next process.
+export async function localProspectRequest(kind,{privateFiles,expectedPid,serviceKey,password,email,cronSecret}={}) {
+  const verify=privateDirectoryPeers.get(privateFiles)
+  if(!verify)throw Error('LOCAL_REQUEST_DENIED')
+  let port,endpoint,headers={},body
+  if(kind==='create-user') {
+    if(typeof serviceKey!=='string'||!serviceKey||typeof password!=='string'||!password||!['webbuilder-review@omnira.local','webbuilder-other@omnira.local'].includes(email))throw Error('LOCAL_REQUEST_DENIED')
+    port=56993;endpoint='/auth/v1/admin/users';expectedPid=process.pid
+    headers={apikey:serviceKey,authorization:'Bearer '+serviceKey,'content-type':'application/json'}
+    body=JSON.stringify({email,password,email_confirm:true})
+  }else if(kind==='drain'||kind==='ready') {
+    if(!Number.isSafeInteger(expectedPid)||expectedPid<1)throw Error('LOCAL_REQUEST_DENIED')
+    port=56994;endpoint=kind==='drain'?'/api/runs/drain':'/api/website-build-settings'
+    if(kind==='drain'){
+      if(typeof cronSecret!=='string'||!/^[a-f0-9]{64}$/.test(cronSecret))throw Error('LOCAL_REQUEST_DENIED')
+      headers={authorization:'Bearer '+cronSecret}
+    }
+  }else throw Error('LOCAL_REQUEST_DENIED')
+  try {
+    return await new Promise((resolve,reject)=>{
+      const request=httpRequest({hostname:'127.0.0.1',port,path:endpoint,method:kind==='create-user'?'POST':'GET',headers,agent:false,signal:AbortSignal.timeout(kind==='drain'?60000:5000)},async response=>{
+        try {
+          if(kind==='ready'){response.destroy();resolve(response.statusCode===401);return}
+          if(response.statusCode<200||response.statusCode>=300)throw Error()
+          if(kind==='drain'){response.destroy();resolve(true);return}
+          let size=0;const chunks=[]
+          for await(const chunk of response){size+=chunk.length;if(size>65536)throw Error();chunks.push(chunk)}
+          const user=JSON.parse(Buffer.concat(chunks).toString('utf8'))
+          if(typeof user.id!=='string'||!/^[a-f0-9-]{36}$/.test(user.id))throw Error()
+          resolve({id:user.id})
+        }catch{response.destroy();reject(Error('LOCAL_REQUEST_FAILED'))}
+      })
+      request.on('error',()=>reject(Error('LOCAL_REQUEST_FAILED')))
+      request.on('socket',socket=>socket.once('connect',async()=>{
+        try {
+          await verify({mode:'peer',serverPort:port,clientPort:socket.localPort,expectedPid,descendants:kind!=='create-user'})
+          if(socket.destroyed||request.destroyed)throw Error()
+          request.end(body)
+        }catch{request.destroy(Error('LOCAL_REQUEST_FAILED'))}
+      }))
+    })
+  }catch{throw Error('LOCAL_REQUEST_FAILED')}
+}
+
+export async function readPrivateLocalJson(files,name) {
+  const text=await files.read(name)
+  if(text===null)return null
+  try {const value=JSON.parse(text);if(!value||typeof value!=='object'||Array.isArray(value))throw Error();return value}
+  catch {throw Error('INVALID_PRIVATE_LOCAL_JSON')}
+}
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))
 const sqlLiteral=value=>"'"+value.replaceAll("'","''")+"'"
 const byteLimit=10*1024*1024 // Three normalised 180 kB WEBPs, base64-encoded, plus their metadata.
@@ -119,13 +380,21 @@ export async function startCmsStorageStack(siteOrigin,options={}) {
   // Both names reach the same fixed, owned port; no wildcard CORS origin.
   const browserOrigins=new Set([siteOrigin,...(persistent&&applicationDatabase&&new URL(siteOrigin).hostname==='127.0.0.1'?['http://localhost:'+new URL(siteOrigin).port]:[])])
   if(persistent&&(!path.isAbsolute(options.persistentPath)||!applicationDatabase))throw Error('Absolute local state path and application database required')
-  const saved=persistent&&existsSync(options.persistentPath)?JSON.parse(readFileSync(options.persistentPath,'utf8')):null
-  if(saved&&(saved.version!==1||saved.siteOrigin!==siteOrigin||!/^omnira-etapp1-[a-f0-9-]{36}$/.test(saved.id)||typeof saved.secret!=='string'||typeof saved.password!=='string'))throw Error('INVALID_LOCAL_STACK_STATE')
+  if(persistent&&path.basename(options.persistentPath)!=='stack-private.json')throw Error('INVALID_LOCAL_STACK_PATH')
+  if(options.privateFiles!==undefined&&(!persistent||!privateDirectoryPeers.has(options.privateFiles)))throw Error('INVALID_LOCAL_DIRECTORY_CAPABILITY')
+  const ownsPrivateFiles=persistent&&options.privateFiles===undefined
+  const privateFiles=persistent?(options.privateFiles??await openPrivateLocalDirectory(path.dirname(options.persistentPath),{create:true})):null
+  const closePrivateFiles=async()=>{if(ownsPrivateFiles)await privateFiles.close()}
+  let saved
+  try {saved=persistent?await readPrivateLocalJson(privateFiles,'stack-private.json'):null}
+  catch {await closePrivateFiles();throw Error('INVALID_LOCAL_STACK_STATE')}
+  if(saved&&(saved.version!==1||saved.siteOrigin!==siteOrigin||!/^omnira-etapp1-[a-f0-9-]{36}$/.test(saved.id)||typeof saved.secret!=='string'||!/^[a-f0-9]{96}$/.test(saved.secret)||typeof saved.password!=='string'||!/^[a-f0-9]{64}$/.test(saved.password))){await closePrivateFiles();throw Error('INVALID_LOCAL_STACK_STATE')}
   const id=saved?.id??(persistent?'omnira-etapp1-':'omnira-cms-storage-')+randomUUID(),label=persistent?'omnira.etapp1.local':'omnira.cms.storage.fixture'
   const names=['db','auth','rest','storage'].map(service=>id+'-'+service)
   const password=saved?.password??randomBytes(32).toString('hex'),secret=saved?.secret??randomBytes(48).toString('hex')
   const images={...LOCAL_TEST_IMAGES,...(applicationDatabase?{db:'public.ecr.aws/supabase/postgres@sha256:06ddc7962e11ab0f4f0334fd05671e97c30ea202f6e6a7113800bd3d6e416108'}:{})}
-  if(persistent&&!saved){mkdirSync(path.dirname(options.persistentPath),{recursive:true});writeFileSync(options.persistentPath,JSON.stringify({version:1,id,siteOrigin,password,secret}),{flag:'wx',mode:0o600})}
+  try {if(persistent&&!saved)await privateFiles.write('stack-private.json',JSON.stringify({version:1,id,siteOrigin,password,secret}),{exclusive:true})}
+  finally {await closePrivateFiles()}
   const q=sqlLiteral
   const dockerPrefix=[]
   function docker(args,input,extra={}) {

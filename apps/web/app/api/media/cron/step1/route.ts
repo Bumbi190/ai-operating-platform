@@ -14,6 +14,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runNewsHunter, type HunterCandidate, type HunterResult } from '@/lib/media/news-hunter'
 import { scoreScript, shouldRegenerate, failedQualityScore } from '@/lib/media/quality'
+import { articleReadTimeoutMs } from '@/lib/media/article-read-policy'
 import { sendPipelineAlert } from '@/lib/media/alert'
 import { callHermesScrape, callHermesRead, callHermesCompetitors, isHermesConfigured } from '@/lib/media/hermes'
 import { Anthropic } from '@anthropic-ai/sdk'
@@ -344,16 +345,18 @@ export async function GET(request: Request) {
   // far better than RSS summaries for writing punchy scripts.
   let fullArticleText = ''
   const articleUrl = news.source_url ?? null
-  // Only read the full article if Hermes is configured AND we still have budget
-  // left (skip when >30s elapsed). Bounded to 10s either way (was 30s).
-  if (isHermesConfigured() && articleUrl && Date.now() - t0 < 30_000) {
+  // Never attempt to scrape publisher homepages or use the editorial QA reserve
+  // on optional enrichment. The original news summary is the safe fallback.
+  const articleTimeoutMs = articleReadTimeoutMs(articleUrl, Date.now() - t0)
+  if (isHermesConfigured() && articleUrl && articleTimeoutMs > 0) {
     console.log(`[cron/step1] Reading full article via Hermes: ${articleUrl}`)
-    // Abort the HTTP request too; racing alone left it alive for 30 seconds.
-    const read = await withTimeout(callHermesRead(articleUrl, 10_000), 10_000, null)
+    const read = await withTimeout(callHermesRead(articleUrl, articleTimeoutMs), articleTimeoutMs, null)
     if (read?.success && read.word_count > 100) {
       fullArticleText = read.text
       console.log(`[cron/step1] Got ${read.word_count} words from article`)
     }
+  } else if (articleUrl && isHermesConfigured()) {
+    console.log('[cron/step1] Skipping optional full article read (URL or QA time reserve)')
   }
 
   // Build the script-writing context — prefer full article, fall back to summary

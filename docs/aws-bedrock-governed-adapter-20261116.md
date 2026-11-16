@@ -35,3 +35,18 @@
 - Kontrollera i AWS Billing att tidigare anrop belastat krediterna; 10 USD Budget är endast en varning.
 - Arbeta endast i denna testgren; bevara originalprojekt, migreringar och produktionsmiljö.
 - Rensa tillfällig gren och grenbundna env-variabler när utvärderingen/överlämningen är komplett. Äldre oföränderliga Vercel-Preview-URL:er kan fortfarande innehålla den historiska engångstestrouten och kräver separat genomgång/avstängning; att ta bort routen i senaste branch är inte samma sak som att radera historiska deployments.
+
+## Fortsättning – manuell förhandsgranskning utan AI-kostnad
+- En ny Preview-sida finns på /bedrock-review och skickar POST till /api/bedrock-review-preflight, men endast i den specifika AWS-testgrenen.
+- Endpointen importerar ALDRIG Bedrock-SDK, STS, governed-client eller publiceringskod. Den gör inga modellanrop, databasreservationer eller externa källhämtningar.
+- POST kräver samma Origin och Sec-Fetch-Site=same-origin, JSON, maximalt 20 KiB begärandestorlek och projekt-ID med korrekt UUID-format.
+- Innan formindata godtas kontrollerar den Supabase-inloggning, plattformoperatör och projektägarskap via resolveManualBedrockOperatorGrant. En kopia av ett behörighetsobjekt fungerar inte.
+- Den rena valideringen kräver manus, två HTTPS-källor med icke-tomma utdrag, gränser för in-/utdata och exakt Preview-gren. Den returnerar bara metadatabeskrivning, inga källutdrag eller privata token.
+- Vercel saknar H1_SPEND_GATE i miljövariablerna vid denna kontroll. Den är medvetet INTE aktiverad, eftersom den påverkar andra Omnira-flöden. Resultatet blir då preflight_blocked trots att indata kan valideras. canDispatch=false, modelInvoked=false, costReserved=false gäller ALLTID.
+- Bruttotaket är en konservativ modellering från Nova Micros hela kontextfönster och utdata-tak, INTE en reservation, faktisk faktura eller bekräftelse på AWS-krediter.
+- Tidigare billbar pilotendpoint är borttagen ur den senaste grenen, men äldre immutabla Preview-deployments behöver separat städning vid avslut.
+
+## Fortfarande NO-GO för modellaktivering
+- Aktivera varken H1_SPEND_GATE eller BEDROCK_GOVERNED_PILOT_ENABLED inom detta arbetssteg.
+- Ändra inte AWS IAM, Remotion-nycklar, produktion, Supabase-migrationer eller The Prompts publiceringsflöden.
+- För riktig manuell Nova-granskning krävs separat godkänt serverflöde med mänskligt medgivande, rate-limits och test av krediter, verklig budgetreservation/settlement, audit trail samt fullständig kritisk QA.

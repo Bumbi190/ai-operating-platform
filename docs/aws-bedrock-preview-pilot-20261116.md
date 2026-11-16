@@ -11,11 +11,9 @@ Gren: feat/omnira-bedrock-pilot-20261116. Produktion: orörd.
 - Skydda Preview med Vercels SSO och använd ingen anpassad publik domän.
 
 ## Manuell kontroll (efter grön preview-build)
-Öppna den SSO-skyddade preview-URL:en för pilotgrenen, öppna webbläsarens utvecklarkonsol och kör:
-
-fetch('/api/bedrock-pilot-check', {method:'POST'}).then(r => r.json()).then(console.log)
-
-Förväntat svar: status=verified, oidcRoleAssumed=true, bedrockInvoked=false.
+Öppna den SSO-skyddade preview-URL:en för pilotgrenen och gå till /bedrock-test.
+Klicka på knappen Verifiera AWS-anslutningen (inga modellkostnader).
+Förväntat svar: Godkänt: Vercel OIDC till AWS STS fungerar, ingen modell anropad.
 Andra svar: felsök endast i pilotgrenen. Låt IAM:s trust policy och gamla AWS-variabler vara orörda.
 
 ## Efter pilot

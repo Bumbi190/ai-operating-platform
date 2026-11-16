@@ -96,8 +96,9 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // matching the CRLF-normalized applied statement. No SQL replay, history edit,
 // legacy allowlist expansion, emergency override, or frozen baseline adjustment.
 // Office visit sessions adds one enforced migration; pending reviewed apply.
-export const EXPECTED_CANONICAL_SQL_COUNT = 176
-export const EXPECTED_ENFORCED_COUNT = 162
+// Reconciled with the already-applied Family social migration restored in PR #638.
+export const EXPECTED_CANONICAL_SQL_COUNT = 177
+export const EXPECTED_ENFORCED_COUNT = 163
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

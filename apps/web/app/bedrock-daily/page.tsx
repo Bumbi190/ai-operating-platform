@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { modelChoicesForRole, recommendedModelForRole, previewEditorialModelChoice, type EditorialTask } from '@/lib/article/daily/model-choice'
 
 type Candidate = {
   slot:'social_expansion'|'independent_news'
@@ -29,12 +30,28 @@ const roleNames:Record<string,string>={
   publication_controller:'Publiceringsansvarig',
 }
 const textMuted={color:'#a9c4de',fontSize:13} as const
+const EDITORIAL_ROLES: readonly EditorialTask[] = [
+  'news_scout','corroboration_researcher','longform_writer',
+  'independent_fact_checker','publication_controller',
+]
+const accessText = {
+  preview_smoke_only: 'Endast testad i AWS Preview',
+  existing_omnira_provider: 'Finns i Omniras befintliga leverantörskod',
+  unverified: 'AWS-åtkomst och pris ännu inte verifierade',
+} as const
 const statusLabel=(c:Candidate)=>
   c.slot==='social_expansion'?'Fördjupning av publicerad social nyhet':'Ny fristående AI-nyhet'
 
 export default function DailyEditorialPreview(){
   const [busy,setBusy]=useState(false)
   const [result,setResult]=useState<Plan|null>(null)
+  const [modelChoices,setModelChoices]=useState<Record<EditorialTask,string|null>>({
+    news_scout: recommendedModelForRole('news_scout'),
+    corroboration_researcher: recommendedModelForRole('corroboration_researcher'),
+    longform_writer: recommendedModelForRole('longform_writer'),
+    independent_fact_checker: recommendedModelForRole('independent_fact_checker'),
+    publication_controller: null,
+  })
   async function inspect(){
     setBusy(true);setResult(null)
     try{
@@ -110,13 +127,73 @@ export default function DailyEditorialPreview(){
               </section>
             ))}
             <section style={{marginTop:24,borderTop:'1px solid #355677',paddingTop:20}}>
-              <h2 style={{fontSize:20}}>Agenternas arbetsordning</h2>
-              {(result.roles??[]).map((r,i)=>(
-                <p key={r.role} style={{marginBottom:10}}>
-                  <strong>{i+1}. {roleNames[r.role]??r.role}</strong>
-                  <span style={{color:'#abbfd4'}}> – väntar på säker release</span>
-                </p>
-              ))}
+              <h2 style={{fontSize:20}}>Modellval per agent – förhandsplanering</h2>
+              <p style={textMuted}>
+                Välj kandidatmodell för varje redaktionell uppgift. Modellerna jämförs
+                efter uppgift och preliminär kvalitetsnivå. Detta ändrar INTE
+                vilka modeller Omnira kör och sparas inte i en produktionskonfiguration.
+              </p>
+              {EDITORIAL_ROLES.map((role,i)=>{
+                const picked=previewEditorialModelChoice({
+                  role,key:modelChoices[role],writerKey:modelChoices.longform_writer,
+                })
+                const labelId='editorial-role-'+role
+                return (
+                  <div key={role} style={{
+                    border:'1px solid #355677',borderRadius:10,padding:14,marginTop:12,
+                  }}>
+                    <label htmlFor={role==='publication_controller'?undefined:labelId}
+                      style={{fontWeight:700,display:'block',marginBottom:8}}>
+                      {i+1}. {roleNames[role]}
+                    </label>
+                    {role==='publication_controller'?(
+                      <p style={{...textMuted,margin:0}}>
+                        Ingen modell väljs här. Publicering kräver separat
+                        behörighet, STOP, budget och redaktionellt godkännande.
+                      </p>
+                    ):(
+                      <>
+                        <select id={labelId} aria-label={'Modell för '+roleNames[role]}
+                          value={modelChoices[role]??''}
+                          onChange={e=>setModelChoices(previous=>({
+                            ...previous,[role]:e.target.value,
+                          }))}
+                          style={{width:'100%',padding:10,borderRadius:8,
+                            background:'#182c49',color:'#eaf5ff',border:'1px solid #4a7691'}}>
+                          {modelChoicesForRole(role).map(model=>(
+                            <option key={model.key} value={model.key}>
+                              {model.displayName} – {accessText[model.availability]}
+                            </option>
+                          ))}
+                        </select>
+                        <p style={{
+                          color:picked.advisoryStatus==='blocked'?'#ffc6a8':'#b2cae2',
+                          fontSize:13,marginTop:9,marginBottom:0,
+                        }}>
+                          {picked.advisoryStatus==='blocked'
+                            ? 'Valet är blockerat: '+picked.reason
+                            : 'Enbart kandidat: '+(picked.selectedModel
+                              ?accessText[picked.selectedModel.availability]:'ej verifierad')}
+                          {role==='independent_fact_checker'&&picked.independentFromWriter===true
+                            ?' · Oberoende modellfamilj från skribenten':' '}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+              <p style={{...textMuted,marginTop:15}}>
+                Du kan se fler tillgängliga modellfamiljer i
+                {' '}<a href="https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards.html"
+                  target="_blank" rel="noopener noreferrer"
+                  style={{color:'#84dcf7'}}>AWS Bedrocks modellkatalog</a>.
+                Region, faktisk kontobehörighet, modellpris och kvalitet måste
+                kontrolleras separat innan en ny modell får användas.
+              </p>
+              <p style={{color:'#ffce9a',fontSize:13,fontWeight:700}}>
+                Inget modellval här ger rätt att anropa AWS, köpa en prenumeration,
+                byta produktionsmodell eller publicera en artikel.
+              </p>
             </section>
             <p style={{fontWeight:700,color:'#ffce9a'}}>
               Publiceringsbeslut: NO-GO. Inga Bedrock-körningar,

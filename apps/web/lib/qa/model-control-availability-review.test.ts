@@ -50,6 +50,30 @@ describe('Bedrock Preview access review: metadata never enables model execution'
         .toBe('not_available')
     }
   })
+  it('accepts ONLY observed Nova Micro family metadata, but never clears version approval',()=>{
+    const x=normalizeAvailabilityReview(MODEL,{
+      ...allGreen,modelId:'amazon.nova-micro-v1',
+    })
+    expect(x).toMatchObject({
+      modelId:MODEL,responseIdentityScope:'unversioned_family',
+      exactModelIdentityVerified:false,accessForCatalogRole:'needs_review',
+      productionInvocationVerified:false,pricingVerified:false,
+      canDispatch:false,modelCallsMade:false,
+    })
+    expect(x.authorization).toBe('authorized')
+  })
+  it('cannot generalize version stripping to variants or other model families',()=>{
+    for (const [requested,returned] of [
+      ['amazon.nova-micro-v1:0:128k','amazon.nova-micro-v1'],
+      ['amazon.nova-micro-v1:0:24k','amazon.nova-micro-v1'],
+      ['amazon.nova-lite-v1:0','amazon.nova-lite-v1'],
+      ['amazon.nova-micro-v1:0','amazon.nova-pro-v1'],
+      ['anthropic.claude-haiku-4-5-20251001-v1:0','anthropic.claude-haiku-4-5-20251001-v1'],
+    ]) {
+      expect(()=>normalizeAvailabilityReview(requested,{...allGreen,modelId:returned}))
+        .toThrow('AVAILABILITY_RESPONSE_ID_MISMATCH')
+    }
+  })
   it('mismatched model identity is never accepted',()=>{
     expect(()=>normalizeAvailabilityReview(MODEL,{
       ...allGreen,modelId:'amazon.other-model',

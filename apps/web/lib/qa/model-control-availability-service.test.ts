@@ -2,7 +2,7 @@ import {beforeEach, describe, expect, it, vi} from 'vitest'
 
 const fake=vi.hoisted(()=>({
   calls:[] as string[], config:null as any, destroyed:0,
-  deny:false, unknown:false, malformed:false, missingId:false,
+  deny:false, unknown:false, malformed:false, missingId:false, versionless:false,
 }))
 vi.mock('@aws-sdk/client-bedrock',()=>({
   ListFoundationModelsCommand:class {constructor(public input:any){}},
@@ -20,7 +20,7 @@ vi.mock('@aws-sdk/client-bedrock',()=>({
       }
       if(cmd.constructor.name==='GetFoundationModelAvailabilityCommand') {
         expect(cmd.input).toEqual({modelId:'amazon.nova-micro-v1:0'})
-        return {modelId:fake.missingId?undefined:(fake.unknown?'other.model':'amazon.nova-micro-v1:0'),
+        return {modelId:fake.missingId?undefined:(fake.unknown?'other.model':fake.versionless?'amazon.nova-micro-v1':'amazon.nova-micro-v1:0'),
           authorizationStatus:'AUTHORIZED',entitlementAvailability:'AVAILABLE',
           regionAvailability:'AVAILABLE',agreementAvailability:{status:'AVAILABLE'},
         }
@@ -34,7 +34,7 @@ vi.mock('@aws-sdk/client-bedrock',()=>({
 const CREDS={accessKeyId:'TEMP_ID',secretAccessKey:'TEMP_SECRET',sessionToken:'TEMP_SESSION'}
 beforeEach(()=>{
   fake.calls.length=0;fake.config=null;fake.destroyed=0
-  fake.deny=false;fake.unknown=false;fake.malformed=false;fake.missingId=false
+  fake.deny=false;fake.unknown=false;fake.malformed=false;fake.missingId=false;fake.versionless=false
 })
 
 describe('Non-inferencing AWS availability transport',()=>{
@@ -48,6 +48,18 @@ describe('Non-inferencing AWS availability transport',()=>{
     expect(result.modelCallsMade).toBe(false)
     expect(result.canDispatch).toBe(false)
     expect(JSON.stringify(result)).not.toContain('TEMP_SECRET')
+  })
+  it('real-account versionless Nova Micro response stays review-only after exact list membership',async()=>{
+    fake.versionless=true
+    const {readBedrockModelAvailability}=await import('@/lib/ai/model-control/availability-service')
+    const r=await readBedrockModelAvailability(CREDS,'amazon.nova-micro-v1:0')
+    expect(fake.calls).toEqual(['ListFoundationModelsCommand',
+      'GetFoundationModelAvailabilityCommand'])
+    expect(r).toMatchObject({
+      responseIdentityScope:'unversioned_family',exactModelIdentityVerified:false,
+      accessForCatalogRole:'needs_review',canDispatch:false,
+      modelCallsMade:false,productionInvocationVerified:false,
+    })
   })
   it('arbitrary unlisted IDs and profile IDs never reach availability API',async()=>{
     const {readBedrockModelAvailability}=await import('@/lib/ai/model-control/availability-service')

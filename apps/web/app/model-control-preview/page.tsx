@@ -4,7 +4,7 @@ import { OMNIRA_MODEL_CATALOG } from '@/lib/ai/model-control/catalog'
 
 type AwsModel={modelId:string;modelName:string;providerName:string;outputModalities:string[];lifecycle:string}
 type AwsProfile={profileId:string;profileName:string;type:string;status:string;destinations:string[];globalDestinationUnspecified:boolean}
-type AccessReview={status:'blocked'|'reviewed';reason?:string;modelId?:string;authorization?:string;entitlement?:string;agreement?:string;region?:string;accessForCatalogRole?:string;canDispatch?:false;modelCallsMade?:false}
+type AccessReview={status:'blocked'|'reviewed';reason?:string;modelId?:string;authorization?:string;entitlement?:string;agreement?:string;region?:string;accessForCatalogRole?:string;responseIdentityScope?:'exact'|'unversioned_family';exactModelIdentityVerified?:boolean;canDispatch?:false;modelCallsMade?:false}
 type Result={
   status:'blocked'|'catalog_listed';reason?:string;diagnostic?:string;region?:string
   models?:AwsModel[];profiles?:AwsProfile[]
@@ -118,9 +118,9 @@ export default function ModelControlPreview(){
               color:'#fff',background:'#192d4a',border:'1px solid #607b98',borderRadius:8}}/>
           <h3 style={{marginTop:18}}>Foundation models ({models.length})</h3>
           <p style={muted}>Fas 2: en modell i taget kan få en separat, skrivskyddad
-            AWS-åtkomstgranskning. Funktionen är låst tills den extra IAM-läsrättigheten
-            och en egen Preview-flagga har godkänts. Ett positivt resultat tillåter
-            fortfarande INTE modellkörning.</p>
+            AWS-åtkomstgranskning i den godkända Preview-piloten. Om AWS bara svarar
+            för en modellfamilj utan exakt version visas det som fortsatt overifierat.
+            Inget resultat tillåter modellkörning.</p>
           {models.map(m=><div key={m.modelId} style={panel}>
             <strong>{m.modelName||m.modelId}</strong>
             <p style={muted}>{m.providerName} · {m.modelId}</p>
@@ -141,7 +141,13 @@ export default function ModelControlPreview(){
                       {' '}Entitlement: {accessResults[m.modelId].entitlement}.
                       {' '}Avtal: {accessResults[m.modelId].agreement}.
                       {' '}Region: {accessResults[m.modelId].region}.</p>
-                    <p>Enbart metadatastatus för Preview. Produktionsåtkomst,
+                    {accessResults[m.modelId].responseIdentityScope==='unversioned_family'&&
+                      <p style={{color:'#ffd2a0',fontWeight:600}}>
+                        AWS returnerade modellfamiljens ID utan versionssuffix. Svaret gäller
+                        inte som verifierad åtkomst för exakt {m.modelId}. Enskild
+                        modellversion kräver fortsatt manuell granskning.
+                      </p>}
+                    <p>Enbart metadatastatus för Preview. Produktionsåtkomst:
                       godkända destinationer, pris och budget är fortfarande overifierade.
                       Ingen modell får köras.</p>
                   </>}

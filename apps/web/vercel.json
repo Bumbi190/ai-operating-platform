@@ -9,6 +9,10 @@
       "schedule": "0 5 * * *"
     },
     {
+      "path": "/api/article/cron/daily",
+      "schedule": "55 7 * * *"
+    },
+    {
       "path": "/api/social-schedule-tick",
       "schedule": "* * * * *"
     }

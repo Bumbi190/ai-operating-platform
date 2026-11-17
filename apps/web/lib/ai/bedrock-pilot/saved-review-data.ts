@@ -54,7 +54,7 @@ function publicSourceUrl(value: unknown): string | null {
   } catch { return null }
 }
 
-async function ownedPromptProject(): Promise<{ ok: true; projectId: string; projectName: string } | { ok: false; reason: string }> {
+export async function ownedPromptProject(): Promise<{ ok: true; projectId: string; projectName: string } | { ok: false; reason: string }> {
   try {
     const operator = await resolvePlatformOperator()
     if (!operator.ok) return { ok: false, reason: 'operator_required' }

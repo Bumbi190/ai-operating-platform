@@ -59,7 +59,22 @@ export async function readAwsBedrockCatalog(
       throw new Error('CATALOG_IAM_READ_PERMISSION_MISSING')
     }
     if (error instanceof Error && error.message.startsWith('BEDROCK_CATALOG_')) {
-      throw new Error('CATALOG_RESPONSE_INCOMPLETE')
+      // Only disclose a reviewed reason code, NEVER AWS source values,
+      // account details, credentials, raw model IDs or stack traces.
+      const categories: Readonly<Record<string, string>> = {
+        BEDROCK_CATALOG_BAD_MODEL_ID: 'invalid_model_identifier',
+        BEDROCK_CATALOG_BAD_PROFILE_ID: 'invalid_profile_identifier',
+        BEDROCK_CATALOG_BAD_DESTINATION_ARN: 'invalid_profile_destination',
+        BEDROCK_CATALOG_DUPLICATE_MODEL: 'duplicate_model_identifier',
+        BEDROCK_CATALOG_DUPLICATE_PROFILE: 'duplicate_profile_identifier',
+        BEDROCK_CATALOG_SIZE_INVALID: 'catalog_size_limit',
+        BEDROCK_CATALOG_TOO_MANY_PROFILES: 'profile_size_limit',
+        BEDROCK_CATALOG_INVALID_PROFILE_RESPONSE: 'missing_profile_list',
+        BEDROCK_CATALOG_INVALID_PAGE_TOKEN: 'invalid_pagination',
+        BEDROCK_CATALOG_PROFILE_PAGINATION_INCOMPLETE: 'pagination_incomplete',
+      }
+      const category = categories[error.message] ?? 'unknown_validation_error'
+      throw new Error('CATALOG_RESPONSE_INCOMPLETE:' + category)
     }
     throw new Error('CATALOG_API_UNAVAILABLE')
   } finally {

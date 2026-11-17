@@ -93,3 +93,11 @@ AWS-dokumentation:
 - https://docs.aws.amazon.com/bedrock/latest/APIReference/API_ListFoundationModels.html
 - https://docs.aws.amazon.com/bedrock/latest/APIReference/API_ListInferenceProfiles.html
 - https://docs.aws.amazon.com/bedrock/latest/userguide/models-get-info.html
+
+## Felsökning 17 november 2026
+
+- Första verkliga Preview-anropet gav catalog_response_incomplete. AWS-åtkomsten kom förbi OIDC/STS och rättighetskontrollen, men normalisering eller paginering av modellmetadata underkändes.
+- Rotorsaken är ännu INTE verifierad. Ingen IAM-roll har fått utökade rättigheter, och inga betalda modeller har anropats.
+- Ny Preview-diagnostik skickar enbart kontrollerade felkategorier: invalid_model_identifier, invalid_profile_identifier, invalid_profile_destination, missing_profile_list, duplicate_model_identifier, duplicate_profile_identifier, pagination_incomplete, invalid_pagination, catalog_size_limit, profile_size_limit eller unknown_validation_error.
+- Råa AWS-felsvar, tokens, kontonummer, hemligheter, modell-ID:n och stack traces returneras inte vid fel. Ingen partiell katalog markeras som giltig.
+- Efter att diagnosen fångats behöver aktuell avvikelse korrigeras och regressionskontrolleras innan nästa riktiga katalogtest.

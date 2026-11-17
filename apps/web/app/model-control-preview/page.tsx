@@ -5,7 +5,7 @@ import { OMNIRA_MODEL_CATALOG } from '@/lib/ai/model-control/catalog'
 type AwsModel={modelId:string;modelName:string;providerName:string;outputModalities:string[];lifecycle:string}
 type AwsProfile={profileId:string;profileName:string;type:string;status:string;destinations:string[]}
 type Result={
-  status:'blocked'|'catalog_listed';reason?:string;region?:string
+  status:'blocked'|'catalog_listed';reason?:string;diagnostic?:string;region?:string
   models?:AwsModel[];profiles?:AwsProfile[]
   canDispatch?:boolean;modelCallsMade?:boolean
 }
@@ -17,7 +17,7 @@ const labels:Record<string,string>={
   catalog_sts_denied:'AWS tillät inte att Preview antog den nya läsrollen.',
   catalog_iam_read_permission_missing:'AWS-listbehörigheterna saknas för läsrollen.',
   catalog_api_unavailable:'AWS-katalogen kunde inte läsas fullständigt.',
-  catalog_response_incomplete:'Katalogsvaret var ofullständigt och kan inte godkännas.',
+  catalog_response_incomplete:'Katalogsvaret avvisades av Omniras säkerhetsvalidering.',
 }
 const muted={fontSize:13,color:'#a9c4df'} as const
 const panel={border:'1px solid #425d7b',borderRadius:10,padding:14,marginTop:14} as const
@@ -62,7 +62,7 @@ export default function ModelControlPreview(){
     <section style={panel}>
       <h2 style={{fontSize:20,marginTop:0}}>AWS-kontots katalog (us-east-1)</h2>
       <p style={muted}>Den här funktionen behöver en separat IAM-roll med enbart
-        läsbehörighet. Roll och aktiveringsflagga saknas ännu.</p>
+        läsbehörighet. Den är konfigurerad i Preview, men riktiga AWS-svar måste fortfarande klara valideringen.</p>
       <button onClick={inspect} disabled={busy} style={{
         background:'#7bdbfa',color:'#082239',padding:'12px 18px',
         borderRadius:9,fontWeight:700,border:'none',
@@ -70,6 +70,7 @@ export default function ModelControlPreview(){
       {result&&<div role="status" aria-live="polite" style={{marginTop:20}}>
         {result.status==='blocked'?<p style={{color:'#ffcf98'}}>
           {labels[result.reason??'']??result.reason??'Läsningen stoppades.'}
+          {result.diagnostic ? ' Diagnoskod: '+result.diagnostic+'.' : ''}
           {' '}Ingen AI-modell har anropats.
         </p>:<>
           <p style={{color:'#acf1a7'}}>

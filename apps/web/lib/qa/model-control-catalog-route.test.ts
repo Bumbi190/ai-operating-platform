@@ -113,6 +113,25 @@ describe('Omnira model discovery Preview endpoint is not an invocation route',()
     expect(r.body.reason).toBe('catalog_iam_read_permission_missing')
     expect(r.body.canDispatch).toBe(false)
   })
+  it('returns only allowlisted AWS validation diagnostics, no secrets or raw model data',async()=>{
+    process.env.OMNIRA_BEDROCK_CATALOG_DISCOVERY_ENABLED='true'
+    process.env.AWS_BEDROCK_CATALOG_ROLE_ARN=CATALOG_READ_ROLE
+    mocked.discover.mockRejectedValueOnce(new Error(
+      'CATALOG_RESPONSE_INCOMPLETE:invalid_profile_destination'))
+    const result=await call(request())
+    expect(result.status).toBe(200)
+    expect(result.body).toMatchObject({
+      status:'blocked',reason:'catalog_response_incomplete',
+      diagnostic:'invalid_profile_destination',modelCallsMade:false,
+      canDispatch:false,accountEntitlementVerified:false,
+    })
+    mocked.discover.mockRejectedValueOnce(new Error(
+      'CATALOG_RESPONSE_INCOMPLETE:secret_aws_raw_error'))
+    const other=await call(request())
+    expect(other.body.reason).toBe('catalog_discovery_unavailable')
+    expect(other.body.diagnostic).toBe(undefined)
+    expect(JSON.stringify(other.body)).not.toContain('secret_aws_raw_error')
+  })
   it('source code never invokes models, publishes or writes to DB',()=>{
     const route=readFileSync(join(process.cwd(),
       'app/api/model-control/bedrock-catalog/route.ts'),'utf8')

@@ -82,6 +82,25 @@ export async function POST(request: Request): Promise<Response> {
       'CATALOG_RESPONSE_INCOMPLETE',
     ])
     const code = error instanceof Error ? error.message : ''
+    // The catalog may contain new AWS model/profile variants. Return only
+    // reviewed diagnostic categories; never expose raw AWS data or credentials.
+    const diagnostics = new Set([
+      'invalid_model_identifier', 'invalid_profile_identifier',
+      'invalid_profile_destination', 'duplicate_model_identifier',
+      'duplicate_profile_identifier', 'catalog_size_limit',
+      'profile_size_limit', 'missing_profile_list',
+      'invalid_pagination', 'pagination_incomplete',
+      'unknown_validation_error',
+    ])
+    const prefix = 'CATALOG_RESPONSE_INCOMPLETE:'
+    if (code.startsWith(prefix) && diagnostics.has(code.slice(prefix.length))) {
+      return reply(200, {
+        status: 'blocked', reason: 'catalog_response_incomplete',
+        diagnostic: code.slice(prefix.length),
+        region: 'us-east-1', modelCallsMade: false, canDispatch: false,
+        priceVerified: false, accountEntitlementVerified: false,
+      })
+    }
     return refuse(200, known.has(code) ? code.toLowerCase() : 'catalog_discovery_unavailable')
   }
 }

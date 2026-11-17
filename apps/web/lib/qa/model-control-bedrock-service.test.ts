@@ -5,6 +5,8 @@ const fake=vi.hoisted(()=>({
   calls: [] as {command:string;input:Record<string,unknown>}[],
   denied: false,
   failOnSecondPage: false,
+  invalidModelId: false,
+  invalidDestinationArn: false,
   destroyed: 0,
 }))
 vi.mock('@aws-sdk/client-bedrock',()=>({
@@ -28,7 +30,7 @@ vi.mock('@aws-sdk/client-bedrock',()=>({
         throw err
       }
       if(type==='ListFoundationModelsCommand')return {
-        modelSummaries:[{modelId:'amazon.nova-micro-v1:0',modelName:'Nova Micro',
+        modelSummaries:[{modelId:fake.invalidModelId ? 'invalid model id' : 'amazon.nova-micro-v1:0',modelName:'Nova Micro',
           providerName:'Amazon',outputModalities:['TEXT'],inputModalities:['TEXT'],
           inferenceTypesSupported:['ON_DEMAND'],modelLifecycle:{status:'ACTIVE'}}],
       }
@@ -38,7 +40,7 @@ vi.mock('@aws-sdk/client-bedrock',()=>({
           return {
             inferenceProfileSummaries:[{inferenceProfileId:'us.nova-pro',status:'ACTIVE',
               type:'SYSTEM_DEFINED',models:[{modelArn:
-                'arn:aws:bedrock:us-west-2::foundation-model/amazon.nova-pro-v1:0'}]}],
+                fake.invalidDestinationArn ? 'unrecognized-destination' : 'arn:aws:bedrock:us-west-2::foundation-model/amazon.nova-pro-v1:0'}]}],
           }
         }
         return {inferenceProfileSummaries:[],nextToken:'page-2'}
@@ -53,6 +55,7 @@ const creds={accessKeyId:'TEMP_ACCESS',secretAccessKey:'TEMP_SECRET',sessionToke
 beforeEach(()=>{
   fake.created.length=0;fake.calls.length=0
   fake.denied=false;fake.failOnSecondPage=false;fake.destroyed=0
+  fake.invalidModelId=false;fake.invalidDestinationArn=false
 })
 describe('Real catalog provider adapter with mocked AWS SDK transport',()=>{
   it('issues ONLY foundation list + paginated profile list, exact OIDC credentials',async()=>{
@@ -86,6 +89,20 @@ describe('Real catalog provider adapter with mocked AWS SDK transport',()=>{
     fake.denied=true
     const {readAwsBedrockCatalog}=await import('@/lib/ai/model-control/bedrock-catalog-service')
     await expect(readAwsBedrockCatalog(creds)).rejects.toThrow('CATALOG_IAM_READ_PERMISSION_MISSING')
+    expect(fake.destroyed).toBe(1)
+  })
+  it('returns sanitized error category for an unexpected model ID',async()=>{
+    fake.invalidModelId=true
+    const {readAwsBedrockCatalog}=await import('@/lib/ai/model-control/bedrock-catalog-service')
+    await expect(readAwsBedrockCatalog(creds)).rejects.toThrow(
+      'CATALOG_RESPONSE_INCOMPLETE:invalid_model_identifier')
+    expect(fake.destroyed).toBe(1)
+  })
+  it('returns sanitized error category for an unknown inference destination',async()=>{
+    fake.invalidDestinationArn=true
+    const {readAwsBedrockCatalog}=await import('@/lib/ai/model-control/bedrock-catalog-service')
+    await expect(readAwsBedrockCatalog(creds)).rejects.toThrow(
+      'CATALOG_RESPONSE_INCOMPLETE:invalid_profile_destination')
     expect(fake.destroyed).toBe(1)
   })
   it('a failed later profile page cannot return incomplete model list',async()=>{

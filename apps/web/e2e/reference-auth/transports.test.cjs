@@ -25,10 +25,13 @@ test('blocks actual Node SDK, node-fetch, Edge, HTTP, HTTPS, redirect and WebSoc
  const http=require('node:http'),https=require('node:https'),WS=require('ws')
  const Anthropic=require('@anthropic-ai/sdk').default
  const good=process.env.GOOD,bad=process.env.BAD,runtime=new EdgeRuntime()
+ const metadata='https://registry.npmjs.org/-/package/next/dist-tags'
  const edge=url=>runtime.evaluate('fetch('+JSON.stringify(url)+').then(r=>r.text())')
  const httpRead=(mod,url)=>new Promise((resolve,reject)=>{const r=mod.get(url,response=>{response.resume();response.on('end',resolve)});r.on('error',reject)})
  const socket=url=>new Promise((resolve,reject)=>{const ws=new WS(url);ws.once('open',()=>{ws.close();resolve()});ws.once('error',reject)})
  ;(async()=>{
+ // Optional Next metadata is local-only even while every real transport stays guarded.
+ if((await fetch(metadata)).status!==503)throw Error('offline Next metadata fixture')
  // Controls prove the real transports are available and receive allowed local bytes.
  if(await (await nodeFetch(good)).text()!=='"owned"')throw Error('node-fetch control')
  if(await edge(good)!=='"owned"')throw Error('Edge control')
@@ -36,6 +39,7 @@ test('blocks actual Node SDK, node-fetch, Edge, HTTP, HTTPS, redirect and WebSoc
  if((await sdk.messages.create({model:'fixture',max_tokens:1,messages:[{role:'user',content:'synthetic'}]})).id!=='fixture')throw Error('SDK control')
  await httpRead(http,good);await socket(good.replace('http:','ws:'))
  const cases={
+ registryPost:()=>fetch(metadata,{method:'POST'}),registryQuery:()=>fetch(metadata+'?unexpected=1'),registryHttps:()=>httpRead(https,metadata),
  native:()=>fetch(bad),nodeFetch:()=>nodeFetch(bad),edge:()=>edge(bad),
  sdk:()=>new Anthropic({apiKey:'fixture',baseURL:bad,maxRetries:0}).messages.create({model:'fixture',max_tokens:1,messages:[{role:'user',content:'synthetic'}]}),
  http:()=>httpRead(http,bad),https:()=>httpRead(https,bad.replace('http:','https:')),
@@ -48,13 +52,13 @@ test('blocks actual Node SDK, node-fetch, Edge, HTTP, HTTPS, redirect and WebSoc
  `
  try{
   const child=spawn(process.execPath,['--require',join(__dirname,'fetch-guard.cjs'),'-e',code],{
-   env:{PATH:process.env.PATH,SystemRoot:process.env.SystemRoot,GOOD:good,BAD:bad,ATLAS_REFERENCE_FETCH_ORIGINS:JSON.stringify([good]),ATLAS_REFERENCE_FETCH_DENIED:log},
+   env:{PATH:process.env.PATH,SystemRoot:process.env.SystemRoot,GOOD:good,BAD:bad,ATLAS_REFERENCE_FETCH_ORIGINS:JSON.stringify([good]),ATLAS_REFERENCE_FETCH_DENIED:log,ATLAS_REFERENCE_TEST_MODE:'isolated-local',ATLAS_REFERENCE_NEXT_VERSION_METADATA:'offline',ATLAS_REFERENCE_NEXT_VERSION_RECEIPT:join(temp,'next-version.jsonl')},
    stdio:['ignore','pipe','pipe']})
   let output='',error='';child.stdout.on('data',x=>output+=x);child.stderr.on('data',x=>error+=x)
   const exit=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('exit',resolve)})
   assert.equal(exit,0,error)
   const results=JSON.parse(output)
-  assert.deepEqual(results,{native:true,nodeFetch:true,edge:true,sdk:true,http:true,https:true,redirect:true,edgeRedirect:true,websocket:true})
+  assert.deepEqual(results,{registryPost:true,registryQuery:true,registryHttps:true,native:true,nodeFetch:true,edge:true,sdk:true,http:true,https:true,redirect:true,edgeRedirect:true,websocket:true})
   assert.equal(forbiddenConnections,0,'No transport may connect even to the owned negative-probe server')
   assert.ok((await readFile(log,'utf8')).includes('127.0.0.1'))
  }finally{

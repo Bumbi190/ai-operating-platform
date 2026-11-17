@@ -45,9 +45,10 @@ try{
  const reservation=createServer();await new Promise(r=>reservation.listen(0,'127.0.0.1',r))
  const port=reservation.address().port;await new Promise(r=>reservation.close(r))
  // Next14 canonicalizes loopback URLs to localhost. Use one browser cookie origin.
- const appUrl='http://localhost:'+port,denied=resolve(app,'denied-origins.log')
+ const appUrl='http://localhost:'+port,denied=resolve(app,'denied-origins.log'),versionReceipt=resolve(app,'next-version-metadata.jsonl')
  stack.allowBrowserOrigin(appUrl)
  await writeFile(denied,'')
+ await writeFile(versionReceipt,'')
  await put('package.json',JSON.stringify({private:true}))
  const originalTs=JSON.parse(await readFile(resolve(web,'tsconfig.json'),'utf8'))
  await put('tsconfig.json',JSON.stringify({...originalTs,compilerOptions:{...originalTs.compilerOptions,baseUrl:web,paths:{'@/*':['./*']},incremental:false},include:['**/*.ts','**/*.tsx','.next/types/**/*.ts']}))
@@ -95,6 +96,7 @@ try{
  for(const name of ['PATH','HOME','TMPDIR','TMP','TEMP','LANG','CI'])if(process.env[name])baseEnv[name]=process.env[name]
  const env={...baseEnv,NEXT_TELEMETRY_DISABLED:'1',NODE_ENV:'development',NODE_OPTIONS:'--max-old-space-size=1536 --require '+resolve(web,'e2e/reference-auth/fetch-guard.cjs'),
  NEXT_PUBLIC_SUPABASE_URL:stack.url,NEXT_PUBLIC_SUPABASE_ANON_KEY:stack.anonKey,SUPABASE_SERVICE_ROLE_KEY:stack.serviceKey,
+ ATLAS_REFERENCE_TEST_MODE:'isolated-local',ATLAS_REFERENCE_NEXT_VERSION_METADATA:'offline',ATLAS_REFERENCE_NEXT_VERSION_RECEIPT:versionReceipt,
  ATLAS_REFERENCE_UPLOAD_ENABLED:'true',ATLAS_REFERENCE_CHAT_SAVE_ENABLED:'true',ATLAS_MODEL_PROFILE:'standard',
  ANTHROPIC_API_KEY:'fixture-no-provider-access',ATLAS_CTX_ASSEMBLER:'off',ATLAS_REFERENCE_FETCH_ORIGINS:JSON.stringify([stack.url,appUrl]),ATLAS_REFERENCE_FETCH_DENIED:denied}
  nextProcess=managedProcess(process.execPath,[resolve(repo,'node_modules/next/dist/bin/next'),'dev',app,'--hostname','127.0.0.1','--port',String(port)],{cwd:app,env,detached:true,stdio:['ignore','pipe','pipe']});log(nextProcess.child)
@@ -115,6 +117,13 @@ try{
  if(deniedOrigins)console.error('Server guard denied: '+deniedOrigins)
  assert.equal(result.code,0,'Chromium reference integration failed')
  assert.equal(await readFile(denied,'utf8'),'','Server attempted external HTTP')
+ const installedVersion=JSON.parse(await readFile(resolve(repo,'node_modules/next/package.json'),'utf8')).version
+ const lockedVersion=JSON.parse(await readFile(resolve(repo,'package-lock.json'),'utf8')).packages['node_modules/next'].version
+ assert.equal(installedVersion,lockedVersion,'Actual installed Next must match the lockfile')
+ const checks=(await readFile(versionReceipt,'utf8')).trim().split('\n').filter(Boolean).map(line=>JSON.parse(line))
+ assert.ok(checks.length>0,'Actual Next update check must exercise the offline metadata fixture')
+ for(const check of checks)assert.deepEqual(check,{installedVersion,lockedVersion,status:503,staleness:'unknown'})
+ console.log('PASS offline Next version metadata: installed='+installedVersion+'; locked='+lockedVersion+'; online status unknown; no transport')
  assert.equal(stack.sql('select count(*) from public.conversation_messages;'),'1')
  assert.equal(stack.sql('select count(*) from public.website_build_reference_messages;'),'1')
  console.log('PASS real browser + Next + Auth/Storage; exactly one actual message and manifest; no external fetch')

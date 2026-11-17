@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { OMNIRA_MODEL_CATALOG } from '@/lib/ai/model-control/catalog'
+import { BedrockPriceAdvisoryPanel } from './bedrock-price-advisory-panel'
 
 type AwsModel={modelId:string;modelName:string;providerName:string;outputModalities:string[];lifecycle:string}
 type AwsProfile={profileId:string;profileName:string;type:string;status:string;destinations:string[];modelIds:string[];profileDetailsVerified:false;globalDestinationUnspecified:boolean}
@@ -228,6 +229,7 @@ export default function ModelControlPreview(){
         </>}
       </div>}
     </section>
+    <BedrockPriceAdvisoryPanel/>
     <p style={{...muted,marginTop:22}}>Katalogmedlemskap ger aldrig rätt
       att starta AI-anrop, reservera pengar eller publicera något.</p>
   </main>

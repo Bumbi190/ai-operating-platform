@@ -114,6 +114,17 @@ describe('Operator-only, manually requested Bedrock availability review',()=>{
     expect(generic.json.reason).toBe('availability_api_unavailable')
     expect(JSON.stringify(generic.json)).not.toContain('Private')
   })
+  it('identity missing versus identity mismatch uses safe distinct codes',async()=>{
+    process.env.OMNIRA_BEDROCK_AVAILABILITY_ENABLED='true'
+    calls.availability.mockRejectedValueOnce(new Error('AVAILABILITY_RESPONSE_ID_MISSING'))
+    const missing=await call(request())
+    expect(missing.json.reason).toBe('availability_identity_missing')
+    expect(missing.json.canDispatch).toBe(false)
+    calls.availability.mockRejectedValueOnce(new Error('AVAILABILITY_RESPONSE_ID_MISMATCH'))
+    const mismatch=await call(request())
+    expect(mismatch.json.reason).toBe('availability_identity_mismatch')
+    expect(mismatch.json.canDispatch).toBe(false)
+  })
   it('missing OIDC cannot use existing Remotion access keys',async()=>{
     process.env.OMNIRA_BEDROCK_AVAILABILITY_ENABLED='true'
     const r=await call(request({modelId:MODEL},{'x-vercel-oidc-token':''}))

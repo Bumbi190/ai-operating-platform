@@ -2,7 +2,7 @@ import {beforeEach, describe, expect, it, vi} from 'vitest'
 
 const fake=vi.hoisted(()=>({
   calls:[] as string[], config:null as any, destroyed:0,
-  deny:false, unknown:false, malformed:false,
+  deny:false, unknown:false, malformed:false, missingId:false,
 }))
 vi.mock('@aws-sdk/client-bedrock',()=>({
   ListFoundationModelsCommand:class {constructor(public input:any){}},
@@ -20,7 +20,7 @@ vi.mock('@aws-sdk/client-bedrock',()=>({
       }
       if(cmd.constructor.name==='GetFoundationModelAvailabilityCommand') {
         expect(cmd.input).toEqual({modelId:'amazon.nova-micro-v1:0'})
-        return {modelId:fake.unknown?'other.model':'amazon.nova-micro-v1:0',
+        return {modelId:fake.missingId?undefined:(fake.unknown?'other.model':'amazon.nova-micro-v1:0'),
           authorizationStatus:'AUTHORIZED',entitlementAvailability:'AVAILABLE',
           regionAvailability:'AVAILABLE',agreementAvailability:{status:'AVAILABLE'},
         }
@@ -34,7 +34,7 @@ vi.mock('@aws-sdk/client-bedrock',()=>({
 const CREDS={accessKeyId:'TEMP_ID',secretAccessKey:'TEMP_SECRET',sessionToken:'TEMP_SESSION'}
 beforeEach(()=>{
   fake.calls.length=0;fake.config=null;fake.destroyed=0
-  fake.deny=false;fake.unknown=false;fake.malformed=false
+  fake.deny=false;fake.unknown=false;fake.malformed=false;fake.missingId=false
 })
 
 describe('Non-inferencing AWS availability transport',()=>{
@@ -81,7 +81,14 @@ describe('Non-inferencing AWS availability transport',()=>{
     fake.unknown=true
     const {readBedrockModelAvailability}=await import('@/lib/ai/model-control/availability-service')
     await expect(readBedrockModelAvailability(CREDS,'amazon.nova-micro-v1:0'))
-      .rejects.toThrow('AVAILABILITY_RESPONSE_INVALID')
+      .rejects.toThrow('AVAILABILITY_RESPONSE_ID_MISMATCH')
+    expect(fake.destroyed).toBe(1)
+  })
+  it('an AWS response missing its ID is diagnosed without treating it as entitlement',async()=>{
+    fake.missingId=true
+    const {readBedrockModelAvailability}=await import('@/lib/ai/model-control/availability-service')
+    await expect(readBedrockModelAvailability(CREDS,'amazon.nova-micro-v1:0'))
+      .rejects.toThrow('AVAILABILITY_RESPONSE_ID_MISSING')
     expect(fake.destroyed).toBe(1)
   })
 })

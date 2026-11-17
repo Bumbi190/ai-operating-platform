@@ -54,6 +54,12 @@ Enbart denna AWS IAM read-åtgärd har tillkommit. Den tidigare testspecifika ru
 - Inga AWS `errorMessage`, rådata, tokens eller stack traces returneras till UI.
 - **Alla** resultat har `canDispatch=false`, `pricingVerified=false`, `regionProcessingApproved=false`, `budgetReserved=false` och `productionInvocationVerified=false`.
 
+## Riktig Preview-kontroll efter aktivering (17 november)
+
+- Commit `f8e858f6337ceffdb4269d0ee3a3daef1db5e2f2` kördes som Vercel Preview `dpl_CMy2uxT46UdVvfQESNx531iqhz2r` (READY). Den ursprungliga katalogläsningen var fortfarande komplett (126 modeller, 103 profiler).
+- En enda manuell `GetFoundationModelAvailability`-kontroll av `amazon.nova-micro-v1:0` via Preview gav säkert avslag `availability_metadata_rejected`. Ingen modell kördes och inga uppgifter om modellåtkomst godkändes.
+- Ursprungsnormaliseraren krävde att AWS-svaret uttryckligen ekade identiskt `modelId`. För att undvika spekulation har en senare diagnoskorrigering nu åtskilda **sanerade** felkoder för utelämnad modellidentitet respektive faktisk identitetskonflikt, båda fortsatt spärrade. Ingen rå AWS-data eller modell-ID från oväntat svar lämnar backend. Efter nästa Preview-deployment ska den verkliga statusen kontrolleras innan vidare beslut.
+
 ## Nästa fas före verklig AI-körning
 
 - En read-only `GetInferenceProfile`-granskning av samtliga tillåtna faktiska destinationer, minst per källregion. Global profiles hålls blockerade tills uttrycklig databehandlingspolicy finns.

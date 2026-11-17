@@ -46,8 +46,14 @@ export function normalizeAvailabilityReview(
     agreementAvailability?: {status?: string}
   },
 ): AvailabilityReview {
-  if (!validAvailabilityModelId(requestedModelId) || raw?.modelId !== requestedModelId) {
-    throw new Error('AVAILABILITY_RESPONSE_INVALID')
+  if (!validAvailabilityModelId(requestedModelId)) throw new Error('AVAILABILITY_RESPONSE_INVALID')
+  // AWS SDK response IDs are optional: differentiate absent from contradictory.
+  // Do not log or return an unexpected model ID to the browser.
+  if (!raw || typeof raw.modelId !== 'string' || raw.modelId.length === 0) {
+    throw new Error('AVAILABILITY_RESPONSE_ID_MISSING')
+  }
+  if (raw.modelId !== requestedModelId) {
+    throw new Error('AVAILABILITY_RESPONSE_ID_MISMATCH')
   }
   const authorization = raw.authorizationStatus === 'AUTHORIZED' ? 'authorized'
     : raw.authorizationStatus === 'NOT_AUTHORIZED' ? 'not_authorized' : 'unknown'

@@ -50,7 +50,9 @@ export async function readBedrockModelAvailability(
     const message = error instanceof Error ? error.message : ''
     if (message === 'AVAILABILITY_MODEL_NOT_LISTED') throw error
     if (message === 'AVAILABILITY_CATALOG_INVALID'
-      || message === 'AVAILABILITY_RESPONSE_INVALID') throw error
+      || message === 'AVAILABILITY_RESPONSE_INVALID'
+      || message === 'AVAILABILITY_RESPONSE_ID_MISSING'
+      || message === 'AVAILABILITY_RESPONSE_ID_MISMATCH') throw error
     if (error instanceof Error && error.name === 'AccessDeniedException') {
       throw new Error('AVAILABILITY_IAM_DENIED')
     }

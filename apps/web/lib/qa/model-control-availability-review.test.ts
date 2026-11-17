@@ -53,6 +53,11 @@ describe('Bedrock Preview access review: metadata never enables model execution'
   it('mismatched model identity is never accepted',()=>{
     expect(()=>normalizeAvailabilityReview(MODEL,{
       ...allGreen,modelId:'amazon.other-model',
-    })).toThrow('AVAILABILITY_RESPONSE_INVALID')
+    })).toThrow('AVAILABILITY_RESPONSE_ID_MISMATCH')
+  })
+  it('missing AWS identity is a separate safe error, never a positive entitlement',()=>{
+    expect(()=>normalizeAvailabilityReview(MODEL,{
+      ...allGreen,modelId:undefined,
+    })).toThrow('AVAILABILITY_RESPONSE_ID_MISSING')
   })
 })

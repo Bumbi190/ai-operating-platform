@@ -86,6 +86,8 @@ export async function POST(request: Request): Promise<Response> {
       AVAILABILITY_MODEL_NOT_LISTED:'model_not_listed_in_source_region',
       AVAILABILITY_CATALOG_INVALID:'catalog_metadata_rejected',
       AVAILABILITY_RESPONSE_INVALID:'availability_metadata_rejected',
+      AVAILABILITY_RESPONSE_ID_MISSING:'availability_identity_missing',
+      AVAILABILITY_RESPONSE_ID_MISMATCH:'availability_identity_mismatch',
     }
     return refuse(200, allowed[code] ?? 'availability_api_unavailable')
   }

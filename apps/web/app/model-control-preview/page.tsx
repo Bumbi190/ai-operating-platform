@@ -29,6 +29,8 @@ const accessLabels:Record<string,string>={
   platform_operator_required:'Operatörsbehörighet krävs.',
   availability_api_unavailable:'AWS kunde inte kontrollera modellåtkomsten.',
   availability_metadata_rejected:'AWS-svaret kunde inte valideras.',
+  availability_identity_missing:'AWS utelämnade modell-ID i metadatasvaret. Åtkomst nekas tills vi granskat formatet.',
+  availability_identity_mismatch:'AWS returnerade ett annat modell-ID än det efterfrågade. Åtkomst nekas säkert.',
   catalog_metadata_rejected:'AWS-listan kunde inte valideras.',
 }
 const muted={fontSize:13,color:'#a9c4df'} as const

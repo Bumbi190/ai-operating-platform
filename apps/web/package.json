@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.36.3",
+    "@aws-sdk/client-bedrock": "3.986.0",
     "@aws-sdk/client-bedrock-runtime": "3.986.0",
     "@elevenlabs/elevenlabs-js": "2.73.0",
     "@modelcontextprotocol/client": "2.3.1",

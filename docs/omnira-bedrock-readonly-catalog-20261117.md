@@ -1,0 +1,95 @@
+# Omnira – Bedrock-katalog via separat skrivskyddad OIDC-roll
+Datum: 2026-11-17 · Status: FÖRBEREDD, INGA IAM-ÄNDRINGAR GENOMFÖRDA.
+
+## Syfte
+Central modellupptäckt för alla Omnira-workflows utan någon rätt att köra modellen.
+AWS Bedrock Runtime har ListFoundationModels (en regionbunden lista utan sidtoken)
+och ListInferenceProfiles (separat sidindelad lista med nextToken). Resultaten
+bevisar INTE att AWS-kontot får anropa, kreditfinansiera eller lagra data hos modellen.
+Bedrock Mantle kräver en separat framtida katalogadapter.
+
+## IAM-läsroll – föreslagen, INTE skapad
+Roll: Omnira-Bedrock-Catalog-Preview
+ARN: arn:aws:iam::793854110735:role/Omnira-Bedrock-Catalog-Preview
+
+Befintlig Omnira-Bedrock-Test lämnas oförändrad. Ingen nyckel behövs.
+
+### Föreslagen trust policy för Vercel Team OIDC, Preview
+~~~json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::793854110735:oidc-provider/oidc.vercel.com/bumbi190s-projects"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "oidc.vercel.com/bumbi190s-projects:aud": "https://vercel.com/bumbi190s-projects",
+          "oidc.vercel.com/bumbi190s-projects:sub": "owner:bumbi190s-projects:project:ai-operating-platform-web:environment:preview"
+        }
+      }
+    }
+  ]
+}
+~~~
+
+Trust gäller Vercel-projektets hela Preview-miljö, INTE enbart en Git-gren.
+Applikationens route är hårt bunden till AWS-testgrenen och variablerna ska
+också begränsas till den. Ingen wildcard på subjektet.
+
+### Föreslagen inline IAM-policy med ENDAST två liståtgärder
+~~~json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadOnlyBedrockRuntimeCatalog",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:ListFoundationModels",
+        "bedrock:ListInferenceProfiles"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+~~~
+
+Policy ger INTE bedrock:InvokeModel, köp/provisionering, STS-administrering,
+IAM-förändringar, Supabase, publicering eller AWS Marketplace.
+Listoperationerna behöver generellt Resource "*" även för en avgränsad läsroll.
+
+## Nya Vercel-variabler – ännu INTE satta
+Endast Preview + feat/omnira-bedrock-pilot-20261116:
+- AWS_BEDROCK_CATALOG_ROLE_ARN = arn:aws:iam::793854110735:role/Omnira-Bedrock-Catalog-Preview
+- OMNIRA_BEDROCK_CATALOG_DISCOVERY_ENABLED = true
+
+Inga andra variabler ska ändras. Remotions befintliga AWS-nycklar och
+Nova Micros IAM-roll ska bevaras.
+
+## Kod i samma isolerade testgren
+- lib/ai/model-control/catalog-oidc.ts: OIDC -> STS enbart för Catalog-Preview.
+- lib/ai/model-control/bedrock-catalog-service.ts: @aws-sdk/client-bedrock,
+  explicita kortlivade credentials, ListFoundationModels och ListInferenceProfiles,
+  maxAttempts=1. Aldrig Runtime-client eller modellkostnader.
+- lib/ai/model-control/discovery-normalize.ts: status, modalitet, ID, provider,
+  lifecycle, profiles och destinationsregioner; alla åtkomsträttigheter FALSE.
+  Paginering som avbryts ger fel, aldrig godkänd partiell katalog.
+- POST /api/model-control/bedrock-catalog: samma origin, plattformoperatör,
+  exakt AWS-Preview-branch, avstängd utan explicit flagga och läsroll.
+- /model-control-preview: visar startkatalog och eventuellt AWS-resultat.
+
+## Produktionsgräns
+Ingen live-modell får användas från listan utan separat verifiering av
+modellåtkomst, känd prislista och AWS-credit-bokföring, kvalitet, databehandling,
+fysisk STOP, withGovernedSpend och giltigt mänskligt beslut/autonomilicens.
+Modeller kan kräva inference profiles eller särskilda endpoints/regioner.
+Mantle upptäcks separat i en kommande etapp.
+
+AWS-dokumentation:
+- https://docs.aws.amazon.com/bedrock/latest/APIReference/API_ListFoundationModels.html
+- https://docs.aws.amazon.com/bedrock/latest/APIReference/API_ListInferenceProfiles.html
+- https://docs.aws.amazon.com/bedrock/latest/userguide/models-get-info.html

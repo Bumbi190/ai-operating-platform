@@ -10,6 +10,8 @@
  * verified one-off STS/Bedrock Preview text smoke. No model is approved for
  * autonomous website publishing.
  */
+import { OMNIRA_MODEL_CATALOG, type GlobalModelCapability } from '@/lib/ai/model-control/catalog'
+
 export const EDITORIAL_MODEL_CHOICES_VERSION = 'the-prompt.editorial-models.v1' as const
 
 export type EditorialProvider = 'aws-bedrock' | 'anthropic-api' | 'openai-api'
@@ -36,49 +38,35 @@ export type EditorialModel = Readonly<{
   canPublish: false
 }>
 
-export const EDITORIAL_MODELS: readonly EditorialModel[] = Object.freeze([
-  {
-    key: 'bedrock-nova-micro', displayName: 'Amazon Nova Micro · Bedrock',
-    modelId: 'amazon.nova-micro-v1:0', provider: 'aws-bedrock', lineage: 'amazon',
-    supportedTasks: ['classify', 'summarize'],
-    provisionalQualityTier: 1, availability: 'preview_smoke_only',
-    cost: 'priced_in_omnira', region: 'us-east-1', textOnly: true,
-    canInvoke: false, canPublish: false,
-  },
-  {
-    key: 'bedrock-nova-lite', displayName: 'Amazon Nova Lite · Bedrock',
-    modelId: 'amazon.nova-lite-v1:0', provider: 'aws-bedrock', lineage: 'amazon',
-    supportedTasks: ['classify', 'summarize', 'source_grounded_reasoning'],
-    provisionalQualityTier: 2, availability: 'unverified',
-    cost: 'unverified', region: 'us-east-1', textOnly: false,
-    canInvoke: false, canPublish: false,
-  },
-  {
-    key: 'bedrock-nova-pro', displayName: 'Amazon Nova Pro · Bedrock',
-    modelId: 'amazon.nova-pro-v1:0', provider: 'aws-bedrock', lineage: 'amazon',
-    supportedTasks: ['classify', 'summarize', 'source_grounded_reasoning', 'longform', 'review'],
-    provisionalQualityTier: 3, availability: 'unverified',
-    cost: 'unverified', region: 'us-east-1', textOnly: false,
-    canInvoke: false, canPublish: false,
-  },
-  {
-    key: 'anthropic-sonnet-direct', displayName: 'Claude Sonnet 4.6 · befintligt Anthropic-API',
-    modelId: 'claude-sonnet-4-6', provider: 'anthropic-api', lineage: 'anthropic',
-    supportedTasks: ['summarize', 'source_grounded_reasoning', 'longform', 'review'],
-    provisionalQualityTier: 3, availability: 'existing_omnira_provider',
-    cost: 'priced_in_omnira', region: null, textOnly: true,
-    canInvoke: false, canPublish: false,
-  },
-  {
-    key: 'openai-mini-direct', displayName: 'GPT-5.4 Mini · befintligt OpenAI-API',
-    modelId: 'gpt-5.4-mini', provider: 'openai-api', lineage: 'openai',
-    supportedTasks: ['classify', 'summarize', 'source_grounded_reasoning', 'review'],
-    provisionalQualityTier: 2, availability: 'existing_omnira_provider',
-    cost: 'priced_in_omnira', region: null, textOnly: true,
-    canInvoke: false, canPublish: false,
-  },
-])
+function isEditorialCapability(capability: GlobalModelCapability): capability is EditorialCapability {
+  return ['classify', 'summarize', 'source_grounded_reasoning', 'longform', 'review']
+    .includes(capability)
+}
 
+/**
+ * The Prompt is a VIEW of the Omnira-wide catalog, not its own independent
+ * inventory. This prevents model identity, provider and entitlement drift
+ * between The Prompt and the rest of Omnira.
+ */
+export const EDITORIAL_MODELS: readonly EditorialModel[] = Object.freeze(
+  OMNIRA_MODEL_CATALOG
+    .filter(m => m.capabilities.some(isEditorialCapability))
+    .map(m => Object.freeze({
+      key: m.key,
+      displayName: m.displayName,
+      modelId: m.modelId,
+      provider: m.provider,
+      lineage: m.underlyingLineage,
+      supportedTasks: m.capabilities.filter(isEditorialCapability),
+      provisionalQualityTier: m.provisionalQualityTier,
+      availability: m.availability,
+      cost: m.cost,
+      region: m.region,
+      textOnly: !['bedrock-nova-lite', 'bedrock-nova-pro'].includes(m.key),
+      canInvoke: false as const,
+      canPublish: false as const,
+    })),
+)
 const ROLE_REQUIREMENTS: Readonly<Record<EditorialTask, {
   task: EditorialCapability | null
   minimumQuality: 1 | 2 | 3

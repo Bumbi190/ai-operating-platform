@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { OMNIRA_MODEL_CATALOG } from '@/lib/ai/model-control/catalog'
 
 type AwsModel={modelId:string;modelName:string;providerName:string;outputModalities:string[];lifecycle:string}
-type AwsProfile={profileId:string;profileName:string;type:string;status:string;destinations:string[];globalDestinationUnspecified:boolean}
+type AwsProfile={profileId:string;profileName:string;type:string;status:string;destinations:string[];modelIds:string[];profileDetailsVerified:false;globalDestinationUnspecified:boolean}
 type AccessReview={status:'blocked'|'reviewed';reason?:string;modelId?:string;authorization?:string;entitlement?:string;agreement?:string;region?:string;accessForCatalogRole?:string;responseIdentityScope?:'exact'|'unversioned_family';exactModelIdentityVerified?:boolean;canDispatch?:false;modelCallsMade?:false}
 type Result={
   status:'blocked'|'catalog_listed';reason?:string;diagnostic?:string;region?:string
@@ -125,6 +125,9 @@ export default function ModelControlPreview(){
             <strong>{m.modelName||m.modelId}</strong>
             <p style={muted}>{m.providerName} · {m.modelId}</p>
             <p style={muted}>Output: {m.outputModalities.join(', ')} · {m.lifecycle}</p>
+            <p style={muted}>Fas 3 · Exakta modell-ID-träffar i AWS profilöversikt:
+              {' '}{(result?.profiles??[]).filter(p=>p.modelIds?.includes(m.modelId)).length}.
+              {' '}Bara katalogmetadata – inte verifierade körvägar, regioner eller priser.</p>
             <button type="button" disabled={accessBusy!==null || busy}
               onClick={()=>checkAccess(m.modelId)}
               style={{padding:'7px 11px',borderRadius:7,border:'1px solid #567b9a',
@@ -157,6 +160,9 @@ export default function ModelControlPreview(){
           {profiles.map(p=><div key={p.profileId} style={panel}>
             <strong>{p.profileName||p.profileId}</strong>
             <p style={muted}>{p.profileId} · {p.type} · {p.status}</p>
+            <p style={muted}>Modell-ID:n från ListInferenceProfiles:
+              {' '}{p.modelIds?.join(', ')||'inga listade'}.
+              {' '}GetInferenceProfile i samma källregion krävs fortfarande före användning.</p>
             <p style={{...muted,color:'#ffd2a0'}}>
               Destinationsregioner (ej godkända): {p.destinations.join(', ')||'inga specifika regioner angivna'}
             </p>

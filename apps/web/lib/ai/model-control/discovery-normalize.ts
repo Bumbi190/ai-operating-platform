@@ -52,6 +52,10 @@ export type CatalogProfile = Readonly<{
   profileName: string
   status: string
   type: string
+  /** Exact foundation-model identifiers from AWS ListInferenceProfiles ARNs only. */
+  modelIds: readonly string[]
+  /** List metadata is NOT a source-Region GetInferenceProfile verification. */
+  profileDetailsVerified: false
   destinations: readonly string[]
   /** Valid global profile model ARN has NO region. No destination region is inferred. */
   globalDestinationUnspecified: boolean
@@ -121,6 +125,7 @@ export function normalizeBedrockCatalog(
     // arn:aws:bedrock:::foundation-model/MODEL-ID.
     // A blank region does not establish a safe destination or data residency.
     const destinations: string[] = []
+    const modelIds: string[] = []
     let globalDestinationUnspecified = false
     for (const model of item.models ?? []) {
       const arn = clean(model?.modelArn, 550)
@@ -130,6 +135,9 @@ export function normalizeBedrockCatalog(
       if (!match || match[2] !== '') {
         throw new Error('BEDROCK_CATALOG_BAD_DESTINATION_ARN')
       }
+      // Preserve exact, version-specific model IDs. Never remove :0 or any
+      // context-window suffix when joining a profile to a catalog model.
+      modelIds.push(match[3])
       const region = match[1]
       if (region === '') {
         // Global routing can reach an unspecified and changing set of AWS
@@ -146,6 +154,8 @@ export function normalizeBedrockCatalog(
       profileName: clean(item.inferenceProfileName, 200),
       status: clean(item.status, 50),
       type: clean(item.type, 70),
+      modelIds: [...new Set(modelIds)].sort(),
+      profileDetailsVerified: false,
       destinations: [...new Set(destinations)].sort(),
       globalDestinationUnspecified,
       sourceRegion: CATALOG_REGION,

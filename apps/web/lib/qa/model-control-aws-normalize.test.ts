@@ -32,6 +32,7 @@ describe('AWS read-only catalog normalization and pagination',()=>{
     })
     expect(normalized.profiles[0]).toMatchObject({
       profileId:'us.amazon.nova-pro-v1:0',destinations:['us-east-1','us-west-2'],
+      modelIds:['amazon.nova-pro-v1:0'],profileDetailsVerified:false,
       globalDestinationUnspecified:false,destinationRegionsApproved:false,priceVerified:false,canDispatch:false,
     })
     expect(normalized.modelCallsMade).toBe(false)
@@ -49,6 +50,7 @@ describe('AWS read-only catalog normalization and pagination',()=>{
     expect(global.profiles[0]).toMatchObject({
       profileId:'global.anthropic.claude-sonnet-4-5-20250929-v1:0',
       destinations:[],globalDestinationUnspecified:true,
+      modelIds:['anthropic.claude-sonnet-4-5-20250929-v1:0'],profileDetailsVerified:false,
       destinationRegionsApproved:false,accountEntitlementVerified:false,
       canDispatch:false,priceVerified:false,
     })
@@ -60,6 +62,10 @@ describe('AWS read-only catalog normalization and pagination',()=>{
         {modelArn:'arn:aws:bedrock:::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0'}],
     }])
     expect(mixed.profiles[0].destinations).toEqual(['us-east-1','us-west-2'])
+    expect(mixed.profiles[0].modelIds).toEqual([
+      'amazon.nova-pro-v1:0','anthropic.claude-sonnet-4-5-20250929-v1:0',
+    ])
+    expect(mixed.profiles[0].profileDetailsVerified).toBe(false)
     expect(mixed.profiles[0].globalDestinationUnspecified).toBe(true)
     expect(mixed.profiles[0].destinationRegionsApproved).toBe(false)
   })

@@ -4,7 +4,7 @@ Datum: 2026-11-17
 Repo: Bumbi190/ai-operating-platform
 Existerande arbetsgren/worktree: `feat/omnira-bedrock-pilot-20261116`
 Start-HEAD: `82370d7a797d501808a0c42276ee60eb081d15d2`
-Status: **lokalt förberett; INGEN ny AWS IAM-förändring, Preview-flagga, Git-push, deployment eller modellkörning i denna fas**.
+Status: **ägar-GO genomfört för separat IAM-läsbehörighet och branchlåst Vercel Preview-flagga**. Koden publiceras endast via befintlig AWS-testgren. Inga AI-modellanrop, produktionsrättigheter eller prissättningar aktiveras.
 
 ## Underlag som faktiskt verifierats
 
@@ -20,14 +20,14 @@ Status: **lokalt förberett; INGEN ny AWS IAM-förändring, Preview-flagga, Git-
 4. `profile-detail-service.ts` erbjuder källregionsbunden **GetInferenceProfile**, men först efter separat aktivering. Exakt profil-ID måste först förekomma en gång i en fullständigt paginerad `ListInferenceProfiles`. Bara `ACTIVE`/`SYSTEM_DEFINED` accepteras. Get-svaret måste ha samma profil-ID, samma ARN när listsvaret har ARN, giltiga model ARNs och en icke-tom modellista. Både IAM-fel och råa svar saneras. Ingen Runtime-klient används.
 5. `POST /api/model-control/bedrock-profile-detail` är operator-auth, same-origin, begränsad JSON, exakt Pilot-Preview-gren och **ny default-off flagga**. Inga ekonomiska eller produktionsåtgärder.
 
-## Beslut som återstår innan riktig GetInferenceProfile-kontroll
+## Godkänd och verifierad AWS-läsrättighet inför Preview-kontroll
 
 Befintlig OIDC-rolle `Omnira-Bedrock-Catalog-Preview` har redan:
 - `bedrock:ListFoundationModels`
 - `bedrock:ListInferenceProfiles`
 - `bedrock:GetFoundationModelAvailability`
 
-För denna nya väg behövs separat ägar-GO för **endast** ytterligare `bedrock:GetInferenceProfile` på systeminference-profiler i `us-east-1`. Föreslagen minimal separat IAM inline policy, INTE genomförd:
+Ägaren har godkänt **endast** ytterligare `bedrock:GetInferenceProfile` på systemdefinierade inference-profiler i `us-east-1`. Inline-policyn `Omnira-Bedrock-Profile-Detail-ReadOnly` har skapats på katalogrollen och återlästs från AWS via CloudShell. Dess enda tillåtna IAM-åtgärd och resursmönster är:
 
 ```json
 {
@@ -41,10 +41,10 @@ För denna nya väg behövs separat ägar-GO för **endast** ytterligare `bedroc
 }
 ```
 
-Validera att AWS accepterar exakt ARN-scope för de profiler som listas innan någon policy aktiveras. Lägg **inte** till application-inference-profile, Runtime, köp, Marketplace, Supabase eller generella `Resource: "*"`-rättigheter. Det görs inte något som helst rättighetslyft utan nytt användargodkännande.
+AWS ListInferenceProfiles bekräftar att aktiva systemprofiler i detta konto faktiskt använder ARN-formatet `arn:aws:bedrock:us-east-1:793854110735:inference-profile/<profil-id>`. Den nya policyn innehåller **inte** application-inference-profile, Runtime, köp, Marketplace, Supabase eller generell `Resource: "*"`-rättighet. IAM-policyåterläsningen bekräftade ändringen; en verklig Preview-kontroll återstår som separat verifiering.
 
-Separat Vercel-variabel som ännu **inte** finns:
-`OMNIRA_BEDROCK_PROFILE_DETAIL_ENABLED=true`, enbart `preview` + `feat/omnira-bedrock-pilot-20261116`.
+Separat Vercel-variabel har nu skapats och verifierats:
+`OMNIRA_BEDROCK_PROFILE_DETAIL_ENABLED=true` (encrypted), enbart `preview` + `feat/omnira-bedrock-pilot-20261116`. Övriga AWS-katalogvariabler är oförändrade.
 
 Rulla tillbaka genom att avaktivera just denna nya flagga och ta bort endast den nya IAM inline-policyn. Befintlig katalog och tillgänglighetskontroll kan fortsätta oberoende.
 
@@ -59,9 +59,9 @@ Rulla tillbaka genom att avaktivera just denna nya flagga och ta bort endast den
 ## Acceptanskriterier fas 3 lokal
 
 - Syntetiska tester för exakta modell-ID-joins, skilda versionssuffix, global okänd region, oaktiv profil, paginering och negativ IAM-auth.
-- Endpointens flagga är avstängd; inga nya IAM-rättigheter eller variabler sätts utan godkännande.
+- Den separat godkända endpoint-flaggan är endast aktiverad på AWS-testgrenens Preview. Inga generella Preview-, produktions-, Runtime- eller ytterligare IAM-rättigheter har aktiverats.
 - Alla testade positiva svar fortsätter returnera `canDispatch=false`, `priceVerified=false`, `destinationRegionsApproved=false` och `modelCallsMade=false`.
-- Nästa verkliga test efter GO ska välja **en** faktiskt listad aktiv SYSTEM_DEFINED-profil, kontrollera dess detail från exakt `us-east-1`, aldrig anropa modellen och redovisa bara säker metadata.
+- Utvald verklig testprofil: `us.amazon.nova-premier-v1:0`. Den är observerad som `ACTIVE` och `SYSTEM_DEFINED` i AWS:s faktiska listning från `us-east-1`, med kontobundet ARN i rätt mönster. Efter färdig Preview-build ska **endast denna profil** kontrolleras med GetInferenceProfile. Ingen modell får anropas. Redovisa enbart säker metadata.
 
 ## Officiella referenser
 

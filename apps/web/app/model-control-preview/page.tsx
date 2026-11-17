@@ -4,6 +4,7 @@ import { OMNIRA_MODEL_CATALOG } from '@/lib/ai/model-control/catalog'
 
 type AwsModel={modelId:string;modelName:string;providerName:string;outputModalities:string[];lifecycle:string}
 type AwsProfile={profileId:string;profileName:string;type:string;status:string;destinations:string[];modelIds:string[];profileDetailsVerified:false;globalDestinationUnspecified:boolean}
+type ProfileDetailResult={status:'profile_detail_listed'|'blocked';reason?:string;profileId?:string;modelIds?:string[];destinationRegions?:string[];globalDestinationUnspecified?:boolean;sourceRegionDetailVerified?:boolean;destinationRegionsApproved?:false;priceVerified?:false;canDispatch?:false;modelCallsMade?:false}
 type AccessReview={status:'blocked'|'reviewed';reason?:string;modelId?:string;authorization?:string;entitlement?:string;agreement?:string;region?:string;accessForCatalogRole?:string;responseIdentityScope?:'exact'|'unversioned_family';exactModelIdentityVerified?:boolean;canDispatch?:false;modelCallsMade?:false}
 type Result={
   status:'blocked'|'catalog_listed';reason?:string;diagnostic?:string;region?:string
@@ -33,6 +34,17 @@ const accessLabels:Record<string,string>={
   availability_identity_mismatch:'AWS returnerade ett annat modell-ID än det efterfrågade. Åtkomst nekas säkert.',
   catalog_metadata_rejected:'AWS-listan kunde inte valideras.',
 }
+const profileDetailLabels:Record<string,string>={
+  profile_detail_disabled:'Detaljkontrollen är avstängd tills separat IAM-läsrättighet och Preview-flagga godkänts.',
+  profile_iam_read_permission_missing:'Den avgränsade IAM-rollen saknar GetInferenceProfile.',
+  profile_not_listed_exactly:'Profilen finns inte längre exakt en gång i AWS-katalogen.',
+  profile_not_active_system_defined:'Profilen är inte en aktiv systemdefinierad profil.',
+  profile_identity_mismatch:'AWS-svaret matchar inte listad profilidentitet.',
+  profile_models_missing:'AWS returnerade ingen komplett modell-/destinationslista.',
+  profile_read_unavailable:'Profildetaljer kunde inte läsas fullständigt.',
+  vercel_oidc_token_missing:'Vercel OIDC-token saknas.',
+  platform_operator_required:'Endast Omniras verifierade operatör får läsa profilen.',
+}
 const muted={fontSize:13,color:'#a9c4df'} as const
 const panel={border:'1px solid #425d7b',borderRadius:10,padding:14,marginTop:14} as const
 
@@ -42,6 +54,23 @@ export default function ModelControlPreview(){
   const [search,setSearch]=useState('')
   const [accessBusy,setAccessBusy]=useState<string|null>(null)
   const [accessResults,setAccessResults]=useState<Record<string,AccessReview>>({})
+  const [profileBusy,setProfileBusy]=useState<string|null>(null)
+  const [profileResults,setProfileResults]=useState<Record<string,ProfileDetailResult>>({})
+  async function inspectProfile(profileId:string){
+    setProfileBusy(profileId)
+    try{
+      const r=await fetch('/api/model-control/bedrock-profile-detail',{
+        method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({profileId}),
+      })
+      const data=(await r.json()) as ProfileDetailResult
+      setProfileResults(previous=>({...previous,[profileId]:data}))
+    }catch{
+      setProfileResults(previous=>({...previous,[profileId]:{
+        status:'blocked',reason:'profile_read_unavailable',
+      }}))
+    }finally{setProfileBusy(null)}
+  }
   async function checkAccess(modelId:string){
     setAccessBusy(modelId)
     try {
@@ -58,7 +87,7 @@ export default function ModelControlPreview(){
     }finally{setAccessBusy(null)}
   }
   async function inspect(){
-    setBusy(true);setResult(null);setAccessResults({})
+    setBusy(true);setResult(null);setAccessResults({});setProfileResults({})
     try{
       const r=await fetch('/api/model-control/bedrock-catalog',{
         method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},body:'{}'
@@ -166,6 +195,31 @@ export default function ModelControlPreview(){
             <p style={{...muted,color:'#ffd2a0'}}>
               Destinationsregioner (ej godkända): {p.destinations.join(', ')||'inga specifika regioner angivna'}
             </p>
+            {p.status==='ACTIVE'&&p.type==='SYSTEM_DEFINED'&&
+              <button type="button" disabled={profileBusy!==null || busy}
+                onClick={()=>inspectProfile(p.profileId)}
+                style={{padding:'7px 11px',borderRadius:7,border:'1px solid #567b9a',
+                  background:'#203853',color:'#e4f4ff',cursor:'pointer'}}>
+                {profileBusy===p.profileId?'Läser profildetaljer…':'Granska profilens AWS-destinationer (läsning)'}
+              </button>}
+            {profileResults[p.profileId]&&<div role="status" style={{...muted,marginTop:9}}>
+              {profileResults[p.profileId].status==='blocked'
+                ? (profileDetailLabels[profileResults[p.profileId].reason??''] ??
+                    'Profilgranskningen nekades säkert.')
+                : <>
+                    <p>GetInferenceProfile läst från us-east-1.
+                      {' '}Modell-ID:n: {profileResults[p.profileId].modelIds?.join(', ')||'inga'}.
+                      {' '}Destinationsregioner (inte godkända):
+                      {' '}{profileResults[p.profileId].destinationRegions?.join(', ')||'inga explicit angivna'}.
+                    </p>
+                    {profileResults[p.profileId].globalDestinationUnspecified&&
+                      <p style={{color:'#ffd2a0',fontWeight:700}}>
+                        Global routing har okända och föränderliga destinationsregioner.
+                      </p>}
+                    <p>Endast metadatakontroll: inga priser, destinationer, modellversioner
+                      eller produktionsrättigheter godkänns. Ingen AI-körning.</p>
+                  </>}
+            </div>}
             {p.globalDestinationUnspecified&&<p style={{fontSize:13,color:'#ffb9a6',fontWeight:700}}>
               GLOBAL ROUTING: AWS anger ingen fast destinationsregion i modell-ARN:en.
               Regionerna måste kontrolleras separat. Ingen datalagrings- eller körbehörighet är godkänd.

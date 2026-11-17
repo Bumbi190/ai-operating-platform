@@ -1,8 +1,5 @@
-# Migration Guard v2 — pure repository/policy integrity gate.
-#
-# This job never connects to Supabase and has no production credentials. It
-# proves the frozen set-integrity policy, its failure modes, and the fail-closed
-# runtime adapter with synthetic inputs only.
+# Migration Guard integrity plus explicit owner-only OIDC artifact/attestation phases.
+# No database credentials and no deployment commands. Ordinary PR/push tests remain synthetic.
 
 name: Migration Guard Integrity
 
@@ -14,13 +11,34 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      oidc_phase:
+        type: choice
+        options: [integrity-only, build-artifact, attest-ledger]
+        default: integrity-only
+        description: Explicit owner-only OIDC preparation; never deploys
+      harvey_sha:
+        type: string
+        description: Exact separately approved source/workflow SHA
+      build_run_id:
+        type: string
+        description: Completed build-artifact run (attest-ledger only)
+      build_artifact_id:
+        type: string
+        description: Immutable GitHub artifact ID (attest-ledger only)
+      artifact_sha256:
+        type: string
+        description: SHA-256 of inner artifact.tar (not the upload ZIP digest)
+      ledger_json:
+        type: string
+        description: Fresh canonical owner ledger metadata only; never credentials
 
 permissions:
   contents: read
 
 concurrency:
-  group: migration-guard-integrity-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.event_name == 'workflow_dispatch' && inputs.oidc_phase != 'integrity-only' && 'harvey-oidc-owner-once' || format('migration-guard-integrity-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' || inputs.oidc_phase == 'integrity-only' }}
 
 jobs:
   integrity:
@@ -42,6 +60,8 @@ jobs:
       - name: Check guard module syntax
         run: |
           node --check apps/web/scripts/migration-guard-policy.mjs
+          node --check apps/web/scripts/migration-guard-ledger-attestation.mjs
+          node --check apps/web/scripts/harvey-oidc-ci.mjs
           node --check apps/web/scripts/check-migrations.mjs
           node --check apps/web/scripts/migration-release-policy.mjs
           node --check apps/web/scripts/migration-release-preflight.mjs
@@ -53,6 +73,8 @@ jobs:
             lib/qa/handlarborsen-watch-runs-migration.test.ts \
             lib/qa/sales-inbox-ledger-reconciliation.test.ts \
             lib/qa/migration-release-preflight.test.ts \
+            lib/qa/migration-guard-ledger-attestation.test.ts \
+            lib/qa/harvey-oidc-ci.test.ts \
             --reporter=default --reporter=json \
             --outputFile="$RUNNER_TEMP/migration-guard-integrity.json"
 
@@ -98,6 +120,20 @@ jobs:
             process.exit(1)
           }
 
+          const attest = files.find(file => String(file.name).endsWith('/migration-guard-ledger-attestation.test.ts'))
+          const attestAssertions = attest?.assertionResults ?? []
+          if (attestAssertions.length < 53 || attestAssertions.some(assertion => assertion.status !== 'passed')) {
+            console.error('::error::all ledger provenance tests must pass without skips')
+            process.exit(1)
+          }
+
+          const adapter = files.find(file => String(file.name).endsWith('/harvey-oidc-ci.test.ts'))
+          const adapterAssertions = adapter?.assertionResults ?? []
+          if (adapterAssertions.length < 106 || adapterAssertions.some(assertion => assertion.status !== 'passed')) {
+            console.error('::error::all CI adapter boundary tests must pass without skips')
+            process.exit(1)
+          }
+
           const tally = (testFile.assertionResults ?? []).reduce(
             (counts, assertion) => ({ ...counts, [assertion.status]: (counts[assertion.status] ?? 0) + 1 }),
             {},
@@ -121,3 +157,143 @@ jobs:
           if (failed) process.exit(1)
           console.log(`Migration Guard Integrity OK — ${passed} tests passed, 0 skipped/pending/todo.`)
           NODE
+
+  # Disabled until the owner configures and reviews this separate protected environment.
+  # External SHA pins and actual GitHub approval/certificate checks are mandatory.
+  oidc_build:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.oidc_phase == 'build-artifact' &&
+      github.actor_id == '158544361' &&
+      github.repository_id == '1244338545'
+    needs: integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: harvey-oidc-owner-once
+    env: &adapter_trust
+      HARVEY_OIDC_ONCE_ENABLED: ${{ vars.HARVEY_OIDC_ONCE_ENABLED }}
+      HARVEY_OIDC_APPROVED_SOURCE_SHA: ${{ vars.HARVEY_OIDC_APPROVED_SOURCE_SHA }}
+      HARVEY_OIDC_TRUSTED_WORKFLOW_SHA: ${{ vars.HARVEY_OIDC_TRUSTED_WORKFLOW_SHA }}
+      HARVEY_OIDC_ENVIRONMENT_ID: ${{ vars.HARVEY_OIDC_ENVIRONMENT_ID }}
+      HARVEY_OIDC_GH_VERSION: ${{ vars.HARVEY_OIDC_GH_VERSION }}
+      HARVEY_OIDC_VERCEL_CLI_VERSION: ${{ vars.HARVEY_OIDC_VERCEL_CLI_VERSION }}
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Fail closed before executing repository code
+        shell: bash
+        env: &oidc_trust
+          ONCE_ENABLED: ${{ vars.HARVEY_OIDC_ONCE_ENABLED }}
+          APPROVED_SHA: ${{ vars.HARVEY_OIDC_APPROVED_SOURCE_SHA }}
+          TRUSTED_WORKFLOW_SHA: ${{ vars.HARVEY_OIDC_TRUSTED_WORKFLOW_SHA }}
+          REQUESTED_SHA: ${{ inputs.harvey_sha }}
+        run: &oidc_preflight |
+          set -euo pipefail
+          test "$ONCE_ENABLED" = "true"
+          test "$GITHUB_RUN_ATTEMPT" = "1"
+          [[ "$APPROVED_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$REQUESTED_SHA" = "$APPROVED_SHA"
+          test "$GITHUB_SHA" = "$APPROVED_SHA"
+          test "$GITHUB_WORKFLOW_SHA" = "$TRUSTED_WORKFLOW_SHA"
+          test "$TRUSTED_WORKFLOW_SHA" = "$APPROVED_SHA"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ vars.HARVEY_OIDC_APPROVED_SOURCE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Build reviewed source without publishing credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node apps/web/scripts/harvey-oidc-ci.mjs build --output "$RUNNER_TEMP/harvey-oidc-build"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: harvey-oidc-build-${{ github.sha }}-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/harvey-oidc-build/artifact.tar
+            ${{ runner.temp }}/harvey-oidc-build/manifest.json
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: false
+          include-hidden-files: false
+
+  oidc_attest:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.oidc_phase == 'attest-ledger' &&
+      github.actor_id == '158544361' &&
+      github.repository_id == '1244338545'
+    needs: integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: harvey-oidc-owner-once
+    env: *adapter_trust
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Fail closed before executing repository code
+        shell: bash
+        env: *oidc_trust
+        run: *oidc_preflight
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ vars.HARVEY_OIDC_APPROVED_SOURCE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Verify owner approval, immutable build and fresh ledger bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LEDGER_JSON: ${{ inputs.ledger_json }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          BUILD_ARTIFACT_ID: ${{ inputs.build_artifact_id }}
+          ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+        run: node apps/web/scripts/harvey-oidc-ci.mjs prepare --output "$RUNNER_TEMP/harvey-oidc-proof"
+      - name: Attest exact owner-approved export bytes
+        id: ledger
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/harvey-oidc-proof/ledger.json
+          show-summary: false
+          push-to-registry: false
+          create-storage-record: false
+      - name: Verify real origin, run Guard and mint artifact-bound receipt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LEDGER_BUNDLE: ${{ steps.ledger.outputs.bundle-path }}
+        run: node apps/web/scripts/harvey-oidc-ci.mjs guard --directory "$RUNNER_TEMP/harvey-oidc-proof"
+      - name: Attest exact Guard receipt bytes
+        id: receipt
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/harvey-oidc-proof/receipt.json
+          show-summary: false
+          push-to-registry: false
+          create-storage-record: false
+      - name: Verify signatures and export evidence; publication remains forbidden
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RECEIPT_BUNDLE: ${{ steps.receipt.outputs.bundle-path }}
+        run: node apps/web/scripts/harvey-oidc-ci.mjs evidence --directory "$RUNNER_TEMP/harvey-oidc-proof"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: harvey-oidc-proof-${{ github.sha }}-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/harvey-oidc-proof/ledger.json
+            ${{ runner.temp }}/harvey-oidc-proof/receipt.json
+            ${{ runner.temp }}/harvey-oidc-proof/artifact.tar
+            ${{ runner.temp }}/harvey-oidc-proof/manifest.json
+            ${{ runner.temp }}/harvey-oidc-proof/binding.json
+            ${{ runner.temp }}/harvey-oidc-proof/ledger.sigstore.json
+            ${{ runner.temp }}/harvey-oidc-proof/receipt.sigstore.json
+            ${{ runner.temp }}/harvey-oidc-proof/verification-summary.json
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: false
+          include-hidden-files: false

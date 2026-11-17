@@ -3,6 +3,7 @@ import {useState} from 'react'
 import {
   BEDROCK_INDICATIVE_REFERENCE_PRICES, estimateBedrockReferenceCost,
 } from '@/lib/ai/model-control/bedrock-price-advisory'
+import {RIKSBANK_USD_SEK_REFERENCE,reviewIllustrativeBedrockFx} from '@/lib/ai/model-control/bedrock-fx-advisory'
 
 const muted={fontSize:13,color:'#a9c4df'} as const
 const inputStyle={color:'#fff',background:'#192d4a',border:'1px solid #607b98',
@@ -41,6 +42,17 @@ export function BedrockPriceAdvisoryPanel(){
           style={inputStyle}/>
       </label>
     </div>
+    <p style={{...muted,color:'#ffd2a0'}}>
+      Historiskt valutareferensexempel: 1 USD = 10,07354 SEK,
+      Riksbankens notering 16 november 2026.
+      Kolumnen +10% är en tänkt marginal i exemplet, inte en godkänd
+      valutabuffert eller budgetpolicy. Växelkursen uppdateras inte
+      automatiskt här och får inte användas för verkliga köp.
+      <a href={RIKSBANK_USD_SEK_REFERENCE.sourceUrl}
+        target="_blank" rel="noopener noreferrer" style={{color:'#8adefa'}}>
+        {' '}Källa: Sveriges riksbank
+      </a>
+    </p>
     <div style={{overflowX:'auto'}}>
       <table style={{borderCollapse:'collapse',minWidth:645,width:'100%',
         fontSize:13,textAlign:'left'}}>
@@ -49,7 +61,9 @@ export function BedrockPriceAdvisoryPanel(){
             <th style={{padding:'10px 6px'}}>Modell</th>
             <th style={{padding:'10px 6px'}}>USD/1M in</th>
             <th style={{padding:'10px 6px'}}>USD/1M ut</th>
-            <th style={{padding:'10px 6px'}}>Indikativt brutto</th>
+            <th style={{padding:'10px 6px'}}>Indikativt brutto USD</th>
+            <th style={{padding:'10px 6px'}}>SEK (historiskt)</th>
+            <th style={{padding:'10px 6px'}}>SEK (+10% exempelmarginal)</th>
             <th style={{padding:'10px 6px'}}>Priskälla</th>
           </tr>
         </thead>
@@ -61,6 +75,13 @@ export function BedrockPriceAdvisoryPanel(){
               inputTokens:inputTokens.trim()?input:Number.NaN,
               outputTokens:outputTokens.trim()?output:Number.NaN,
             })
+            // This FX date and margin are fixed historical examples, never a
+            // source for actual billing or canonical spend authorization.
+            const fx=reviewIllustrativeBedrockFx({priceQuote:q,
+              fx:RIKSBANK_USD_SEK_REFERENCE,asOfDate:'2026-11-17',
+              exampleBufferPercent:10,
+            })
+            const sek=(v:number|null)=>v===null?'–':v.toFixed(4)+' kr'
             return <tr key={p.modelId} style={{borderBottom:'1px solid #314766'}}>
               <td style={{padding:'10px 6px'}}>
                 <strong>{p.modelName}</strong>
@@ -70,6 +91,8 @@ export function BedrockPriceAdvisoryPanel(){
               <td style={{padding:'10px 6px'}}>{p.inputUsdPerMillion}</td>
               <td style={{padding:'10px 6px'}}>{p.outputUsdPerMillion}</td>
               <td style={{padding:'10px 6px'}}>{money(q.grossUsd)}</td>
+              <td style={{padding:'10px 6px'}}>{sek(fx.sekReferenceRoundedUp)}</td>
+              <td style={{padding:'10px 6px'}}>{sek(fx.sekWithExampleBufferRoundedUp)}</td>
               <td style={{padding:'10px 6px'}}>
                 <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer"
                   style={{color:'#8adefa',textDecoration:'underline'}}>

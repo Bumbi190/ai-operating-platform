@@ -13,10 +13,12 @@ describe('Preview reference price panel isolation',()=>{
   it('is present only as a disclosed advisory panel with dated references',()=>{
     expect(page).toContain('<BedrockPriceAdvisoryPanel/>')
     expect(panel).toContain('Referenspriser och bruttokostnad')
-    expect(panel).toContain('Ingen prissiffra här')
+    expect(panel).toContain('Detta är inte ett kontoverifierat fakturapris')
     expect(panel).toContain('AWS Activate-krediter är inte avdragna')
     expect(source).toContain('observedOn')
     expect(source).toContain('accountRateVerified: false')
+    expect(source).toContain('publicSkuRatesVerified: true')
+    expect(source).toContain('exactRuntimeVersionPriceVerified: false')
   })
   it('has no provider or database execution seam or capability to approve budgets',()=>{
     // Comments describe forbidden runtime boundaries; inspect non-comment code.

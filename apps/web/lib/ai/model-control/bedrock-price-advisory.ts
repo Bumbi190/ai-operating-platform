@@ -7,6 +7,11 @@
  * The authoritative gross hard ceiling remains in lib/cost/spend-ceiling.ts.
  */
 export const BEDROCK_PRICE_ADVISORY_VERSION = 'omnira.bedrock-price-advisory.v1' as const
+/** AWS's own public regional bulk offer, not an account-specific invoice. */
+export const BEDROCK_PUBLIC_PRICE_OFFER_URL =
+  'https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrock/20261111013037/us-east-1/index.json' as const
+export const BEDROCK_PUBLIC_PRICE_OFFER_PUBLISHED_AT = '2026-11-11T01:30:37Z' as const
+export const BEDROCK_PUBLIC_PRICE_OFFER_EFFECTIVE_FROM = '2026-11-01T00:00:00Z' as const
 
 export type BedrockReferencePrice = Readonly<{
   modelId: string
@@ -19,7 +24,15 @@ export type BedrockReferencePrice = Readonly<{
   outputUsdPerMillion: number
   observedOn: string
   sourceUrl: string
-  sourceKind: 'third_party_tracking_aws_prices'
+  sourceKind: 'official_aws_public_bulk_price_list'
+  /** SKU product model attributes name the family, not the exact Runtime ARN. */
+  sourceModelAttribute: string
+  inputSku: string
+  outputSku: string
+  publicSkuRatesVerified: true
+  priceListPublishedAt: typeof BEDROCK_PUBLIC_PRICE_OFFER_PUBLISHED_AT
+  priceEffectiveFrom: typeof BEDROCK_PUBLIC_PRICE_OFFER_EFFECTIVE_FROM
+  exactRuntimeVersionPriceVerified: false
   lifecycleWarning: 'legacy_do_not_adopt' | 'not_independently_attested'
   /** This is NOT a snapshot proven to match current account billable rates. */
   accountRateVerified: false
@@ -28,10 +41,13 @@ export type BedrockReferencePrice = Readonly<{
 }>
 
 /**
- * Dated observations of us-east-1 Standard in-region text-token prices.
- * The source sites track AWS published price lists, but the individual
- * price SKU/currency/route has NOT been checked live in this account.
- * These figures must NOT be used as hard-ceiling data.
+ * Verified from the official, publicly accessible AmazonBedrock regional offer
+ * (us-east-1, published 2026-11-11, prices effective 2026-11-01).
+ * Eight exact 'USE1-Nova...-(input|output)-tokens' STANDARD SKUs were
+ * inspected. Every price unit is '1K tokens', converted to USD/1M by ×1000.
+ * The SKU says 'Nova Micro' etc, NOT the exact Runtime :0 version: this
+ * attribution is advisory, never sufficient as a hard spend ceiling.
+ * AWS service pricing page remains authoritative if any offer differs.
  */
 export const BEDROCK_INDICATIVE_REFERENCE_PRICES: readonly BedrockReferencePrice[] =
   Object.freeze([
@@ -39,9 +55,15 @@ export const BEDROCK_INDICATIVE_REFERENCE_PRICES: readonly BedrockReferencePrice
       modelId: 'amazon.nova-micro-v1:0', modelName: 'Nova Micro',
       sourceRegion: 'us-east-1', path: 'in_region', tier: 'standard',
       modality: 'text_only', inputUsdPerMillion: 0.035,
-      outputUsdPerMillion: 0.14, observedOn: '2026-10-20',
-      sourceUrl: 'https://www.modeleol.com/pricing/amazon',
-      sourceKind: 'third_party_tracking_aws_prices',
+      outputUsdPerMillion: 0.14, observedOn: '2026-11-17',
+      sourceUrl: BEDROCK_PUBLIC_PRICE_OFFER_URL,
+      sourceKind: 'official_aws_public_bulk_price_list',
+      sourceModelAttribute: 'Nova Micro',
+      inputSku: 'XAR69MSGZSU6FEM9', outputSku: 'YUSGHKDUPQRC75RK',
+      publicSkuRatesVerified: true,
+      priceListPublishedAt: BEDROCK_PUBLIC_PRICE_OFFER_PUBLISHED_AT,
+      priceEffectiveFrom: BEDROCK_PUBLIC_PRICE_OFFER_EFFECTIVE_FROM,
+      exactRuntimeVersionPriceVerified: false,
       lifecycleWarning: 'not_independently_attested',
       accountRateVerified: false, canonicalLedgerSynchronized: false,
       canDispatch: false,
@@ -50,9 +72,15 @@ export const BEDROCK_INDICATIVE_REFERENCE_PRICES: readonly BedrockReferencePrice
       modelId: 'amazon.nova-lite-v1:0', modelName: 'Nova Lite',
       sourceRegion: 'us-east-1', path: 'in_region', tier: 'standard',
       modality: 'text_only', inputUsdPerMillion: 0.06,
-      outputUsdPerMillion: 0.24, observedOn: '2026-10-20',
-      sourceUrl: 'https://www.modeleol.com/pricing/amazon',
-      sourceKind: 'third_party_tracking_aws_prices',
+      outputUsdPerMillion: 0.24, observedOn: '2026-11-17',
+      sourceUrl: BEDROCK_PUBLIC_PRICE_OFFER_URL,
+      sourceKind: 'official_aws_public_bulk_price_list',
+      sourceModelAttribute: 'Nova Lite',
+      inputSku: 'QRGWJ3P8FT28EYX2', outputSku: 'CBZ6A6U7XK8WJ3KA',
+      publicSkuRatesVerified: true,
+      priceListPublishedAt: BEDROCK_PUBLIC_PRICE_OFFER_PUBLISHED_AT,
+      priceEffectiveFrom: BEDROCK_PUBLIC_PRICE_OFFER_EFFECTIVE_FROM,
+      exactRuntimeVersionPriceVerified: false,
       lifecycleWarning: 'not_independently_attested',
       accountRateVerified: false, canonicalLedgerSynchronized: false,
       canDispatch: false,
@@ -61,9 +89,15 @@ export const BEDROCK_INDICATIVE_REFERENCE_PRICES: readonly BedrockReferencePrice
       modelId: 'amazon.nova-pro-v1:0', modelName: 'Nova Pro',
       sourceRegion: 'us-east-1', path: 'in_region', tier: 'standard',
       modality: 'text_only', inputUsdPerMillion: 0.8,
-      outputUsdPerMillion: 3.2, observedOn: '2026-10-20',
-      sourceUrl: 'https://www.modeleol.com/pricing/amazon',
-      sourceKind: 'third_party_tracking_aws_prices',
+      outputUsdPerMillion: 3.2, observedOn: '2026-11-17',
+      sourceUrl: BEDROCK_PUBLIC_PRICE_OFFER_URL,
+      sourceKind: 'official_aws_public_bulk_price_list',
+      sourceModelAttribute: 'Nova Pro',
+      inputSku: '8X836UXRHN5Q5T2H', outputSku: 'ARFVY95XGU794VBG',
+      publicSkuRatesVerified: true,
+      priceListPublishedAt: BEDROCK_PUBLIC_PRICE_OFFER_PUBLISHED_AT,
+      priceEffectiveFrom: BEDROCK_PUBLIC_PRICE_OFFER_EFFECTIVE_FROM,
+      exactRuntimeVersionPriceVerified: false,
       lifecycleWarning: 'not_independently_attested',
       accountRateVerified: false, canonicalLedgerSynchronized: false,
       canDispatch: false,
@@ -72,9 +106,15 @@ export const BEDROCK_INDICATIVE_REFERENCE_PRICES: readonly BedrockReferencePrice
       modelId: 'amazon.nova-premier-v1:0', modelName: 'Nova Premier (Legacy)',
       sourceRegion: 'us-east-1', path: 'in_region', tier: 'standard',
       modality: 'text_only', inputUsdPerMillion: 2.5,
-      outputUsdPerMillion: 12.5, observedOn: '2026-10-31',
-      sourceUrl: 'https://instances.usage.ai/ai/nova-premier',
-      sourceKind: 'third_party_tracking_aws_prices',
+      outputUsdPerMillion: 12.5, observedOn: '2026-11-17',
+      sourceUrl: BEDROCK_PUBLIC_PRICE_OFFER_URL,
+      sourceKind: 'official_aws_public_bulk_price_list',
+      sourceModelAttribute: 'Nova Premier',
+      inputSku: 'AMYWX642VPHEKDZE', outputSku: '6QAAYR5SSN69NABR',
+      publicSkuRatesVerified: true,
+      priceListPublishedAt: BEDROCK_PUBLIC_PRICE_OFFER_PUBLISHED_AT,
+      priceEffectiveFrom: BEDROCK_PUBLIC_PRICE_OFFER_EFFECTIVE_FROM,
+      exactRuntimeVersionPriceVerified: false,
       // AWS official model card reports Legacy, EOL 2026-09-14.
       lifecycleWarning: 'legacy_do_not_adopt',
       accountRateVerified: false, canonicalLedgerSynchronized: false,

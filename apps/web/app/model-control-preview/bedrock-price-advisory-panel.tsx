@@ -19,10 +19,11 @@ export function BedrockPriceAdvisoryPanel(){
     padding:16,marginTop:16}}>
     <h2 style={{fontSize:20,marginTop:0}}>Fas 4 · Referenspriser och bruttokostnad</h2>
     <p style={muted}>
-      Skrivskyddad jämförelse av tidigare observerade, externa prisuppgifter
-      för standardnivån, endast text och direktkörning i us-east-1.
-      Ingen prissiffra här är ett kontoverifierat fakturapris, en budgetreservation
-      eller godkännande att anropa AWS-modellen.
+      Skrivskyddad jämförelse av AWS:s offentliga AmazonBedrock-prislista,
+      publicerad 11 november 2026. Standardnivå, text och direktkörning
+      i us-east-1. Prislistans SKU anger modellfamilj – inte exakt Runtime-version.
+      Detta är inte ett kontoverifierat fakturapris, en hård budgetgräns
+      eller godkännande att anropa en modell.
     </p>
     <div style={{display:'flex',gap:16,flexWrap:'wrap',margin:'14px 0'}}>
       <label htmlFor="bedrock-cost-input" style={{display:'grid',gap:5}}>
@@ -72,7 +73,7 @@ export function BedrockPriceAdvisoryPanel(){
               <td style={{padding:'10px 6px'}}>
                 <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer"
                   style={{color:'#8adefa',textDecoration:'underline'}}>
-                  Referens {p.observedOn}
+                  AWS giltig {p.priceEffectiveFrom.slice(0,10)}
                 </a>
               </td>
             </tr>
@@ -81,10 +82,12 @@ export function BedrockPriceAdvisoryPanel(){
       </table>
     </div>
     <p style={{...muted,marginTop:12}}>
-      Profilpriser för geografisk/global routing, caching, bilder, ljud, andra
-      nivåer och regioner är inte klara och får inte räknas med dessa siffror.
+      Prisposterna kommer från AWS:s offentliga regionfil (SKU-kod per input
+      och output). Vid avvikelse gäller AWS tjänstens prissida.
+      Profiler för geografisk/global routing, caching, multimodalitet, andra
+      nivåer och regioner får inte prissättas med dessa rader.
       AWS Activate-krediter är inte avdragna. Omniras kanoniska
-      kostnadsgrind och STOP måste fortfarande godkänna varje framtida körning.
+      kostnadsgrind och STOP måste godkänna varje framtida körning.
     </p>
     <p style={{fontSize:13,color:'#ffd2a0',fontWeight:650}}>
       Ingen modell får köras: canDispatch=false · hardCeilingVerified=false

@@ -1,6 +1,8 @@
 import {describe, expect, it} from 'vitest'
 import {
   BEDROCK_INDICATIVE_REFERENCE_PRICES, estimateBedrockReferenceCost,
+  BEDROCK_PUBLIC_PRICE_OFFER_URL, BEDROCK_PUBLIC_PRICE_OFFER_PUBLISHED_AT,
+  BEDROCK_PUBLIC_PRICE_OFFER_EFFECTIVE_FROM,
 } from '@/lib/ai/model-control/bedrock-price-advisory'
 
 const BASE={
@@ -18,19 +20,47 @@ describe('Bedrock indicative gross cost and credit-independent safety boundaries
       expect(p.path).toBe('in_region')
       expect(p.modality).toBe('text_only')
       expect(p.tier).toBe('standard')
-      expect(p.sourceKind).toBe('third_party_tracking_aws_prices')
-      expect(p.sourceUrl).toMatch(/^https:\/\//)
+      expect(p.sourceKind).toBe('official_aws_public_bulk_price_list')
+      expect(p.sourceUrl).toBe(BEDROCK_PUBLIC_PRICE_OFFER_URL)
+      expect(p.sourceUrl).toContain('AmazonBedrock/20261111013037/us-east-1')
+      expect(p.priceListPublishedAt).toBe(BEDROCK_PUBLIC_PRICE_OFFER_PUBLISHED_AT)
+      expect(p.priceEffectiveFrom).toBe(BEDROCK_PUBLIC_PRICE_OFFER_EFFECTIVE_FROM)
+      expect(p.publicSkuRatesVerified).toBe(true)
+      expect(p.exactRuntimeVersionPriceVerified).toBe(false)
+      expect(p.inputSku).toMatch(/^[A-Z0-9]{16}$/)
+      expect(p.outputSku).toMatch(/^[A-Z0-9]{16}$/)
       expect(p.accountRateVerified).toBe(false)
       expect(p.canonicalLedgerSynchronized).toBe(false)
       expect(p.canDispatch).toBe(false)
     }
+  })
+  it('pins eight inspected public AWS Standard token SKUs, without runtime release',()=>{
+    const expected:Record<string,readonly [string,string,number,number]>={
+      'amazon.nova-micro-v1:0':['XAR69MSGZSU6FEM9','YUSGHKDUPQRC75RK',0.035,0.14],
+      'amazon.nova-lite-v1:0':['QRGWJ3P8FT28EYX2','CBZ6A6U7XK8WJ3KA',0.06,0.24],
+      'amazon.nova-pro-v1:0':['8X836UXRHN5Q5T2H','ARFVY95XGU794VBG',0.8,3.2],
+      'amazon.nova-premier-v1:0':['AMYWX642VPHEKDZE','6QAAYR5SSN69NABR',2.5,12.5],
+    }
+    const skus:string[]=[]
+    for(const row of BEDROCK_INDICATIVE_REFERENCE_PRICES){
+      const [inputSku,outputSku,inputPrice,outputPrice]=expected[row.modelId]
+      expect(row.inputSku).toBe(inputSku)
+      expect(row.outputSku).toBe(outputSku)
+      expect(row.inputUsdPerMillion).toBe(inputPrice)
+      expect(row.outputUsdPerMillion).toBe(outputPrice)
+      expect(row.exactRuntimeVersionPriceVerified).toBe(false)
+      expect(row.accountRateVerified).toBe(false)
+      expect(row.canDispatch).toBe(false)
+      skus.push(inputSku,outputSku)
+    }
+    expect(new Set(skus).size).toBe(8)
   })
   it('prices a sample scenario as indicative GROSS USD only',()=>{
     const r=estimateBedrockReferenceCost(BASE)
     // 10k * 0.035/1M + 2k * 0.14/1M = 0.00063 USD.
     expect(r.grossUsd).toBe(0.00063)
     expect(r.status).toBe('indicative_only')
-    expect(r.sourceUrl).toContain('modeleol.com')
+    expect(r.sourceUrl).toContain('pricing.us-east-1.amazonaws.com')
     expect(r).toMatchObject({
       creditDeductionUsd:0,hasHardCeiling:false,
       liveAccountPriceVerified:false,fxRatePinned:false,

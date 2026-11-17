@@ -103,7 +103,31 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Source-only dependency reconciliation: two exact SQL files from main, one
 // from reviewed PR #633. No apply, version repair, new exception or SQL rewrite.
 export const EXPECTED_CANONICAL_SQL_COUNT = 175
-export const EXPECTED_ENFORCED_COUNT = 161
+export const EXPECTED_ENFORCED_COUNT = 163
+
+// Two already-applied, hash-pinned main references; no SQL copy, apply, or legacy exception.
+// Local canonical SQL stays 175; 161 local + 2 references are mandatory.
+export const REFERENCED_LEDGER_MIGRATIONS = Object.freeze(
+  [
+  {
+    "name": "office_visit_sessions",
+    "ledgerVersion": "20261113122811",
+    "sourceCommit": "1435667c3423801e51a50252fc2ebdafbe6a216a",
+    "sourcePath": "apps/web/supabase/migrations/20261113105758_office_visit_sessions.sql",
+    "sourceBlob": "c50298e3c98c542fc6a3f2a2d23be14862427695",
+    "sqlSha256": "a77bbd8837122cf419c271e534b594811217caec5c9142941bd6eecd8a7fb337"
+  },
+  {
+    "name": "family_daily_social_capacity_20261114",
+    "ledgerVersion": "20261114104408",
+    "sourceCommit": "1435667c3423801e51a50252fc2ebdafbe6a216a",
+    "sourcePath": "apps/web/supabase/migrations/20261114104408_family_daily_social_capacity_20261114.sql",
+    "sourceBlob": "b3697b7962f704b3d3cc65ba5d9e0251224fff2b",
+    "sqlSha256": "9dbef873ee5604c1b37f875acdf5ad4907f8ba7a2fda7111f87f5a6513bd7431"
+  }
+].map(reference => Object.freeze(reference)),
+)
+export const EXPECTED_REFERENCED_LEDGER_COUNT = 2
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([
@@ -197,7 +221,7 @@ export function assertMigrationGuardPolicyIntegrity({
   if (MIGRATION_GUARD_POLICY_VERSION !== 2) {
     throw new Error(`unexpected migration guard policy version: ${MIGRATION_GUARD_POLICY_VERSION}`)
   }
-  if (EXPECTED_CANONICAL_SQL_COUNT !== EXPECTED_GRANDFATHERED_COUNT + EXPECTED_ENFORCED_COUNT) {
+  if (EXPECTED_CANONICAL_SQL_COUNT + EXPECTED_REFERENCED_LEDGER_COUNT !== EXPECTED_GRANDFATHERED_COUNT + EXPECTED_ENFORCED_COUNT) {
     throw new Error('canonical, grandfathered, and enforced count tripwires disagree')
   }
   if (grandfatheredNames.length !== EXPECTED_GRANDFATHERED_COUNT) {
@@ -262,8 +286,24 @@ export function inspectCanonicalMigrationFiles(
     throw new Error(`legacy-only name(s) unexpectedly became canonical:\n${formatNames(legacyOverlap)}`)
   }
 
+  if (REFERENCED_LEDGER_MIGRATIONS.length !== EXPECTED_REFERENCED_LEDGER_COUNT) {
+    throw new Error('referenced migration count drifted')
+  }
+  for (const reference of REFERENCED_LEDGER_MIGRATIONS) {
+    if (!EXPLICIT_LEDGER_NAME.test(reference.name) || !/^\d+$/.test(reference.ledgerVersion) ||
+        !/^[a-f0-9]{40}$/.test(reference.sourceCommit) || !/^[a-f0-9]{40}$/.test(reference.sourceBlob) ||
+        !/^[a-f0-9]{64}$/.test(reference.sqlSha256) ||
+        !reference.sourcePath.endsWith('_' + reference.name + '.sql') ||
+        repositoryNameSet.has(reference.name) || legacyOnlyNames.includes(reference.name) ||
+        grandfatheredNames.includes(reference.name)) {
+      throw new Error('invalid or overlapping referenced migration')
+    }
+  }
+  const references = REFERENCED_LEDGER_MIGRATIONS.map(reference => reference.name)
+  if (duplicates(references).length) throw new Error('duplicate referenced migration')
+  const trackedNames = [...repositoryNames, ...references]
   const grandfathered = new Set(grandfatheredNames)
-  const enforcedNames = repositoryNames.filter((name) => !grandfathered.has(name))
+  const enforcedNames = trackedNames.filter((name) => !grandfathered.has(name))
   if (enforcedNames.length !== expectedEnforcedCount) {
     throw new Error(`enforced migration count drifted: expected ${expectedEnforcedCount}, got ${enforcedNames.length}`)
   }
@@ -271,7 +311,8 @@ export function inspectCanonicalMigrationFiles(
   return {
     policyVersion: MIGRATION_GUARD_POLICY_VERSION,
     sqlFiles,
-    repositoryNames,
+    repositoryNames: trackedNames,
+    referencedMigrations: REFERENCED_LEDGER_MIGRATIONS,
     enforcedNames,
     grandfatheredNames: [...grandfatheredNames],
     legacyOnlyNames: [...legacyOnlyNames],
@@ -304,6 +345,7 @@ export function evaluateAppliedMigrationLedger(appliedNames, repositoryState) {
   return {
     policyVersion: repositoryState.policyVersion,
     canonicalSqlCount: repositoryState.sqlFiles.length,
+    referencedMigrationCount: repositoryState.referencedMigrations?.length ?? 0,
     enforcedCount: repositoryState.enforcedNames.length,
     grandfatheredCount: repositoryState.grandfatheredNames.length,
     legacyOnlyAllowlistCount: repositoryState.legacyOnlyNames.length,

@@ -231,10 +231,22 @@ describe('verified historical debt', () => {
     const guard = await import(guardPath)
     // These are explicit historical fixture counts, not a change to active
     // Guard defaults. The separate active-catalog test below uses no overrides.
-    const state = guard.inspectCanonicalMigrationFiles(files.map((x: any) => x.file), {
-      expectedCanonicalCount: 175, expectedEnforcedCount: 161,
+    const currentState = guard.inspectCanonicalMigrationFiles(files.map((x: any) => x.file), {
+      expectedCanonicalCount: 175, expectedEnforcedCount: 163,
     })
-    expect(guard.evaluateAppliedMigrationLedger(observation.ledger.map((x: any) => x.name), state))
+    // The immutable Nov12 capture predates both enforced main references.
+    // Active Guard must reject it; this explicit historical model only proves
+    // the pre-existing name-only limitation, without a runtime bypass.
+    const names = observation.ledger.map((x: any) => x.name)
+    expect(() => guard.evaluateAppliedMigrationLedger(names, currentState)).toThrow(/not applied to the production ledger/)
+    const later = new Set(guard.REFERENCED_LEDGER_MIGRATIONS.map((r: any) => r.name))
+    const state = {
+      ...currentState,
+      repositoryNames: currentState.repositoryNames.filter((name: string) => !later.has(name)),
+      enforcedNames: currentState.enforcedNames.filter((name: string) => !later.has(name)),
+      referencedMigrations: [],
+    }
+    expect(guard.evaluateAppliedMigrationLedger(names, state))
       .toMatchObject({ canonicalSqlCount: 175, enforcedCount: 161, appliedLedgerCount: 198 })
     expect(policy?.evaluateMigrationRelease(input()).ok).toBe(false)
   })
@@ -264,7 +276,10 @@ describe('verified historical debt', () => {
       expect(activeResult?.issues).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'SOURCE_MISSING', file })]))
     }
     const checkActualNames = () => guard.evaluateAppliedMigrationLedger(observation.ledger.map((entry: any) => entry.name), state)
-    if (missingCapturedFiles.length > 0) expect(checkActualNames).toThrow(/unknown migration name/)
+    const missingLaterReferences = guard.REFERENCED_LEDGER_MIGRATIONS
+      .filter((r: any) => !observation.ledger.some((row: any) => row.name === r.name))
+    if (missingLaterReferences.length > 0) expect(checkActualNames).toThrow(/not applied to the production ledger/)
+    else if (missingCapturedFiles.length > 0) expect(checkActualNames).toThrow(/unknown migration name/)
     else expect(checkActualNames).not.toThrow()
   })
 })

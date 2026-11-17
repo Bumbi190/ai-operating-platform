@@ -17,15 +17,20 @@ import { NextResponse } from 'next/server'
 import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { POST as runFullPipeline } from '../full/route'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: Request) {
+  if (request.signal.aborted) return new Response(null, { status: 499 })
   const supabase = await createClient()
+  if (request.signal.aborted) return new Response(null, { status: 499 })
   const { data: { user } } = await supabase.auth.getUser()
+  if (request.signal.aborted) return new Response(null, { status: 499 })
   if (!user) return new Response('Unauthorized', { status: 401 })
 
   const { project_id } = await request.json() as { project_id: string }
+  if (request.signal.aborted) return new Response(null, { status: 499 })
   if (!project_id) return new Response('project_id required', { status: 400 })
 
   const db = createAdminClient()
@@ -47,6 +52,7 @@ export async function POST(request: Request) {
   // not authorization. `lib/cost/governed-spend.ts` has no session check and no
   // allow-list; it attributes to a fixed platform slug. This is the guard.
   const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+  if (request.signal.aborted) return new Response(null, { status: 499 })
   if (!assertProjectAllowed(project_id, allowedProjectIds)) {
     return new Response('Project not found', { status: 404 })
   }
@@ -61,7 +67,10 @@ export async function POST(request: Request) {
     .gte('created_at', cutoff)
     .order('virality_score', { ascending: false })
     .limit(1)
+    .abortSignal(request.signal)
     .single()
+
+  if (request.signal.aborted) return new Response(null, { status: 499 })
 
   if (!story) {
     return NextResponse.json(
@@ -77,28 +86,18 @@ export async function POST(request: Request) {
     story.key_insight ? `Key insight: ${story.key_insight}` : '',
   ].filter(Boolean).join('\n\n')
 
-  // Forward to the full pipeline with the selected story as text
-  const origin = new URL(request.url).origin
-  const pipelineRes = await fetch(`${origin}/api/media/pipeline/full`, {
+  // In-process handoff: the full handler rechecks the ambient Next.js session
+  // and project authority. This URL is only a Request identifier, never fetched.
+  return runFullPipeline(new Request('http://pipeline.internal/api/media/pipeline/full', {
     method: 'POST',
+    signal: request.signal,
     headers: {
       'Content-Type': 'application/json',
-      // Forward auth cookie
-      Cookie: request.headers.get('cookie') ?? '',
     },
     body: JSON.stringify({
       text: articleText,
       project_id,
       mode: 'lite',
     }),
-  })
-
-  // Stream the SSE response through
-  return new Response(pipelineRes.body, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-    },
-  })
+  }))
 }

@@ -15,7 +15,7 @@ const invoke = (
   target = path,
   headers: Record<string, string> = { origin: 'https://omniraos.se', host: 'omniraos.se' },
   slug = 'handlarborsen',
-) => POST(new Request(target, { method: 'POST', headers }), { params: { slug } })
+) => POST(new Request(target, { method: 'POST', headers }), { params: Promise.resolve({ slug }) })
 
 beforeEach(() => {
   mocked.enabled.mockReturnValue(false)

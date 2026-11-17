@@ -25,6 +25,8 @@ export function buildNextFixture(browser=null){
  ['website-builds/[sessionId]/revisions/[revisionId]',['GET']]
  ];
  for(const [path,verbs] of routes)write('app/api/'+path+'/route.ts',"export const dynamic='force-dynamic';export {"+verbs.join(',')+"} from '@/app/api/"+path+"/route';");
+ // Test-fixture-only endpoint preserves exact access-resolver assertions through real Next cookies.
+ write('app/api/test-project-access/route.ts',"export const dynamic='force-dynamic';import {resolveProjectAccess} from '@/lib/auth/project-access';export async function GET(){const access=await resolveProjectAccess();if(!access.ok){access.response.headers.set('cache-control','private, no-store');return access.response}return Response.json({ok:true,userId:access.userId,allowedProjectIds:access.allowedProjectIds},{headers:{'cache-control':'private, no-store'}})}");
  if(browser){
   write('app/layout.js',"import './globals.css';export default function Layout({children}){return <html><body>{children}</body></html>}");
   write('app/globals.css',readFileSync(join(app,'app/globals.css'),'utf8'));

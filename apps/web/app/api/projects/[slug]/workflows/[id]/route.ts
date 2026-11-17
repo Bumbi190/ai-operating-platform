@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -12,7 +12,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const { data, error } = await supabase
     .from('workflows')
     .update({ name, description, steps, trigger, cron_expr, active })
-    .eq('id', params.id)
+    .eq('id', (await params).id)
     .select()
     .single()
 
@@ -20,11 +20,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   return NextResponse.json(data)
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  await supabase.from('workflows').delete().eq('id', params.id)
+  await supabase.from('workflows').delete().eq('id', (await params).id)
   return new Response(null, { status: 204 })
 }

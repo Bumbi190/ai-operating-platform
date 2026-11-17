@@ -61,7 +61,14 @@ function fakeDb(tables: Record<string, any[]>) {
         return q
       },
       limit: (n: number) => { rec.ops.push(['limit', String(n), n]); rows = rows.slice(0, n); return q },
-      single: async () => ({ data: rows[0] ?? { id: 'new-row' }, error: null }),
+      single: async () => {
+        if (rec.writes.length && WRITE_GATE) {
+          WRITE_ENTERED?.()
+          await WRITE_GATE
+        }
+        return { data: rows[0] ?? (rec.writes.length ? { id: 'new-row' } : null), error: null }
+      },
+      abortSignal: (signal: AbortSignal) => { DATABASE_SIGNALS.push(signal); return q },
       maybeSingle: async () => ({ data: rows[0] ?? null, error: null }),
       then: (ok: any, err?: any) => Promise.resolve({ data: rows, error: null }).then(ok, err),
     }
@@ -86,7 +93,7 @@ function seed(newsItems: any[] = []) {
 }
 
 vi.mock('@/lib/supabase/server', () => ({
-  createClient: async () => ({ auth: { getUser: async () => ({ data: { user: CURRENT_USER } }) } }),
+  createClient: async () => ({ auth: { getUser: async () => ({ data: { user: AUTH_RESULTS ? AUTH_RESULTS.shift() : CURRENT_USER } }) } }),
 }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => CURRENT.db }))
 
@@ -99,11 +106,33 @@ const SCRIPT_JSON = JSON.stringify({
   cta: 'cta', tone: 'insider', estimated_duration: '~22s', difficulty: 'intermediate',
 })
 let CLAUDE_TURN = 0
+let FIRST_PROVIDER_GATE: Promise<void> | undefined
+let AUTH_RESULTS: ({ id: string } | null)[] | undefined
+let PROVIDER_SIGNALS: AbortSignal[] = []
+let DATABASE_SIGNALS: AbortSignal[] = []
+let WAIT_FOR_PROVIDER_ABORT = false
+let FAIL_PROVIDER = false
+let OVERLOADED_PROVIDER = false
+let VOICE_GATE: Promise<void> | undefined
+let VOICE_ENTERED: (() => void) | undefined
+let WRITE_GATE: Promise<void> | undefined
+let WRITE_ENTERED: (() => void) | undefined
 vi.mock('@/lib/ai/anthropic', () => ({
   getAnthropic: () => ({
     messages: {
-      create: async () => {
+      create: async (_params: unknown, options?: { signal?: AbortSignal }) => {
         note('anthropic')
+        if (options?.signal) PROVIDER_SIGNALS.push(options.signal)
+        if (OVERLOADED_PROVIDER) throw new Error('Synthetic 529 overloaded')
+        if (FAIL_PROVIDER) throw new Error('Synthetic provider failure')
+        if (WAIT_FOR_PROVIDER_ABORT) {
+          await new Promise<void>((_resolve, reject) => {
+            const signal = options!.signal!
+            if (signal.aborted) return reject(signal.reason)
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+          })
+        }
+        if (CLAUDE_TURN === 0) await FIRST_PROVIDER_GATE
         const body = CLAUDE_TURN++ === 0 ? NEWS_JSON : SCRIPT_JSON
         return { content: [{ type: 'text', text: body }] }
       },
@@ -111,7 +140,7 @@ vi.mock('@/lib/ai/anthropic', () => ({
   }),
 }))
 vi.mock('@/lib/media/elevenlabs', () => ({
-  generateVoiceover: async () => { note('elevenlabs'); return { audioBuffer: Buffer.from(''), words: [], durationMs: 1000 } },
+  generateVoiceover: async () => { note('elevenlabs'); VOICE_ENTERED?.(); await VOICE_GATE; return { audioBuffer: Buffer.from(''), words: [], durationMs: 1000 } },
 }))
 vi.mock('@/lib/media/ideogram', () => ({
   generateSceneImages: async () => { note('ideogram'); return [{ url: 'https://x/1.png' }] },
@@ -155,7 +184,246 @@ async function drain(res: Response): Promise<string> {
 const writesFor = (seen: Seen[]) => seen.flatMap(s => s.writes)
 const opsOn = (seen: Seen[], table: string) => seen.filter(s => s.table === table).flatMap(s => s.ops)
 
-beforeEach(() => { CURRENT_USER = { id: ME }; CURRENT = fakeDb(seed()); CALLS = []; CLAUDE_TURN = 0 })
+beforeEach(() => { CURRENT_USER = { id: ME }; CURRENT = fakeDb(seed()); CALLS = []; CLAUDE_TURN = 0; FIRST_PROVIDER_GATE = undefined; AUTH_RESULTS = undefined; PROVIDER_SIGNALS = []; DATABASE_SIGNALS = []; WAIT_FOR_PROVIDER_ABORT = false; FAIL_PROVIDER = false; OVERLOADED_PROVIDER = false; VOICE_GATE = undefined; VOICE_ENTERED = undefined; WRITE_GATE = undefined; WRITE_ENTERED = undefined })
+
+describe('CodeQL #29 — daily handoff and cancellation security', () => {
+  it('does not send session cookies to the origin supplied by the caller', async () => {
+    CURRENT = fakeDb(seed([{
+      id: 'approved-owned-story', project_id: MINE, status: 'approved',
+      virality_score: 10, created_at: new Date().toISOString(),
+      title: 'Synthetic story', summary: 'Synthetic summary', key_insight: 'Synthetic insight',
+    }]))
+    const originalFetch = globalThis.fetch
+    const network: { url: string; cookie: string | null }[] = []
+    globalThis.fetch = async (input, init) => {
+      network.push({ url: String(input), cookie: new Headers(init?.headers).get('cookie') })
+      return new Response('data: {"step":"done"}\n\n', {
+        headers: { 'Content-Type': 'text/event-stream' },
+      })
+    }
+    try {
+      vi.resetModules()
+      const { POST } = await import('@/app/api/media/pipeline/daily/route')
+      const response = await POST(new Request('https://attacker.invalid/api/media/pipeline/daily', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json', Cookie: 'session=synthetic-session-only',
+          Origin: 'https://attacker.invalid', Host: 'attacker.invalid',
+          'X-Forwarded-Host': 'attacker.invalid', 'X-Forwarded-Proto': 'https',
+          Forwarded: 'host=attacker.invalid;proto=https',
+        },
+        body: JSON.stringify({ project_id: MINE }),
+      }))
+      await drain(response)
+      expect(network, 'credentials must not leave daily through an HTTP handoff').toEqual([])
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('does not spend or write when the full handler receives an already aborted request', async () => {
+    const abort = new AbortController()
+    abort.abort()
+    vi.resetModules()
+    const { POST } = await import('@/app/api/media/pipeline/full/route')
+    const response = await POST(new Request('https://internal.invalid/api/media/pipeline/full', {
+      method: 'POST', signal: abort.signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: 'Synthetic article', project_id: MINE, mode: 'lite' }),
+    }))
+    await drain(response)
+    expect.soft(CALLS, 'aborted requests must not start providers').toEqual([])
+    expect(writesFor(CURRENT.seen), 'aborted requests must not write data').toEqual([])
+  })
+
+  it('does not continue provider calls or writes after abort during the first provider', async () => {
+    let release!: () => void
+    FIRST_PROVIDER_GATE = new Promise<void>(resolve => { release = resolve })
+    const abort = new AbortController()
+    vi.resetModules()
+    const { POST } = await import('@/app/api/media/pipeline/full/route')
+    const response = await POST(new Request('https://internal.invalid/api/media/pipeline/full', {
+      method: 'POST', signal: abort.signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: 'Synthetic article', project_id: MINE, mode: 'lite' }),
+    }))
+    // The real SSE producer is suspended inside the synthetic provider here.
+    expect(CALLS).toEqual(['anthropic'])
+    expect(writesFor(CURRENT.seen)).toEqual([])
+    abort.abort()
+    release()
+    await drain(response)
+    expect.soft(CALLS, 'no second provider may run after the abort').toEqual(['anthropic'])
+    expect(writesFor(CURRENT.seen), 'no writes may follow the abort').toEqual([])
+  })
+})
+
+describe('Daily internal handoff — response and cancellation fidelity', () => {
+  const request = (signal?: AbortSignal) => new Request('https://attacker.invalid/api/media/pipeline/daily', {
+    method: 'POST', signal,
+    headers: { 'Content-Type': 'application/json', Cookie: 'session=synthetic-only',
+      Origin: 'https://other.invalid', Host: 'spoof.invalid',
+      'X-Forwarded-Host': 'proxy.invalid', 'X-Forwarded-Proto': 'http' },
+    body: JSON.stringify({ project_id: MINE }),
+  })
+  beforeEach(() => {
+    CURRENT = fakeDb(seed([{ id: 'owned', project_id: MINE, status: 'approved',
+      virality_score: 1, created_at: new Date().toISOString(), title: 'Svensk syntetisk artikel ÅÄÖ', summary: 'S' }]))
+  })
+
+  it('returns the full handler 401 if the second session check fails', async () => {
+    AUTH_RESULTS = [{ id: ME }, null]
+    const { POST } = await import('@/app/api/media/pipeline/daily/route')
+    const response = await POST(request())
+    expect(response.status).toBe(401)
+    expect(await response.text()).toBe('Unauthorized')
+    expect(CALLS).toEqual([])
+    expect(writesFor(CURRENT.seen)).toEqual([])
+  })
+
+  it('rechecks the project for a changed user at the full handler boundary', async () => {
+    AUTH_RESULTS = [{ id: ME }, { id: 'user-other' }]
+    const { POST } = await import('@/app/api/media/pipeline/daily/route')
+    const response = await POST(request())
+    expect(response.status).toBe(404)
+    expect(CALLS).toEqual([])
+    expect(writesFor(CURRENT.seen)).toEqual([])
+  })
+
+  it('returns a real SSE error and closes when the existing provider fails', async () => {
+    FAIL_PROVIDER = true
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { POST } = await import('@/app/api/media/pipeline/daily/route')
+      const response = await POST(request())
+      expect(response.status).toBe(200)
+      expect(response.headers.get('content-type')).toBe('text/event-stream')
+      const body = await drain(response)
+      expect(body).toContain('"step":"analyzing"')
+      expect(body).toContain('"step":"error"')
+      expect(body).toContain('Synthetic provider failure')
+      expect(CALLS).toEqual(['anthropic'])
+      expect(writesFor(CURRENT.seen)).toEqual([])
+    } finally { errorLog.mockRestore() }
+  })
+
+  it('signals the native provider and closes SSE on request abort without waiting for its result', async () => {
+    WAIT_FOR_PROVIDER_ABORT = true
+    const abort = new AbortController()
+    const { POST } = await import('@/app/api/media/pipeline/daily/route')
+    const response = await POST(request(abort.signal))
+    const reader = response.body!.getReader()
+    expect(new TextDecoder().decode((await reader.read()).value)).toContain('"step":"analyzing"')
+    expect(PROVIDER_SIGNALS).toHaveLength(1)
+    abort.abort()
+    expect(PROVIDER_SIGNALS[0].aborted).toBe(true)
+    expect((await reader.read()).done).toBe(true)
+    expect(CALLS).toEqual(['anthropic'])
+    expect(writesFor(CURRENT.seen)).toEqual([])
+  })
+
+  it('signals the provider when the SSE consumer cancels and starts no later steps', async () => {
+    WAIT_FOR_PROVIDER_ABORT = true
+    const { POST } = await import('@/app/api/media/pipeline/daily/route')
+    const response = await POST(request())
+    const reader = response.body!.getReader()
+    await reader.read()
+    await reader.cancel()
+    expect(PROVIDER_SIGNALS[0].aborted).toBe(true)
+    expect((await reader.read()).done).toBe(true)
+    expect(CALLS).toEqual(['anthropic'])
+    expect(writesFor(CURRENT.seen)).toEqual([])
+  })
+
+  it('removes the request listener after normal completion', async () => {
+    const abort = new AbortController()
+    const { POST } = await import('@/app/api/media/pipeline/daily/route')
+    const response = await POST(request(abort.signal))
+    await drain(response)
+    abort.abort()
+    expect(PROVIDER_SIGNALS.length).toBeGreaterThan(0)
+    expect(PROVIDER_SIGNALS.every(signal => !signal.aborted)).toBe(true)
+  })
+
+  it('clears retry backoff on abort and never starts another provider attempt', async () => {
+    vi.useFakeTimers()
+    try {
+      OVERLOADED_PROVIDER = true
+      const abort = new AbortController()
+      const { POST } = await import('@/app/api/media/pipeline/daily/route')
+      const response = await POST(request(abort.signal))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(CALLS).toEqual(['anthropic'])
+      expect(vi.getTimerCount()).toBe(1)
+      abort.abort()
+      await drain(response)
+      expect(vi.getTimerCount()).toBe(0)
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(CALLS).toEqual(['anthropic'])
+      expect(writesFor(CURRENT.seen)).toEqual([])
+    } finally { vi.useRealTimers() }
+  })
+
+  it('closes SSE promptly while a non-cancellable voice operation finishes without further steps', async () => {
+    let release!: () => void
+    VOICE_GATE = new Promise<void>(resolve => { release = resolve })
+    const entered = new Promise<void>(resolve => { VOICE_ENTERED = resolve })
+    const abort = new AbortController()
+    const { POST } = await import('@/app/api/media/pipeline/daily/route')
+    const response = await POST(request(abort.signal))
+    await entered
+    const writesBeforeAbort = writesFor(CURRENT.seen).length
+    expect(writesBeforeAbort).toBeGreaterThan(0)
+    abort.abort()
+    await drain(response)
+    release()
+    // Flush the released operation and all of its promise continuations.
+    await new Promise<void>(resolve => setImmediate(resolve))
+    expect(writesFor(CURRENT.seen)).toHaveLength(writesBeforeAbort)
+    expect(CALLS).toEqual(['anthropic', 'anthropic', 'quality', 'elevenlabs'])
+  })
+
+  it('does not roll back an in-flight write but starts no later step after abort', async () => {
+    let release!: () => void
+    WRITE_GATE = new Promise<void>(resolve => { release = resolve })
+    const entered = new Promise<void>(resolve => { WRITE_ENTERED = resolve })
+    const abort = new AbortController()
+    const { POST } = await import('@/app/api/media/pipeline/daily/route')
+    const response = await POST(request(abort.signal))
+    await entered
+    expect(writesFor(CURRENT.seen)).toHaveLength(1)
+    expect(DATABASE_SIGNALS.length).toBeGreaterThan(1)
+    abort.abort()
+    expect(DATABASE_SIGNALS.every(signal => signal.aborted)).toBe(true)
+    await drain(response)
+    release()
+    // Flush the released operation and all of its promise continuations.
+    await new Promise<void>(resolve => setImmediate(resolve))
+    expect(writesFor(CURRENT.seen)).toHaveLength(1)
+    expect(CALLS).toEqual(['anthropic'])
+  })
+
+  it('does not enter the full pipeline without an approved recent article', async () => {
+    CURRENT = fakeDb(seed([]))
+    const { POST } = await import('@/app/api/media/pipeline/daily/route')
+    const response = await POST(request())
+    expect(response.status).toBe(404)
+    expect(CALLS).toEqual([])
+    expect(writesFor(CURRENT.seen)).toEqual([])
+  })
+
+  it('returns normal SSE progress and completion through the internal handoff', async () => {
+    const { POST } = await import('@/app/api/media/pipeline/daily/route')
+    const response = await POST(request())
+    const body = await drain(response)
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toBe('text/event-stream')
+    expect(body).toContain('"step":"done"')
+    expect(body).not.toContain('"step":"error"')
+    expect(writesFor(CURRENT.seen).length).toBeGreaterThan(0)
+    expect(PROVIDER_SIGNALS.every(signal => !signal.aborted)).toBe(true)
+  })
+})
 
 // ═══ A · pipeline/full ═══════════════════════════════════════════════════════
 
@@ -274,6 +542,7 @@ describe('9V-3c · pipeline/daily — an operator route, not a machine one', () 
     // limit(1) with ORDER BY virality_score DESC: unscoped, the foreign 99
     // would win outright and be forwarded into the pipeline as the day's story.
     const res = await post({ project_id: MINE })
+    await drain(res)
     expect(res.status).toBe(200)
     const ops = opsOn(CURRENT.seen, 'media_news_items')
     const eqProject = ops.find(([op, c]) => op === 'eq' && c === 'project_id')
@@ -288,7 +557,10 @@ describe('9V-3c · pipeline/daily — an operator route, not a machine one', () 
   it('the authorized project is the one forwarded to the full pipeline', async () => {
     const res = await post({ project_id: MINE })
     expect(res.status).toBe(200)
-    expect(CALLS).toContain('forward-to-full')
+    await drain(res)
+    expect(CALLS).toContain('anthropic')
+    expect(CALLS).not.toContain('forward-to-full')
+    expect(writesFor(CURRENT.seen).length).toBeGreaterThan(0)
   })
 
   it('an unauthenticated request never reaches a query', async () => {

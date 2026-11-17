@@ -49,7 +49,7 @@ describe('collaborator proposal queue never executes actions', () => {
     m.operator.mockResolvedValue({ok:true,userId:'owner'})
     m.user.mockResolvedValue({data:{user:{id:'owner'}}})
     m.scope.mockResolvedValue({role:{active:true,role:'owner'},projectIds:[project]})
-    const r = await PATCH(request('PATCH','/api/organization/proposals/'+proposal,{decision:'approved',reason:'Review completed'}),{params:{id:proposal}})
+    const r = await PATCH(request('PATCH','/api/organization/proposals/'+proposal,{decision:'approved',reason:'Review completed'}),{params:Promise.resolve({id:proposal})})
     expect(r.status).toBe(200)
     const chain = m.admin.mock.results.at(-1)?.value.from()
     expect(chain.neq).toHaveBeenCalledWith('author_id','owner')
@@ -57,6 +57,6 @@ describe('collaborator proposal queue never executes actions', () => {
     expect(chain.in).toHaveBeenCalledWith('project_id',[project])
   })
   it('denies collaborator approval even if it claims an Owner role in the body', async () => {
-    expect((await PATCH(request('PATCH','/api/organization/proposals/'+proposal,{decision:'approved',reason:'x',role:'owner'}),{params:{id:proposal}})).status).toBe(403)
+    expect((await PATCH(request('PATCH','/api/organization/proposals/'+proposal,{decision:'approved',reason:'x',role:'owner'}),{params:Promise.resolve({id:proposal})})).status).toBe(403)
   })
 })

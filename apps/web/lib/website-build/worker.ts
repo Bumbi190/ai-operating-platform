@@ -18,6 +18,7 @@ import { commitBuildRevision, loadBuildSnapshot, parkBuildSession, recordBuildIn
 import { interpretBuildFeedback, parseWebsiteModelJson, WebsiteBuildPermanentError } from './feedback-interpretation'
 import {assertApprovedWebsiteScope} from './planning/design-reference'
 import { FEEDBACK_CONTRACT, WEBSITE_OUTPUT_CONTRACT, websiteUserMessage } from './prompt'
+import {approvedProspectDraft} from './prospects/template'
 import type { WriterRef } from './types'
 export { isWebsiteBuildPermanentError } from './feedback-interpretation'
 export type WebsiteBuildPaidStep={
@@ -56,6 +57,9 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
     let snapshot = await loadBuildSnapshot(db, writer)
     let cinematic:ReturnType<typeof cinematicReference>
     try{cinematic=cinematicReference(snapshot.designReference)}catch{throw new WebsiteBuildPermanentError('INVALID_DESIGN_REFERENCE')}
+    let prospectDraft:ReturnType<typeof approvedProspectDraft>
+    try{prospectDraft=approvedProspectDraft(snapshot.designReference)}catch{throw new WebsiteBuildPermanentError('INVALID_DESIGN_REFERENCE')}
+    if(prospectDraft&&Object.hasOwn(input,'recovery'))throw new WebsiteBuildPermanentError('INVALID_RECOVERY')
     if(cinematic&&Object.hasOwn(input,'recovery'))throw new WebsiteBuildPermanentError('INVALID_RECOVERY')
     const recovering = Object.hasOwn(input, 'recovery')
     const noPaid = recovering || Object.hasOwn(input, 'recoveryNoPaid')
@@ -101,10 +105,14 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
     let interpretation = snapshot.interpretation
     if (snapshot.feedback.length && !interpretation) {
       await setBuildStage(db, writer, 'interpreting')
+      if(prospectDraft){
+        interpretation={items:snapshot.feedback.map(item=>({feedbackId:item.id,summary:'Ändra prospektets underlag och granska en ny mockup för denna begränsade konceptstartsida.',disposition:'decision' as const,changeKey:null,supersedesFeedbackIds:[]}))}
+      }else{
       const result = await paid(FEEDBACK_CONTRACT, cinematic?JSON.stringify({allowedChange:'Only Roadster contact button text with changeKey roadster.cta; any other request requires a decision',feedback:snapshot.feedback}):websiteUserMessage(snapshot, null, false), 2000, 'website.feedback.interpret')
       if (!result) return
       interpretation = interpretBuildFeedback(parseWebsiteModelJson(result.content), snapshot.feedback)
       if(cinematic)interpretation={...interpretation,items:interpretation.items.map(item=>item.disposition==='apply'&&item.changeKey!=='roadster.cta'?{...item,disposition:'decision' as const,summary:'Den här visningen stöder just nu endast ändring av Roadsterns knapptext. Övriga ändringar behöver planeras separat.'}:item)}
+      }
       await recordBuildInterpretation(db, writer, interpretation)
       snapshot = await loadBuildSnapshot(db, writer)
     }
@@ -117,6 +125,7 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
     if (!artifact) {
       await setBuildStage(db, writer, 'building')
       if (recovering) artifact = await recoverWebsiteArtifact(db, writer, input.recovery)
+      else if(prospectDraft) artifact=compileWebsiteArtifact(prospectDraft)
       else if(cinematic){
        const prior=snapshot.previousArtifact
        if(prior)assertApprovedWebsiteScope(prior,snapshot.designReference)

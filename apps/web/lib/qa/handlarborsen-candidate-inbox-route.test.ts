@@ -15,7 +15,7 @@ const body={host:'tradingsolutions.se',read:true}
 const ownerURL='https://omniraos.se/api/projects/handlarborsen/competitors/inbox'
 const collabURL='https://omniraos.se/api/organization/projects/handlarborsen/competitors/inbox'
 const call=(action:typeof ownerPost,origin:string,payload:unknown=body,requestHeaders:Record<string,string>=headers,slug='handlarborsen')=>
-  action(new Request(origin,{method:'POST',headers:requestHeaders,body:JSON.stringify(payload)}),{params:{slug}})
+  action(new Request(origin,{method:'POST',headers:requestHeaders,body:JSON.stringify(payload)}),{params:Promise.resolve({slug})})
 
 beforeEach(()=>{
   mocked.enabled.mockReset().mockReturnValue(true)

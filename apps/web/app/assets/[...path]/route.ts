@@ -33,9 +33,9 @@ function respond(parts:unknown,head:boolean,request?:Request){
  }
  return new NextResponse(head?null:stream(asset.bytes),{status:200,headers})
 }
-export async function GET(_request:Request,{params}:{params:{path:string[]}}){
- return respond(params.path,false,_request)
+export async function GET(_request:Request,{params}:{params:Promise<{path:string[]}>}){
+ return respond((await params).path,false,_request)
 }
-export async function HEAD(_request:Request,{params}:{params:{path:string[]}}){
- return respond(params.path,true)
+export async function HEAD(_request:Request,{params}:{params:Promise<{path:string[]}>}){
+ return respond((await params).path,true)
 }

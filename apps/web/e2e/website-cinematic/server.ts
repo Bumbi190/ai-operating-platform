@@ -22,7 +22,7 @@ const server=createServer(async(req,res)=>{
  const url=new URL(req.url??'/','http://127.0.0.1:'+port)
  res.setHeader('cache-control','no-store')
  if(url.pathname.startsWith('/assets/')){
-  const response=await publicAsset(new Request(url,{headers:req.headers.range?{range:req.headers.range}:{}}),{params:{path:url.pathname.slice('/assets/'.length).split('/')}})
+  const response=await publicAsset(new Request(url,{headers:req.headers.range?{range:req.headers.range}:{}}),{params:Promise.resolve({path:url.pathname.slice('/assets/'.length).split('/')})})
   res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));return
  }
  if(url.pathname==='/__studio-preview'){
@@ -69,7 +69,7 @@ const server=createServer(async(req,res)=>{
  }
  if(url.pathname==='/bilhandlare'||url.pathname.startsWith('/bilhandlare/')){
   const path=url.pathname.split('/').slice(2)
-  const response=await dealerPilot(new Request(url,{headers:req.headers.range?{range:req.headers.range}:{}}),{params:{path}})
+  const response=await dealerPilot(new Request(url,{headers:req.headers.range?{range:req.headers.range}:{}}),{params:Promise.resolve({path})})
   res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));return
  }
  if(url.pathname==='/'||url.pathname==='/build/demo-motors/cinematic'){

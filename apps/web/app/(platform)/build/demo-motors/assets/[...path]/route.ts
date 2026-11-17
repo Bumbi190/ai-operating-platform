@@ -6,13 +6,13 @@ export const runtime='nodejs'
 export const dynamic='force-dynamic'
 
 /** Only vetted immutable GLB, poster and JS can be read; no uploads or user files. */
-export async function GET(_request:Request,{params}:{params:{path:string[]}}):Promise<Response>{
+export async function GET(_request:Request,{params}:{params:Promise<{path:string[]}>}):Promise<Response>{
  const access=await resolveProjectAccess()
  if(!access.ok)return access.response
  if(!access.allowedProjectIds.length)return new Response('Forbidden',{status:403})
- if(isListingViewerAsset(params.path))return cinematicAssetResponse(_request,params.path[1])
+ if(isListingViewerAsset((await params).path))return cinematicAssetResponse(_request,(await params).path[1])
  let asset:ReturnType<typeof readPublicWebsitePreviewAsset>
- try{asset=readPublicWebsitePreviewAsset(params.path)}catch{
+ try{asset=readPublicWebsitePreviewAsset((await params).path)}catch{
   return new Response(null,{status:500,headers:{'cache-control':'no-store'}})
  }
  if(!asset)return new Response(null,{status:404,headers:{'cache-control':'no-store'}})

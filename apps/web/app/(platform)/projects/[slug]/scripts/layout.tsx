@@ -7,9 +7,9 @@ import {isLegacyNewsPipelineProject} from '@/lib/project/legacy-news-pipeline'
 // Never mount it for a Familje-Stunden (or unrelated) project.
 export default async function ScriptsProjectScopeLayout({
   children, params,
-}: {children: React.ReactNode; params: {slug: string}}) {
+}: {children: React.ReactNode; params: Promise<{slug: string}>}) {
   const [project, access] = await Promise.all([
-    getProjectBySlug(params.slug),
+    getProjectBySlug((await params).slug),
     resolveProjectAccess(),
   ])
   if (!project || !access.ok || !access.allowedProjectIds.includes(project.id) ||

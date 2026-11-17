@@ -188,7 +188,7 @@ it('captured_calls_only_P1_RPC_no_external_egress', async () => {
 it('origin_required_and_route_statuses', async () => {
   const { POST, GET } = await import('@/app/api/projects/[slug]/atlas/analysis-drafts/route')
   const service = await import('@/lib/atlas/project-analytics/analysis-draft-service')
-  const params = { params: { slug: project.slug } }
+  const params = { params: Promise.resolve({ slug: project.slug }) }
   const previous = process.env.ATLAS_ANALYSIS_DRAFTS_ENABLED
   process.env.ATLAS_ANALYSIS_DRAFTS_ENABLED = 'true'
   try {

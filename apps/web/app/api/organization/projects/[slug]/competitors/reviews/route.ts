@@ -19,8 +19,8 @@ const fail = (status: number, code: string) =>
  * the project is fixed, org membership checked before service-role mutation,
  * and the database RPC independently repeats active actor/project checks.
  */
-export async function POST(request: Request, { params }: { params: { slug: string } }) {
-  if (params.slug !== HANDLARBORSEN_PROJECT_SLUG) return fail(404, 'not_found')
+export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }) {
+  if ((await params).slug !== HANDLARBORSEN_PROJECT_SLUG) return fail(404, 'not_found')
   if (!candidateReviewEnabled()) return fail(409, 'disabled')
   const refused = assertSameOrigin(request)
   if (refused) return refused

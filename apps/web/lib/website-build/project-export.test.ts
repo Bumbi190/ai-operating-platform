@@ -1,4 +1,4 @@
-import { it, expect } from "vitest";
+import { it, expect, vi } from "vitest";
 import JSZip from "jszip";
 import { createHash } from "node:crypto";
 import { compileWebsiteArtifact } from "./artifact";
@@ -80,4 +80,15 @@ it("refuses path traversal in project root names", async () => {
   await expect(
     assembleProjectExport({ artifact, folderName: "../other" } as any),
   ).rejects.toThrow();
+});
+it("reproduces the same complete ZIP after time has passed", async () => {
+  const data={projectId:'test',projectName:'Test',folderName:'test-export',sessionId:'session',revisionId:'revision',revisionNumber:1,brief:'Test',location:null,planRevision:null,artifact};
+  vi.useFakeTimers({toFake:['Date']});
+  try {
+    vi.setSystemTime(new Date('2026-11-08T10:00:00Z'));
+    const first=await assembleProjectExport(data);
+    vi.setSystemTime(new Date('2026-11-15T18:00:00Z'));
+    const second=await assembleProjectExport(data);
+    expect(createHash('sha256').update(first).digest('hex')).toBe(createHash('sha256').update(second).digest('hex'));
+  } finally {vi.useRealTimers();}
 });

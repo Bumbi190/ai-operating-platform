@@ -23,6 +23,7 @@ vi.mock('./recovery',()=>({recoverWebsiteArtifact:vi.fn()}))
 vi.mock('./rejected-draft',()=>({rejectedDraftLog:vi.fn()}))
 
 import {executeWebsiteBuildRun,type WebsiteBuildPaidStep} from './worker'
+import {createHash} from 'node:crypto'
 
 const projectId='11111111-1111-4111-8111-111111111111'
 const sessionId='22222222-2222-4222-8222-222222222222'
@@ -54,5 +55,27 @@ describe('website worker attended admission hook',()=>{
   await executeWebsiteBuildRun(db(),run,claimId)
   expect(provider).toHaveBeenCalledTimes(1)
   expect(store.commit).toHaveBeenCalledTimes(1)
+ })
+ it('assembles an approved prospect through the real worker without a paid provider step',async()=>{
+  const canonicalDraft=JSON.stringify({...draft,prospectConcept:{version:1,inputSha256:'a'.repeat(64),description:'Granskat företagskoncept.'}})
+  store.load.mockResolvedValue({...snapshot,designReference:{mockupId:'approved',canonicalDraft,sha256:createHash('sha256').update(canonicalDraft).digest('hex'),approvedPages:[{key:'index',title:'Hem',purpose:'Koncept'}]}})
+  const allowance=vi.fn()
+  await executeWebsiteBuildRun(db(),run,claimId,{beforePaidStep:allowance})
+  expect(provider).not.toHaveBeenCalled();expect(allowance).not.toHaveBeenCalled()
+  expect(store.save).toHaveBeenCalledTimes(1);expect(store.commit).toHaveBeenCalledTimes(1)
+  expect(store.commit.mock.calls[0][2].pages[0].html).toContain('Granskat företagskoncept.')
+ })
+ it('does not assemble a prospect whose reviewed draft hash has changed',async()=>{
+  const canonicalDraft=JSON.stringify({...draft,prospectConcept:{version:1,inputSha256:'a'.repeat(64),description:'Granskat företagskoncept.'}})
+  store.load.mockResolvedValue({...snapshot,designReference:{mockupId:'approved',canonicalDraft,sha256:'f'.repeat(64)}})
+  await expect(executeWebsiteBuildRun(db(),run,claimId)).rejects.toThrow('INVALID_DESIGN_REFERENCE')
+  expect(provider).not.toHaveBeenCalled();expect(store.commit).not.toHaveBeenCalled()
+ })
+ it('requires a new review for prospect feedback instead of silently buying a model call',async()=>{
+  const canonicalDraft=JSON.stringify({...draft,prospectConcept:{version:1,inputSha256:'a'.repeat(64),description:'Granskat företagskoncept.'}})
+  store.load.mockResolvedValue({...snapshot,feedback:[{id:'feedback',text:'Ändra allt'}],designReference:{mockupId:'approved',canonicalDraft,sha256:createHash('sha256').update(canonicalDraft).digest('hex')}})
+  await executeWebsiteBuildRun(db(),run,claimId)
+  expect(provider).not.toHaveBeenCalled();expect(store.park).toHaveBeenCalledTimes(1);expect(store.commit).not.toHaveBeenCalled()
+  expect(store.interpret.mock.calls[0][2].items[0].disposition).toBe('decision')
  })
 })

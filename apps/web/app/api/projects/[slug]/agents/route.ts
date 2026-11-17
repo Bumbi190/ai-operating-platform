@@ -2,13 +2,13 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 // GET /api/projects/[slug]/agents
-export async function GET(_req: Request, { params }: { params: { slug: string } }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: project } = await supabase
-    .from('projects').select('id').eq('slug', params.slug).single()
+    .from('projects').select('id').eq('slug', (await params).slug).single()
   if (!project) return NextResponse.json({ error: 'Inte hittad' }, { status: 404 })
 
   const { data, error } = await supabase
@@ -19,13 +19,13 @@ export async function GET(_req: Request, { params }: { params: { slug: string } 
 }
 
 // POST /api/projects/[slug]/agents
-export async function POST(req: Request, { params }: { params: { slug: string } }) {
+export async function POST(req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: project } = await supabase
-    .from('projects').select('id').eq('slug', params.slug).single()
+    .from('projects').select('id').eq('slug', (await params).slug).single()
   if (!project) return NextResponse.json({ error: 'Inte hittad' }, { status: 404 })
 
   const body = await req.json()

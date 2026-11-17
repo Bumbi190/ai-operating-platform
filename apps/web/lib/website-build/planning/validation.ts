@@ -5,6 +5,7 @@ import { WebsiteBuildError } from '../store'
 import type { PlanContent, IntegrationProvider } from './types'
 import {DEALER_SHOWROOM_STARTER,parseShowroomOptions} from './dealer-showroom'
 import {parseWebsiteVisualStyle} from './visual-style'
+import {parseProspectDesign} from '../prospects/design'
 export const PLAN_LIMITS={contentBytes:32768,briefChars:8000,pages:8} as const
 const providers:IntegrationProvider[]=['terminal','vercel','supabase','strato','form_delivery']
 function fail(code='INVALID_PLAN'):never{throw new WebsiteBuildError(code)}
@@ -30,7 +31,7 @@ export function validatePlanContent(input:unknown):PlanContent{
  if(!raw||Buffer.byteLength(raw,'utf8')>PLAN_LIMITS.contentBytes)fail('PLAN_TOO_LARGE')
  if(/\b(?:sb_secret_[A-Za-z0-9_-]{12,}|sk-(?:proj-)?[A-Za-z0-9_-]{20,}|sbp_[A-Za-z0-9_-]{20,})\b/.test(raw))fail('PLAN_CONTAINS_SECRET')
  const o=object(input,['title','purpose','audience','pages','design','features','architecture','steps','domain'])
- const d=object(o.design,['style','reference'],['visual','starter','showroom','cinematic']),dm=object(o.domain,['registrar','requestedName'])
+ const d=object(o.design,['style','reference'],['visual','starter','showroom','cinematic','prospect']),dm=object(o.domain,['registrar','requestedName'])
  let visual
  const starter=Object.hasOwn(d,'starter')?d.starter:undefined
  if(Object.hasOwn(d,'starter')&&starter!=='premium-dealer-demo-v1'&&starter!==DEALER_SHOWROOM_STARTER)fail()
@@ -47,7 +48,12 @@ export function validatePlanContent(input:unknown):PlanContent{
  if(starter&&(pages.length!==1||!['home','index'].includes(pages[0].key)||features.some(f=>f.mode!=='preview_demo')||text(o.title).length>80))fail()
  let cinematic
  if(Object.hasOwn(d,'cinematic')){try{cinematic=parseCinematicBinding(d.cinematic)}catch{fail('CINEMATIC_BINDING_STALE')}}
- const content:PlanContent={title:text(o.title),purpose:text(o.purpose),audience:text(o.audience),pages,design:{style:text(d.style),reference:d.reference===null?null:text(d.reference),...(visual?{visual}:{}),...(starter?{starter:starter as NonNullable<PlanContent['design']['starter']>} :{}),...(showroom?{showroom}:{}),...(cinematic?{cinematic}:{})},features,architecture:text(o.architecture),steps:list(o.steps,12).map(text),domain:{registrar:'strato',requestedName:domain(dm.requestedName)}}
+ let prospect
+ if(Object.hasOwn(d,'prospect')){
+  try{prospect=parseProspectDesign(d.prospect)}catch{fail('INVALID_PROSPECT_DESIGN')}
+  if(starter||cinematic||pages.length!==1||pages[0].key!=='index'||features.some(f=>f.mode!=='preview_demo')||text(o.title).length>200)fail('INVALID_PROSPECT_DESIGN')
+ }
+ const content:PlanContent={title:text(o.title),purpose:text(o.purpose),audience:text(o.audience),pages,design:{style:text(d.style),reference:d.reference===null?null:text(d.reference),...(visual?{visual}:{}),...(starter?{starter:starter as NonNullable<PlanContent['design']['starter']>} :{}),...(showroom?{showroom}:{}),...(cinematic?{cinematic}:{}),...(prospect?{prospect}:{})},features,architecture:text(o.architecture),steps:list(o.steps,12).map(text),domain:{registrar:'strato',requestedName:domain(dm.requestedName)}}
  if(cinematic){try{assertCinematicPlan(content)}catch{fail('CINEMATIC_PLAN_INVALID')}}
  if(compileStaticBrief(content).length>PLAN_LIMITS.briefChars)fail('PLAN_TOO_LARGE')
  return content

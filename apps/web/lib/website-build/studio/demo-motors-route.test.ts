@@ -14,12 +14,12 @@ describe('read-only showroom route access and file integrity',()=>{
  it('refuses unauthenticated HTML and static JS',async()=>{
   access.mockResolvedValue({ok:false,response:new Response('Unauthorized',{status:401})})
   expect((await documentGet()).status).toBe(401)
-  expect((await assetGet(req,{params:{path:parts}})).status).toBe(401)
+  expect((await assetGet(req,{params:Promise.resolve({path:parts})})).status).toBe(401)
  })
  it('refuses HTML and static JS without an owned project',async()=>{
   access.mockResolvedValue({ok:true,userId:'fixture',allowedProjectIds:[]})
   expect((await documentGet()).status).toBe(403)
-  expect((await assetGet(req,{params:{path:parts}})).status).toBe(403)
+  expect((await assetGet(req,{params:Promise.resolve({path:parts})})).status).toBe(403)
  })
  it('serves a fictional protected HTML page with validated relative 3D references',async()=>{
   access.mockResolvedValue({ok:true,userId:'fixture',allowedProjectIds:['test-project']})
@@ -38,18 +38,18 @@ describe('read-only showroom route access and file integrity',()=>{
  })
  it('serves only pinned immutable bytes behind auth; unknown and traversal paths refused',async()=>{
   access.mockResolvedValue({ok:true,userId:'fixture',allowedProjectIds:['test-project']})
-  const moduleResponse=await assetGet(req,{params:{path:parts}})
+  const moduleResponse=await assetGet(req,{params:Promise.resolve({path:parts})})
   expect(moduleResponse.status).toBe(200)
   expect(moduleResponse.headers.get('content-type')).toContain('javascript')
   expect(moduleResponse.headers.get('cache-control')).toBe('private, no-store')
   expect((await moduleResponse.arrayBuffer()).byteLength).toBe(MODEL3D_RUNTIME_ASSET.bytes)
   const manifest=vehicle3DAsset('vehicle3d:demo-motors-concept-v1')!
   for(const source of [manifest.glb,manifest.poster]){
-   const file=await assetGet(req,{params:{path:source.path.split('/').slice(1)}})
+   const file=await assetGet(req,{params:Promise.resolve({path:source.path.split('/').slice(1)})})
    expect(file.status).toBe(200)
    expect((await file.arrayBuffer()).byteLength).toBe(source.bytes)
   }
-  expect((await assetGet(req,{params:{path:['runtime','nonexistent.js']}})).status).toBe(404)
-  expect((await assetGet(req,{params:{path:['3d','../secret.glb']}})).status).toBe(404)
+  expect((await assetGet(req,{params:Promise.resolve({path:['runtime','nonexistent.js']})})).status).toBe(404)
+  expect((await assetGet(req,{params:Promise.resolve({path:['3d','../secret.glb']})})).status).toBe(404)
  })
 })

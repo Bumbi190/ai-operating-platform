@@ -14,14 +14,14 @@ function esc(s: string) {
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: runRaw } = await supabase
-    .from('runs').select('id, context').eq('id', params.id).single()
+    .from('runs').select('id, context').eq('id', (await params).id).single()
 
   if (!runRaw) return NextResponse.json({ error: 'Körning hittades inte' }, { status: 404 })
 

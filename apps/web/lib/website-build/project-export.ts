@@ -186,6 +186,9 @@ export async function assembleProjectExport(
     ),
     { date },
   );
+  // JSZip creates parent directories implicitly with the current time. Pin those
+  // too so a reviewed export can be downloaded again with the same checksum.
+  for (const entry of Object.values(zip.files)) if (entry.dir) entry.date = date;
   return zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
 }
 export async function exportWebsiteProject(

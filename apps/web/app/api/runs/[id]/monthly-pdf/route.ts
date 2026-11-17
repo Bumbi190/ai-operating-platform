@@ -12,7 +12,7 @@ import { buildMonthlyPdfHtml } from '@/lib/ebook/monthlyPdfTemplate'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -21,7 +21,7 @@ export async function GET(
   const { data: runRaw } = await supabase
     .from('runs')
     .select('id, context')
-    .eq('id', params.id)
+    .eq('id', (await params).id)
     .single()
 
   if (!runRaw) return NextResponse.json({ error: 'Körning hittades inte' }, { status: 404 })
@@ -51,7 +51,7 @@ export async function GET(
     bilder:           context['bilder']             ?? context['färgläggningsbilder'] ?? context['farglaggningsbilder'],
     sagabilder:       context['sagabilder'],
     aktivitetsbilder: context['aktivitetsbilder'],
-    runId:            params.id,
+    runId:            (await params).id,
     sagaTitle:        saga.title,
     sagaSubtitle:     saga.subtitle,
   }, baseUrl)

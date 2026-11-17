@@ -1,16 +1,14 @@
 import 'server-only'
-import {createHash,randomBytes} from 'node:crypto'
-import {createClient} from '@supabase/supabase-js'
+import {createHash,randomBytes,timingSafeEqual} from 'node:crypto'
 import {exchangeVercelOidcToken,getContext,verifyVercelOidcToken} from '@vercel/oidc'
-import {isPlatformOperatorEmail} from '@/lib/auth/platform-operator'
 
 export const HARVEY_OIDC_PREFLIGHT_PATH='/api/atlas/handlarborsen/lead-finder/webbuilder-oidc-preflight'
 const branch='codex/atlas-harvey-sales-20261017'
-const projectId='prj_ZwTfAGuJBW8iCjfSzBqx0Jwjz03T'
+const projectId='prj_WTzaRAskqTqYhJLVfoPtIVNAA1iS'
 const ownerId='team_NlGVrs9ZItxkK4nMgRblBCI4'
 const issuer='https://oidc.vercel.com/bumbi190s-projects'
-const subject='owner:bumbi190s-projects:project:ai-operating-platform-web:environment:preview'
-const hostPattern=/^ai-operating-platform-[a-z0-9]+-bumbi190s-projects\.vercel\.app$/
+const subject='owner:bumbi190s-projects:project:harvey-oidc-test:environment:preview'
+const hostPattern=/^harvey-oidc-test-[a-z0-9]+-bumbi190s-projects\.vercel\.app$/
 const shaPattern=/^[a-f0-9]{40}$/
 const idPattern=/^dpl_[A-Za-z0-9]{20,64}$/
 const headers={'cache-control':'private, no-store','referrer-policy':'no-referrer','x-content-type-options':'nosniff'}
@@ -23,7 +21,11 @@ export type PreflightDeps={
 }
 const fail=(status:number)=>Response.json({scope:'harvey-oidc-preflight',status:'FAIL'},{status,headers})
 
+// Reject provisioned production authority by name without reading any secret values.
+const forbiddenConfig=/^(NEXT_PUBLIC_SUPABASE_|SUPABASE_|THE_PROMPT_.*(KEY|URL)|DATABASE_URL$|DIRECT_URL$|CRON_SECRET$|SCB_.*KEY$|AWS_BEDROCK_.*ROLE_ARN$|AWS_(ACCESS_KEY_ID|SECRET_ACCESS_KEY|SESSION_TOKEN)$)|SERVICE_ROLE|PRIVATE_JWK|P256.*PRIVATE/
+
 function identity(env:Env):Identity|null{
+ if(Object.keys(env).some(key=>forbiddenConfig.test(key)))return null
  const commit=env.VERCEL_GIT_COMMIT_SHA??'',host=env.VERCEL_URL??'',deploymentId=env.VERCEL_DEPLOYMENT_ID??''
  if(env.HARVEY_OIDC_PREFLIGHT_ENABLED!=='true'||env.VERCEL!=='1'||env.VERCEL_ENV!=='preview'||
     env.VERCEL_TARGET_ENV&&env.VERCEL_TARGET_ENV!=='preview'||
@@ -33,18 +35,26 @@ function identity(env:Env):Identity|null{
  return {deploymentId,host,branch,commit}
 }
 
-/** Explicit user JWT: Auth GET only, no cookie refresh, admin client or project/database reads.
- * Keep the existing operator allowlist; no machine key or SSO-header fallback.
+/** Separate test credential: no Supabase identity, cookies, sessions or external auth request.
+ * Owner provisions only its context-bound SHA-256 digest and an explicit <= five-minute window.
+ * Never generate or store a live credential here. This is not a durable single-use credential.
  */
-async function authorize(request:Request,env:Env):Promise<boolean>{
+function authorize(request:Request,env:Env,current:Identity,now:number):boolean{
  const bearer=request.headers.get('authorization')??''
- if(!/^Bearer [A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(bearer)||bearer.length>8192)return false
- const url=env.NEXT_PUBLIC_SUPABASE_URL??'',anon=env.NEXT_PUBLIC_SUPABASE_ANON_KEY??''
- if(!/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(url)||!anon)return false
- const client=createClient(url,anon,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}})
- // An explicit JWT prevents getUser() from refreshing a stored session.
- const {data,error}=await client.auth.getUser(bearer.slice(7))
- return !error&&Boolean(data.user?.id)&&isPlatformOperatorEmail(data.user?.email)
+ if(!/^Bearer hvo_test_[A-Za-z0-9_-]{43}$/.test(bearer))return false
+ const digest=env.HARVEY_OIDC_PREFLIGHT_TEST_AUTH_SHA256??''
+ const from=env.HARVEY_OIDC_PREFLIGHT_TEST_AUTH_NOT_BEFORE??''
+ const until=env.HARVEY_OIDC_PREFLIGHT_TEST_AUTH_EXPIRES_AT??''
+ if(!/^[a-f0-9]{64}$/.test(digest)||!/^\d{1,11}$/.test(from)||!/^\d{1,11}$/.test(until))return false
+ const notBefore=Number(from),expiresAt=Number(until)
+ if(!Number.isSafeInteger(notBefore)||!Number.isSafeInteger(expiresAt)||
+    String(notBefore)!==from||String(expiresAt)!==until||
+    expiresAt<=notBefore||expiresAt-notBefore>300||now<notBefore||now>=expiresAt)return false
+ const actual=createHash('sha256').update(JSON.stringify({
+  projectId,ownerId,branch,commit:current.commit,path:HARVEY_OIDC_PREFLIGHT_PATH,
+  notBefore,expiresAt,credential:bearer.slice(7),
+ })).digest()
+ return timingSafeEqual(actual,Buffer.from(digest,'hex'))
 }
 
 async function expectedIdentity(request:Request):Promise<Identity|null>{
@@ -103,7 +113,9 @@ export async function handleHarveyOidcPreflight(request:Request,deps:PreflightDe
   if(url.origin!==origin||url.pathname!==HARVEY_OIDC_PREFLIGHT_PATH||url.search||
      request.headers.get('origin')!==origin)return fail(403)
   if(request.method!=='POST')return fail(405)
-  if(!await authorize(request,env))return fail(403)
+  const authNow=Math.floor((deps.now??Date.now)()/1000)
+  if(!Number.isSafeInteger(authNow))return fail(503)
+  if(!authorize(request,env,current,authNow))return fail(403)
   const expected=await expectedIdentity(request)
   if(!expected||Object.entries(current).some(([key,value])=>expected[key as keyof Identity]!==value))return fail(400)
   const nonce=randomBytes(32).toString('base64url')
@@ -113,6 +125,9 @@ export async function handleHarveyOidcPreflight(request:Request,deps:PreflightDe
   const token=await getRuntimeProof({audience,jti:nonce,skipCache:true})
   if(typeof token!=='string'||token.length>8192)throw new Error('invalid proof')
   const now=Math.floor((deps.now??Date.now)()/1000)
+  if(!Number.isSafeInteger(now))return fail(503)
+  // Recheck expiry after the asynchronous exchange; do not validate at request-start time.
+  if(!authorize(request,env,current,now))return fail(403)
   const {payload}=await verifyVercelOidcToken(token,{issuer,audience,subject,projectId,ownerId,
    environment:'preview',algorithms:['RS256'],clockTolerance:5,maxTokenAge:'5m',currentDate:new Date(now*1000)})
   const claims=payload as Claims
@@ -129,7 +144,7 @@ export async function handleHarveyOidcPreflight(request:Request,deps:PreflightDe
    deployment:{...current,source:'runtime-compared-to-operator-expectation',tokenClaims:identityClaims},
    scbCalled:false,p256Signed:false,businessDatabaseCalled:false},{headers})
  }catch{
-  // SDK/Auth errors can contain tokens, URLs or credentials: never echo/log them.
+  // SDK errors can contain tokens, URLs or credentials: never echo/log them.
   return fail(503)
  }
 }

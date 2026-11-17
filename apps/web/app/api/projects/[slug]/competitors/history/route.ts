@@ -20,9 +20,9 @@ const response = (status: number, code: string) =>
  * A deliberately single-action POST. The browser cannot supply a scan target,
  * time, source, output path, credentials, or project. This is never a cron route.
  */
-export async function POST(request: Request, { params }: { params: { slug: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   if (!competitorHistoryEnabled()) return response(409, 'disabled')
-  if (params.slug !== HANDLARBORSEN_PROJECT_SLUG) return response(404, 'not_found')
+  if ((await params).slug !== HANDLARBORSEN_PROJECT_SLUG) return response(404, 'not_found')
   const refused = assertSameOrigin(request)
   if (refused) {
     if (process.env.VERCEL_ENV === 'preview') console.warn('[hb-history-smoke] request rejected by same-origin gate')

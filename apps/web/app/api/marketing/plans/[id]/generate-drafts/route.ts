@@ -13,12 +13,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import { resolveProjectAccess, assertProjectAllowed } from '@/lib/auth/project-access'
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const access = await resolveProjectAccess()
   if (!access.ok) return access.response
 
   const body = (await request.json().catch(() => ({}))) as { all?: boolean }
-  const planId = params.id
+  const planId = (await params).id
 
   const db = createAdminClient()
   const { data: plan } = await db

@@ -284,7 +284,7 @@ function approvalRequest(action: string, notes?: string): NextRequest {
   })
 }
 const decideApproval = (action = 'approved', notes?: string) =>
-  approvalsPatch(approvalRequest(action, notes), { params: { id: APPROVAL_ID } })
+  approvalsPatch(approvalRequest(action, notes), { params: Promise.resolve({ id: APPROVAL_ID }) })
 
 function reviewRequest(action: 'approve' | 'reject', notes?: string): Request {
   return new Request('http://localhost/api/content/articles/x/review', {
@@ -293,7 +293,7 @@ function reviewRequest(action: 'approve' | 'reject', notes?: string): Request {
   })
 }
 const review = (action: 'approve' | 'reject', notes?: string) =>
-  reviewPost(reviewRequest(action, notes), { params: { id: ARTICLE_ID } })
+  reviewPost(reviewRequest(action, notes), { params: Promise.resolve({ id: ARTICLE_ID }) })
 
 const drain = (query = '') =>
   drainGet(new Request(`http://localhost/api/runs/drain${query}`, { headers: { authorization: `Bearer ${CRON}` } }))
@@ -365,7 +365,7 @@ function productionFiles(dir: string): string[] {
 }
 
 const PRODUCTION = [...productionFiles(path.join(WEB_ROOT, 'app')), ...productionFiles(path.join(WEB_ROOT, 'lib'))]
-const rel = (f: string) => path.relative(WEB_ROOT, f)
+const rel = (f: string) => path.relative(WEB_ROOT, f).split(path.sep).join('/')
 const DEFINITION = 'lib/atlas/memory/record-event.ts'
 
 /** Every call of `name(` in production code, with whether it is directly awaited. */

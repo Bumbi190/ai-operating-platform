@@ -620,7 +620,7 @@ describe('9T · run stream — the route param is not a permission', () => {
   const open = async (id: string) => {
     vi.resetModules()
     const { GET } = await import('@/app/api/runs/[id]/stream/route')
-    return GET(new Request(`https://x.test/api/runs/${id}/stream`), { params: { id } })
+    return GET(new Request(`https://x.test/api/runs/${id}/stream`), { params: Promise.resolve({ id }) })
   }
 
   it('an owned run opens the stream', async () => {
@@ -645,7 +645,7 @@ describe('9T · run stream — the route param is not a permission', () => {
   it('the run lookup carries the allow-list explicitly, not just via the client', async () => {
     vi.resetModules(); CURRENT = fakeDb(seed())
     const { GET } = await import('@/app/api/runs/[id]/stream/route')
-    await GET(new Request('https://x.test/api/runs/run-mine/stream'), { params: { id: 'run-mine' } })
+    await GET(new Request('https://x.test/api/runs/run-mine/stream'), { params: Promise.resolve({ id: 'run-mine' }) })
     const lookup = find(CURRENT.seen, 'runs', 'eq:id', 'in:project_id')
     expect(lookup, 'the run lookup is not scoped by allow-list').toBeTruthy()
     expect(scopeArg(lookup, 'project_id')).toEqual([MINE])
@@ -654,7 +654,7 @@ describe('9T · run stream — the route param is not a permission', () => {
   it('no run_logs are read for a foreign run — the refusal precedes the stream', async () => {
     vi.resetModules(); CURRENT = fakeDb(seed())
     const { GET } = await import('@/app/api/runs/[id]/stream/route')
-    await GET(new Request('https://x.test/api/runs/run-theirs/stream'), { params: { id: 'run-theirs' } })
+    await GET(new Request('https://x.test/api/runs/run-theirs/stream'), { params: Promise.resolve({ id: 'run-theirs' }) })
     expect(q(CURRENT.seen, 'run_logs')).toHaveLength(0)
   })
 
@@ -669,7 +669,7 @@ describe('9T · run stream — the route param is not a permission', () => {
   it('an operator who owns nothing gets the impossible id and no stream', async () => {
     vi.resetModules(); CURRENT_USER = { id: 'nobody' }; CURRENT = fakeDb(seed())
     const { GET } = await import('@/app/api/runs/[id]/stream/route')
-    const res = await GET(new Request('https://x.test/api/runs/run-mine/stream'), { params: { id: 'run-mine' } })
+    const res = await GET(new Request('https://x.test/api/runs/run-mine/stream'), { params: Promise.resolve({ id: 'run-mine' }) })
     expect(res.status).toBe(404)
     expect(scopeArg(find(CURRENT.seen, 'runs', 'eq:id', 'in:project_id'), 'project_id'))
       .toEqual([IMPOSSIBLE_PROJECT_ID])
@@ -679,7 +679,7 @@ describe('9T · run stream — the route param is not a permission', () => {
   it('an unauthenticated request never reaches a query', async () => {
     vi.resetModules(); CURRENT_USER = null; CURRENT = fakeDb(seed())
     const { GET } = await import('@/app/api/runs/[id]/stream/route')
-    const res = await GET(new Request('https://x.test/api/runs/run-mine/stream'), { params: { id: 'run-mine' } })
+    const res = await GET(new Request('https://x.test/api/runs/run-mine/stream'), { params: Promise.resolve({ id: 'run-mine' }) })
     expect(res.status).toBe(401)
     expect(CURRENT.seen).toHaveLength(0)
   })

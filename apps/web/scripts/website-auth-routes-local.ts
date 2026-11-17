@@ -1,18 +1,9 @@
 // Test-only runner: real route exports, SSR cookies, Auth, access resolver and RPC store.
-// In-process mode supplies request storage; HTTP/browser modes use the real standalone Next server.
+// Cookie/session route checks use real Next HTTP; worker/cron helpers keep their separate test boundaries.
 import {createServer,request as localRequest} from 'node:http'
 import {spawn} from 'node:child_process'
 import {createServerClient} from '@supabase/ssr'
-import {requestAsyncStorage} from 'next/dist/client/components/request-async-storage.external'
-import {actionAsyncStorage} from 'next/dist/client/components/action-async-storage.external'
-import {RequestCookies} from 'next/dist/server/web/spec-extension/cookies'
-import * as settings from '../app/api/website-build-settings/route'
-import * as plans from '../app/api/website-build-plans/route'
-import * as planRead from '../app/api/website-build-plans/[planId]/route'
-import * as planApprove from '../app/api/website-build-plans/[planId]/approve/route'
-import * as mockupApprove from '../app/api/website-build-plans/[planId]/mockups/approve/route'
 import {runWorkerAcceptance} from './website-auth-worker-local'
-import {resolveProjectAccess} from '../lib/auth/project-access'
 const checks:{name:string;passed:boolean}[]=[]
 function check(name:string,ok:unknown){checks.push({name,passed:Boolean(ok)});if(!ok)throw Error(name)}
 // Bounded, newline-delimited IPC from the owning test harness. No fixture files
@@ -34,13 +25,13 @@ function readFixture(line:string|undefined){
  for(const user of [f.a,f.b])if(!user||!uuid.test(user.id)||typeof user.access_token!=='string'||!/^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(user.access_token)||typeof user.refresh_token!=='string'||!/^[A-Za-z0-9_-]{1,512}$/.test(user.refresh_token))throw Error('INVALID_LOCAL_FIXTURE')
  const c=f.context
  if(!c||Object.keys(c).sort().join(',')!=='agents,conversations,projects,routeConversation'||!uuid.test(c.routeConversation)||['projects','agents','conversations'].some(k=>!Array.isArray(c[k])||c[k].length!==2||c[k].some((v:unknown)=>typeof v!=='string'||!uuid.test(v))))throw Error('INVALID_LOCAL_FIXTURE')
- if(f.nextServer!==null&&(typeof f.nextServer!=='string'||!/^\/tmp\/omnira-next\/apps\/web\/\.auth-next-[A-Za-z0-9_-]+\/server\.js$/.test(f.nextServer)))throw Error('INVALID_LOCAL_SERVER')
+ if(typeof f.nextServer!=='string'||!/^\/tmp\/omnira-next\/apps\/web\/\.auth-next-[A-Za-z0-9_-]+\/server\.js$/.test(f.nextServer))throw Error('INVALID_LOCAL_SERVER')
  return f
 }
 async function main(){
  const protocol=protocolLines(),first=await protocol.next()
  if(first.done)throw Error('LOCAL_FIXTURE_REQUIRED')
- const f=readFixture(first.value),base=f.browser?'http://127.0.0.1:54393':'http://client:3080',appBase=f.nextServer?'http://client:3100':base
+ const f=readFixture(first.value),base=f.browser?'http://127.0.0.1:54393':'http://client:3080',appBase='http://client:3100'
  let nextProcess:ReturnType<typeof spawn>|null=null
  let externalAttempts=0
  let refreshRequests=0
@@ -112,54 +103,60 @@ async function main(){
    return jar
   }
   const jarA=await cookieSession({...f.a,alias:'owner_a'}),jarB=await cookieSession({...f.b,alias:'owner_b'})
-  async function scope<T>(jar:Cookie[],run:()=>Promise<T>):Promise<T>{
-   const cookies=new RequestCookies(new Headers({cookie:jar.map(c=>c.name+'='+c.value).join('; ')}))
-   return requestAsyncStorage.run({cookies,mutableCookies:cookies,headers:new Headers()} as any,()=>actionAsyncStorage.run({isAppRoute:true},run))
+  async function readScope(jar:Cookie[]){
+   // Preserve exact access-resolver assertions through a fixture-only read-only HTTP endpoint.
+   const response=await fetch(appBase+'/api/test-project-access',{
+    headers:{cookie:jar.map(c=>c.name+'='+c.value).join('; ')},redirect:'manual',
+   })
+   check('scope_response_private_'+checks.length,response.headers.get('cache-control')==='private, no-store')
+   if(response.status!==200)throw Error('HTTP_SCOPE_READ_FAILED')
+   const model=await response.json()
+   return {ok:model.ok===true,userId:model.userId,allowedProjectIds:model.allowedProjectIds}
   }
-  async function route(handler:any,jar:Cookie[],body?:unknown,query='',params={},origin=appBase){
+  async function route(handler:'settings'|'plans'|'planRead'|'planApprove'|'mockupApprove',jar:Cookie[],body?:unknown,query='',params={},origin=appBase){
    const method=body===undefined?'GET':'POST',headers={host:new URL(appBase).host,origin,'content-type':'application/json',cookie:jar.map(c=>c.name+'='+c.value).join('; ')}
-   const path=handler===settings.GET||handler===settings.POST?'/api/website-build-settings':handler===plans.POST?'/api/website-build-plans':handler===planRead.GET?'/api/website-build-plans/'+(params as any).planId:handler===planApprove.POST?'/api/website-build-plans/'+(params as any).planId+'/approve':'/api/website-build-plans/'+(params as any).planId+'/mockups/approve'
+   const path=handler==='settings'?'/api/website-build-settings':handler==='plans'?'/api/website-build-plans':handler==='planRead'?'/api/website-build-plans/'+(params as any).planId:handler==='planApprove'?'/api/website-build-plans/'+(params as any).planId+'/approve':'/api/website-build-plans/'+(params as any).planId+'/mockups/approve'
    const options={method,headers,...(body===undefined?{}:{body:JSON.stringify(body)})}
-   const response:Response=f.nextServer?await fetch(appBase+path+query,{...options,redirect:'manual'}):await scope(jar,()=>handler(new Request(appBase+path+query,options),{params:Promise.resolve(params)}))
+   const response:Response=await fetch(appBase+path+query,{...options,redirect:'manual'})
    const data=await response.json()
    check('route_response_private_'+checks.length,response.headers.get('cache-control')==='private, no-store')
    return {status:response.status,data}
   }
   const [projectA,projectB]=f.context.projects
-  const unauth=await route(settings.GET,[],undefined,'?projectId='+projectA)
+  const unauth=await route('settings',[],undefined,'?projectId='+projectA)
   check('route_no_session_401',unauth.status===401)
   const corrupt=jarA.map(c=>({...c,value:'invalid-session'}))
-  check('route_invalid_cookie_401',(await route(settings.GET,corrupt,undefined,'?projectId='+projectA)).status===401)
-  const a=await scope(jarA,resolveProjectAccess),b=await scope(jarB,resolveProjectAccess)
+  check('route_invalid_cookie_401',(await route('settings',corrupt,undefined,'?projectId='+projectA)).status===401)
+  const a=await readScope(jarA),b=await readScope(jarB)
   check('real_resolver_owner_a',a.ok&&a.userId===f.a.id&&a.allowedProjectIds.length===1&&a.allowedProjectIds[0]===projectA)
   check('real_resolver_owner_b',b.ok&&b.userId===f.b.id&&b.allowedProjectIds.length===1&&b.allowedProjectIds[0]===projectB)
-  check('route_own_setting_read',(await route(settings.GET,jarA,undefined,'?projectId='+projectA)).status===200)
-  check('route_foreign_setting_hidden',(await route(settings.GET,jarB,undefined,'?projectId='+projectA)).status===404)
+  check('route_own_setting_read',(await route('settings',jarA,undefined,'?projectId='+projectA)).status===200)
+  check('route_foreign_setting_hidden',(await route('settings',jarB,undefined,'?projectId='+projectA)).status===404)
   const builder={projectId:projectA,agentId:f.context.agents[0]}
-  check('route_cross_origin_refused',(await route(settings.POST,jarA,builder,'',{},'https://evil.example')).status===403)
-  check('route_builder_selected',(await route(settings.POST,jarA,builder)).status===200)
-  check('route_foreign_agent_refused',(await route(settings.POST,jarA,{...builder,agentId:f.context.agents[1]})).status===404)
+  check('route_cross_origin_refused',(await route('settings',jarA,builder,'',{},'https://evil.example')).status===403)
+  check('route_builder_selected',(await route('settings',jarA,builder)).status===200)
+  check('route_foreign_agent_refused',(await route('settings',jarA,{...builder,agentId:f.context.agents[1]})).status===404)
   const content={title:'Cookie route plan',purpose:'Test actual route',audience:'Fictional users',pages:[{key:'index',title:'Home',purpose:'Test'}],design:{style:'Clear',reference:null},features:[],architecture:'Static pages',steps:['Build','Check'],domain:{registrar:'strato',requestedName:null}}
   const input={projectId:projectA,conversationId:f.context.routeConversation,expectedRevisionId:null,content,idempotencyKey:'cookie-route-plan'}
-  const forged=await route(plans.POST,jarA,{...input,userId:f.b.id})
+  const forged=await route('plans',jarA,{...input,userId:f.b.id})
   check('route_body_cannot_override_identity',forged.status===400&&forged.data.code==='INVALID_BODY')
-  check('route_cross_project_save_refused',(await route(plans.POST,jarB,input)).status===404)
-  const saved=await route(plans.POST,jarA,input)
+  check('route_cross_project_save_refused',(await route('plans',jarB,input)).status===404)
+  const saved=await route('plans',jarA,input)
   check('route_plan_saved',saved.status===201&&saved.data.currentRevision?.content.title==='Cookie route plan')
   const plan=saved.data,planId=plan.ref.planId,params={planId}
   check('route_generated_three_mockups',plan.designReview?.options.length===3)
-  const again=await route(plans.POST,jarA,input)
+  const again=await route('plans',jarA,input)
   check('route_plan_save_idempotent',again.status===201&&again.data.currentRevision.revisionId===plan.currentRevision.revisionId)
-  const read=await route(planRead.GET,jarA,undefined,'?projectId='+projectA,params)
+  const read=await route('planRead',jarA,undefined,'?projectId='+projectA,params)
   check('route_plan_read',read.status===200&&read.data.ref.planId===planId)
-  check('route_foreign_plan_hidden',(await route(planRead.GET,jarB,undefined,'?projectId='+projectA,params)).status===404)
+  check('route_foreign_plan_hidden',(await route('planRead',jarB,undefined,'?projectId='+projectA,params)).status===404)
   const approval={projectId:projectA,revisionId:plan.currentRevision.revisionId,sha256:plan.currentRevision.sha256,idempotencyKey:'cookie-route-approval'}
-  const missing=await route(planApprove.POST,jarA,approval,'',params)
+  const missing=await route('planApprove',jarA,approval,'',params)
   check('route_mockup_approval_required',missing.status===409&&missing.data.code==='MOCKUP_REVIEW_REQUIRED')
   const option=plan.designReview.options[0]
-  const mockup=await route(mockupApprove.POST,jarA,{...approval,mockupId:option.id,mockupSha256:option.sha256,idempotencyKey:'cookie-route-mockup'},'',params)
+  const mockup=await route('mockupApprove',jarA,{...approval,mockupId:option.id,mockupSha256:option.sha256,idempotencyKey:'cookie-route-mockup'},'',params)
   check('route_mockup_approved',mockup.status===200&&mockup.data.designReview.approved.mockupId===option.id)
-  const approved=await route(planApprove.POST,jarA,{...approval,mockupDecisionId:mockup.data.designReview.approved.id},'',params)
+  const approved=await route('planApprove',jarA,{...approval,mockupDecisionId:mockup.data.designReview.approved.id},'',params)
   check('route_plan_approved_by_session_user',approved.status===200&&approved.data.approvedBy===f.a.id&&approved.data.sessionId===null)
   if(f.worker)workerReady=await runWorkerAcceptance({base:appBase,jarA,jarB,f,check,externalAttempts:()=>externalAttempts})
   if(f.nextServer){

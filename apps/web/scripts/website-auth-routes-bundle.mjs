@@ -10,7 +10,7 @@ const root=fileURLToPath(new URL('../../../',import.meta.url));
 export function buildRouteRunner(){
  const directory=mkdtempSync(join(tmpdir(),'omnira-auth-routes-')),path=join(directory,'routes.mjs');
  try{
-  buildSync({entryPoints:[fileURLToPath(new URL('./website-auth-routes-local.ts',import.meta.url))],outfile:path,bundle:true,platform:'node',format:'esm',target:'node22',alias:{'@':join(root,'apps/web'),'server-only':join(root,'apps/web/lib/qa/__stubs__/server-only.ts')},banner:{js:"import {createRequire as __makeRequire} from 'node:module';import {AsyncLocalStorage as __ALS} from 'node:async_hooks';const require=__makeRequire(import.meta.url);globalThis.AsyncLocalStorage=__ALS;const __filename=new URL(import.meta.url).pathname;const __dirname=__filename.slice(0,__filename.lastIndexOf('/'));"},logLevel:'silent'});
+  buildSync({entryPoints:[fileURLToPath(new URL('./website-auth-routes-local.ts',import.meta.url))],outfile:path,bundle:true,platform:'node',format:'esm',target:'node22',alias:{'@':join(root,'apps/web'),'server-only':join(root,'apps/web/lib/qa/__stubs__/server-only.ts')},banner:{js:"import {createRequire as __makeRequire} from 'node:module';const require=__makeRequire(import.meta.url);const __filename=new URL(import.meta.url).pathname;const __dirname=__filename.slice(0,__filename.lastIndexOf('/'));"},logLevel:'silent'});
   return {path,cleanup:()=>rmSync(directory,{recursive:true,force:true})};
  }catch(error){rmSync(directory,{recursive:true,force:true});throw error}
 }
@@ -47,6 +47,7 @@ async function browserPhase({client,browserProxy,fixture,docker,receipt,password
  return result;
 }
 export async function runRouteChecks({bundle,nextFixture,withWorker,withFeedback,withSpendGuard,withDrain,withBrowser,password,docker,sql,check,receipt,client,browserProxy,service,anon,a,b,context}){
+ if(!nextFixture)throw Error('NEXT_HTTP_FIXTURE_REQUIRED');
  if(withWorker){sql('insert into public.platform_config(id,automation_paused) values(1,false) on conflict(id) do nothing;');check('local_worker_authority_available',sql('select automation_paused from public.platform_config where id=1;')==='f');}
  if(withSpendGuard)sql('update public.platform_config set global_daily_sek=1000,global_weekly_sek=1000,global_monthly_sek=1000 where id=1;');
  const routeConversation=randomUUID();

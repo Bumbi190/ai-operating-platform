@@ -7,11 +7,11 @@ import type {WorkerOperation} from '@/lib/local-text/types'
 export const runtime='nodejs'
 export const dynamic='force-dynamic'
 const headers={'Cache-Control':'no-store'}
-export async function POST(request:Request,{params}:{params:{operation:string}}){
+export async function POST(request:Request,{params}:{params:Promise<{operation:string}>}){
  if(!localTextDispatchEnabled())return NextResponse.json({error:'LOCAL_TEXT_DISABLED'},{status:503,headers})
- if(!WORKER_OPERATIONS.includes(params.operation as WorkerOperation))return NextResponse.json({error:'UNKNOWN_OPERATION'},{status:404,headers})
+ if(!WORKER_OPERATIONS.includes((await params).operation as WorkerOperation))return NextResponse.json({error:'UNKNOWN_OPERATION'},{status:404,headers})
  try{
-  const response=await executeWorkerRequest(createAdminClient(),request,params.operation as WorkerOperation)
+  const response=await executeWorkerRequest(createAdminClient(),request,(await params).operation as WorkerOperation)
   return NextResponse.json(response,{status:response.result.kind==='unknown'?503:200,headers})
  }catch(error){
   const reason=error instanceof Error?error.message:''

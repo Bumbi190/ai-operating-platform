@@ -16,7 +16,7 @@ import { recordMemoryEvent } from '@/lib/atlas/memory/record-event'
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const access = await resolveProjectAccess()
   if (!access.ok) return access.response
@@ -24,11 +24,11 @@ export async function GET(
   const db = createAdminClient()
   // Local reviews do not depend on legacy run/agent relationships. Authorize
   // the owned approval before loading its separately hash-bound raw payload.
-  const {data:localHeader,error:headerError}=await db.from('approvals').select('*').eq('id',params.id).single()
+  const {data:localHeader,error:headerError}=await db.from('approvals').select('*').eq('id',(await params).id).single()
   if(headerError)return NextResponse.json({error:'APPROVAL_UNAVAILABLE'},{status:404})
   if(!assertProjectAllowed(localHeader.project_id,access.allowedProjectIds))return projectForbidden()
   if(localHeader.kind==='local_text_review'||localHeader.kind==='local_text_incident'){
-    try{return NextResponse.json({approval:localHeader,...(localHeader.kind==='local_text_review'?{localTextReview:await readLocalTextReview(db,access.userId,params.id)}:{localTextIncident:await readLocalTextIncident(db,access.userId,params.id)})},{headers:{'Cache-Control':'private, no-store'}})}
+    try{return NextResponse.json({approval:localHeader,...(localHeader.kind==='local_text_review'?{localTextReview:await readLocalTextReview(db,access.userId,(await params).id)}:{localTextIncident:await readLocalTextIncident(db,access.userId,(await params).id)})},{headers:{'Cache-Control':'private, no-store'}})}
     catch{return NextResponse.json({error:'LOCAL_TEXT_REVIEW_UNAVAILABLE'},{status:503,headers:{'Cache-Control':'private, no-store'}})}
   }
   const { data, error } = await db
@@ -41,7 +41,7 @@ export async function GET(
         agents ( name )
       )
     `)
-    .eq('id', params.id)
+    .eq('id', (await params).id)
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 404 })
@@ -51,7 +51,7 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const access = await resolveProjectAccess()
   if (!access.ok) return access.response
@@ -73,7 +73,7 @@ export async function PATCH(
   const { data: existing } = await db
     .from('approvals')
     .select('id, project_id, output_key, content, run_id, kind, runs(project_id)')
-    .eq('id', params.id)
+    .eq('id', (await params).id)
     .single()
 
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -91,10 +91,10 @@ export async function PATCH(
     if(Object.keys(body).sort().join(',')!=='action,expectedVersion'||!Number.isSafeInteger(body.expectedVersion)||body.expectedVersion<1||action==='revised'||(existing.kind==='local_text_incident'&&action!=='approved'))return NextResponse.json({error:'LOCAL_TEXT_VERSION_REQUIRED'},{status:400})
     try{
       if(existing.kind==='local_text_incident'){
-        const result=await acknowledgeLocalTextIncident(db,access.userId,params.id,body.expectedVersion)
+        const result=await acknowledgeLocalTextIncident(db,access.userId,(await params).id,body.expectedVersion)
         return NextResponse.json(result,{status:result.kind==='refused'?409:200,headers:{'Cache-Control':'private, no-store'}})
       }
-      const result=await resolveLocalTextApproval(db,{userId:access.userId,approvalId:params.id,decision:action==='approved'?'approve':'reject',expectedVersion:body.expectedVersion})
+      const result=await resolveLocalTextApproval(db,{userId:access.userId,approvalId:(await params).id,decision:action==='approved'?'approve':'reject',expectedVersion:body.expectedVersion})
       return NextResponse.json(result,{status:result.kind==='refused'?409:result.kind==='unknown'?503:200,headers:{'Cache-Control':'private, no-store'}})
     }catch{return NextResponse.json({error:'LOCAL_TEXT_REVIEW_UNAVAILABLE'},{status:503})}
   }
@@ -122,7 +122,7 @@ export async function PATCH(
   }
 
   const { data: verdict, error } = await db.rpc('resolve_approval', {
-    p_approval_id: params.id,
+    p_approval_id: (await params).id,
     p_run_id:      existing.run_id,
     p_project_id:  projectId,
     p_action:      action,
@@ -145,14 +145,14 @@ export async function PATCH(
     }, { status: 409 })
   }
 
-  const { data } = await db.from('approvals').select().eq('id', params.id).single()
+  const { data } = await db.from('approvals').select().eq('id', (await params).id).single()
 
   // Save feedback for memory learning (non-blocking — don't fail the request if this errors)
   if (projectId) {
     try {
       await saveFeedback({
         projectId,
-        approvalId:      params.id,
+        approvalId:      (await params).id,
         outputType:      existing.output_key ?? 'unknown',
         decision:        action as 'approved' | 'rejected' | 'revised',
         rejectionReason: action !== 'approved' ? reviewer_notes : undefined,
@@ -183,7 +183,7 @@ export async function PATCH(
       entityId:   outputType,
       dedupeKey:  `feedback:${outputType}`,
       source:     'approval',
-      sourceId:   params.id,
+      sourceId:   (await params).id,
       subject:    `Content feedback: ${outputType}`,
       content:    `${action}: ${outputType} output${reviewer_notes ? ` — ${reviewer_notes.slice(0, 200)}` : ''}`,
       confidence: action === 'rejected' ? 0.80 : action === 'approved' ? 0.70 : 0.50,

@@ -9,7 +9,7 @@ const glb=BUNDLED_VEHICLE_3D_ASSETS[0].glb.path.split('/').slice(1)
 
 describe('public immutable Studio assets route',()=>{
  it('serves hashed module with narrowly CORS-readable immutable headers',async()=>{
-  const res=await GET(request,{params:{path:runtime}})
+  const res=await GET(request,{params:Promise.resolve({path:runtime})})
   expect(res.status).toBe(200)
   expect(res.headers.get('access-control-allow-origin')).toBe('*')
   expect(res.headers.get('cache-control')).toContain('immutable')
@@ -17,17 +17,17 @@ describe('public immutable Studio assets route',()=>{
   expect((await res.arrayBuffer()).byteLength).toBe(MODEL3D_RUNTIME_ASSET.bytes)
  })
  it('serves approved GLB and HEAD has no body',async()=>{
-  const res=await GET(request,{params:{path:glb}})
+  const res=await GET(request,{params:Promise.resolve({path:glb})})
   expect(res.status).toBe(200)
   expect(res.headers.get('content-type')).toBe('model/gltf-binary')
   expect((await res.arrayBuffer()).byteLength).toBe(BUNDLED_VEHICLE_3D_ASSETS[0].glb.bytes)
-  const head=await HEAD(request,{params:{path:glb}})
+  const head=await HEAD(request,{params:Promise.resolve({path:glb})})
   expect(head.status).toBe(200)
   expect(await head.text()).toBe('')
  })
  it('denies unknown paths and any customer-supplied filenames',async()=>{
   for(const path of [['3d','private.glb'],['other','secret.json'],['3d','../data']]){
-   const res=await GET(request,{params:{path}})
+   const res=await GET(request,{params:Promise.resolve({path})})
    expect(res.status).toBe(404)
    expect(res.headers.get('access-control-allow-origin')).toBeNull()
   }
@@ -38,10 +38,10 @@ it('streams exact film ranges, including suffix requests, and rejects invalid ra
  const {default:registry}=await import('./studio/cinematic-registry.json')
  const film=registry.manifest.assets.find(a=>a.path.endsWith('.mp4'))!,params={path:film.path.split('/').slice(1)}
  for(const [range,length,status] of [['bytes=0-99',100,206],['bytes=-50',50,206],['bytes=999999999-',0,416],['bytes=-0',0,416],['bytes=-',0,416]] as const){
-  const res=await GET(new Request('http://localhost/'+film.path,{headers:{range}}),{params})
+  const res=await GET(new Request('http://localhost/'+film.path,{headers:{range}}),{params: Promise.resolve(params)})
   expect(res.status).toBe(status);expect((await res.arrayBuffer()).byteLength).toBe(length)
  }
- const response=await GET(new Request('http://localhost/'+film.path),{params}),reader=response.body!.getReader()
+ const response=await GET(new Request('http://localhost/'+film.path),{params: Promise.resolve(params)}),reader=response.body!.getReader()
  let total=0;for(;;){const {value,done}=await reader.read();if(done)break;expect(value.length).toBeLessThanOrEqual(65536);total+=value.length}
  expect(total).toBe(film.bytes)
 })

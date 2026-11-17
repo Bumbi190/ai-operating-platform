@@ -89,14 +89,14 @@ describe('B5.A — PATCH är borttagen', () => {
 describe('B5.B — GET på egen körning', () => {
   it('returnerar körningen när project_id ligger i anroparens projekt', async () => {
     mockRun = { id: 'r1', project_id: 'p-own', status: 'done' }
-    const res = await routeModule.GET(new Request('http://x'), { params: { id: 'r1' } })
+    const res = await routeModule.GET(new Request('http://x'), { params: Promise.resolve({ id: 'r1' }) })
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ id: 'r1', project_id: 'p-own' })
   })
 
   it('401 utan giltig session (fail-closed via resolveProjectAccess)', async () => {
     mockAccess = { ok: false, status: 401 }
-    const res = await routeModule.GET(new Request('http://x'), { params: { id: 'r1' } })
+    const res = await routeModule.GET(new Request('http://x'), { params: Promise.resolve({ id: 'r1' }) })
     expect(res.status).toBe(401)
   })
 })
@@ -106,18 +106,18 @@ describe('B5.B — GET på egen körning', () => {
 describe('B5.C — främmande projekt läcker inte existens', () => {
   it('främmande körning ger 404, inte 403', async () => {
     mockRun = { id: 'r-foreign', project_id: 'p-other', status: 'running' }
-    const res = await routeModule.GET(new Request('http://x'), { params: { id: 'r-foreign' } })
+    const res = await routeModule.GET(new Request('http://x'), { params: Promise.resolve({ id: 'r-foreign' }) })
     expect(res.status).toBe(404)
   })
 
   it('främmande och obefintlig körning ger IDENTISK status och body', async () => {
     mockRun = { id: 'r-foreign', project_id: 'p-other', status: 'running' }
-    const foreign = await routeModule.GET(new Request('http://x'), { params: { id: 'r-foreign' } })
+    const foreign = await routeModule.GET(new Request('http://x'), { params: Promise.resolve({ id: 'r-foreign' }) })
     const foreignBody = await foreign.text()
 
     mockRun = null
     mockRunError = { message: 'No rows found' }
-    const missing = await routeModule.GET(new Request('http://x'), { params: { id: 'r-nope' } })
+    const missing = await routeModule.GET(new Request('http://x'), { params: Promise.resolve({ id: 'r-nope' }) })
     const missingBody = await missing.text()
 
     expect(foreign.status).toBe(missing.status)
@@ -127,7 +127,7 @@ describe('B5.C — främmande projekt läcker inte existens', () => {
   it('tom allow-list ger 404 för allt (fail-closed)', async () => {
     mockAccess = { ok: true, allowedProjectIds: [] }
     mockRun = { id: 'r1', project_id: 'p-own', status: 'done' }
-    const res = await routeModule.GET(new Request('http://x'), { params: { id: 'r1' } })
+    const res = await routeModule.GET(new Request('http://x'), { params: Promise.resolve({ id: 'r1' }) })
     expect(res.status).toBe(404)
   })
 })

@@ -20,7 +20,7 @@ const body = { host: 'tradingsolutions.se', status: 'reviewed',
   requestId: '33333333-3333-4333-8333-333333333333', expectedRevision: 0 }
 const invoke = (payload: unknown = body, target = url, extra: Record<string, string> = {}, slug = 'handlarborsen') =>
   POST(new Request(target, { method: 'POST', headers: { ...headers, ...extra },
-    body: JSON.stringify(payload) }), { params: { slug } })
+    body: JSON.stringify(payload) }), { params: Promise.resolve({ slug }) })
 
 beforeEach(() => {
   mocks.enabled.mockReset().mockReturnValue(true)

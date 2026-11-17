@@ -12,10 +12,11 @@ const withRoutes=process.argv.includes('--routes');
 if(withRoutes&&!withApplication)throw Error('--routes requires --application');
 const routeModule=withRoutes?await import('./website-auth-routes-bundle.mjs'):null;
 const routeBundle=routeModule?.buildRouteRunner();
-const withHttp=process.argv.includes('--next-http');
-if(withHttp&&!withRoutes)throw Error('--next-http requires --routes');
+// Next owns request storage; route checks always use the real HTTP fixture.
+const withHttp=withRoutes;
+if(process.argv.includes('--next-http')&&!withRoutes)throw Error('--next-http requires --routes');
 const withWorker=process.argv.includes('--worker');
-if(withWorker&&!withHttp)throw Error('--worker requires --next-http');
+if(withWorker&&!process.argv.includes('--next-http'))throw Error('--worker requires --next-http');
 const withFeedback=process.argv.includes('--feedback');
 if(withFeedback&&!withWorker)throw Error('--feedback requires --worker');
 const withDrain=process.argv.includes('--drain');

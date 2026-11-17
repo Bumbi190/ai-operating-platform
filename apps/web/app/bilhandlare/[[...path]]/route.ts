@@ -15,8 +15,8 @@ const mediaRoot = showroom + '/assets/'
 
 /** Public pilot edition. All documents and files come from the bundled fictional
  * showroom. The request cannot select a project, a disk path or a customer asset. */
-export async function GET(request: Request, {params}: {params: {path?: string[]}}): Promise<Response> {
-  const path = params.path ?? []
+export async function GET(request: Request, {params}: {params: Promise<{path?: string[]}>}): Promise<Response> {
+  const path = (await params).path ?? []
   if (!path.length) return reelResponse(cinematicAssetNames().reelRuntime, showroom)
   if (path.length === 1 && path[0] === 'bilhall') {
     const view = new URL(request.url).searchParams.get('view')

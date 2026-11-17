@@ -31,7 +31,7 @@ function notFound() {
 
 export async function GET(
   _request: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const access = await resolveProjectAccess()
   if (!access.ok) return access.response
@@ -40,7 +40,7 @@ export async function GET(
   const { data, error } = await supabase
     .from('runs')
     .select('*')
-    .eq('id', params.id)
+    .eq('id', (await params).id)
     .single()
 
   if (error || !data) return notFound()
@@ -52,7 +52,7 @@ export async function GET(
 // DELETE /api/runs/[id] — ta bort en körning
 export async function DELETE(
   _request: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -61,7 +61,7 @@ export async function DELETE(
   const { error } = await supabase
     .from('runs')
     .delete()
-    .eq('id', params.id)
+    .eq('id', (await params).id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })

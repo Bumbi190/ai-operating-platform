@@ -17,9 +17,9 @@ export default async function ProjectLayout({
   params,
 }: {
   children: React.ReactNode
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }) {
-  const project = await getProjectBySlug(params.slug)
+  const project = await getProjectBySlug((await params).slug)
   if (!project) notFound()
 
   return (

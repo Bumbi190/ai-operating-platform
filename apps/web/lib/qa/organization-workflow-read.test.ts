@@ -10,7 +10,7 @@ describe('organization workflow directory isolation contract', () => {
     expect(route).toContain('if (!scope.role.active')
   })
   it('binds project slug to allowed project ID and scopes workflow rows to that id', () => {
-    expect(route).toContain(".eq('slug', params.slug).in('id', [...scope.projectIds])")
+    expect(route).toContain(".eq('slug', (await params).slug).in('id', [...scope.projectIds])")
     expect(route).toContain(".eq('project_id', project.id)")
   })
   it('does not expose workflow steps, credentials, secret data or any writes', () => {

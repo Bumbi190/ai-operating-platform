@@ -35,7 +35,7 @@ async function main() {
   async function capture(relative:string, match:Pick<StaticRoute,'has'|'missing'> = {}) {
     const url = new URL('/bilhandlare'+relative,'https://omniraos.se')
     const parts = url.pathname.split('/').slice(2)
-    const response = await GET(new Request(url),{params:{path:parts}})
+    const response = await GET(new Request(url),{params:Promise.resolve({path:parts})})
     assert.equal(response.status,200,url.pathname)
     const bytes = Buffer.from(await response.arrayBuffer())
     const sha = createHash('sha256').update(bytes).digest('hex')

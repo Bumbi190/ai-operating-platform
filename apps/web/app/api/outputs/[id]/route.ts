@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 // GET /api/outputs/[id]/download — get signed download URL
 export async function GET(
   _request: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -13,7 +13,7 @@ export async function GET(
   const { data: output } = await supabase
     .from('outputs')
     .select('file_url, name')
-    .eq('id', params.id)
+    .eq('id', (await params).id)
     .single()
 
   if (!output?.file_url) {
@@ -36,7 +36,7 @@ export async function GET(
 // DELETE /api/outputs/[id] — delete output + file
 export async function DELETE(
   _request: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -45,7 +45,7 @@ export async function DELETE(
   const { data: output } = await supabase
     .from('outputs')
     .select('file_url')
-    .eq('id', params.id)
+    .eq('id', (await params).id)
     .single()
 
   if (output?.file_url) {
@@ -53,6 +53,6 @@ export async function DELETE(
     await supabase.storage.from('outputs').remove([path])
   }
 
-  await supabase.from('outputs').delete().eq('id', params.id)
+  await supabase.from('outputs').delete().eq('id', (await params).id)
   return new Response(null, { status: 204 })
 }

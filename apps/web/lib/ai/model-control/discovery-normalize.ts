@@ -53,6 +53,8 @@ export type CatalogProfile = Readonly<{
   status: string
   type: string
   destinations: readonly string[]
+  /** Valid global profile model ARN has NO region. No destination region is inferred. */
+  globalDestinationUnspecified: boolean
   sourceRegion: typeof CATALOG_REGION
   accountEntitlementVerified: false
   destinationRegionsApproved: false
@@ -115,20 +117,37 @@ export function normalizeBedrockCatalog(
     if (!SAFE_MODEL_ID.test(item?.inferenceProfileId ?? '')) {
       throw new Error('BEDROCK_CATALOG_BAD_PROFILE_ID')
     }
-    const destinations = (item.models ?? []).map(m => {
-      const arn = clean(m?.modelArn, 550)
-      // Destination ARNs are metadata, never invocation permission. A profile
-      // can route outside the source region; that must be reviewed separately.
-      const match = /^arn:aws(?:-[a-z0-9-]+)?:bedrock:([a-z0-9-]+):/.exec(arn)
-      if (!match) throw new Error('BEDROCK_CATALOG_BAD_DESTINATION_ARN')
-      return match[1]
-    })
+    // AWS global CRIS uses a VALID regionless foundation-model ARN:
+    // arn:aws:bedrock:::foundation-model/MODEL-ID.
+    // A blank region does not establish a safe destination or data residency.
+    const destinations: string[] = []
+    let globalDestinationUnspecified = false
+    for (const model of item.models ?? []) {
+      const arn = clean(model?.modelArn, 550)
+      // Validate the resource type and account field, not just the ARN prefix.
+      // Bedrock foundation model ARNs have a blank account component.
+      const match = /^arn:aws(?:-[a-z0-9-]+)?:bedrock:([^:]*):([^:]*):foundation-model\/([A-Za-z0-9._:-]+)$/.exec(arn)
+      if (!match || match[2] !== '') {
+        throw new Error('BEDROCK_CATALOG_BAD_DESTINATION_ARN')
+      }
+      const region = match[1]
+      if (region === '') {
+        // Global routing can reach an unspecified and changing set of AWS
+        // regions. Never treat this as us-east-1 or approve it for dispatch.
+        globalDestinationUnspecified = true
+      } else if (/^[a-z]{2}(?:-[a-z]+)+-[0-9]+$/.test(region)) {
+        destinations.push(region)
+      } else {
+        throw new Error('BEDROCK_CATALOG_BAD_DESTINATION_ARN')
+      }
+    }
     return {
       profileId: item.inferenceProfileId!,
       profileName: clean(item.inferenceProfileName, 200),
       status: clean(item.status, 50),
       type: clean(item.type, 70),
       destinations: [...new Set(destinations)].sort(),
+      globalDestinationUnspecified,
       sourceRegion: CATALOG_REGION,
       accountEntitlementVerified: false,
       destinationRegionsApproved: false,

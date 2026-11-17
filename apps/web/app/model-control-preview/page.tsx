@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { OMNIRA_MODEL_CATALOG } from '@/lib/ai/model-control/catalog'
 
 type AwsModel={modelId:string;modelName:string;providerName:string;outputModalities:string[];lifecycle:string}
-type AwsProfile={profileId:string;profileName:string;type:string;status:string;destinations:string[]}
+type AwsProfile={profileId:string;profileName:string;type:string;status:string;destinations:string[];globalDestinationUnspecified:boolean}
 type Result={
   status:'blocked'|'catalog_listed';reason?:string;diagnostic?:string;region?:string
   models?:AwsModel[];profiles?:AwsProfile[]
@@ -96,8 +96,12 @@ export default function ModelControlPreview(){
             <strong>{p.profileName||p.profileId}</strong>
             <p style={muted}>{p.profileId} · {p.type} · {p.status}</p>
             <p style={{...muted,color:'#ffd2a0'}}>
-              Destinationsregioner (ej godkända): {p.destinations.join(', ')||'okända'}
+              Destinationsregioner (ej godkända): {p.destinations.join(', ')||'inga specifika regioner angivna'}
             </p>
+            {p.globalDestinationUnspecified&&<p style={{fontSize:13,color:'#ffb9a6',fontWeight:700}}>
+              GLOBAL ROUTING: AWS anger ingen fast destinationsregion i modell-ARN:en.
+              Regionerna måste kontrolleras separat. Ingen datalagrings- eller körbehörighet är godkänd.
+            </p>}
           </div>)}
         </>}
       </div>}

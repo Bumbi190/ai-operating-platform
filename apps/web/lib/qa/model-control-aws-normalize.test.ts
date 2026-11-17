@@ -32,11 +32,52 @@ describe('AWS read-only catalog normalization and pagination',()=>{
     })
     expect(normalized.profiles[0]).toMatchObject({
       profileId:'us.amazon.nova-pro-v1:0',destinations:['us-east-1','us-west-2'],
-      destinationRegionsApproved:false,priceVerified:false,canDispatch:false,
+      globalDestinationUnspecified:false,destinationRegionsApproved:false,priceVerified:false,canDispatch:false,
     })
     expect(normalized.modelCallsMade).toBe(false)
     expect(normalized.credentialsExposed).toBe(false)
     expect(normalized.accountEntitlementVerified).toBe(false)
+  })
+  it('accepts AWS global profile regionless foundation model ARN WITHOUT inventing a region',()=>{
+    // AWS docs: arn:aws:bedrock:::foundation-model/MODEL-ID is intentionally regionless.
+    const global=normalizeBedrockCatalog([amazon],[{
+      inferenceProfileId:'global.anthropic.claude-sonnet-4-5-20250929-v1:0',
+      inferenceProfileName:'Global Sonnet', type:'SYSTEM_DEFINED',status:'ACTIVE',
+      models:[{modelArn:'arn:aws:bedrock:::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0'}],
+    }])
+    expect(global.completeForRegion).toBe(true)
+    expect(global.profiles[0]).toMatchObject({
+      profileId:'global.anthropic.claude-sonnet-4-5-20250929-v1:0',
+      destinations:[],globalDestinationUnspecified:true,
+      destinationRegionsApproved:false,accountEntitlementVerified:false,
+      canDispatch:false,priceVerified:false,
+    })
+  })
+  it('mixed regional/global destinations keep only explicit regions and flag global separately',()=>{
+    const mixed=normalizeBedrockCatalog([],[{
+      ...profile,inferenceProfileId:'global.hybrid-model',
+      models:[...profile.models,
+        {modelArn:'arn:aws:bedrock:::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0'}],
+    }])
+    expect(mixed.profiles[0].destinations).toEqual(['us-east-1','us-west-2'])
+    expect(mixed.profiles[0].globalDestinationUnspecified).toBe(true)
+    expect(mixed.profiles[0].destinationRegionsApproved).toBe(false)
+  })
+  it('rejects malformed/global ARNs with any account or unsafe resource type',()=>{
+    const invalid=[
+      'arn:aws:bedrock:::inference-profile/global.fake',
+      'arn:aws:bedrock::123456789012:foundation-model/anthropic.model',
+      'arn:aws:bedrock:us-east-1:123456789012:foundation-model/anthropic.model',
+      'arn:aws:bedrock:unspecified::foundation-model/anthropic.model',
+      'arn:aws:bedrock:::foundation-model/model with spaces',
+      'arn:aws:s3:::somebucket',
+    ]
+    for (const arn of invalid) {
+      expect(()=>normalizeBedrockCatalog([],[{
+        inferenceProfileId:'global.invalid-model',
+        models:[{modelArn:arn}],
+      }])).toThrow('BEDROCK_CATALOG_BAD_DESTINATION_ARN')
+    }
   })
   it('duplicate model ID or profile ID blocks whole snapshot',()=>{
     expect(()=>normalizeBedrockCatalog([amazon,amazon],[])).toThrow('BEDROCK_CATALOG_DUPLICATE_MODEL')

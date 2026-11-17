@@ -7,6 +7,7 @@ const fake=vi.hoisted(()=>({
   failOnSecondPage: false,
   invalidModelId: false,
   invalidDestinationArn: false,
+  globalModelDestination: false,
   destroyed: 0,
 }))
 vi.mock('@aws-sdk/client-bedrock',()=>({
@@ -40,7 +41,9 @@ vi.mock('@aws-sdk/client-bedrock',()=>({
           return {
             inferenceProfileSummaries:[{inferenceProfileId:'us.nova-pro',status:'ACTIVE',
               type:'SYSTEM_DEFINED',models:[{modelArn:
-                fake.invalidDestinationArn ? 'unrecognized-destination' : 'arn:aws:bedrock:us-west-2::foundation-model/amazon.nova-pro-v1:0'}]}],
+                fake.invalidDestinationArn ? 'unrecognized-destination' :
+                fake.globalModelDestination ? 'arn:aws:bedrock:::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0' :
+                'arn:aws:bedrock:us-west-2::foundation-model/amazon.nova-pro-v1:0'}]}],
           }
         }
         return {inferenceProfileSummaries:[],nextToken:'page-2'}
@@ -56,6 +59,7 @@ beforeEach(()=>{
   fake.created.length=0;fake.calls.length=0
   fake.denied=false;fake.failOnSecondPage=false;fake.destroyed=0
   fake.invalidModelId=false;fake.invalidDestinationArn=false
+  fake.globalModelDestination=false
 })
 describe('Real catalog provider adapter with mocked AWS SDK transport',()=>{
   it('issues ONLY foundation list + paginated profile list, exact OIDC credentials',async()=>{
@@ -90,6 +94,20 @@ describe('Real catalog provider adapter with mocked AWS SDK transport',()=>{
     const {readAwsBedrockCatalog}=await import('@/lib/ai/model-control/bedrock-catalog-service')
     await expect(readAwsBedrockCatalog(creds)).rejects.toThrow('CATALOG_IAM_READ_PERMISSION_MISSING')
     expect(fake.destroyed).toBe(1)
+  })
+  it('handles real AWS global profile regionless ARN in the complete catalog',async()=>{
+    fake.globalModelDestination=true
+    const {readAwsBedrockCatalog}=await import('@/lib/ai/model-control/bedrock-catalog-service')
+    const snapshot=await readAwsBedrockCatalog(creds)
+    expect(snapshot.completeForRegion).toBe(true)
+    expect(snapshot.profiles[0]).toMatchObject({
+      destinations:[],globalDestinationUnspecified:true,
+      destinationRegionsApproved:false,accountEntitlementVerified:false,
+      priceVerified:false,canDispatch:false,
+    })
+    expect(snapshot.modelCallsMade).toBe(false)
+    expect(fake.calls.map(x=>x.command)).toEqual([
+      'ListFoundationModelsCommand','ListInferenceProfilesCommand','ListInferenceProfilesCommand'])
   })
   it('returns sanitized error category for an unexpected model ID',async()=>{
     fake.invalidModelId=true

@@ -101,3 +101,16 @@ AWS-dokumentation:
 - Ny Preview-diagnostik skickar enbart kontrollerade felkategorier: invalid_model_identifier, invalid_profile_identifier, invalid_profile_destination, missing_profile_list, duplicate_model_identifier, duplicate_profile_identifier, pagination_incomplete, invalid_pagination, catalog_size_limit, profile_size_limit eller unknown_validation_error.
 - Råa AWS-felsvar, tokens, kontonummer, hemligheter, modell-ID:n och stack traces returneras inte vid fel. Ingen partiell katalog markeras som giltig.
 - Efter att diagnosen fångats behöver aktuell avvikelse korrigeras och regressionskontrolleras innan nästa riktiga katalogtest.
+
+## Korrigering efter diagnosen invalid_profile_destination
+
+- AWS dokumenterar global cross-Region inference med giltig ARN utan region eller kontonummer, t.ex. arn:aws:bedrock:::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0.
+- Den tidigare strikta parsern krävde en region efter bedrock: och avvisade dessa globala profiler. Det är den verifierade kodbristen; om den förklarar varje post i det verkliga svaret återstår att bekräfta i Preview.
+- Nu extraheras regioner bara från uttryckligen regionala foundation-model-ARN:er; global regionlös ARN markeras med globalDestinationUnspecified=true och destinationslistan förblir tom för den posten.
+- UI visar särskild GLOBAL ROUTING-varning. Det finns ingen slutsats om faktisk datalagringsregion, tillåten routing, rätt att använda profilen eller prismodell; destinationRegionsApproved=false och canDispatch=false gäller även om katalogläsningen blir grön.
+- Ogiltiga ARN-resurstyper, osäkra tecken och modell-ARN:er med felaktigt account-fält fortsätter nekas.
+- Testfall täcker normal regional ARN, global ARN, blandade ARN, felaktiga ARN och total pipeline genom simulerad AWS SDK-respons.
+
+Källa: https://docs.aws.amazon.com/bedrock/latest/userguide/global-cross-region-inference.html
+
+Ingen IAM-policy har ändrats, ingen modell har anropats och ingen produktionsdeployment ingår.

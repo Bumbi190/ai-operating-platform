@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import type { VisitActivity } from './activity'
 
 export interface VisitOwner { ownerId: string; sessionId: string }
-export type VisitRPC = 'office_visit_create' | 'office_visit_activity_create' | 'office_visit_presence' | 'office_visit_revoke'
+export type VisitRPC = 'office_visit_create' | 'office_visit_activity_create' | 'office_visit_presence' | 'office_visit_revoke' | 'office_visit_workflow_create' | 'office_visit_workflow_presence'
 export interface VisitDependencies {
   owner(): Promise<VisitOwner | null>
   rpc(name: VisitRPC, args: Record<string, string | null>): Promise<unknown>
@@ -186,3 +186,6 @@ export function createVisitHandlers(deps: VisitDependencies) {
     }),
   }
 }
+
+/** Shared strict HTTP boundary for the separately gated workflow endpoints. */
+export const officeVisitBoundary = { sameOrigin, nativeDigest, body, record, metadata, reply, Rejected }

@@ -1,0 +1,1 @@
+strict_pure_office_diagnostics=0

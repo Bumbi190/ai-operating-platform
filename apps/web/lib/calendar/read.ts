@@ -1,5 +1,5 @@
 import 'server-only';
-import type {CalendarReadDeps,CalendarActor,CalendarRange,CalendarWeekModel,CalendarEntry} from './types';
+import type {CalendarReadDeps,CalendarActor,CalendarRange,CalendarWeekModel,CalendarEntry,CalendarEventPage} from './types';
 import {listCalendarEvents} from './store';
 import {readCalendarSocial} from './source-social';
 import {readCalendarBuffer} from './source-buffer';
@@ -10,11 +10,11 @@ import {projectCalendarWorkflowLinks} from './workflow-link';
 import {projectManualOccurrences} from './occurrences';
 import {readCalendarMediaEvents,emptyMediaEvents} from './source-media-events';
 import {reportTable} from './manual-publication-api';
-export async function readCalendarWeek(deps:CalendarReadDeps,actor:CalendarActor,input:CalendarRange):Promise<CalendarWeekModel>{
+export async function readCalendarWeek(deps:CalendarReadDeps,actor:CalendarActor,input:CalendarRange,options?:{manualEvents?:CalendarEventPage}):Promise<CalendarWeekModel>{
  const range=parseCalendarRange(input);
  const projectRead=<T>(load:()=>Promise<T>):Promise<T>=>actor.projectScopeAvailable===false?Promise.reject(Error('Calendar project scope unavailable')):load();
  const [manual,social,workflows,tasks,projects,mediaQueue,reports,buffer]=await Promise.allSettled([
-  listCalendarEvents(deps.sessionDb,range),projectRead(()=>readCalendarSocial(deps.adminDb,actor,range)),
+  options?.manualEvents ? Promise.resolve(options.manualEvents) : listCalendarEvents(deps.sessionDb,range),projectRead(()=>readCalendarSocial(deps.adminDb,actor,range)),
   projectRead(()=>readCalendarWorkflows(deps.adminDb,actor,range)),projectRead(()=>readCalendarTasks(deps.adminDb,actor)),
   projectRead(async()=>{
    if(!actor.allowedProjectIds.length)return [];

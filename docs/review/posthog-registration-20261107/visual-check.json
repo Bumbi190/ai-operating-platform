@@ -1,0 +1,73 @@
+{
+  "kind": "Actual component/CSS in local harness; synthetic labeled data, no auth/provider verification",
+  "checks": [
+    {
+      "name": "desktop",
+      "state": "populated",
+      "layout": {
+        "pageWidth": 1440,
+        "viewport": 1440,
+        "dateLines": 1
+      },
+      "keyboardScroll": null,
+      "lastColumnVisible": null
+    },
+    {
+      "name": "desktop",
+      "state": "zero",
+      "layout": {
+        "pageWidth": 1440,
+        "viewport": 1440,
+        "dateLines": 1
+      },
+      "keyboardScroll": null,
+      "lastColumnVisible": null
+    },
+    {
+      "name": "desktop",
+      "state": "unavailable",
+      "layout": {
+        "pageWidth": 1440,
+        "viewport": 1440,
+        "dateLines": null
+      },
+      "keyboardScroll": null,
+      "lastColumnVisible": null
+    },
+    {
+      "name": "mobile",
+      "state": "populated",
+      "layout": {
+        "pageWidth": 390,
+        "viewport": 390,
+        "dateLines": 1
+      },
+      "keyboardScroll": true,
+      "lastColumnVisible": true
+    },
+    {
+      "name": "mobile",
+      "state": "zero",
+      "layout": {
+        "pageWidth": 390,
+        "viewport": 390,
+        "dateLines": 1
+      },
+      "keyboardScroll": true,
+      "lastColumnVisible": true
+    },
+    {
+      "name": "mobile",
+      "state": "unavailable",
+      "layout": {
+        "pageWidth": 390,
+        "viewport": 390,
+        "dateLines": null
+      },
+      "keyboardScroll": null,
+      "lastColumnVisible": null
+    }
+  ],
+  "errors": [],
+  "blocked": []
+}

@@ -17,19 +17,9 @@ import { CONTENT_GROWTH_QA_GUIDANCE } from '@/lib/content-growth/guidance'
 import { getMediaTextClient } from '@/lib/media/text-client'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 import type { ExecutionContract } from '@/lib/governance/execution-stop'
-
-export interface QualityScore {
-  hook_strength: number          // Hook Score — stoppar de första <2s scrollen?
-  retention_score: number        // håller storyn kvar tittaren hela klippet?
-  visual_relevance: number       // kan storyn representeras av konkreta, story-specifika visuals?
-  shareability: number           // skulle någon faktiskt dela detta?
-  discussion_potential: number   // triggar det kommentarer/debatt?
-  hallucination_risk: number     // 10 = inga påhittade fakta, 0 = mycket riskabelt
-  overall: number
-  passed: boolean
-  verdict: string                // one-sentence explanation
-  weak_spots: string[]           // specific things to fix
-}
+import { parseQualityScore, type QualityScore } from './quality-evaluation'
+export { failedQualityScore, shouldRegenerate, parseQualityScore } from './quality-evaluation'
+export type { QualityScore } from './quality-evaluation'
 
 const QUALITY_SYSTEM = `You are the editorial quality director for "The Prompt" — a premium AI news channel.
 
@@ -118,21 +108,6 @@ ${sourceContext.slice(0, 600)}`,
   })
 
   const raw = res.content[0].type === 'text' ? res.content[0].text : ''
-  const clean = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
-
-  try {
-    return JSON.parse(clean) as QualityScore
-  } catch {
-    // Fallback if JSON parse fails — don't block the pipeline
-    return {
-      hook_strength: 8, retention_score: 8, visual_relevance: 8, shareability: 8,
-      discussion_potential: 8, hallucination_risk: 8, overall: 8.0, passed: true,
-      verdict: 'Quality check parse error — proceeding with caution.', weak_spots: [],
-    }
-  }
+  return parseQualityScore(raw)
 }
 
-/** Returns true if the script should be regenerated. Bar: overall ≥ 8, hook ≥ 8, faktasäkert. */
-export function shouldRegenerate(score: QualityScore): boolean {
-  return score.overall < 8.0 || score.hook_strength < 8 || score.hallucination_risk < 7
-}

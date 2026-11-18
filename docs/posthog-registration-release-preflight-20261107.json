@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-11-07T20:13:47.813Z",
+  "repository": "Bumbi190/ai-operating-platform",
+  "project": "Omnira",
+  "task": "Report consented registration_submitted aggregate counts in existing Handlarborsen traffic overview",
+  "workId": "POSTHOG-REGISTRATION-20261105",
+  "proposedBranch": "feat/posthog-registration-metric-20261107",
+  "mainSha": "aa6faa122643ca48c446f7e093125480cfa8b2e6",
+  "openPrCount": 121,
+  "worktreeCount": 250,
+  "decision": "review_required",
+  "code": "matching_local_branch",
+  "candidates": [],
+  "branchMatches": [
+    "feat/handlarborsen-kpi-overview-p1d3",
+    "feat/hb-registration-journey-overview-20261104"
+  ],
+  "worktreeMatches": [
+    {
+      "branch": "feat/hb-registration-journey-overview-20261104",
+      "path": "C:/Users/Andre/Projects/Omnira/.worktrees/hb-registration-journey-overview-20261104",
+      "locked": false
+    },
+    {
+      "branch": "feat/posthog-registration-metric-20261107",
+      "path": "C:/Users/Andre/Projects/Omnira/.worktrees/posthog-registration-metric-20261107",
+      "locked": false
+    }
+  ],
+  "reason": "Continue existing local reviewed branch; check matching PRs before preparing coordinated release",
+  "limitations": "Metadata/local-name similarity is a hint; review actual file scope and agent ownership before new work.",
+  "sideEffects": "None. No branch, worktree, PR, commit, deployment or API mutation is performed."
+}

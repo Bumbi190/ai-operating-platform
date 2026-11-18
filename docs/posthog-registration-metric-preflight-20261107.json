@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-11-07T17:50:24.668Z",
+  "repository": "Bumbi190/ai-operating-platform",
+  "project": "Omnira",
+  "task": "PostHog registration_submitted aggregation report",
+  "workId": "POSTHOG-REGISTRATION-20261105",
+  "proposedBranch": "feat/posthog-registration-metric-20261107",
+  "mainSha": "aa6faa122643ca48c446f7e093125480cfa8b2e6",
+  "openPrCount": 121,
+  "worktreeCount": 248,
+  "decision": "new_branch_approved",
+  "code": "no_matching_work",
+  "candidates": [],
+  "branchMatches": [],
+  "worktreeMatches": [],
+  "reason": "All prior traffic and registration-pageview release PRs are closed; owned traffic branch cannot fast-forward to current main. New counter is absent from current main and nearby tracked source. Preserve those worktrees rather than rewrite their released history.",
+  "limitations": "Metadata/local-name similarity is a hint; review actual file scope and agent ownership before new work.",
+  "sideEffects": "None. No branch, worktree, PR, commit, deployment or API mutation is performed."
+}

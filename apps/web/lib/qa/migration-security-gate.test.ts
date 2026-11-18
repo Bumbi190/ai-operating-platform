@@ -768,3 +768,30 @@ describe('Phase 3B1B2 M3 — DB_INTERNAL is judged on the FINAL replayed grant s
     expect(FULL.findings.filter(f => f.rule === 'DB_INTERNAL_DIRECT_GRANT_REMAINS')).toEqual([])
   })
 })
+
+describe('Office visit private schema — exact reviewed boundary', () => {
+  it('models exactly two RLS-protected tables with no direct API-role privilege or policy', () => {
+    const tables = [...FULL.model.rels.values()].filter(rel => rel.schema === 'office_private')
+    expect(tables.map(rel => rel.key).sort()).toEqual(['office_private.create_attempts', 'office_private.visits'])
+    for (const table of tables) {
+      expect(table.rls, table.key).toBe(true)
+      for (const role of ['public', 'anon', 'authenticated', 'service_role']) {
+        expect(table.grants.get(role)?.size ?? 0, table.key + ':' + role).toBe(0)
+      }
+    }
+    expect([...FULL.model.pols.values()].filter(policy => policy.table.startsWith('office_private.'))).toHaveLength(0)
+  })
+
+  it('still blocks every client schema or table grant after the schema is classified', () => {
+    for (const role of ['public', 'anon', 'authenticated']) {
+      const schema = probe('grant usage on schema office_private to ' + role + ';')
+      const table = probe('grant select on office_private.visits to ' + role + ';')
+      expect(schema.blocking).toContain('INTERNAL_SCHEMA_CLIENT_GRANT')
+      expect(table.blocking).toContain('INTERNAL_SCHEMA_CLIENT_GRANT')
+    }
+  })
+
+  it('does not admit similarly named unreviewed schemas', () => {
+    expect(probe('create table office_private_shadow.visits(id uuid);').blocking).toContain('UNKNOWN_SCHEMA')
+  })
+})

@@ -57,8 +57,8 @@ export function HandlarborsenPosthogTraffic({
       status: "Inga händelser",
     },
     available: {
-      headline: "Verifierad händelsedata",
-      text: "De här siffrorna visar mottagna sidvisningshändelser, inte registrerade bilhandlare eller ett exakt antal personer online.",
+      headline: "Inga sidvisningar under perioden",
+      text: "PostHog returnerade noll sidvisningar för perioden. Övriga mätvärden redovisas separat.",
       status: "Data mottagen",
     },
   }[traffic.status];
@@ -121,12 +121,19 @@ export function HandlarborsenPosthogTraffic({
           <p>Detta är visningar av registreringssidan, inte påbörjade eller slutförda registreringar. En besökare kan öppna sidan flera gånger.</p>
         </div>
       )}
+      {connected && traffic.registrationSubmissions !== undefined && (
+        <div className={styles.chartSurface}>
+          <h3>Inskickade registreringar</h3>
+          <p><strong>{number(traffic.registrationSubmissions)}</strong> mottagna inskickshändelser med analyssamtycke under de senaste sju UTC-dagarna.</p>
+          <p>Siffran är samtyckt analys, inte alla registreringar. Den visar inte verifierad e-post eller godkända handlare.</p>
+        </div>
+      )}
       <div className={styles.chartSurface}>
         <div className={styles.chartHeading}>
           <div>
             <h3>Sidvisningar per dag</h3>
             <p>
-              {hasData
+              {connected
                 ? traffic.firstDate + "–" + traffic.lastDate + " · UTC"
                 : "Grafen fylls först med verkliga mätvärden"}
             </p>
@@ -180,10 +187,13 @@ export function HandlarborsenPosthogTraffic({
       {connected && traffic.days.some(row => row.visitors !== undefined) && (
         <div className={styles.chartSurface}>
           <h3>Daglig trafik · UTC</h3>
-          <table style={{width:"100%",textAlign:"left"}}>
-            <thead><tr><th>Datum</th><th>Sidvisningar</th><th>Dagliga unika besökare</th><th>Visningar /registrera</th></tr></thead>
-            <tbody>{traffic.days.map(row => <tr key={row.date}><td>{row.date}</td><td>{number(row.pageviews)}</td><td>{row.visitors === undefined ? "—" : number(row.visitors)}</td><td>{row.registrationPageviews === undefined ? "—" : number(row.registrationPageviews)}</td></tr>)}</tbody>
+          <p className={styles.tableHint}>Rulla i sidled för fler kolumner på en liten skärm.</p>
+          <div style={{overflowX:"auto"}} role="region" aria-label="Daglig trafik, rulla i sidled för fler kolumner" tabIndex={0}>
+          <table className={styles.trafficTable}>
+            <thead><tr><th>Datum</th><th>Sidvisningar</th><th>Dagliga unika besökare</th><th>Visningar /registrera</th><th>Inskick (analys)</th></tr></thead>
+            <tbody>{traffic.days.map(row => <tr key={row.date}><td>{row.date}</td><td>{number(row.pageviews)}</td><td>{row.visitors === undefined ? "—" : number(row.visitors)}</td><td>{row.registrationPageviews === undefined ? "—" : number(row.registrationPageviews)}</td><td>{row.registrationSubmissions === undefined ? "—" : number(row.registrationSubmissions)}</td></tr>)}</tbody>
           </table>
+          </div>
           <p>Dagliga unika besökare summeras inte till ett unikt antal för hela veckan. Dagens siffror är ännu ofullständiga. Endast handlarborsen.se och www.handlarborsen.se ingår.</p>
         </div>
       )}

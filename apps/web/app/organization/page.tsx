@@ -46,6 +46,11 @@ export default async function OrganizationLandingPage() {
         {scope.role.role === 'owner' ? 'Owner' : 'Collaborator'} · Skrivskyddad projektöversikt
       </p>
       {scope.role.role === 'owner' && <Link href="/organization/invite" className="text-sm text-sky-300 underline">Hantera inbjudningar</Link>}
+      {scope.role.role === 'collaborator' && <nav aria-label="Arbetsytor" className="mt-5 flex flex-wrap gap-3">
+        <Link href="/organization/atlas" className="rounded-lg border border-sky-500/40 px-4 py-3 text-sm text-sky-200">Omnira Atlas</Link>
+        <Link href="/organization/office" className="rounded-lg border border-sky-500/40 px-4 py-3 text-sm text-sky-200">Omnira Office</Link>
+        <Link href="/organization/calendar" className="rounded-lg border border-sky-500/40 px-4 py-3 text-sm text-sky-200">Gemensam kalender</Link>
+      </nav>}
     </div>
     <ProjectCoverGallery cards={cards} projectsAvailable={!error} />
   </main>

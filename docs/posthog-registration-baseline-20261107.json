@@ -1,0 +1,66 @@
+{
+  "baselineCommit": "aa6faa122643ca48c446f7e093125480cfa8b2e6",
+  "candidateCommit": "11a2e437b71617fb0557153a050fd796b7a0dfe6",
+  "baseline": {
+    "files": 812,
+    "failedFiles": 121,
+    "reportedTests": 16841,
+    "passed": 15030,
+    "failed": 410,
+    "pending": 1397,
+    "todo": 0
+  },
+  "candidate": {
+    "files": 813,
+    "failedFiles": 120,
+    "reportedTests": 16854,
+    "passed": 15045,
+    "failed": 408,
+    "pending": 1397,
+    "todo": 0
+  },
+  "commonFailedAssertions": 408,
+  "candidateOnlyFailedAssertions": [],
+  "baselineOnlyFailedAssertions": [
+    "lib/qa/chat-operator-capability.test.ts :: 9X · run_media_step — a session is identity, not platform authority an ordinary user causes ZERO spend and ZERO publish-capable execution #1",
+    "lib/qa/content-center.test.ts :: content center · every stored status is shown the review queue lane is always present, even empty #1"
+  ],
+  "candidateOnlyFailedFiles": [],
+  "addedAssertions": [
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions keeps independent submission counts even when pageview delivery is smaller #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions queries a fourth fixed aggregate without adding requests or identifiers #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions preserves actual zero submissions #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions does not replace an absent submission series with zero #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions rejects unsafe submission count -1 #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions rejects unsafe submission count 1.5 #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions rejects unsafe submission count Infinity #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions rejects unsafe submission count 9007199254740992 #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions rejects wrong dates and duplicate submission series #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions rejects a safe-per-day count whose weekly total overflows #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions labels received submissions separately from interest and verified dealers #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions does not invent a submission count for an older read model #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: treats zero pageviews as measured data when independent submissions were received #1"
+  ],
+  "removedAssertions": [],
+  "baselineFailureIdentitySha256": "0b18d7000ba563f460da2a38c585027840f6ba9de4ed0e3d4d0d8aea57b633af",
+  "candidateFailureIdentitySha256": "349b5b08a81a6d495f0e7b8b6a100429f5a2dc1af4e2f0626004bdbdb5ca8d50",
+  "baselineReportSha256": "4a752f8bce82f19727c088026f39489f6e9d2b7724891bc4c58a70727fd8d963",
+  "candidateReportSha256": "0fb768f371d61db4ebe36ae4808cebe0fbaf36cc32d2c64c70c8150dd0d086d2",
+  "posthog": [
+    {
+      "file": "handlarborsen-posthog-registration.test.ts",
+      "status": "passed",
+      "tests": 13
+    },
+    {
+      "file": "handlarborsen-posthog-sessions.test.ts",
+      "status": "passed",
+      "tests": 14
+    },
+    {
+      "file": "handlarborsen-posthog-traffic.test.ts",
+      "status": "passed",
+      "tests": 10
+    }
+  ]
+}

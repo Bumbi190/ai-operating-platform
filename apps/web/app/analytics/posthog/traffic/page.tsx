@@ -12,6 +12,6 @@ export default async function TrafficPage() {
   return <main className="mx-auto max-w-5xl space-y-5 p-6">
     <a href="/analytics/posthog" className="underline">PostHog-anslutning</a>
     {traffic ? <HandlarborsenPosthogTraffic traffic={traffic} /> : <p>Logga in som projektägare för att se trafikstatistiken.</p>}
-    <p>Registreringskonvertering visas inte ännu: någon verifierad registreringshändelse är inte kopplad till rapporten.</p>
+    <p>Inskick mäts bara när besökaren har godkänt analys. Siffran visar inte verifierade konton, godkända handlare eller en registreringskonvertering.</p>
   </main>
 }

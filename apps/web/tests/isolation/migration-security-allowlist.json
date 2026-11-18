@@ -11,6 +11,12 @@
   },
   "internal_schemas": [
     {
+      "schema": "office_private",
+      "exposed_via_data_api": false,
+      "verified": "2026-11-13: read-only request to Omnira project iboepohjwrhtgshrqaol with Accept-Profile: office_private returned 406/PGRST106. Schema/tables are not applied; RLS and role privileges tested in a disposable PostgreSQL fixture.",
+      "justification": "Identity-only Office visit metadata in exactly visits and create_attempts. Both tables enable RLS, have zero policies and revoke all direct PUBLIC/anon/authenticated/service_role grants. Only reviewed private SECURITY DEFINER functions and public SECURITY INVOKER wrappers permit existing backend service-role access. The whole-corpus gate tests pin both tables, zero API-role grants and continued denial of any client schema/table grant. No migration-statement exception or production activation is added."
+    },
+    {
       "schema": "atlas",
       "exposed_via_data_api": false,
       "verified": "2026-09-10 — anon GET /rest/v1/memories with Accept-Profile: atlas → 406 PGRST106 (invalid schema)",

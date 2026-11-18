@@ -31,8 +31,16 @@ function withUiGenerationCookie(
   return response
 }
 
+function refuseOfficePairing(): NextResponse {
+  return new NextResponse('Office connection unavailable', {
+    status: 403,
+    headers: { 'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' },
+  })
+}
+
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
+  const isOfficePairingPage = path === '/atlas/office/connect'
   // Diagnostics are preview-only, including when live streaming is enabled.
   if (process.env.VERCEL_ENV === 'production' &&
       (path === '/atlas-voice-provider-probe.html' || path === '/atlas-voice-connection-probe.html')) {
@@ -101,6 +109,7 @@ export async function middleware(request: NextRequest) {
       const { data: owned, error: ownershipError } = await supabase.from('projects')
         .select('id').eq('owner_id', user.id).limit(1)
       if (ownershipError || !owned?.length) {
+        if (isOfficePairingPage) return refuseOfficePairing()
         if (pathname.startsWith('/api'))
           return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
         if (!pathname.startsWith('/auth/') && pathname !== '/login' &&
@@ -141,11 +150,12 @@ export async function middleware(request: NextRequest) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
       const allowedPage = !denied && (
-        (pathname === '/organization' || pathname === '/organization/atlas' || pathname === '/organization/reviews' || pathname.startsWith('/organization/projects/')) || pathname.startsWith('/auth/') ||
+        (pathname === '/organization' || pathname === '/organization/atlas' || pathname === '/organization/calendar' || pathname === '/organization/office' || pathname === '/organization/reviews' || pathname.startsWith('/organization/projects/')) || pathname.startsWith('/auth/') ||
         pathname === '/update-password' || pathname === '/forgot-password' ||
         pathname === '/privacy' || pathname === '/terms'
       )
       if (!allowedPage && !pathname.startsWith('/api')) {
+        if (isOfficePairingPage) return refuseOfficePairing()
         const url = request.nextUrl.clone()
         if (denied) return new NextResponse('Access revoked', { status: 403 })
         const projectMatch = /^\/projects\/([a-z0-9][a-z0-9-]{0,79})$/.exec(pathname)
@@ -157,6 +167,10 @@ export async function middleware(request: NextRequest) {
       }
     }
   }
+
+  // Never redirect a pairing fragment before the minimal page can erase it.
+  // Anonymous users see no private choices; denied members returned 403 above.
+  if (isOfficePairingPage) return withUiGenerationCookie(supabaseResponse, requestedGeneration, request)
 
   const isAuthRoute    = pathname.startsWith('/login')
   const isApiRoute     = pathname.startsWith('/api')

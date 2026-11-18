@@ -1,0 +1,73 @@
+{
+  "baselineCommit": "aa6faa122643ca48c446f7e093125480cfa8b2e6",
+  "candidateCommit": "b11fd9b359f85ffa66484d7cf754c93d8d61d71e",
+  "baseline": {
+    "files": 812,
+    "failedFiles": 121,
+    "reportedTests": 16841,
+    "passed": 15030,
+    "failed": 410,
+    "pending": 1397
+  },
+  "candidate": {
+    "files": 813,
+    "failedFiles": 121,
+    "reportedTests": 16854,
+    "passed": 15043,
+    "failed": 410,
+    "pending": 1397
+  },
+  "commonFailedAssertions": 409,
+  "candidateOnlyFailedAssertions": [
+    "lib/qa/project-command-center.test.ts :: project command center · renders from canonical project data names the project the route resolved, with its slug and stored stop state #1"
+  ],
+  "baselineOnlyFailedAssertions": [
+    "lib/qa/content-center.test.ts :: content center · every stored status is shown the review queue lane is always present, even empty #1"
+  ],
+  "candidateOnlyFailedFiles": [],
+  "addedAssertions": [
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions keeps independent submission counts even when pageview delivery is smaller #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions queries a fourth fixed aggregate without adding requests or identifiers #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions preserves actual zero submissions #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions does not replace an absent submission series with zero #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions rejects unsafe submission count -1 #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions rejects unsafe submission count 1.5 #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions rejects unsafe submission count Infinity #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions rejects unsafe submission count 9007199254740992 #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions rejects wrong dates and duplicate submission series #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions rejects a safe-per-day count whose weekly total overflows #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions labels received submissions separately from interest and verified dealers #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: received consented registration submissions does not invent a submission count for an older read model #1",
+    "lib/qa/handlarborsen-posthog-registration.test.ts :: treats zero pageviews as measured data when independent submissions were received #1"
+  ],
+  "removedAssertions": [],
+  "baselineReportSha256": "4a752f8bce82f19727c088026f39489f6e9d2b7724891bc4c58a70727fd8d963",
+  "candidateReportSha256": "a9b88e857534084f669068ba7b9a5c65c86e4514005960b4e7f0419f36bb1959",
+  "posthog": [
+    {
+      "file": "handlarborsen-posthog-registration.test.ts",
+      "status": "passed",
+      "tests": 13
+    },
+    {
+      "file": "handlarborsen-posthog-sessions.test.ts",
+      "status": "passed",
+      "tests": 14
+    },
+    {
+      "file": "handlarborsen-posthog-traffic.test.ts",
+      "status": "passed",
+      "tests": 10
+    }
+  ],
+  "followUp": {
+    "candidateOnlyFailureType": "5000ms timeout, first render of ProjectCommandCenter",
+    "testAndComponentDiffAgainstBaseline": "unchanged (git diff exit0)",
+    "diagnostic": "Selected the exact additional timed-out test; same source/assertions/5000ms limit, no product/test edits",
+    "passed": 1,
+    "failed": 0,
+    "unselected": 76,
+    "reportSha256": "47cb6d967d77b759d9456fcb64552d43a811f9bd7d6919fae7d369a4b1e67eff",
+    "conclusion": "Additional full-run timeout did not reproduce in isolated recheck. Raw full-run failure remains recorded; no all-green whole-suite claim."
+  }
+}

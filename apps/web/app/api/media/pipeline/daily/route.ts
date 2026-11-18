@@ -17,6 +17,7 @@ import { NextResponse } from 'next/server'
 import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { POST as runFullPipeline } from '../full/route'
 
 export const dynamic = 'force-dynamic'
 
@@ -77,28 +78,18 @@ export async function POST(request: Request) {
     story.key_insight ? `Key insight: ${story.key_insight}` : '',
   ].filter(Boolean).join('\n\n')
 
-  // Forward to the full pipeline with the selected story as text
-  const origin = new URL(request.url).origin
-  const pipelineRes = await fetch(`${origin}/api/media/pipeline/full`, {
+  // In-process handoff: the full handler rechecks the ambient Next.js session
+  // and project authority. This URL is only a Request identifier, never fetched.
+  return runFullPipeline(new Request('http://pipeline.internal/api/media/pipeline/full', {
     method: 'POST',
+    signal: request.signal,
     headers: {
       'Content-Type': 'application/json',
-      // Forward auth cookie
-      Cookie: request.headers.get('cookie') ?? '',
     },
     body: JSON.stringify({
       text: articleText,
       project_id,
       mode: 'lite',
     }),
-  })
-
-  // Stream the SSE response through
-  return new Response(pipelineRes.body, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-    },
-  })
+  }))
 }

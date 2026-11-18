@@ -51,6 +51,9 @@ const CROSSCHAT_MIGRATION = 'social_owner_crosschat_context' // Applied 20261031
 const APPLIED_PARALLEL_SALES = ['sales_b2b_offers','sales_discovery_candidates']
 const POSTHOG_RELEASE_MIGRATIONS = ['posthog_approved_read','handlarborsen_scb_live_preview_candidates','project_total_allowance','sales_editorial_only_drafts','sales_initial_sending']
 const NOVA_ACTIVATION_MIGRATIONS = ['human_story_exact_claim','social_campaign_preparation']
+const WEBBUILDER_PROSPECTS_MIGRATION = 'webbuilder_prospects'
+const WEBBUILDER_PROSPECTS_SQL = '20261108094559_webbuilder_prospects.sql'
+const WEBBUILDER_PROSPECTS_SHA256 = '03dfd37e3749030523094dbdbca20b86a54b410b7be4acfa79f2ed6592b6014c'
 
 // The verified production history once P1E is applied: 135 rows = every enforced migration (all
 // applied) plus the grandfathered and legacy-only names. Perturbation tests start from it.
@@ -107,14 +110,14 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
   // NOTE ON 3B1A: these two counts describe the CANONICAL CORPUS, so they move as soon
   // as the file exists. The production APPLY is a separate fact, and it has NOT happened
   // for 3B1A — see the ledger assertion below, which is deliberately left RED.
-  it('pins policy v2 and the current 174/160/14/30 counts', () => {
+  it('pins policy v2 and the current 177/163/14/30 counts', () => {
     expect(MIGRATION_GUARD_POLICY_VERSION).toBe(2)
-    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(174)
-    expect(EXPECTED_ENFORCED_COUNT).toBe(160)
+    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(177)
+    expect(EXPECTED_ENFORCED_COUNT).toBe(163)
     expect(GRANDFATHERED_MIGRATION_NAMES).toHaveLength(14)
     expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).toHaveLength(30)
-    expect(repositoryState.sqlFiles).toHaveLength(174)
-    expect(repositoryState.enforcedNames).toHaveLength(160)
+    expect(repositoryState.sqlFiles).toHaveLength(177)
+    expect(repositoryState.enforcedNames).toHaveLength(163)
   })
 
   it('proves the Higgsfield code and database change require one coordinated release', () => {
@@ -126,12 +129,12 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
       repositoryNames: repositoryState.repositoryNames.filter(name => name !== migration),
       enforcedNames: repositoryState.enforcedNames.filter(name => name !== migration),
     }
-    expect(previous.sqlFiles).toHaveLength(173)
-    expect(previous.enforcedNames).toHaveLength(159)
+    expect(previous.sqlFiles).toHaveLength(176)
+    expect(previous.enforcedNames).toHaveLength(162)
     const beforeApply = [...previous.enforcedNames, ...GRANDFATHERED_PRESENT_IN_VERIFIED_LEDGER, ...LEGACY_ONLY_PRODUCTION_LEDGER_NAMES]
     const afterApply = [...beforeApply, migration]
-    expect(beforeApply).toHaveLength(196)
-    expect(afterApply).toHaveLength(197)
+    expect(beforeApply).toHaveLength(199)
+    expect(afterApply).toHaveLength(200)
     expect(() => evaluateAppliedMigrationLedger(beforeApply, previous)).not.toThrow()
     expect(() => evaluateAppliedMigrationLedger(beforeApply, repositoryState)).toThrow(/higgsfield_mcp_readonly/)
     expect(() => evaluateAppliedMigrationLedger(afterApply, previous)).toThrow(/unknown migration name/)
@@ -296,7 +299,7 @@ describe('Migration Guard v2 — production ledger set integrity', () => {
     // P1E (`handlarborsen_guarded_snapshot_store`, file 20261010130000) takes the enforced set
     // from 97 to 98 and this fixture from 134 to 135. Not applied yet: this line records the
     // post-apply state and is true only after the operator-approved apply.
-    expect(result.appliedLedgerCount).toBe(197)
+    expect(result.appliedLedgerCount).toBe(200)
     expect(result.unknownLedgerNames).toEqual([])
     expect(result.duplicateLedgerNames).toEqual([])
   })
@@ -434,9 +437,9 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
     expect(result).toMatchObject({
       skipped: false,
       policyVersion: 2,
-      canonicalSqlCount: 174,
-      enforcedCount: 160,
-      appliedLedgerCount: 197,
+      canonicalSqlCount: 177,
+      enforcedCount: 163,
+      appliedLedgerCount: 200,
     })
   })
 })
@@ -491,7 +494,7 @@ it('captured October18 ledger remains blocked until the separate news review mig
  expect(()=>evaluateAppliedMigrationLedger([...afterHypotheticalNewsApply,'user_calendar_v1','user_calendar_recurrence','sales_contact_timing','sales_email_copy_versions'],repositoryState)).toThrow(/higgsfield_mcp_readonly/)
  const historicalWithoutAllowance=[...afterHypotheticalNewsApply,'user_calendar_v1','user_calendar_recurrence','sales_contact_timing','sales_email_copy_versions','higgsfield_mcp_readonly']
  expect(()=>evaluateAppliedMigrationLedger(historicalWithoutAllowance,repositoryState)).toThrow(/atlas_fallback_reservation_ceiling/)
- expect(()=>evaluateAppliedMigrationLedger([...historicalWithoutAllowance,...ATLAS_RESERVE_MIGRATIONS,...CALENDAR_RELEASE_MIGRATIONS,'family_social_repeat_guard','instagram_receipt_reconciliation','social_schedule_cancelled_reservations','family_weekly_preparation',MANUAL_PUBLICATION_MIGRATION,SCB_LEAD_MIGRATION,HB_ARCHIVE_MIGRATION,CROSSCHAT_MIGRATION,...APPLIED_PARALLEL_SALES,...NOVA_ACTIVATION_MIGRATIONS,...POSTHOG_RELEASE_MIGRATIONS],repositoryState)).not.toThrow()
+ expect(()=>evaluateAppliedMigrationLedger([...historicalWithoutAllowance,...ATLAS_RESERVE_MIGRATIONS,...CALENDAR_RELEASE_MIGRATIONS,'family_social_repeat_guard','instagram_receipt_reconciliation','social_schedule_cancelled_reservations','family_weekly_preparation',MANUAL_PUBLICATION_MIGRATION,SCB_LEAD_MIGRATION,HB_ARCHIVE_MIGRATION,CROSSCHAT_MIGRATION,...APPLIED_PARALLEL_SALES,...NOVA_ACTIVATION_MIGRATIONS,...POSTHOG_RELEASE_MIGRATIONS, WEBBUILDER_PROSPECTS_MIGRATION],repositoryState)).toThrow(/office_visit_sessions/)
  expect(()=>evaluateAppliedMigrationLedger(beforeOwnApply,repositoryState)).toThrow(/handlarborsen_metrics_definition/)
  expect(()=>evaluateAppliedMigrationLedger(afterOwnApply.filter(n=>n!=='sales_strato_inbox'),repositoryState)).toThrow(/sales_strato_inbox/)
  expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain('sales_strato_inbox')
@@ -532,8 +535,8 @@ it('accepts the actual news-review post-apply ledger without weakening the missi
  expect(()=>evaluateAppliedMigrationLedger(afterHypotheticalCalendarApply,repositoryState)).toThrow(/higgsfield_mcp_readonly/)
  const afterHypotheticalHiggsfieldApply=[...afterHypotheticalCalendarApply,'higgsfield_mcp_readonly']
  expect(()=>evaluateAppliedMigrationLedger(afterHypotheticalHiggsfieldApply,repositoryState)).toThrow(/atlas_fallback_reservation_ceiling/)
- const afterAllowanceApply=[...afterHypotheticalHiggsfieldApply,...ATLAS_RESERVE_MIGRATIONS,...CALENDAR_RELEASE_MIGRATIONS,'family_social_repeat_guard','instagram_receipt_reconciliation','social_schedule_cancelled_reservations','family_weekly_preparation',MANUAL_PUBLICATION_MIGRATION,SCB_LEAD_MIGRATION,HB_ARCHIVE_MIGRATION,CROSSCHAT_MIGRATION,...APPLIED_PARALLEL_SALES,...NOVA_ACTIVATION_MIGRATIONS,...POSTHOG_RELEASE_MIGRATIONS]
- expect(()=>evaluateAppliedMigrationLedger(afterAllowanceApply,repositoryState)).not.toThrow()
+ const afterAllowanceApply=[...afterHypotheticalHiggsfieldApply,...ATLAS_RESERVE_MIGRATIONS,...CALENDAR_RELEASE_MIGRATIONS,'family_social_repeat_guard','instagram_receipt_reconciliation','social_schedule_cancelled_reservations','family_weekly_preparation',MANUAL_PUBLICATION_MIGRATION,SCB_LEAD_MIGRATION,HB_ARCHIVE_MIGRATION,CROSSCHAT_MIGRATION,...APPLIED_PARALLEL_SALES,...NOVA_ACTIVATION_MIGRATIONS,...POSTHOG_RELEASE_MIGRATIONS, WEBBUILDER_PROSPECTS_MIGRATION]
+ expect(()=>evaluateAppliedMigrationLedger(afterAllowanceApply,repositoryState)).toThrow(/office_visit_sessions/)
  expect(()=>evaluateAppliedMigrationLedger(afterHypotheticalHiggsfieldApply.filter(name=>name!=='media_news_review_evidence'),repositoryState)).toThrow(/media_news_review_evidence/)
 })
 
@@ -585,7 +588,7 @@ it("keeps the captured production ledger blocked until repeat protection is appl
  expect(()=>evaluateAppliedMigrationLedger([...ledger,"family_social_repeat_guard"],repositoryState)).toThrow(/instagram_receipt_reconciliation/);
  expect(()=>evaluateAppliedMigrationLedger([...ledger,"family_social_repeat_guard","instagram_receipt_reconciliation"],repositoryState)).toThrow(/social_schedule_cancelled_reservations/);
  expect(()=>evaluateAppliedMigrationLedger([...ledger,"family_social_repeat_guard","instagram_receipt_reconciliation","social_schedule_cancelled_reservations"],repositoryState)).toThrow(/family_weekly_preparation/);
- expect(()=>evaluateAppliedMigrationLedger([...ledger,"family_social_repeat_guard","instagram_receipt_reconciliation","social_schedule_cancelled_reservations","family_weekly_preparation",MANUAL_PUBLICATION_MIGRATION,SCB_LEAD_MIGRATION,HB_ARCHIVE_MIGRATION,CROSSCHAT_MIGRATION,...APPLIED_PARALLEL_SALES,...NOVA_ACTIVATION_MIGRATIONS,...POSTHOG_RELEASE_MIGRATIONS],repositoryState)).not.toThrow();
+ expect(()=>evaluateAppliedMigrationLedger([...ledger,"family_social_repeat_guard","instagram_receipt_reconciliation","social_schedule_cancelled_reservations","family_weekly_preparation",MANUAL_PUBLICATION_MIGRATION,SCB_LEAD_MIGRATION,HB_ARCHIVE_MIGRATION,CROSSCHAT_MIGRATION,...APPLIED_PARALLEL_SALES,...NOVA_ACTIVATION_MIGRATIONS,...POSTHOG_RELEASE_MIGRATIONS, WEBBUILDER_PROSPECTS_MIGRATION],repositoryState)).toThrow(/office_visit_sessions/);
 });
 
 it('cross-chat scope is enforced exactly once and never grandfathered before release',()=>{
@@ -614,7 +617,7 @@ it('matches the actual Nov1 post-apply ledger while refusing the genuine pre-app
  expect(evidence.ledger_names).toHaveLength(192)
  expect(evidence.migration.version).toBe('20261101062748')
  expect(()=>evaluateAppliedMigrationLedger(evidence.ledger_names,repositoryState)).toThrow(/posthog_approved_read/)
- expect(()=>evaluateAppliedMigrationLedger([...evidence.ledger_names,...POSTHOG_RELEASE_MIGRATIONS],repositoryState)).not.toThrow()
+ expect(()=>evaluateAppliedMigrationLedger([...evidence.ledger_names,...POSTHOG_RELEASE_MIGRATIONS, WEBBUILDER_PROSPECTS_MIGRATION],repositoryState)).toThrow(/office_visit_sessions/)
  expect(()=>evaluateAppliedMigrationLedger(evidence.ledger_names.filter(n=>n!=='social_campaign_preparation'),repositoryState)).toThrow(/social_campaign_preparation/)
 })
 
@@ -624,4 +627,52 @@ it('enforces PostHog and the four source-reconciled applied migrations',()=>{
   expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain(name)
   expect(()=>evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger.filter(n=>n!==name),repositoryState)).toThrow(new RegExp(name))
  }
+})
+
+
+it('recognizes the read-only Nov13 ledger observation and preserves fail-closed checks', () => {
+ const observation = JSON.parse(readFileSync(resolve(__dirname, '../../../../docs/verification/office/2026-11-13-applied-migration-dependency.json'), 'utf8'))
+ const name = 'webbuilder_prospects'
+ expect(observation.readOnly).toBe(true)
+ expect(observation.databaseMutationsPerformed).toBe(false)
+ expect(observation.rowCount).toBe(198)
+ expect(observation.distinctNames).toBe(198)
+ expect(observation.migration.ledgerVersion).toBe('20261109111500')
+ expect(observation.migration.repositoryFile).toBe('apps/web/supabase/migrations/20261108094559_webbuilder_prospects.sql')
+ expect(observation.migrationNames).toHaveLength(198)
+ expect(new Set(observation.migrationNames).size).toBe(198)
+ expect(createHash('sha256').update([...observation.migrationNames].sort().join('\n')).digest('hex')).toBe('4d1b0e84f3c2329cb2183780e4f60cf995c08b26c64bd2ae5508a8f618d4f4ae')
+ expect(observation.sortedNameSetSha256).toBe('4d1b0e84f3c2329cb2183780e4f60cf995c08b26c64bd2ae5508a8f618d4f4ae')
+ const sql = readFileSync(resolve(CANONICAL_DIR, '20261108094559_webbuilder_prospects.sql'), 'utf8').replace(/\r\n/g, '\n')
+ expect(Buffer.byteLength(sql, 'utf8')).toBe(15784)
+ expect(createHash('sha256').update(sql).digest('hex')).toBe('03dfd37e3749030523094dbdbca20b86a54b410b7be4acfa79f2ed6592b6014c')
+ // Captured Nov13 observation predates Office and Family capacity: assess the historical corpus without rewriting evidence.
+ const beforeOffice = { ...repositoryState, sqlFiles: repositoryState.sqlFiles.filter((f: string) => !f.endsWith('_office_visit_sessions.sql')), repositoryNames: repositoryState.repositoryNames.filter((n: string) => n !== 'office_visit_sessions'), enforcedNames: repositoryState.enforcedNames.filter((n: string) => n !== 'office_visit_sessions') }
+ expect(() => evaluateAppliedMigrationLedger(observation.migrationNames, repositoryState)).toThrow(/office_visit_sessions/)
+ const beforeOfficeAndFamily = { ...beforeOffice, sqlFiles: beforeOffice.sqlFiles.filter((f: string) => !f.endsWith('_family_daily_social_capacity_20261114.sql')), repositoryNames: beforeOffice.repositoryNames.filter((n: string) => n !== 'family_daily_social_capacity_20261114'), enforcedNames: beforeOffice.enforcedNames.filter((n: string) => n !== 'family_daily_social_capacity_20261114') }
+ expect(() => evaluateAppliedMigrationLedger(observation.migrationNames, beforeOffice)).toThrow(/family_daily_social_capacity_20261114/)
+ expect(evaluateAppliedMigrationLedger(observation.migrationNames, beforeOfficeAndFamily)).toMatchObject({
+   canonicalSqlCount: 175, enforcedCount: 161, appliedLedgerCount: 198, unknownLedgerNames: [], duplicateLedgerNames: [],
+ })
+ expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain(name)
+ expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).not.toContain(name)
+ expect(() => evaluateAppliedMigrationLedger(observation.migrationNames.filter((n: string) => n !== name), repositoryState)).toThrow(/webbuilder_prospects/)
+ expect(() => evaluateAppliedMigrationLedger([...observation.migrationNames, name], repositoryState)).toThrow(/duplicate migration name/)
+ expect(() => evaluateAppliedMigrationLedger([...observation.migrationNames, 'office_unknown_dependency'], beforeOfficeAndFamily)).toThrow(/unknown migration name/)
+ const unreconciled = {
+   ...beforeOfficeAndFamily,
+   repositoryNames: beforeOfficeAndFamily.repositoryNames.filter((n: string) => n !== name),
+   enforcedNames: beforeOfficeAndFamily.enforcedNames.filter((n: string) => n !== name),
+ }
+ expect(() => evaluateAppliedMigrationLedger(observation.migrationNames, unreconciled)).toThrow(/unknown migration name/)
+})
+
+it('enforces the verified WebBuilder prospects source without bypassing Migration Guard', () => {
+  expect(repositoryState.enforcedNames).toContain(WEBBUILDER_PROSPECTS_MIGRATION)
+  expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain(WEBBUILDER_PROSPECTS_MIGRATION)
+  expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).not.toContain(WEBBUILDER_PROSPECTS_MIGRATION)
+  expect(createHash('sha256').update(readFileSync(resolve(CANONICAL_DIR,WEBBUILDER_PROSPECTS_SQL),'utf8').replace(/\r\n/g,'\n')).digest('hex')).toBe(WEBBUILDER_PROSPECTS_SHA256)
+  expect(()=>evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger.filter(n=>n!==WEBBUILDER_PROSPECTS_MIGRATION),repositoryState)).toThrow(/webbuilder_prospects/)
+  expect(()=>evaluateAppliedMigrationLedger([...hypotheticalPostApplyLedger,WEBBUILDER_PROSPECTS_MIGRATION],repositoryState)).toThrow(/duplicate/)
+  expect(()=>evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger,repositoryState)).not.toThrow()
 })

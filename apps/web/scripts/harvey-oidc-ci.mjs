@@ -267,6 +267,60 @@ function readEvidenceFile(path, allowEmpty = false) {
   finally { if (fd !== undefined) closeSync(fd) }
 }
 
+// Resolve only Vercel's internal output links. tar sees a private regular-file
+// snapshot, never source symlinks, and its bytes must match the descriptor reads.
+/** @param {string} cwd
+ * @param {(file: string, args: string[], options?: object) => unknown} command
+ * @returns {Buffer} */
+export function packOidcOutput(cwd, command = runCommand, env = cleanBuildEnv(process.env)) {
+  const built = resolve(cwd, '.vercel/output'), root = realpathSync(built)
+  requireOk(root === built)
+  const directory = mkdtempSync(resolve(tmpdir(), 'harvey-oidc-pack-')), expected = []
+  let total = 0
+  const inside = path => path === root || path.startsWith(root + sep)
+  const copy = (source, target, ancestors = new Set()) => {
+    const actual = realpathSync(source)
+    requireOk(inside(actual))
+    const directoryEntries = anchor => {
+      requireOk(!ancestors.has(actual))
+      mkdirSync(target, { mode: 0o700 })
+      const next = new Set(ancestors).add(actual)
+      for (const name of readdirSync(anchor).sort()) copy(resolve(anchor, name), resolve(target, name), next)
+    }
+    // Windows cannot open directories with openSync; file reads below still use
+    // one descriptor. The publication runner uses Linux's descriptor-anchored walk.
+    if (process.platform === 'win32') {
+      try { readdirSync(actual); directoryEntries(actual); return }
+      catch (error) { if (error.code !== 'ENOTDIR') throw error }
+    }
+    let fd
+    try {
+      fd = openSync(actual, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0))
+      const before = fstatSync(fd)
+      const anchor = process.platform === 'linux' ? `/proc/self/fd/${fd}` : actual
+      requireOk(inside(realpathSync(anchor)))
+      if (before.isDirectory()) { directoryEntries(anchor); return }
+      requireOk(before.isFile() && before.size <= MAX_BYTES - total && expected.length < 100000)
+      const bytes = readFileSync(fd), after = fstatSync(fd)
+      requireOk(bytes.length === before.size && after.size === before.size &&
+        after.mtimeMs === before.mtimeMs && after.ctimeMs === before.ctimeMs)
+      total += bytes.length
+      const mode = before.mode & 0o111 ? 0o755 : 0o644
+      writeFileSync(target, bytes, { flag: 'wx', mode }); chmodSync(target, mode)
+      expected.push({ path: relative(directory, target).split(sep).join('/'), sha256: digest(bytes), mode })
+    } finally { if (fd !== undefined) closeSync(fd) }
+  }
+  try {
+    copy(built, resolve(directory, 'output'))
+    // --hard-dereference is required by GNU tar; no --dereference here.
+    const artifact = command('tar', ['--format=ustar', '--hard-dereference', '-cf', '-', '-C', directory, 'output'],
+      { cwd, env, encoding: null })
+    requireOk(canonicalJson(inspectTar(artifact)) === canonicalJson(expected.sort((a, b) => a.path.localeCompare(b.path, 'en'))))
+    return artifact
+  } catch { deny() }
+  finally { rmSync(directory, { recursive: true, force: true }) }
+}
+
 // The approved CI runner is Linux. The subject is an inherited read-only descriptor.
 // gh requires a .json bundle suffix: its separate snapshot stays in a private directory,
 // read-only on Linux, and is checked through the same descriptor after verification.
@@ -383,9 +437,8 @@ export function createAdapter({ env = process.env, cwd = process.cwd(), command 
     command('npm', ['exec', '--yes', '--package', `vercel@${pinnedCli}`, '--', 'vercel', 'build', '--yes', '--environment=preview',
       '--local-config', plan.localConfigPath], { cwd, env: childEnv, timeout: 1500000 })
     requireOk(sourceDigest() === before)
-    const built = sealOidcOutput(cwd, plan)
-    const artifact = command('tar', ['--format=ustar', '--dereference', '-cf', '-', '-C', dirname(built), 'output'],
-      { cwd, env: childEnv, encoding: null })
+    sealOidcOutput(cwd, plan)
+    const artifact = packOidcOutput(cwd, command, childEnv)
     const files = inspectTar(artifact)
     const manifest = { schema: 'omnira-oidc-build/v1', buildProfile: OIDC_BUILD_PROFILE,
       buildProfileDigest: digest(canonicalJson(OIDC_BUILD_PROFILE)), sourceSha: trust.sha, checkoutSha: trust.sha,

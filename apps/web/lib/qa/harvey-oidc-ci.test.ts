@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, existsSync, fstatSync, readSync, writeSync, symlinkSync, linkSync, renameSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, existsSync, fstatSync, readSync, writeSync, symlinkSync, linkSync, renameSync, chmodSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { execFileSync, spawn } from 'node:child_process'
 import { resolve, dirname } from 'node:path'
@@ -8,7 +8,7 @@ import {
   CI_POLICY, readTrust, checkInvocation, checkEnvironment, checkRun, ownerReview,
   checkCertificate, inspectTar, checkArtifact, cleanBuildEnv, createAdapter, main,
   JOURNAL_PREFIX, journalTrust, checkJournalPolicy,
-  OIDC_BUILD_PROFILE, OIDC_PROFILE_ENTRY, oidcBuildProfile, prepareOidcBuild, sealOidcOutput,
+  OIDC_BUILD_PROFILE, OIDC_PROFILE_ENTRY, oidcBuildProfile, prepareOidcBuild, sealOidcOutput, packOidcOutput,
 } from '../../scripts/harvey-oidc-ci.mjs'
 import { canonicalJson, digest, LEDGER_EXPORT_QUERY } from '../../scripts/migration-guard-ledger-attestation.mjs'
 import { inspectCanonicalMigrationFiles, REFERENCED_LEDGER_MIGRATIONS } from '../../scripts/migration-guard-policy.mjs'
@@ -162,7 +162,10 @@ function fixture(server = { refs: new Map<string, any>(), failCreate: false, los
       const built = resolve(cwd, '.vercel/output'); mkdirSync(built, { recursive: true }); writeFileSync(resolve(built, 'config.json'), '{"version":3}')
       return ''
     }
-    if (file === 'tar') return artifact
+    if (file === 'tar') {
+      expect(args).toContain('--hard-dereference'); expect(args).not.toContain('--dereference')
+      return artifact
+    }
     throw Error('unexpected synthetic command')
   })
   function bundle(path: string, raw: string) {
@@ -737,5 +740,105 @@ describe('isolated cron-free OIDC build profile',()=>{
   })
   it.each(['buildProfile','buildProfileDigest'])('rejects altered manifest %s',key=>{
     const f=fixture();expect(()=>checkArtifact(f.artifact,{...f.manifest,[key]:'wrong'},f.manifest)).toThrow()
+  })
+})
+
+describe.runIf(process.platform === 'linux')('GNU tar output packing (real local process, no publication)',()=>{
+  const output = () => {
+    const f=fixture(),plan=prepareOidcBuild(f.cwd,f.e),built=resolve(f.cwd,'.vercel/output')
+    mkdirSync(built);writeFileSync(resolve(built,'config.json'),'{"version":3}')
+    sealOidcOutput(f.cwd,plan)
+    return {...f,built}
+  }
+  const realTar=(file:string,args:string[],options:any):Buffer=>{
+    const bytes=execFileSync(file,args,{...options,encoding:null,maxBuffer:16*1024*1024})
+    if(!Buffer.isBuffer(bytes))throw Error('Expected binary tar output')
+    return bytes
+  }
+  it('packs normal files and long hardlinks as independently verified regular files',()=>{
+    expect(execFileSync('tar',['--version'],{encoding:'utf8'})).toContain('GNU tar')
+    const f=output(),folder=resolve(f.built,'functions', 'x'.repeat(90))
+    mkdirSync(folder,{recursive:true});writeFileSync(resolve(folder,'original.json'),'owned build bytes')
+    linkSync(resolve(folder,'original.json'),resolve(folder,'hardlink.json'))
+    let privatePath=''
+    const artifact=packOidcOutput(f.cwd,(file,args,options)=>{
+      expect(args).toContain('--hard-dereference');expect(args).not.toContain('--dereference')
+      privatePath=args[args.indexOf('-C')+1]
+      expect(privatePath).not.toBe(dirname(f.built))
+      return realTar(file,args,options)
+    })
+    const files=inspectTar(artifact),owned=files.filter(x=>x.path.endsWith('/original.json')||x.path.endsWith('/hardlink.json'))
+    expect(owned).toHaveLength(2);expect(owned.every(x=>x.sha256===digest('owned build bytes'))).toBe(true)
+    const manifest={...f.manifest,artifactDigest:digest(artifact),files}
+    expect(()=>checkArtifact(artifact,manifest,manifest)).not.toThrow()
+    expect(existsSync(privatePath)).toBe(false)
+  })
+  it('materializes only internal file/directory symlinks before invoking tar',()=>{
+    const f=output(),shared=resolve(f.built,'shared');mkdirSync(shared);writeFileSync(resolve(shared,'owned.json'),'owned')
+    symlinkSync('shared',resolve(f.built,'alias'));symlinkSync('shared/owned.json',resolve(f.built,'file.json'))
+    const files=inspectTar(packOidcOutput(f.cwd,realTar))
+    expect(files.filter(x=>x.sha256===digest('owned')).map(x=>x.path).sort()).toEqual(['output/alias/owned.json','output/file.json','output/shared/owned.json'])
+  })
+  it('keeps executable files executable without propagating special permission bits',()=>{
+    const f=output(),file=resolve(f.built,'owned-tool');writeFileSync(file,'owned');chmodSync(file,0o4755)
+    expect(inspectTar(packOidcOutput(f.cwd,realTar)).find(x=>x.path==='output/owned-tool')?.mode).toBe(0o755)
+  })
+  it('packs verified snapshot bytes even if the original path becomes an external symlink',()=>{
+    const f=output(),file=resolve(f.built,'owned.json'),outside=resolve(f.cwd,'outside')
+    writeFileSync(file,'owned');writeFileSync(outside,'PRIVATE-OUTSIDE-CANARY')
+    const artifact=packOidcOutput(f.cwd,(command,args,options)=>{
+      rmSync(file);symlinkSync(outside,file)
+      return realTar(command,args,options)
+    })
+    expect(artifact.includes(Buffer.from('PRIVATE-OUTSIDE-CANARY'))).toBe(false)
+    expect(inspectTar(artifact).find(x=>x.path==='output/owned.json')?.sha256).toBe(digest('owned'))
+  })
+  it('rejects an output root that is itself a symlink',()=>{
+    const f=output(),moved=resolve(f.cwd,'moved');renameSync(f.built,moved);symlinkSync(moved,f.built)
+    expect(()=>packOidcOutput(f.cwd,realTar)).toThrow(deny)
+  })
+  it.each(['file','directory','broken','cycle','fifo'])('rejects unsafe source %s before tar runs',kind=>{
+    const f=output(),outside=resolve(f.cwd,'outside'),link=resolve(f.built,'link')
+    if(kind==='file'){writeFileSync(outside,'PRIVATE-OUTSIDE-CANARY');symlinkSync(outside,link)}
+    if(kind==='directory'){mkdirSync(outside);writeFileSync(resolve(outside,'secret'),'PRIVATE-OUTSIDE-CANARY');symlinkSync(outside,link)}
+    if(kind==='broken')symlinkSync('missing',link)
+    if(kind==='cycle')symlinkSync('.',link)
+    if(kind==='fifo')execFileSync('mkfifo',[link])
+    const command=vi.fn(realTar);expect(()=>packOidcOutput(f.cwd,command)).toThrow(deny)
+    expect(command).not.toHaveBeenCalled()
+  })
+  it.each(['.env','credential.pem','nested\\escape'])('rejects forbidden final path %s',name=>{
+    const f=output();writeFileSync(resolve(f.built,name),'not publishable')
+    expect(()=>packOidcOutput(f.cwd,realTar)).toThrow(deny)
+  })
+  it.each(['symlink','bytes'])('rejects snapshot %s replacement without authorizing other bytes',kind=>{
+    const f=output(),outside=resolve(f.cwd,'outside');writeFileSync(outside,'PRIVATE-OUTSIDE-CANARY')
+    let packed:Buffer|undefined,privatePath=''
+    expect(()=>packOidcOutput(f.cwd,(file,args,options)=>{
+      privatePath=args[args.indexOf('-C')+1]
+      const target=resolve(privatePath,'output/config.json');rmSync(target)
+      if(kind==='symlink')symlinkSync(outside,target)
+      else writeFileSync(target,'{"version":3,"tampered":true}')
+      packed=realTar(file,args,options);return packed
+    })).toThrow(deny)
+    expect(packed?.includes(Buffer.from('PRIVATE-OUTSIDE-CANARY'))).toBe(false)
+    expect(existsSync(privatePath)).toBe(false)
+  })
+  it('fails closed and cleans its snapshot on a real tar command error',()=>{
+    const f=output();let privatePath=''
+    expect(()=>packOidcOutput(f.cwd,(file,args,options)=>{
+      privatePath=args[args.indexOf('-C')+1]
+      return realTar(file,['--not-a-valid-tar-option'],options)
+    })).toThrow(deny)
+    expect(existsSync(privatePath)).toBe(false)
+  })
+  it.each(['bytes','manifest-hash','cron'])('rejects artifact manipulation: %s',kind=>{
+    const f=output()
+    if(kind==='cron')writeFileSync(resolve(f.built,'config.json'),'{"version":3,"crons":[{"path":"/api/unexpected","schedule":"* * * * *"}]}')
+    if(kind==='cron'){expect(()=>packOidcOutput(f.cwd,realTar)).toThrow(deny);return}
+    const artifact=packOidcOutput(f.cwd,realTar),manifest={...f.manifest,artifactDigest:digest(artifact),files:inspectTar(artifact)}
+    if(kind==='bytes')artifact[512]^=1
+    else manifest.files[0].sha256='0'.repeat(64)
+    expect(()=>checkArtifact(artifact,manifest,manifest)).toThrow()
   })
 })

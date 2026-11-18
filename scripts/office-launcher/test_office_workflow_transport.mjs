@@ -1,6 +1,6 @@
 /** Browser/controller -> real HTTP handlers -> real loopback relay -> receiver/atomic file.
  * Owner/DB RPC, upstream HTTP socket and game-process lease are synthetic.
- * No installed bootstrap, genuine login/TLS or Unreal gameplay is claimed.
+ * Native acknowledgment is a synthetic fixture; no installed bootstrap, genuine login/TLS or Unreal gameplay is claimed.
  */
 import assert from 'node:assert/strict'
 import {createRequire} from 'node:module'
@@ -36,6 +36,7 @@ import http.client,json,sys,threading
 from pathlib import Path
 sys.path.insert(0,sys.argv[1])
 from office_visit_relay import OfficeVisitRelay
+from workflow_ack_fixture import FixtureNativeAck
 class Lease:
  live=True
  def alive(self):return self.live
@@ -54,12 +55,13 @@ class Client:
  def presence(self,*args):raise RuntimeError('No scope fallback allowed')
  def revoke(self,visit,secret):return self.call('revoke',visit,secret)
 lease=Lease();relay=OfficeVisitRelay(Path(sys.argv[2]),lease,Client(),workflow=True)
+native=FixtureNativeAck(Path(sys.argv[2]))
 try:
- relay.start();print(json.dumps({'port':relay.port,'key':relay.session_key}),flush=True)
+ relay.start();native.start();print(json.dumps({'port':relay.port,'key':relay.session_key}),flush=True)
  def close_game():sys.stdin.readline();lease.live=False
  threading.Thread(target=close_game,daemon=True).start()
  while not relay._halt.wait(.1):pass
-finally:relay.stop()
+finally:native.stop();relay.stop()
 `,join(root,'scripts/office-launcher'),output,String(port)],{cwd:root,stdio:['pipe','pipe','pipe']})
 let controller=null,errors='';python.stderr.on('data',c=>errors+=c.toString().slice(0,2000))
 const waitFor=async(test,ms=20000)=>{const end=Date.now()+ms;while(!await test()&&Date.now()<end)await new Promise(r=>setTimeout(r,50));assert(await test())}

@@ -1,0 +1,12 @@
+{
+  "decision": "reuse_existing",
+  "machine_decision": "review_required",
+  "machine_code": "matching_local_branch",
+  "owner": "current Office workflow task",
+  "work_id": "OFFICE-WORKFLOW-STATUS-20261118",
+  "branch": "feat/office-workflow-status-20261118",
+  "path": "D:\\Projekt\\Omnira\\Worktrees\\office-workflow-status-20261118",
+  "parent_head": "77cf80bd72e0043603a6edafde19b68840afd5f2",
+  "scope": "Native consumer and actual acknowledgement for this existing branch; no new branch, PR, push, merge or deployment.",
+  "review": "The exact known owned worktree is the only local candidate; there are no PR candidates. Original machine receipt retained unchanged."
+}

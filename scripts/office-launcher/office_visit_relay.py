@@ -53,6 +53,8 @@ class OfficeVisitRelay(OfficeRelay):
         self._activity_capable=activity is True
         self._workflow_capable=workflow is True
         self.workflow=False
+        self._workflow_prepared=False
+        self._native_receipt_deadline=float('inf')
         self.activity=False
         self._secret=base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('ascii').rstrip('=')
         self.visit_id=new_visit_id();self._issued=time.monotonic();self._deadline=self._issued+14400
@@ -67,7 +69,7 @@ class OfficeVisitRelay(OfficeRelay):
         return super().pairing_url(origin)+'&officeVisit=2'
 
     def _permitted(self):
-        try:return (not self._halt.is_set() and time.monotonic()<min(self._deadline,self._authority_deadline)
+        try:return (not self._halt.is_set() and time.monotonic()<min(self._deadline,self._authority_deadline,self._native_receipt_deadline)
                     and (self._committed.is_set() or time.monotonic()<self._pending_deadline) and self.process.alive())
         except Exception:return False
 
@@ -81,12 +83,22 @@ class OfficeVisitRelay(OfficeRelay):
     def _clear(self):
         if self.workflow and self._receiver is not None:
             from office_workflow import WorkflowVisitPresenceReceiver
-            self._receiver=WorkflowVisitPresenceReceiver(self._receiver.binding,self.visit_id)
+            self._receiver=WorkflowVisitPresenceReceiver(self._receiver.binding,self.visit_id,closed=True)
             self._write()
         else:super()._clear()
 
     def _release_writer(self):
         with self._lock:super()._release_writer()
+
+    def _native_workflow_ack(self,phase):
+        if not self.workflow or self._receiver is None:return False
+        from office_workflow_ack import ack_path,read_native_ack
+        frame=self._receiver.view()
+        deadline=read_native_ack(ack_path(self.output_dir,AVATAR),frame,phase)
+        if deadline is None:return False
+        # Every accepted ack is bounded by its unchanged source timestamp/deadline.
+        self._native_receipt_deadline=min(deadline,self._receiver._native_deadline if phase=='applied' else deadline)
+        return True
 
     def _status(self):
         if not self._selection and time.monotonic()-self._issued>15:
@@ -95,7 +107,7 @@ class OfficeVisitRelay(OfficeRelay):
         view=None if self._receiver is None else self._receiver.view()
         return {'protocol':2,'avatars':[AVATAR],'visitId':self.visit_id,
                 'secretDigest':hashlib.sha256(base64.urlsafe_b64decode(self._secret+'=')).hexdigest() if self._secret else None,
-                'acknowledged':self._ack and self._permitted() and view is not None and view['identity']=='verified',
+                'acknowledged':self._ack and (not self.workflow or self._native_workflow_ack('applied')) and self._permitted() and view is not None and view['identity']=='verified',
                 'presence':view,
                 'expiresAt':self._expires,'leaseUntil':self._lease,
                 **({'activityProtocol':1} if self._activity_capable else {}),
@@ -108,7 +120,7 @@ class OfficeVisitRelay(OfficeRelay):
             self._receiver.accept_authorized(data)
             self._authority_deadline=self._receiver._native_deadline
             self._write()
-            self._ack=True
+            self._ack=False
             return
         expected=self._selection
         if not isinstance(data,dict) or any(data.get(k)!=v for k,v in expected.items()):raise ValueError('Scope mismatch')
@@ -140,6 +152,15 @@ class OfficeVisitRelay(OfficeRelay):
             if not self._attached.wait(.25):continue
             if not self._permitted():self._invalidate();return
             try:
+                if self.workflow and not self._workflow_prepared:
+                    while not self._halt.is_set():
+                        if not self._permitted():self._invalidate();return
+                        with self._lock:
+                            if not self._permitted():return
+                            if self._native_workflow_ack('prepared'):
+                                self._workflow_prepared=True
+                                break
+                        if self._halt.wait(.05):return
                 data=(self.client.workflow_presence if self.workflow else self.client.presence)(self.visit_id,self._secret,self._permitted)
                 with self._lock:
                     if not self._permitted():return
@@ -147,6 +168,15 @@ class OfficeVisitRelay(OfficeRelay):
             except Exception:
                 if not self._halt.is_set():self._invalidate()
                 return
+            if self.workflow:
+                while not self._halt.is_set():
+                    if not self._permitted():self._invalidate();return
+                    with self._lock:
+                        if not self._permitted():return
+                        if self._native_workflow_ack('applied'):
+                            self._ack=True
+                            break
+                    if self._halt.wait(.05):return
             # A browser lost before observing native ack cannot leave renewable polling.
             while not self._committed.wait(.05):
                 if not self._permitted():self._invalidate();return
@@ -235,9 +265,15 @@ class OfficeVisitRelay(OfficeRelay):
                 except OSError:self.reply(503,{'error':'local_write_unavailable'})
         try:
             (self.output_dir/(AVATAR+'.json')).unlink(missing_ok=True)
+            if self._workflow_capable:
+                from office_workflow_ack import ack_path
+                ack_path(self.output_dir,AVATAR).unlink(missing_ok=True)
             self._server=Server(('127.0.0.1',0),Handler);self.port=self._server.server_address[1]
             def monitor():
                 while not self._halt.wait(.25):
+                    if self.workflow:
+                        with self._lock:
+                            if self._workflow_prepared:self._native_workflow_ack('applied')
                     if not self._permitted():self._invalidate();return
             def project_expiry():
                 while not self._halt.wait(1):

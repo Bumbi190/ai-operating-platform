@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-11-18T10:45:31.163Z",
+  "repository": "Bumbi190/ai-operating-platform",
+  "project": "Omnira",
+  "task": "Omnira Office native workflow presence Blueprint saved leisure receiver",
+  "workId": "OFFICE-WORKFLOW-STATUS-20261118",
+  "proposedBranch": "feat/office-workflow-status-20261118",
+  "mainSha": "8f73dfc21be4bb9e3656e3bf53b5c651a9ea66f4",
+  "openPrCount": 123,
+  "worktreeCount": 272,
+  "decision": "review_required",
+  "code": "matching_local_branch",
+  "candidates": [],
+  "branchMatches": [],
+  "worktreeMatches": [
+    {
+      "branch": "feat/office-workflow-status-20261118",
+      "path": "D:/Projekt/Omnira/Worktrees/office-workflow-status-20261118",
+      "locked": false
+    }
+  ],
+  "reason": "Continue the owned existing Office branch at 77cf80b; no branch or PR creation.",
+  "limitations": "Metadata/local-name similarity is a hint; review actual file scope and agent ownership before new work.",
+  "sideEffects": "None. No branch, worktree, PR, commit, deployment or API mutation is performed."
+}

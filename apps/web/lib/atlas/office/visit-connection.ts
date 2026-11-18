@@ -82,7 +82,7 @@ export class OfficeVisitConnection {
       const now = Date.now() / 1000
       return data.protocol === 2 && data.visitId === this.visitId && data.acknowledged === true
         && data.workflowProtocol === 1 && data.readScope === 'workflow_state_v1'
-        && view?.schema === 'omnira.office.workflow-presence.v1' && view.scope === 'workflow_state_v1'
+        && view?.schema === 'omnira.office.workflow-presence.v1' && view.visit_state === 'active' && view.scope === 'workflow_state_v1'
         && view.visit_id === this.visitId && view.avatar_id === selection.avatarId
         && view.project_id === selection.projectId && view.agent_id === selection.agentId
         && view.identity === 'verified' && view.data_state === 'fresh'
@@ -176,7 +176,7 @@ export class OfficeVisitConnection {
   async stop(failed = false): Promise<void> {
     ++this.generation; this.clear(); this.confirmed = false
     const id = this.visitId; this.visitId = null
-    this.onState({ phase: failed ? 'unavailable' : 'stopped', message: failed ? 'Kontorsbesöket kunde inte verifieras · arbetsstatus okänd' : 'Frånkopplad · arbetsstatus okänd' })
+    this.onState({ phase: failed ? 'unavailable' : 'stopped', message: failed ? this.workflow ? 'Workflowbesöket kunde inte verifieras. Starta om Office innan du försöker igen.' : 'Kontorsbesöket kunde inte verifieras · arbetsstatus okänd' : 'Frånkopplad · arbetsstatus okänd' })
     if (id) await this.revoke(id)
   }
 }

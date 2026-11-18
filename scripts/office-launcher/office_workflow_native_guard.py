@@ -11,11 +11,12 @@ from office_launcher import OFFICE_MAP
 FOLDER = 'Saved/OfficeWorkflowInstall'
 ASSET = '/Game/OmniraGameplayV83/PrivateWorkflow/BP_OfficeWorkflowPresence'
 SOURCES = ('office_workflow_visit.py','office_workflow_native_guard.py','office_workflow.py',
-           'office_workflow_state.py','office_visit_relay.py','office_visit_client.py',
+           'office_workflow_state.py','office_workflow_ack.py','office_visit_relay.py','office_visit_client.py',
            'office_visit_process.py','office_launcher.py','office_install_guard.py',
            'office_presence.py','office_relay.py','office_activity.py')
 CHECKS = ('fresh_native_tick','busy_returns_home','idle_permits_leisure','pause_expiry_holds',
-          'wrong_binding_holds','wrong_scope_holds','legacy_presence_compatible')
+          'wrong_binding_holds','wrong_scope_holds','legacy_presence_compatible',
+          'native_prepared_ack','native_applied_ack','missing_native_ack_holds','same_process_rebind_refused')
 
 def _no_redirects(path):
     if any(p.is_symlink() or (hasattr(p,'is_junction') and p.is_junction()) for p in (path,*path.parents)):

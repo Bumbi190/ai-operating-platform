@@ -11,6 +11,7 @@ from test_office_visit import Lease, Source, P, A, AV
 from office_presence import AvatarBinding, write_presence
 from office_visit_relay import OfficeVisitRelay
 from office_workflow import WorkflowVisitPresenceReceiver, SCHEMA
+from workflow_ack_fixture import FixtureNativeAck
 
 class WorkflowSource(Source):
     state='idle'
@@ -61,6 +62,7 @@ class WorkflowVisitTests(unittest.TestCase):
         self.lease=Lease();self.source=WorkflowSource()
         self.relay=OfficeVisitRelay(Path(self.tmp.name),self.lease,self.source,workflow=True)
         self.relay.start();self.addCleanup(self.relay.stop)
+        self.native=FixtureNativeAck(Path(self.tmp.name)).start();self.addCleanup(self.native.stop)
     def payload(self,stage='prepare',scope='workflow_state_v1'):
         return {'protocol':2,'stage':stage,'visitId':self.call()[1]['visitId'],'avatarId':AV,'projectId':P,'agentId':A,'readScope':scope}
     def attach(self):return self.call('/attach',self.payload())
@@ -93,6 +95,11 @@ class WorkflowVisitTests(unittest.TestCase):
     def test_workflow_scope_is_refused_without_local_capability(self):
         self.relay._workflow_capable=False
         self.assertEqual(self.attach()[0],400);self.assertEqual(self.source.calls,0)
+    def test_absent_native_prepared_ack_never_polls_or_confirms(self):
+        self.native.stop();self.attach();time.sleep(.15)
+        self.assertEqual(self.source.calls,0);self.assertFalse(self.call()[1]['acknowledged'])
+        self.relay._pending_deadline=time.monotonic()-1;self.wait_for(lambda:self.relay._halt.is_set())
+        self.assertTrue(self.projection()['workflow_busy'])
     def test_source_error_or_wrong_binding_cannot_acknowledge_or_keep_idle(self):
         original=self.source.workflow_presence
         def wrong(*args):

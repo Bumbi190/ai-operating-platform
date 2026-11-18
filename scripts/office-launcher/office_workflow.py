@@ -9,17 +9,22 @@ from office_workflow_state import Binding, WorkflowStateReceiver
 SCHEMA = 'omnira.office.workflow-presence.v1'
 
 class WorkflowVisitPresenceReceiver(PresenceReceiver):
-    def __init__(self, binding, visit_id):
+    def __init__(self, binding, visit_id, *, closed=False):
         super().__init__(binding)
         self._policy = WorkflowStateReceiver(Binding(visit_id, binding.avatar_id,
                                                     binding.project_id, binding.agent_id), enabled=True)
         self._data = None
         self._native_deadline = -1.0
+        self._closed = closed
+        self._prepare_wall = time.time()
+        self._prepare_mono = time.monotonic()
+        self._prepare_until = self._prepare_wall + 15
 
     def accept_authorized(self, data):
         """Only caller: fixed HTTPS client inside an authorized, bound visit.
         Validation alone is not authentication; fixture clients are synthetic.
         """
+        if self._closed:raise ValueError('Workflow visit closed')
         wall, mono = time.time(), time.monotonic()
         projection = self._policy.accept_authorized(data, wall=wall, mono=mono)
         if projection.reason != 'authorized_server_decision':
@@ -38,14 +43,17 @@ class WorkflowVisitPresenceReceiver(PresenceReceiver):
         fresh = (self._data is not None and projection.reason == 'authorized_server_decision'
                  and wall < self._data['expires_at_unix'] and mono < self._native_deadline)
         # An invalid/unavailable/expired frame actively holds the native work gate.
+        fresh = fresh and not self._closed
         state = projection.state if fresh else 'unknown'
+        preparing = not self._closed and self._data is None and wall < self._prepare_until and mono < self._prepare_mono + 15
         return {
             'schema': SCHEMA, 'scope': 'workflow_state_v1',
+            'visit_state': 'active' if fresh else 'preparing' if preparing else 'closed',
             'visit_id': self._policy.binding.visit_id, 'avatar_id': self.binding.avatar_id,
             'project_id': self.binding.project_id, 'agent_id': self.binding.agent_id,
             'revision': self._data['revision'] if fresh else 0,
-            'observed_at_unix': self._data['observed_at_unix'] if fresh else 0,
-            'expires_at_unix': self._data['expires_at_unix'] if fresh else 0,
+            'observed_at_unix': self._data['observed_at_unix'] if fresh else self._prepare_wall if preparing else 0,
+            'expires_at_unix': self._data['expires_at_unix'] if fresh else self._prepare_until if preparing else 0,
             'workflow_state': state,
             'coverage': self._data['coverage'] if fresh else 'incomplete',
             'workflow_state_known': state in ('busy','idle'), 'workflow_busy': state != 'idle',

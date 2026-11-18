@@ -164,12 +164,12 @@ Alla paths nedan är relativa till `apps/web/` om inget annat anges.
 
 **Interfaces:** Konsumerar Tasks 1–5. Producerar verifieringsrapport med exakt commit, kommandon, faktiska resultat och tydligt kvarstående manuellt röstprov om det inte har genomförts.
 
-- [ ] Skriv integrationstest för skapa→läsa→uppdatera→avboka genom riktiga lokala SQL-funktioner, båda inputSource-värdena och source_move för socialt utkast/godkänt jobb. Behåll före/efter-assertions på ursprungliga approvals och jobbrader.
-- [ ] Kör `npm run test -- lib/calendar lib/atlas/conversation/calendar-effects.test.ts lib/qa/calendar-navigation.test.ts`, `npx playwright test --config playwright.calendar.config.ts`, `npm run typecheck` och nödvändiga schema-/migrationskontroller från Task 2.
-- [ ] Kör befintliga obligatoriska projektisolerings- och konversationskontroller för ändrade chat-/nav-filer. Ange exakta urval och verkliga fel i rapporten; gör inga orelaterade baselinefixar.
-- [ ] Granska hela ändringen med separat granskare enligt det genomförande André väljer. Åtgärda fynd och kör endast berörda kontroller igen.
-- [ ] Dokumentera att en Gantt-vy kan läsa samma start/slut/projekt/workStatus och att ingen andra planeringslagring byggts. Själva Gantt-gränssnittet markeras som kommande.
-- [ ] Commita det verifierade slutläget och rapporten.
+- [x] Skriv integrationstest för skapa→läsa→uppdatera→avboka genom riktiga lokala SQL-funktioner, båda inputSource-värdena och source_move för socialt utkast/godkänt jobb. Behåll före/efter-assertions på ursprungliga approvals och jobbrader.
+- [x] Kör `npm run test -- lib/calendar lib/atlas/conversation/calendar-effects.test.ts lib/qa/calendar-navigation.test.ts`, `npx playwright test --config playwright.calendar.config.ts`, `npm run typecheck` och nödvändiga schema-/migrationskontroller från Task 2.
+- [x] Kör befintliga obligatoriska projektisolerings- och konversationskontroller för ändrade chat-/nav-filer. Ange exakta urval och verkliga fel i rapporten; gör inga orelaterade baselinefixar.
+- [x] Granska hela ändringen med separat granskare enligt det genomförande André väljer. Åtgärda fynd och kör endast berörda kontroller igen.
+- [x] Dokumentera att en Gantt-vy kan läsa samma start/slut/projekt/workStatus och att ingen andra planeringslagring byggts. Själva Gantt-gränssnittet markeras som kommande.
+- [x] Commita det verifierade slutläget och rapporten.
 
 ## Task 7: Granskningsbar förhandsversion och driftsättning
 
@@ -189,4 +189,4 @@ Alla paths nedan är relativa till `apps/web/` om inget annat anges.
 - **Native:** samma agent implementerar tasks i ordning, med en separat slutgranskare. Rekommenderas här för lägre kostnad och eftersom tidskontrakt, privat åtkomst och källprojektioner behöver hållas samman.
 - **Subagent-driven:** färsk implementerare och granskare per task samt helhetsgranskning. Fler oberoende kontroller men fler agentkontexter och högre kostnad.
 
-Native valdes av André 2026-10-18T18:14:09Z. Tasks1–5 är genomförda; Task6:s riktade slutkontroller och den enda separata granskningen är klara med dokumenterade baselinefel. Den frysta helhetskörningen och Task7:s resultatgranskning/drift återstår. Se verifieringsrapporten för faktiska resultat.
+Native valdes av André 2026-10-18T18:14:09Z. Tasks1–6 är genomförda. Den frysta helhetskörningen och avgränsad jämförelse mot main är avslutade; faktiska breda baseline-/fixturfel redovisas utan orelaterade rättningar. Task7:s konkreta resultatgranskning, DB-anslutna text-/röstprov och drift återstår. Se verifieringsrapporten för faktiska resultat.

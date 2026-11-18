@@ -24,6 +24,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import { DESIGN_SKILL_TOOLS } from '@/lib/skills/atlas-tools'
+import { CALENDAR_TOOLS } from '@/lib/calendar/atlas-tools'
 import {AtlasConversationController} from '@/lib/atlas/conversation/controller'
 import { WEBSITE_BUILD_TOOLS } from '@/lib/website-build/atlas-tools'
 import {
@@ -468,7 +469,7 @@ describe('atlas chat · the route contract it speaks', () => {
     const start = normalizedRoute.indexOf('const TOOLS: Anthropic.Tool[] = [')
     expect(start).toBeGreaterThan(-1)
     const block = normalizedRoute.slice(start, normalizedRoute.indexOf('\n]\n', start))
-    const names = [...block.matchAll(/\bname: '([a-z_]+)'/g)].map((m) => m[1]).concat(DESIGN_SKILL_TOOLS.map(tool => tool.name), WEBSITE_BUILD_TOOLS.map(tool => tool.name))
+    const names = [...block.matchAll(/\bname: '([a-z_]+)'/g)].map((m) => m[1]).concat(CALENDAR_TOOLS.map(tool => tool.name), DESIGN_SKILL_TOOLS.map(tool => tool.name), WEBSITE_BUILD_TOOLS.map(tool => tool.name))
     expect(names.length).toBeGreaterThanOrEqual(15)
     expect(Object.keys(TOOL_LABELS).sort()).toEqual([...names].sort())
   })

@@ -9,29 +9,34 @@ export default function ForgotPasswordPage() {
   const [sent, setSent]       = useState(false)
   const [error, setError]     = useState<string | null>(null)
 
-  const supabase = createClient()
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError(null)
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      // Point directly at /update-password — no type-detection needed.
-      //
-      // Root cause of the original bug: Supabase PKCE recovery emails append only
-      // ?code=xxx to the redirectTo URL. There is no ?type=recovery in the URL; the
-      // flow type is encoded in the code-verifier cookie by the client SDK. Routing
-      // to /update-password makes the intent unambiguous without URL-param sniffing.
-      redirectTo: `${window.location.origin}/update-password`,
-    })
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        // Point directly at /update-password — no type-detection needed.
+        //
+        // Root cause of the original bug: Supabase PKCE recovery emails append only
+        // ?code=xxx to the redirectTo URL. There is no ?type=recovery in the URL; the
+        // flow type is encoded in the code-verifier cookie by the client SDK. Routing
+        // to /update-password makes the intent unambiguous without URL-param sniffing.
+        redirectTo: `${window.location.origin}/update-password`,
+      })
 
-    if (error) {
-      setError(error.message)
-    } else {
-      setSent(true)
+      if (error) {
+        setError(error.message)
+      } else {
+        setSent(true)
+      }
+    } catch {
+      // SDK/configuration failures may contain sensitive details; never echo them.
+      setError('Det gick inte att begära lösenordsåterställning. Försök igen senare.')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   return (

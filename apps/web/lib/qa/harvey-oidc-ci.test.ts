@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, existsSync, fstatSync, readSync, writeSync, symlinkSync, linkSync, renameSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { execFileSync, spawn } from 'node:child_process'
 import { resolve, dirname } from 'node:path'
 import { generateKeyPairSync, sign, verify } from 'node:crypto'
 import {
   CI_POLICY, readTrust, checkInvocation, checkEnvironment, checkRun, ownerReview,
   checkCertificate, inspectTar, checkArtifact, cleanBuildEnv, createAdapter, main,
+  JOURNAL_PREFIX, journalTrust, checkJournalPolicy,
 } from '../../scripts/harvey-oidc-ci.mjs'
 import { canonicalJson, digest, LEDGER_EXPORT_QUERY } from '../../scripts/migration-guard-ledger-attestation.mjs'
 import { inspectCanonicalMigrationFiles, REFERENCED_LEDGER_MIGRATIONS } from '../../scripts/migration-guard-policy.mjs'
@@ -34,7 +36,9 @@ function env() {
     GITHUB_ACTOR_ID: CI_POLICY.ownerId, GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF: CI_POLICY.ref,
     GITHUB_SHA: sha, GITHUB_WORKFLOW_SHA: sha, GITHUB_RUN_ATTEMPT: '1', GITHUB_RUN_ID: runId,
     GITHUB_WORKFLOW_REF: `${CI_POLICY.repo}/${CI_POLICY.workflow}@${CI_POLICY.ref}`, GH_TOKEN: 'synthetic-github-test-token',
-    BUILD_RUN_ID: buildRunId, BUILD_ARTIFACT_ID: artifactId, ARTIFACT_SHA256: '', LEDGER_JSON: '',
+    BUILD_RUN_ID: buildRunId, BUILD_ARTIFACT_ID: artifactId, ARTIFACT_SHA256: '', LEDGER_EXPORT_FILE: '', RUNNER_TEMP: '',
+    HARVEY_OIDC_JOURNAL_MODE: 'github-tags-v1', HARVEY_OIDC_JOURNAL_IMMUTABLE_RULESET_ID: '610',
+    HARVEY_OIDC_JOURNAL_CREATION_RULESET_ID: '611', HARVEY_OIDC_JOURNAL_CREATOR_APP_ID: '612',
     LEDGER_BUNDLE: '', RECEIPT_BUNDLE: '', PATH: process.env.PATH ?? '' }
 }
 function run(id = runId) {
@@ -67,8 +71,8 @@ function tar(name = 'output/config.json', kind = 48, content = '{"version":3}') 
   h.write('ustar\0', 257); h.write('00', 263); octal(148, 8, h.reduce((s, v) => s + v, 0))
   return Buffer.concat([h, data, Buffer.alloc((512 - data.length % 512) % 512), Buffer.alloc(1024)])
 }
-function fixture() {
-  const cwd = temp(), output = resolve(cwd, 'evidence'), journal = temp(), e: Record<string, string> & { NODE_ENV: 'test' } = env()
+function fixture(server = { refs: new Map<string, any>(), failCreate: false, loseReply: false, failPublish: false, publications: 0 }) {
+  const cwd = temp(), output = resolve(cwd, 'evidence'), e: Record<string, string> & { NODE_ENV: 'test' } = env()
   const policyPath = 'apps/web/scripts/migration-guard-policy.mjs'
   mkdirSync(dirname(resolve(cwd, policyPath)), { recursive: true }); writeFileSync(resolve(cwd, policyPath), 'synthetic policy bytes')
   const artifact = tar(), sourceDigest = digest(canonicalJson([{ path: policyPath, sha256: digest('synthetic policy bytes') }]))
@@ -81,11 +85,17 @@ function fixture() {
     sourceSha: sha, queryDigest: digest(LEDGER_EXPORT_QUERY), issuedAt: now - 10, expiresAt: now + 290,
     rows, contentDigest: digest(canonicalJson(rows)) }
   const zip = Buffer.from('synthetic immutable GitHub upload ZIP; no extraction occurs')
-  const binding = () => ({ kind: 'export', runId, sourceSha: sha, subjectDigest: digest(e.LEDGER_JSON),
+  const ledgerInput = { value: canonicalJson(ledger) }
+  e.RUNNER_TEMP = cwd; e.LEDGER_EXPORT_FILE = resolve(cwd,'harvey-oidc-secret/ledger.json')
+  mkdirSync(dirname(e.LEDGER_EXPORT_FILE),{mode:0o700})
+  const binding = () => ({ kind: 'export', runId, sourceSha: sha, subjectDigest: digest(ledgerInput.value),
     buildRunId, artifactId, artifactDigest: e.ARTIFACT_SHA256 })
-  e.ARTIFACT_SHA256 = manifest.artifactDigest; e.LEDGER_JSON = canonicalJson(ledger)
+  e.ARTIFACT_SHA256 = manifest.artifactDigest; ledgerInput.value = canonicalJson(ledger)
   const reviews: Record<string, any[]> = { [runId]: [review(binding())] }
+  const ruleConditions = { ref_name: { include: [JOURNAL_PREFIX + '*'], exclude: [] } }
   const facts: Record<string, any> = {
+    'rulesets/610': { id:610,target:'tag',enforcement:'active',conditions:ruleConditions,rules:[{type:'update'},{type:'deletion'}],bypass_actors:[] },
+    'rulesets/611': { id:611,target:'tag',enforcement:'active',conditions:ruleConditions,rules:[{type:'creation'}],bypass_actors:[{actor_type:'Integration',actor_id:612,bypass_mode:'always'}] },
     [`environments/${CI_POLICY.environment}`]: environment(),
     [`environments/${CI_POLICY.environment}/deployment-branch-policies?per_page=100`]: branches(),
     [`actions/runs/${runId}`]: run(), [`actions/runs/${buildRunId}`]: run(buildRunId),
@@ -100,6 +110,16 @@ function fixture() {
     if (file === 'gh' && args[0] === '--version') return 'gh version 2.102.0 (synthetic)\n'
     if (file === 'gh' && args[0] === 'api') {
       const path = args[args.length - 1].replace(`repos/${CI_POLICY.repo}/`, '')
+      if (path === 'git/refs') {
+        if(server.failCreate)throw Error('synthetic GitHub unavailable')
+        const body=JSON.parse(options.input)
+        if(server.refs.has(body.ref))throw Error('synthetic 422 duplicate ref')
+        const saved={ref:body.ref,object:{type:'commit',sha:body.sha}}
+        server.refs.set(body.ref,saved)
+        if(server.loseReply)throw Error('synthetic lost response after server commit')
+        return 'HTTP/2.0 201 Created\r\ncontent-type: application/json\r\n\r\n'+JSON.stringify(saved)
+      }
+      if(path.startsWith('git/ref/'))return JSON.stringify(server.refs.get('refs/'+path.slice('git/ref/'.length)))
       if (path.endsWith('/approvals')) return JSON.stringify(reviews[path.split('/')[2]] ?? [])
       if (path.endsWith('/zip')) return zip
       if (!(path in facts)) throw Error('unexpected synthetic API path')
@@ -117,6 +137,18 @@ function fixture() {
       if (!verify('sha256', Buffer.from(serialized), root.publicKey, Buffer.from(bundle.signature, 'base64')) || bundle.digest !== digest(raw)) throw Error('synthetic signature rejected')
       return JSON.stringify(bundle.results)
     }
+    if(file==='vercel') {
+      if(args[0]==='--version')return '50.0.0'
+      expect(args).toContain('--environment=preview'); expect(args).not.toContain('--prod')
+      expect(server.refs.size).toBe(1); expect(options.env.VERCEL_TOKEN).toBe('synthetic-publish-token')
+      server.publications++
+      if(server.failPublish)throw Error('synthetic deployment failure')
+      return 'https://harvey-oidc-test-synthetic-bumbi190s-projects.vercel.app'
+    }
+    if(file==='unzip' && args.some(a=>a.endsWith('proof.zip'))) {
+      const names=['artifact.tar','manifest.json','receipt.json','receipt.sigstore.json','verification-summary.json']
+      return args[0]==='-Z1' ? names.join('\n') : readFileSync(resolve(output,args[args.length-1]))
+    }
     if (file === 'unzip') return args[0] === '-Z1' ? 'manifest.json\nartifact.tar\n' : args[args.length - 1] === 'manifest.json' ? canonicalJson(manifest) : artifact
     if (file === 'npm') {
       expect(options.env.GH_TOKEN).toBeUndefined(); expect(options.env.SUPABASE_SERVICE_ROLE_KEY).toBeUndefined()
@@ -130,10 +162,10 @@ function fixture() {
     const results = certificate(Buffer.from(raw))
     writeFileSync(path, JSON.stringify({ results, digest: digest(raw), signature: sign('sha256', Buffer.from(canonicalJson(results)), root.privateKey).toString('base64') }))
   }
-  const adapter = () => createAdapter({ env: e, cwd, command, now: () => clock, readMigrations: () => fixtureMigrations })
+  const adapter = () => { writeFileSync(e.LEDGER_EXPORT_FILE,ledgerInput.value,{mode:0o600}); return createAdapter({ env: e, cwd, command, now: () => clock, readMigrations: () => fixtureMigrations }) }
   async function chain() {
     const a = adapter(); await a.prepare(output)
-    e.LEDGER_BUNDLE = resolve(cwd, 'ledger-bundle.json'); bundle(e.LEDGER_BUNDLE, e.LEDGER_JSON)
+    e.LEDGER_BUNDLE = resolve(cwd, 'ledger-bundle.json'); bundle(e.LEDGER_BUNDLE, ledgerInput.value)
     await a.guard(output)
     e.RECEIPT_BUNDLE = resolve(cwd, 'receipt-bundle.json'); bundle(e.RECEIPT_BUNDLE, readFileSync(resolve(output, 'receipt.json'), 'utf8'))
     await a.evidence(output)
@@ -146,7 +178,13 @@ function fixture() {
     reviews['901'] = [review({ kind: 'receipt', runId: '901', receiptRunId: runId, sourceSha: sha,
       subjectDigest: digest(raw), artifactDigest: digest(artifact), targetProject: CI_POLICY.targetProject, target: 'preview' })]
   }
-  return { cwd, output, journal, e, artifact, manifest, ledger, facts, reviews, command, adapter, bundle, chain, approveReceipt,
+  function publication() {
+    e.PROOF_RUN_ID=runId; e.PROOF_ARTIFACT_ID='701'; e.HARVEY_OIDC_PUBLICATION_ENABLED='true'; e.VERCEL_TOKEN='synthetic-publish-token'
+    facts[`actions/runs/${runId}/jobs?filter=all&per_page=100`]={total_count:1,jobs:[{name:'oidc_attest',conclusion:'success',run_attempt:1}]}
+    facts['actions/artifacts/701']={id:701,expired:false,size_in_bytes:zip.length,workflow_run:{id:Number(runId),head_sha:sha},name:`harvey-oidc-proof-${sha}-${runId}`,digest:'sha256:'+digest(zip)}
+    return resolve(cwd,'publication')
+  }
+  return { cwd, output, e, artifact, manifest, ledger, ledgerInput, server, facts, reviews, command, adapter, bundle, chain, approveReceipt, publication,
     advance: (time: number) => { clock = time }, binding }
 }
 const deny = /verification failed|attestation verification failed|EEXIST/
@@ -229,17 +267,17 @@ describe('whole CI chain through real Guard and receipt model, mocked GitHub/CLI
   })
   it('requires a later exact receipt approval and reserves it only once', async () => {
     const f = fixture(), a = await f.chain(); f.approveReceipt()
-    expect(await a.verifyPublication({ directory: f.output, approvalRunId: '901', journalDirectory: f.journal })).toMatchObject({ status: 'PASS', reserved: true, deployed: false, platformEnforced: false })
-    await expect(a.verifyPublication({ directory: f.output, approvalRunId: '901', journalDirectory: f.journal })).rejects.toThrow(deny)
+    expect(await a.verifyPublication({ directory: f.output, approvalRunId: '901' })).toMatchObject({ status: 'PASS', reserved: true, deployed: false, platformEnforced: false })
+    await expect(a.verifyPublication({ directory: f.output, approvalRunId: '901' })).rejects.toThrow(deny)
   })
   it('does not treat export approval as approval of the later receipt', async () => {
     const f = fixture(), a = await f.chain()
-    await expect(a.verifyPublication({ directory: f.output, approvalRunId: runId, journalDirectory: f.journal })).rejects.toThrow(deny)
+    await expect(a.verifyPublication({ directory: f.output, approvalRunId: runId })).rejects.toThrow(deny)
   })
   it('denies expired receipts and produces no reservation', async () => {
     const f = fixture(), a = await f.chain(); f.approveReceipt(); f.advance(now + 301)
-    await expect(a.verifyPublication({ directory: f.output, approvalRunId: '901', journalDirectory: f.journal })).rejects.toThrow(deny)
-    expect(readdirSync(f.journal)).toEqual([])
+    await expect(a.verifyPublication({ directory: f.output, approvalRunId: '901' })).rejects.toThrow(deny)
+    expect(f.server.refs.size).toBe(0)
   })
   it.each(['head_sha','run_attempt','conclusion','path'])('rejects wrong completed build %s', async key => {
     const f = fixture(); f.facts[`actions/runs/${buildRunId}`][key] = 'wrong'; await expect(f.adapter().prepare(f.output)).rejects.toThrow(deny)
@@ -252,22 +290,22 @@ describe('whole CI chain through real Guard and receipt model, mocked GitHub/CLI
   })
   it.each(['project','sourceSha','contentDigest','queryDigest','expiresAt'])('rejects ledger mismatch %s even with a synthetic signature', async key => {
     const f = fixture(), ledger: any = structuredClone(f.ledger); ledger[key] = key === 'expiresAt' ? now - 1 : 'wrong'
-    f.e.LEDGER_JSON = canonicalJson(ledger); f.reviews[runId] = [review(f.binding())]
+    f.ledgerInput.value = canonicalJson(ledger); f.reviews[runId] = [review(f.binding())]
     await expect(f.chain()).rejects.toThrow(deny)
   })
   it('refuses extra ledger fields instead of uploading arbitrary owner input', async () => {
-    const f = fixture(); f.e.LEDGER_JSON = canonicalJson({ ...f.ledger, privateKey: 'synthetic forbidden field' })
+    const f = fixture(); f.ledgerInput.value = canonicalJson({ ...f.ledger, privateKey: 'synthetic forbidden field' })
     f.reviews[runId] = [review(f.binding())]
     await expect(f.adapter().prepare(f.output)).rejects.toThrow(deny)
   })
   it('rejects owner-approved ledger SQL tampering through the actual Guard', async () => {
     const f = fixture(), ledger = structuredClone(f.ledger); ledger.rows[0].name = 'fabricated_migration'
-    ledger.contentDigest = digest(canonicalJson(ledger.rows)); f.e.LEDGER_JSON = canonicalJson(ledger); f.reviews[runId] = [review(f.binding())]
+    ledger.contentDigest = digest(canonicalJson(ledger.rows)); f.ledgerInput.value = canonicalJson(ledger); f.reviews[runId] = [review(f.binding())]
     await expect(f.chain()).rejects.toThrow(deny)
   })
   it('rejects a mutated signature before returning a trusted origin', async () => {
     const f = fixture(), a = f.adapter(); await a.prepare(f.output)
-    f.e.LEDGER_BUNDLE = resolve(f.cwd, 'bad.json'); f.bundle(f.e.LEDGER_BUNDLE, f.e.LEDGER_JSON)
+    f.e.LEDGER_BUNDLE = resolve(f.cwd, 'bad.json'); f.bundle(f.e.LEDGER_BUNDLE, f.ledgerInput.value)
     const b = JSON.parse(readFileSync(f.e.LEDGER_BUNDLE, 'utf8')); b.signature = Buffer.alloc(256).toString('base64'); writeFileSync(f.e.LEDGER_BUNDLE, JSON.stringify(b))
     await expect(a.guard(f.output)).rejects.toThrow()
   })
@@ -297,7 +335,12 @@ describe('whole CI chain through real Guard and receipt model, mocked GitHub/CLI
     const rootPath = resolve(__dirname, '../../../..')
     const workflow = readFileSync(resolve(rootPath, '.github/workflows/migration-guard-integrity.yml'), 'utf8')
     expect(workflow).toContain('environment: harvey-oidc-owner-once')
-    expect(workflow).not.toMatch(/VERCEL_TOKEN|SUPABASE_SERVICE_ROLE_KEY|vercel\s+deploy|--prod\b/)
+    expect(workflow).not.toMatch(/SUPABASE_SERVICE_ROLE_KEY|--prod\b|inputs\.ledger_json/)
+    expect(workflow).toContain("inputs.oidc_phase == 'publish-preview'")
+    expect(workflow).toContain('HARVEY_OIDC_PUBLICATION_ENABLED:')
+    expect(workflow).toContain('secrets.HARVEY_OIDC_LEDGER_EXPORT_JSON')
+    const upload = workflow.slice(workflow.indexOf('name: harvey-oidc-proof-'),workflow.indexOf('name: Always remove'))
+    expect(upload).not.toMatch(/\/ledger\.json|\/binding\.json|\/ledger\.sigstore\.json/)
     expect(workflow).toContain('HARVEY_OIDC_ENVIRONMENT_ID:')
     const code = readFileSync(resolve(__dirname, '../../scripts/harvey-oidc-ci.mjs'), 'utf8')
     expect(code).not.toMatch(/MIGRATION_GUARD_OVERRIDE|fetch\(|createClient\(/)
@@ -308,7 +351,7 @@ describe('attestation file identity and immutable descriptor snapshots', () => {
   async function ready() {
     const f = fixture(), a = f.adapter(); await a.prepare(f.output)
     f.e.LEDGER_BUNDLE = resolve(f.cwd, 'ledger-bundle.json')
-    f.bundle(f.e.LEDGER_BUNDLE, f.e.LEDGER_JSON)
+    f.bundle(f.e.LEDGER_BUNDLE, f.ledgerInput.value)
     return { f, a }
   }
   function intercept(f: ReturnType<typeof fixture>, action: (args: string[], options: any, result: () => string) => string) {
@@ -333,7 +376,7 @@ describe('attestation file identity and immutable descriptor snapshots', () => {
       expect(readFileSync(proof)).toEqual(readFileSync(f.e.LEDGER_BUNDLE))
       descriptors = options.stdio.slice(3)
       expect(descriptors).toHaveLength(2)
-      expect(fdBytes(descriptors[0]).toString()).toBe(f.e.LEDGER_JSON)
+      expect(fdBytes(descriptors[0]).toString()).toBe(f.ledgerInput.value)
       return result()
     })
     await a.guard(f.output)
@@ -341,7 +384,7 @@ describe('attestation file identity and immutable descriptor snapshots', () => {
   })
   it('never reuses a preseeded predictable subject cache', async () => {
     const { f, a } = await ready()
-    const oldSubject = resolve(f.cwd, '.subject-' + digest(f.e.LEDGER_JSON) + '.json')
+    const oldSubject = resolve(f.cwd, '.subject-' + digest(f.ledgerInput.value) + '.json')
     writeFileSync(oldSubject, 'attacker-controlled preseed')
     await a.guard(f.output)
     expect(readFileSync(oldSubject, 'utf8')).toBe('attacker-controlled preseed')
@@ -378,12 +421,15 @@ describe('attestation file identity and immutable descriptor snapshots', () => {
   })
   it('keeps the verified receipt bundle after its original path is replaced', async () => {
     const f = fixture(), a = await f.chain()
-    // Re-run only evidence in a fresh result directory, retaining the validated inputs.
+    // Reconstruct synthetic private inputs: production evidence() deliberately purges them.
+    writeFileSync(resolve(f.output,'ledger.json'),f.ledgerInput.value)
+    writeFileSync(resolve(f.output,'binding.json'),canonicalJson(f.binding()))
+    writeFileSync(resolve(f.output,'ledger.sigstore.json'),readFileSync(f.e.LEDGER_BUNDLE))
     rmSync(resolve(f.output, 'verification-summary.json')); rmSync(resolve(f.output, 'receipt.sigstore.json'))
     const original = readFileSync(f.e.RECEIPT_BUNDLE)
     intercept(f, (args, options, result) => {
       const verified = result()
-      if (args[args.indexOf('--bundle') + 1] === f.e.RECEIPT_BUNDLE || (options.stdio?.[3] && fdBytes(options.stdio[3]).toString() !== f.e.LEDGER_JSON)) {
+      if (args[args.indexOf('--bundle') + 1] === f.e.RECEIPT_BUNDLE || (options.stdio?.[3] && fdBytes(options.stdio[3]).toString() !== f.ledgerInput.value)) {
         writeFileSync(f.e.RECEIPT_BUNDLE, 'unverified replacement')
       }
       return verified
@@ -442,15 +488,15 @@ describe('attestation file identity and immutable descriptor snapshots', () => {
   it('refuses modified evidence before creating a publication reservation', async () => {
     const f = fixture(), a = await f.chain(); f.approveReceipt()
     writeFileSync(resolve(f.output, 'artifact.tar'), tar('output/config.json', 48, '{"version":3,"changed":true}'))
-    await expect(a.verifyPublication({ directory: f.output, approvalRunId: '901', journalDirectory: f.journal })).rejects.toThrow(deny)
-    expect(readdirSync(f.journal)).toEqual([])
+    await expect(a.verifyPublication({ directory: f.output, approvalRunId: '901' })).rejects.toThrow(deny)
+    expect(f.server.refs.size).toBe(0)
   })
 })
 
 describe('private gh-compatible bundle snapshot cannot be substituted', () => {
   it.each(['regular-file','symlink'])('rejects a %s replacement after verifier returns', async kind => {
     const f = fixture(), a = f.adapter(); await a.prepare(f.output)
-    f.e.LEDGER_BUNDLE = resolve(f.cwd, 'proof.json'); f.bundle(f.e.LEDGER_BUNDLE, f.e.LEDGER_JSON)
+    f.e.LEDGER_BUNDLE = resolve(f.cwd, 'proof.json'); f.bundle(f.e.LEDGER_BUNDLE, f.ledgerInput.value)
     const original = f.command.getMockImplementation()!
     f.command.mockImplementation((file: string, args: string[], options: any = {}) => {
       const result = original(file, args, options)
@@ -465,4 +511,147 @@ describe('private gh-compatible bundle snapshot cannot be substituted', () => {
     await expect(a.guard(f.output)).rejects.toThrow()
     expect(existsSync(resolve(f.output, 'receipt.json'))).toBe(false)
   })
+})
+
+
+
+describe('GitHub create-only journal and publication boundary (synthetic API)', () => {
+  async function ready() { const f=fixture(); const a=await f.chain(); f.approveReceipt(); return {f,a} }
+  it('purges raw ledger and binding before proof publication', async () => {
+    const {f}=await ready()
+    for(const name of ['ledger.json','binding.json','ledger.sigstore.json'])expect(existsSync(resolve(f.output,name))).toBe(false)
+    expect(existsSync(f.e.LEDGER_EXPORT_FILE)).toBe(false)
+    for(const name of readdirSync(f.output))expect(readFileSync(resolve(f.output,name)).includes(Buffer.from(f.ledgerInput.value))).toBe(false)
+  })
+  it('rejects the old raw ledger environment transport',async()=>{
+    const f=fixture(); f.e.LEDGER_JSON=f.ledgerInput.value
+    await expect(f.adapter().prepare(f.output)).rejects.toThrow(deny)
+  })
+  it('preserves the maximum 300 second ledger lifetime',async()=>{
+    const f=fixture(); f.ledgerInput.value=canonicalJson({...f.ledger,expiresAt:now+291}); f.reviews[runId]=[review(f.binding())]
+    await expect(f.chain()).rejects.toThrow(deny)
+  })
+  it.each(['HARVEY_OIDC_JOURNAL_MODE','HARVEY_OIDC_JOURNAL_IMMUTABLE_RULESET_ID','HARVEY_OIDC_JOURNAL_CREATION_RULESET_ID','HARVEY_OIDC_JOURNAL_CREATOR_APP_ID'])('denies missing journal trust %s',async key=>{
+    const {f,a}=await ready(); delete f.e[key]
+    await expect(a.verifyPublication({directory:f.output,approvalRunId:'901'})).rejects.toThrow(deny)
+    expect(f.server.refs.size).toBe(0)
+  })
+  it.each(['enforcement','target','conditions','bypass_actors','rules'])('rejects mutable or bypassable immutable policy %s',async key=>{
+    const {f,a}=await ready(); f.facts['rulesets/610'][key]=null
+    await expect(a.verifyPublication({directory:f.output,approvalRunId:'901'})).rejects.toThrow(deny)
+    expect(f.server.refs.size).toBe(0)
+  })
+  it('denies a creator bypass on the immutable ruleset',async()=>{
+    const {f,a}=await ready(); f.facts['rulesets/610'].bypass_actors=f.facts['rulesets/611'].bypass_actors
+    await expect(a.verifyPublication({directory:f.output,approvalRunId:'901'})).rejects.toThrow(deny)
+  })
+  it('denies extra creator actors and wildcard exclusions',()=>{
+    const f=fixture(), pins=journalTrust(f.e)
+    f.facts['rulesets/611'].bypass_actors.push({actor_type:'RepositoryRole',actor_id:5,bypass_mode:'always'})
+    expect(()=>checkJournalPolicy(f.facts['rulesets/610'],f.facts['rulesets/611'],pins)).toThrow(deny)
+  })
+  it('accepts exactly one concurrent claim, shared across separate adapters',async()=>{
+    const {f}=await ready(); const a=f.adapter(),b=f.adapter()
+    const results=await Promise.allSettled([a,b].map(x=>x.verifyPublication({directory:f.output,approvalRunId:'901'})))
+    expect(results.filter(x=>x.status==='fulfilled')).toHaveLength(1)
+    expect(results.filter(x=>x.status==='rejected')).toHaveLength(1)
+    expect(f.server.refs.size).toBe(1)
+    await expect(f.adapter().verifyPublication({directory:f.output,approvalRunId:'901'})).rejects.toThrow()
+  })
+  it('fails on unavailable journal before invoking publication',async()=>{
+    const {f}=await ready(); f.server.failCreate=true
+    await expect(f.adapter().publish(f.publication())).rejects.toThrow()
+    expect(f.server.publications).toBe(0)
+  })
+  it('burns an uncertain reservation and never adopts an existing reference',async()=>{
+    const {f,a}=await ready(); f.server.loseReply=true
+    await expect(a.verifyPublication({directory:f.output,approvalRunId:'901'})).rejects.toThrow()
+    expect(f.server.refs.size).toBe(1); f.server.loseReply=false
+    await expect(f.adapter().verifyPublication({directory:f.output,approvalRunId:'901'})).rejects.toThrow()
+    expect(f.server.publications).toBe(0)
+  })
+  it('runs one preview command only after exact verification and reservation',async()=>{
+    const {f}=await ready(); const result=await f.adapter().publish(f.publication())
+    expect(result).toMatchObject({deployed:true,reserved:true,platformEnforced:false})
+    expect(f.server.publications).toBe(1); expect(f.server.refs.size).toBe(1)
+    const calls=f.command.mock.calls.filter(c=>c[0]==='vercel'&&c[1][0]==='deploy')
+    expect(calls).toHaveLength(1)
+    expect(calls[0][2].env).not.toHaveProperty('GH_TOKEN')
+  })
+  it('never retries or releases the claim after a failed deployment',async()=>{
+    const {f}=await ready(); f.server.failPublish=true
+    await expect(f.adapter().publish(f.publication())).rejects.toThrow()
+    expect(f.server.refs.size).toBe(1); expect(f.server.publications).toBe(1)
+    f.server.failPublish=false
+    await expect(f.adapter().publish(resolve(f.cwd,'second-host'))).rejects.toThrow()
+    expect(f.server.publications).toBe(1)
+  })
+  it('denies publication without explicit live enablement',async()=>{
+    const {f}=await ready(); const output=f.publication(); delete f.e.HARVEY_OIDC_PUBLICATION_ENABLED
+    await expect(f.adapter().publish(output)).rejects.toThrow(deny); expect(f.server.refs.size).toBe(0)
+  })
+  it.each(['head_sha','path','actor','run_attempt'])('denies wrong proof origin %s before reservation',async key=>{
+    const {f}=await ready(); const output=f.publication(); f.facts[`actions/runs/${runId}`][key]='wrong'
+    await expect(f.adapter().publish(output)).rejects.toThrow(deny); expect(f.server.refs.size).toBe(0)
+  })
+  it.each(['digest','workflow_run','name','expired'])('denies wrong proof artifact %s',async key=>{
+    const {f}=await ready(); const output=f.publication(); f.facts['actions/artifacts/701'][key]='wrong'
+    await expect(f.adapter().publish(output)).rejects.toThrow(deny); expect(f.server.refs.size).toBe(0)
+  })
+})
+
+
+describe('journal cross-host failures and actual local Git CAS',()=>{
+  it('retains the same claim between independent publishing hosts',async()=>{
+    const first=fixture(),second=fixture(first.server)
+    const a=await first.chain(),b=await second.chain();first.approveReceipt();second.approveReceipt()
+    expect(first.cwd).not.toBe(second.cwd)
+    await a.verifyPublication({directory:first.output,approvalRunId:'901'})
+    await expect(b.verifyPublication({directory:second.output,approvalRunId:'901'})).rejects.toThrow(deny)
+    expect(first.server.refs.size).toBe(1)
+  })
+  it('burns the grant when the saved policy changes during reservation',async()=>{
+    const f=fixture(),a=await f.chain();f.approveReceipt()
+    const original=f.command.getMockImplementation()!
+    f.command.mockImplementation((file,args,options)=>{
+      const result=original(file,args,options)
+      if(file==='gh'&&args.includes('POST'))f.facts['rulesets/610'].enforcement='disabled'
+      return result
+    })
+    await expect(a.verifyPublication({directory:f.output,approvalRunId:'901'})).rejects.toThrow(deny)
+    expect(f.server.refs.size).toBe(1);expect(f.server.publications).toBe(0)
+  })
+  it('does not interpret a non-201 response as permission to publish',async()=>{
+    const f=fixture(),a=await f.chain();f.approveReceipt()
+    const original=f.command.getMockImplementation()!
+    f.command.mockImplementation((file,args,options)=>{
+      const result=original(file,args,options)
+      return file==='gh'&&args.includes('POST')?String(result).replace('201 Created','200 OK'):result
+    })
+    await expect(a.verifyPublication({directory:f.output,approvalRunId:'901'})).rejects.toThrow(deny)
+    expect(f.server.publications).toBe(0)
+  })
+  it('actual local Git permits one concurrent zero-old-OID creation, not GitHub ruleset proof',async()=>{
+    const repo=temp();execFileSync('git',['init','--bare',repo],{stdio:'ignore'})
+    const oid=execFileSync('git',['--git-dir',repo,'hash-object','-w','--stdin'],{input:'non-sensitive local CAS fixture',encoding:'utf8'}).trim()
+    const ref=JOURNAL_PREFIX+'b'.repeat(64),args=['--git-dir',repo,'update-ref',ref,oid,'0'.repeat(40)]
+    const attempts=await Promise.all(Array.from({length:8},()=>new Promise<number|null>((ok,no)=>{
+      const child=spawn('git',args,{stdio:'ignore'});child.on('error',no);child.on('exit',ok)
+    })))
+    expect(attempts.filter(code=>code===0)).toHaveLength(1)
+    expect(attempts.filter(code=>code!==0)).toHaveLength(7)
+    expect(()=>execFileSync('git',args,{stdio:'ignore'})).toThrow()
+  })
+})
+
+
+it('rejects any proof ZIP containing raw ledger rather than sanitized evidence',async()=>{
+  const f=fixture();await f.chain();f.approveReceipt();const output=f.publication()
+  const original=f.command.getMockImplementation()!
+  f.command.mockImplementation((file,args,options)=>{
+    const result=original(file,args,options)
+    return file==='unzip'&&args[0]==='-Z1'&&args[1].endsWith('proof.zip')?result+'\nledger.json':result
+  })
+  await expect(f.adapter().publish(output)).rejects.toThrow(deny)
+  expect(f.server.refs.size).toBe(0);expect(f.server.publications).toBe(0)
 })

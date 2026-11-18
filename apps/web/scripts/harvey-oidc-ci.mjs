@@ -103,6 +103,29 @@ export function checkCertificate(results, trust, runId, bytes, now) {
     subjectDigest: digest(bytes) }
 }
 
+// Proposed GitHub journal policy; live rulesets require separate owner approval/testing.
+export const JOURNAL_PREFIX = 'refs/tags/harvey-oidc-once/'
+export function journalTrust(env) {
+  const immutable = env.HARVEY_OIDC_JOURNAL_IMMUTABLE_RULESET_ID
+  const creator = env.HARVEY_OIDC_JOURNAL_CREATION_RULESET_ID
+  const app = env.HARVEY_OIDC_JOURNAL_CREATOR_APP_ID
+  requireOk(env.HARVEY_OIDC_JOURNAL_MODE === 'github-tags-v1' &&
+    [immutable, creator, app].every(v => ID.test(v ?? '')) && immutable !== creator)
+  return { immutable, creator, app }
+}
+export function checkJournalPolicy(immutable, creator, trust) {
+  const common = rule => rule?.target === 'tag' && rule.enforcement === 'active' &&
+    rule.conditions?.ref_name?.include?.length === 1 &&
+    rule.conditions.ref_name.include[0] === JOURNAL_PREFIX + '*' &&
+    Array.isArray(rule.conditions.ref_name.exclude) && rule.conditions.ref_name.exclude.length === 0
+  requireOk(common(immutable) && common(creator) && String(immutable.id) === trust.immutable &&
+    String(creator.id) === trust.creator && immutable.bypass_actors?.length === 0 &&
+    immutable.rules?.length === 2 && ['update','deletion'].every(t => immutable.rules.some(r => r.type === t)) &&
+    creator.rules?.length === 1 && creator.rules[0].type === 'creation' && creator.bypass_actors?.length === 1 &&
+    creator.bypass_actors[0].actor_type === 'Integration' &&
+    String(creator.bypass_actors[0].actor_id) === trust.app && creator.bypass_actors[0].bypass_mode === 'always')
+}
+
 // Regular files only; build packing dereferences links. Rejects PAX/GNU extensions and traversal.
 export function inspectTar(bytes) {
   requireOk(Buffer.isBuffer(bytes) && bytes.length > 0 && bytes.length <= MAX_BYTES && bytes.length % 512 === 0)
@@ -160,14 +183,14 @@ const runCommand = (file, args, options = {}) => {
 
 
 // Read through one descriptor: a pathname/type check must never authorize a later reopen.
-function readEvidenceFile(path) {
+function readEvidenceFile(path, allowEmpty = false) {
   let fd
   try {
     requireOk(isAbsolute(path))
     fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0))
     const before = fstatSync(fd), entry = lstatSync(path)
     requireOk(before.isFile() && entry.isFile() && before.nlink === 1 &&
-      before.dev === entry.dev && before.ino === entry.ino && before.size > 0 && before.size <= MAX_BYTES)
+      before.dev === entry.dev && before.ino === entry.ino && (allowEmpty || before.size > 0) && before.size <= MAX_BYTES)
     const bytes = readFileSync(fd), after = fstatSync(fd)
     requireOk(before.size === bytes.length && after.size === before.size &&
       after.mtimeMs === before.mtimeMs && after.ctimeMs === before.ctimeMs)
@@ -272,6 +295,16 @@ export function createAdapter({ env = process.env, cwd = process.cwd(), command 
     const { result, bundleBytes } = verifySignature(subject, bundle, runId)
     return { ...result, ownerApprovedDigest: digest(subject), approvalId, bundleBytes }
   }
+  function privateLedgerPath() {
+    requireOk(isAbsolute(env.RUNNER_TEMP ?? '') && !env.LEDGER_JSON && !env.HARVEY_OIDC_LEDGER_EXPORT_JSON)
+    const path = resolve(env.RUNNER_TEMP, 'harvey-oidc-secret/ledger.json')
+    requireOk(env.LEDGER_EXPORT_FILE === path)
+    return path
+  }
+  function purgeLedger(directory) {
+    for (const name of ['ledger.json','binding.json','ledger.sigstore.json']) rmSync(resolve(directory, name), { force: true })
+    rmSync(privateLedgerPath(), { force: true })
+  }
   async function build(output) {
     await preflight()
     const before = sourceDigest(), pinnedCli = env.HARVEY_OIDC_VERCEL_CLI_VERSION
@@ -283,7 +316,7 @@ export function createAdapter({ env = process.env, cwd = process.cwd(), command 
       installCommand: 'npm ci' } }
     mkdirSync(resolve(cwd, '.vercel')); writeFileSync(resolve(cwd, '.vercel/project.json'), JSON.stringify(settings))
     const childEnv = cleanBuildEnv(env)
-    command('npm', ['exec', '--yes', '--package', `vercel@${pinnedCli}`, '--', 'vercel', 'build', '--yes', '--target=preview'],
+    command('npm', ['exec', '--yes', '--package', `vercel@${pinnedCli}`, '--', 'vercel', 'build', '--yes', '--environment=preview'],
       { cwd, env: childEnv, timeout: 1500000 })
     requireOk(sourceDigest() === before)
     const built = resolve(cwd, '.vercel/output'), config = JSON.parse(readFileSync(resolve(built, 'config.json'), 'utf8'))
@@ -313,7 +346,7 @@ export function createAdapter({ env = process.env, cwd = process.cwd(), command 
     const zip = command('gh', ['api', '--hostname', 'github.com', '--method', 'GET', `repos/${CI_POLICY.repo}/actions/artifacts/${artifactId}/zip`],
       { cwd, env: { ...cleanBuildEnv(env), GH_TOKEN: env.GH_TOKEN, GH_HOST: 'github.com' }, encoding: null })
     requireOk(Buffer.isBuffer(zip) && `sha256:${digest(zip)}` === meta.digest)
-    mkdirSync(output, { recursive: true }); const zipPath = resolve(output, 'build.zip')
+    mkdirSync(output, { recursive: true, mode: 0o700 }); const zipPath = resolve(output, 'build.zip')
     writeFileSync(zipPath, zip, { flag: 'wx', mode: 0o600 })
     const names = command('unzip', ['-Z1', zipPath], { env: cleanBuildEnv(env) }).trim().split('\n').sort()
     requireOk(canonicalJson(names) === canonicalJson(['artifact.tar','manifest.json']))
@@ -322,7 +355,10 @@ export function createAdapter({ env = process.env, cwd = process.cwd(), command 
     const manifest = parse(rawManifest), ctx = context(env.ARTIFACT_SHA256, manifest)
     requireOk(manifest.buildRunId === buildRunId && manifest.sourceDigest === sourceDigest())
     checkArtifact(artifact, manifest, ctx)
-    const raw = env.LEDGER_JSON; requireOk(typeof raw === 'string' && raw.length <= 65000)
+    const inputPath = privateLedgerPath()
+    const stat = lstatSync(inputPath)
+    requireOk(process.platform !== 'linux' || (stat.mode & 0o077) === 0)
+    const raw = readEvidenceFile(inputPath).toString('utf8'); requireOk(raw.length <= 65000)
     const ledger = parse(raw)
     const exactKeys = (value, keys) => canonicalJson(Object.keys(value).sort()) === canonicalJson(keys.sort())
     requireOk(exactKeys(ledger, ['schema','source','project','sourceSha','queryDigest','issuedAt','expiresAt','rows','contentDigest']) &&
@@ -373,10 +409,73 @@ export function createAdapter({ env = process.env, cwd = process.cwd(), command 
       runId: body.runId, receiptDigest: digest(bytes), artifactDigest: body.artifactDigest, expiresAt: body.expiresAt,
       platformEnforced: false }
     writeFileSync(resolve(directory, 'verification-summary.json'), canonicalJson(summary), { flag: 'wx', mode: 0o600 })
+    purgeLedger(directory)
     return summary
   }
-  // This verifies and reserves; it NEVER calls Vercel. The journal must persist on the trusted publisher.
-  async function verifyPublication({ directory, approvalRunId, journalDirectory }) {
+  async function downloadProof(output) {
+    await preflight()
+    const id = env.PROOF_ARTIFACT_ID, runId = env.PROOF_RUN_ID
+    requireOk(ID.test(id ?? '') && ID.test(runId ?? ''))
+    checkRun(api(`actions/runs/${runId}`), trust, runId, true)
+    const jobs = api(`actions/runs/${runId}/jobs?filter=all&per_page=100`)
+    requireOk(jobs.total_count <= 100 && jobs.jobs?.some(j => j.name === 'oidc_attest' && j.conclusion === 'success' && j.run_attempt === 1))
+    const meta = api(`actions/artifacts/${id}`)
+    requireOk(String(meta.id) === id && meta.expired === false && meta.size_in_bytes <= MAX_BYTES &&
+      meta.workflow_run?.id === Number(runId) && meta.workflow_run?.head_sha === trust.sha &&
+      meta.name === `harvey-oidc-proof-${trust.sha}-${runId}` && /^sha256:[a-f0-9]{64}$/.test(meta.digest ?? ''))
+    const zip = gh(['api','--hostname','github.com','--method','GET',`repos/${CI_POLICY.repo}/actions/artifacts/${id}/zip`], { encoding: null })
+    requireOk(Buffer.isBuffer(zip) && 'sha256:' + digest(zip) === meta.digest)
+    mkdirSync(output, { mode: 0o700 }); const archive = resolve(output, 'proof.zip')
+    writeFileSync(archive, zip, { flag: 'wx', mode: 0o600 })
+    const allowed = ['artifact.tar','manifest.json','receipt.json','receipt.sigstore.json','verification-summary.json'].sort()
+    const names = command('unzip', ['-Z1', archive], { env: cleanBuildEnv(env) }).trim().split('\n').sort()
+    requireOk(canonicalJson(names) === canonicalJson(allowed))
+    for (const name of allowed) {
+      const bytes = command('unzip', ['-p', archive, name], { env: cleanBuildEnv(env), encoding: null })
+      requireOk(Buffer.isBuffer(bytes) && bytes.length > 0 && bytes.length <= MAX_BYTES)
+      writeFileSync(resolve(output, name), bytes, { flag: 'wx', mode: 0o600 })
+    }
+    rmSync(archive)
+  }
+  async function publish(output) {
+    // Separate live approval/configuration is required. No credential reaches a builder/npm process.
+    requireOk(env.HARVEY_OIDC_PUBLICATION_ENABLED === 'true' && typeof env.VERCEL_TOKEN === 'string' && env.VERCEL_TOKEN.length > 0)
+    const version = command('vercel', ['--version'], { env: cleanBuildEnv(env) }).trim().replace(/^Vercel CLI /, '')
+    requireOk(version === env.HARVEY_OIDC_VERCEL_CLI_VERSION)
+    await downloadProof(output)
+    // Capture the exact bytes before verification; descriptor hashes and the manifest bind this snapshot.
+    const artifact = readEvidenceFile(resolve(output, 'artifact.tar'))
+    const manifest = parse(readEvidenceFile(resolve(output, 'manifest.json')).toString('utf8'))
+    const admitted = await verifyPublication({ directory: output, approvalRunId: env.GITHUB_RUN_ID })
+    requireOk(digest(artifact) === admitted.artifactDigest && admitted.receiptRunId === env.PROOF_RUN_ID)
+    checkArtifact(artifact, manifest, admitted)
+    const staged = mkdtempSync(resolve(tmpdir(), 'harvey-oidc-prebuilt-'))
+    try {
+      const vercel = resolve(staged, '.vercel'); mkdirSync(vercel, { mode: 0o700 })
+      writeFileSync(resolve(vercel, 'project.json'), canonicalJson({ orgId: CI_POLICY.team, projectId: CI_POLICY.targetProject }), { flag: 'wx', mode: 0o600 })
+      // inspectTar already rejected extensions, links, traversal, duplicate names and active crons.
+      inspectTar(artifact)
+      for (let at = 0; at < artifact.length && !artifact.subarray(at, at + 512).every(x => x === 0);) {
+        const h = artifact.subarray(at, at + 512), text = (a,b) => h.subarray(a,b).toString('utf8').replace(/\0.*$/s, '')
+        const prefix = text(345,500), name = (prefix ? prefix + '/' : '') + text(0,100)
+        const size = parseInt(text(124,136).trim(),8), mode = parseInt(text(100,108).trim(),8)
+        const path = resolve(vercel, name)
+        if (h[156] === 53) mkdirSync(path, { recursive: true, mode: 0o700 })
+        else { mkdirSync(dirname(path), { recursive: true, mode: 0o700 }); writeFileSync(path, artifact.subarray(at + 512,at + 512 + size), { flag: 'wx', mode }) }
+        at += 512 + Math.ceil(size / 512) * 512
+      }
+      for (const file of manifest.files) requireOk(digest(readEvidenceFile(resolve(vercel, file.path), true)) === file.sha256)
+      // One invocation only. Failure/timeout never deletes the reservation or retries publication.
+      requireOk(admitted.expiresAt > now())
+      const url = command('vercel', ['deploy','--prebuilt','--yes','--environment=preview','--scope','bumbi190s-projects'], {
+        cwd: staged, env: { ...cleanBuildEnv(env), VERCEL_TOKEN: env.VERCEL_TOKEN }, timeout: 120000,
+      }).trim()
+      requireOk(/^https:\/\/harvey-oidc-test-[a-z0-9]+-bumbi190s-projects\.vercel\.app$/.test(url))
+      return { ...admitted, deployed: true, url }
+    } finally { rmSync(staged, { recursive: true, force: true }) }
+  }
+  // Create-only GitHub ref: a successful claim is never removed, even if publication fails.
+  async function verifyPublication({ directory, approvalRunId }) {
     await preflight(); requireOk(ID.test(approvalRunId ?? '') && approvalRunId === env.GITHUB_RUN_ID)
     checkRun(api(`actions/runs/${approvalRunId}`), trust, approvalRunId)
     const raw = readFileSync(resolve(directory, 'receipt.json'), 'utf8'), body = parse(raw)
@@ -390,20 +489,35 @@ export function createAdapter({ env = process.env, cwd = process.cwd(), command 
       receiptWorkflowSha: trust.workflowSha, receiptApprovalId: origin.approvalId }
     const result = await verifyPublicationReceipt({ raw, proof: {}, trusted, verifyOrigin: async () => origin,
       context: ctx, artifact, now: now() })
-    const journal = realpathSync(journalDirectory)
-    requireOk(![cwd, directory].some(base => { const rel = relative(realpathSync(base), journal); return rel === '' || (!rel.startsWith('..' + sep) && !isAbsolute(rel)) }))
-    const fd = openSync(resolve(journal, digest(raw) + '.reserved.json'), 'wx', 0o600)
-    try { writeFileSync(fd, canonicalJson({ sourceSha: trust.sha, receiptDigest: digest(raw), approvalRunId, reservedAt: now() })) }
-    finally { closeSync(fd) }
-    return { ...result, reserved: true, deployed: false }
+    const pins = journalTrust(env)
+    const policies = () => {
+      const immutable = api(`rulesets/${pins.immutable}`), creator = api(`rulesets/${pins.creator}`)
+      checkJournalPolicy(immutable, creator, pins)
+      return canonicalJson([immutable, creator])
+    }
+    const before = policies(), ref = JOURNAL_PREFIX + digest(raw)
+    // No GET-before-create and no retry/adoption of an existing claim. A lost response burns the grant.
+    let response
+    try { response = gh(['api', '--hostname', 'github.com', '--include', '--method', 'POST',
+      '--input', '-', `repos/${CI_POLICY.repo}/git/refs`], {
+      input: canonicalJson({ ref, sha: trust.sha }), stdio: ['pipe','pipe','pipe'],
+    }) } catch { deny() }
+    requireOk(typeof response === 'string' && /^HTTP\/[0-9.]+\s+201\b/.test(response))
+    const split = response.search(/\r?\n\r?\n/); requireOk(split > 0)
+    const created = JSON.parse(response.slice(split).trim())
+    requireOk(created.ref === ref && created.object?.type === 'commit' && created.object.sha === trust.sha)
+    const saved = api('git/ref/' + ref.slice('refs/'.length))
+    requireOk(saved.ref === ref && saved.object?.type === 'commit' && saved.object.sha === trust.sha && policies() === before)
+    return { ...result, reserved: true, deployed: false, reservationRef: ref, expiresAt: body.expiresAt, receiptRunId: body.runId }
+
   }
-  return { build, prepare, guard, evidence, preflight, verifiedOrigin, verifyPublication }
+  return { build, prepare, guard, evidence, preflight, verifiedOrigin, verifyPublication, publish }
 }
 
 export async function main(args = process.argv.slice(2)) {
   const [mode, option, output] = args
-  requireOk(args.length === 3 && ['build','prepare','guard','evidence'].includes(mode) &&
-    option === (['build','prepare'].includes(mode) ? '--output' : '--directory') && isAbsolute(output))
+  requireOk(args.length === 3 && ['build','prepare','guard','evidence','publish'].includes(mode) &&
+    option === (['build','prepare','publish'].includes(mode) ? '--output' : '--directory') && isAbsolute(output))
   return createAdapter()[mode](resolve(output))
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

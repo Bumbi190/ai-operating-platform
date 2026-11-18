@@ -1,5 +1,5 @@
 # Migration Guard integrity plus explicit owner-only OIDC artifact/attestation phases.
-# No database credentials and no deployment commands. Ordinary PR/push tests remain synthetic.
+# No production DB credentials. Publishing is a separate disabled-by-default owner-only phase.
 
 name: Migration Guard Integrity
 
@@ -14,9 +14,9 @@ on:
     inputs:
       oidc_phase:
         type: choice
-        options: [integrity-only, build-artifact, attest-ledger]
+        options: [integrity-only, build-artifact, attest-ledger, publish-preview]
         default: integrity-only
-        description: Explicit owner-only OIDC preparation; never deploys
+        description: Owner-only phases; publication requires separate live approval and configuration
       harvey_sha:
         type: string
         description: Exact separately approved source/workflow SHA
@@ -29,9 +29,12 @@ on:
       artifact_sha256:
         type: string
         description: SHA-256 of inner artifact.tar (not the upload ZIP digest)
-      ledger_json:
+      proof_run_id:
         type: string
-        description: Fresh canonical owner ledger metadata only; never credentials
+        description: Completed owner-approved attest-ledger run
+      proof_artifact_id:
+        type: string
+        description: Immutable sanitized proof artifact ID
 
 permissions:
   contents: read
@@ -247,10 +250,23 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
+      - name: Materialize protected export without echoing its contents
+        env:
+          OWNER_LEDGER: ${{ secrets.HARVEY_OIDC_LEDGER_EXPORT_JSON }}
+        run: |
+          node --input-type=module <<'NODE'
+          import {mkdirSync,writeFileSync} from 'node:fs'
+          import {resolve} from 'node:path'
+          const raw=process.env.OWNER_LEDGER
+          if(!raw || Buffer.byteLength(raw)>48000)throw Error('Protected ledger unavailable')
+          const dir=resolve(process.env.RUNNER_TEMP,'harvey-oidc-secret')
+          mkdirSync(dir,{mode:0o700})
+          writeFileSync(resolve(dir,'ledger.json'),raw,{flag:'wx',mode:0o600})
+          NODE
       - name: Verify owner approval, immutable build and fresh ledger bytes
         env:
           GH_TOKEN: ${{ github.token }}
-          LEDGER_JSON: ${{ inputs.ledger_json }}
+          LEDGER_EXPORT_FILE: ${{ runner.temp }}/harvey-oidc-secret/ledger.json
           BUILD_RUN_ID: ${{ inputs.build_run_id }}
           BUILD_ARTIFACT_ID: ${{ inputs.build_artifact_id }}
           ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
@@ -280,20 +296,73 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RECEIPT_BUNDLE: ${{ steps.receipt.outputs.bundle-path }}
+          LEDGER_EXPORT_FILE: ${{ runner.temp }}/harvey-oidc-secret/ledger.json
         run: node apps/web/scripts/harvey-oidc-ci.mjs evidence --directory "$RUNNER_TEMP/harvey-oidc-proof"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: harvey-oidc-proof-${{ github.sha }}-${{ github.run_id }}
           path: |
-            ${{ runner.temp }}/harvey-oidc-proof/ledger.json
             ${{ runner.temp }}/harvey-oidc-proof/receipt.json
             ${{ runner.temp }}/harvey-oidc-proof/artifact.tar
             ${{ runner.temp }}/harvey-oidc-proof/manifest.json
-            ${{ runner.temp }}/harvey-oidc-proof/binding.json
-            ${{ runner.temp }}/harvey-oidc-proof/ledger.sigstore.json
             ${{ runner.temp }}/harvey-oidc-proof/receipt.sigstore.json
             ${{ runner.temp }}/harvey-oidc-proof/verification-summary.json
           if-no-files-found: error
           retention-days: 1
           overwrite: false
           include-hidden-files: false
+
+      - name: Always remove private ledger inputs and intermediates
+        if: always()
+        run: |
+          node --input-type=module <<'NODE'
+          import {rmSync} from 'node:fs'
+          import {resolve} from 'node:path'
+          const root=process.env.RUNNER_TEMP
+          rmSync(resolve(root,'harvey-oidc-secret'),{recursive:true,force:true})
+          for(const name of ['ledger.json','binding.json','ledger.sigstore.json'])
+            rmSync(resolve(root,'harvey-oidc-proof',name),{force:true})
+          NODE
+
+  oidc_publish:
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.oidc_phase == 'publish-preview' &&
+      github.actor_id == '158544361' && github.repository_id == '1244338545'
+    needs: integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: harvey-oidc-owner-once
+    env: *adapter_trust
+    permissions:
+      contents: write # Git-ref creation is repo-wide; not a namespace-scoped credential.
+      actions: read
+    steps:
+      - name: Fail closed before executing repository code
+        shell: bash
+        env: *oidc_trust
+        run: *oidc_preflight
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ vars.HARVEY_OIDC_APPROVED_SOURCE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 24
+      - name: Install exact reviewed CLI without any publishing credential
+        env:
+          CLI_VERSION: ${{ vars.HARVEY_OIDC_VERCEL_CLI_VERSION }}
+        run: |
+          [[ "$CLI_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          npm install --global "vercel@$CLI_VERSION" --ignore-scripts --no-audit --no-fund
+      - name: Verify exact receipt, reserve globally, then attempt one Preview publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HARVEY_OIDC_PUBLICATION_ENABLED: ${{ vars.HARVEY_OIDC_PUBLICATION_ENABLED }}
+          HARVEY_OIDC_JOURNAL_MODE: ${{ vars.HARVEY_OIDC_JOURNAL_MODE }}
+          HARVEY_OIDC_JOURNAL_IMMUTABLE_RULESET_ID: ${{ vars.HARVEY_OIDC_JOURNAL_IMMUTABLE_RULESET_ID }}
+          HARVEY_OIDC_JOURNAL_CREATION_RULESET_ID: ${{ vars.HARVEY_OIDC_JOURNAL_CREATION_RULESET_ID }}
+          HARVEY_OIDC_JOURNAL_CREATOR_APP_ID: ${{ vars.HARVEY_OIDC_JOURNAL_CREATOR_APP_ID }}
+          PROOF_RUN_ID: ${{ inputs.proof_run_id }}
+          PROOF_ARTIFACT_ID: ${{ inputs.proof_artifact_id }}
+          VERCEL_TOKEN: ${{ secrets.HARVEY_OIDC_PREVIEW_PUBLISH_TOKEN }}
+        run: node apps/web/scripts/harvey-oidc-ci.mjs publish --output "$RUNNER_TEMP/harvey-oidc-publication"

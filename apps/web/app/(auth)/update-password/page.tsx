@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { safeAuthDestination } from '@/lib/auth/safe-redirect'
@@ -19,7 +19,7 @@ import { safeAuthDestination } from '@/lib/auth/safe-redirect'
  *
  *   createBrowserClient() sets detectSessionInUrl=true. This means _initialize() may
  *   auto-exchange the code and fire PASSWORD_RECOVERY via setTimeout(fn, 0) before our
- *   useEffect runs. We handle both orderings:
+ *   explicit exchange runs. We handle both orderings:
  *
  *   A. Code in URL, auto-detect not yet done: exchangeCodeForSession() succeeds.
  *   B. Code in URL, auto-detect already consumed it: exchangeCodeForSession() fails,
@@ -39,39 +39,48 @@ export default function UpdatePasswordPage() {
   const [error, setError]             = useState<string | null>(null)
   const [done, setDone]               = useState(false)
 
-  const supabase = createClient()
+  const client = useRef<ReturnType<typeof createClient> | null>(null)
 
   useEffect(() => {
-    // Read code from the URL — may already be cleaned by auto-detect (case B).
-    const params = new URLSearchParams(window.location.search)
-    const code = params.get('code')
+    let active = true
 
     async function establishSession() {
-      if (code) {
-        // Cases A & B: attempt manual exchange.
-        // If auto-detect already consumed the code, this returns an error — that's fine.
-        const { error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code)
-        if (!exchangeErr) {
-          // Case A: manual exchange succeeded.
-          setReady(true)
-          return
-        }
-        // Case B: code already consumed by auto-detect. Fall through to getSession().
-      }
+      try {
+        // Client Components are also prerendered: initialize only after mounting.
+        const params = new URLSearchParams(window.location.search)
+        const code = params.get('code')
+        const supabase = createClient()
 
-      // Cases B, C, D: check for an existing session.
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        setReady(true)
-      } else {
-        // No session at all — guard against direct navigation.
-        router.replace('/login')
+        if (code) {
+          // If auto-detect consumed the code, fall back to the established session.
+          const { error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code)
+          if (!exchangeErr) {
+            if (active) { client.current = supabase; setReady(true) }
+            return
+          }
+        }
+
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+        if (sessionError) throw sessionError
+        if (!active) return
+        if (session) {
+          client.current = supabase
+          setReady(true)
+        } else {
+          router.replace('/login')
+        }
+      } catch {
+        if (active) {
+          client.current = null
+          setReady(false)
+          setError('Det gick inte att kontrollera din session. Försök igen senare.')
+        }
       }
     }
 
-    establishSession()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    void establishSession()
+    return () => { active = false; client.current = null }
+  }, [router])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -86,24 +95,39 @@ export default function UpdatePasswordPage() {
       return
     }
 
-    setLoading(true)
-    const { error } = await supabase.auth.updateUser({ password })
-    setLoading(false)
-
-    if (error) {
-      setError(error.message)
+    // No password mutation before successful session establishment.
+    const supabase = client.current
+    if (!sessionReady || !supabase) {
+      setError('Din session kunde inte verifieras. Logga in igen.')
       return
     }
 
-    setDone(true)
-    setTimeout(() => router.replace(safeAuthDestination(new URLSearchParams(window.location.search).get('next'))), 1500)
+    setLoading(true)
+    try {
+      const { error } = await supabase.auth.updateUser({ password })
+      if (error) {
+        setError(error.message)
+        return
+      }
+      setDone(true)
+      setTimeout(() => router.replace(safeAuthDestination(new URLSearchParams(window.location.search).get('next'))), 1500)
+    } catch {
+      setError('Det gick inte att uppdatera lösenordet. Försök igen senare.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   // ── Loading / session-check spinner ──────────────────────────────────────
   if (!sessionReady) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        {error ? (
+          <div className="space-y-4 text-center">
+            <p role="alert" className="text-sm text-destructive">{error}</p>
+            <a href="/login">Tillbaka till inloggning</a>
+          </div>
+        ) : <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />}
       </div>
     )
   }

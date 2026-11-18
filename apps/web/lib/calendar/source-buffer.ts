@@ -3,65 +3,79 @@ import type {AdminDb, CalendarActor, CalendarEntry, CalendarRange} from './types
 import {projectBufferCalendar, type BufferRecord} from './buffer-projection';
 import {resolveCalendarLocal} from './time';
 
-const MAX_BUFFER_ROWS = 500;
-type BufferMirrorRow = {
-  owner_id:string; project_id:string; channel_id:string; provider_post_id:string;
-  content_text:string; provider_status:string; scheduled_at:string|null;
-  sent_at:string|null; permalink:string|null; synced_at:string;
-};
-function safeUrl(value:string|null):string|null {
-  try {const u=new URL(value??'');return u.protocol==='https:' ? u.href : null;} catch {return null;}
+const ORG_ID='6afccee04775b0917da20baf';
+const CHANNEL_ID='6afccf7eece6dfde5fff4341';
+const PROJECT_ID='8f673c09-1c8f-4d78-876e-4c14bf1c89b3';
+const MAX_PAGES=5;
+const QUERY=`query BufferCalendarPosts($after: String) {
+  posts(first: 100, after: $after, input: {
+    organizationId: "${ORG_ID}",
+    filter: { channelIds: ["${CHANNEL_ID}"], status: [scheduled, sent, error] }
+  }) {
+    edges { node { id text status dueAt sentAt channelId externalLink } }
+    pageInfo { hasNextPage endCursor }
+  }
+}`;
+type ApiNode={id:string;text:string;status:string;dueAt:string|null;sentAt:string|null;channelId:string;externalLink:string|null};
+type PostsResponse={data?:{posts?:{edges?:Array<{node:ApiNode}>;pageInfo?:{hasNextPage:boolean;endCursor:string|null}}};errors?:Array<{message:string}>};
+
+function key():string {
+  const value=process.env.BUFFER_API_KEY;
+  if(!value||value.trim().length<16)throw Error('Buffer calendar not configured');
+  return value;
+}
+async function fetchBufferPage(apiKey:string,cursor:string|null):Promise<PostsResponse> {
+  const response=await fetch('https://api.buffer.com',{
+    method:'POST',headers:{Authorization:'Bearer '+apiKey,'Content-Type':'application/json'},
+    body:JSON.stringify({query:QUERY,variables:{after:cursor}}),
+    cache:'no-store',signal:AbortSignal.timeout(9000),
+  });
+  if(!response.ok)throw Error('Buffer calendar provider unavailable');
+  const json=await response.json() as PostsResponse;
+  if(json.errors?.length||!json.data?.posts||!Array.isArray(json.data.posts.edges)||!json.data.posts.pageInfo)
+    throw Error('Buffer calendar response incomplete');
+  return json;
 }
 
-/**
- * Only reads a server-owned status mirror, NOT Buffer OAuth or a publishing API.
- * The calendar user must own the project; RLS is defense-in-depth and this read
- * additionally scopes by both owner ID and allowlisted project IDs.
- */
-export async function readCalendarBuffer(db:AdminDb,actor:CalendarActor,range:CalendarRange):
+/** Read-only, authenticated, project-scoped; no Buffer post mutation or stored credentials. */
+export async function readCalendarBuffer(_db:AdminDb,actor:CalendarActor,range:CalendarRange):
   Promise<{entries:CalendarEntry[];truncated:boolean;available:boolean}> {
-  if(actor.projectScopeAvailable===false) throw Error('Buffer calendar project scope unavailable');
-  if(!actor.allowedProjectIds.length) return {entries:[],truncated:false,available:true};
-  // Typed Supabase definitions predate this migration; the service role reader is server-only.
-  const result=await (db as any).from('calendar_buffer_posts')
-    .select('owner_id,project_id,channel_id,provider_post_id,content_text,provider_status,scheduled_at,sent_at,permalink,synced_at')
-    .eq('owner_id',actor.userId).in('project_id',actor.allowedProjectIds.slice(0,500))
-    .order('synced_at',{ascending:false}).limit(MAX_BUFFER_ROWS);
-  if(result.error || !Array.isArray(result.data)) throw Error('Buffer mirror unavailable');
-  const rows=result.data as BufferMirrorRow[];
-  const entries:CalendarEntry[]=[];
-  const startUtc=resolveCalendarLocal(range.fromDate+'T00:00');
-  const endUtc=resolveCalendarLocal(range.toDateExclusive+'T00:00');
-  const allowed=new Set(actor.allowedProjectIds);
-  const groups=new Map<string,BufferMirrorRow[]>();
-  for(const row of rows) {
-    if(row.owner_id!==actor.userId||!allowed.has(row.project_id)||typeof row.channel_id!=='string')continue;
-    const key=row.project_id+'|'+row.channel_id;
-    groups.set(key,[...(groups.get(key)??[]),row]);
-  }
-  for(const [,group] of groups) {
-    const projectId=group[0].project_id;
-    const channelId=group[0].channel_id;
-    const projected=projectBufferCalendar(group.map((row):BufferRecord=>({
-      id:row.provider_post_id,channelId:row.channel_id,status:row.provider_status,
-      text:row.content_text,dueAt:row.scheduled_at,sentAt:row.sent_at,permalink:row.permalink,
-    })),channelId,startUtc,endUtc);
-    for(const post of projected) {
-      const row=group.find(r=>r.provider_post_id===post.id.split(':').at(-1));
-      if(!row) continue;
-      const status=post.status==='published'?'buffer_published':post.status==='failed'?'failed':'scheduled';
-      entries.push({
-        id:'buffer:'+projectId+':'+channelId+':'+row.provider_post_id,
-        source:{kind:'buffer',projectId,postId:row.provider_post_id},
-        title:post.title,time:{kind:'timed',startUtc:post.atUtc,endUtc:null,timeZone:'Europe/Stockholm'},
-        projectId,status,editable:false,href:post.permalink,
-        pendingChange:null,
-        bufferDetail:{fullText:post.fullText,channel:'linkedin',providerId:row.provider_post_id,
-          syncedAt:row.synced_at,sentAt:post.sentAt,permalink:safeUrl(post.permalink)},
-      });
+  if(actor.projectScopeAvailable===false)throw Error('Calendar project scope unavailable');
+  if(!actor.allowedProjectIds.includes(PROJECT_ID))return {entries:[],truncated:false,available:true};
+  const apiKey=key();
+  const records:BufferRecord[]=[];
+  let cursor:string|null=null,hasNextPage=false;
+  const cursors=new Set<string>();
+  for(let page=0;page<MAX_PAGES;page++){
+    const result=await fetchBufferPage(apiKey,cursor);
+    const listing=result.data!.posts!;
+    for(const {node} of listing.edges!){
+      if(!node||node.channelId!==CHANNEL_ID||typeof node.id!=='string')continue;
+      records.push({id:node.id,channelId:node.channelId,text:node.text??'',
+        status:node.status==='error'?'failed':node.status,
+        dueAt:node.dueAt,sentAt:node.sentAt,permalink:node.externalLink});
     }
+    hasNextPage=listing.pageInfo!.hasNextPage;
+    if(!hasNextPage)break;
+    const next=listing.pageInfo!.endCursor;
+    if(!next||cursors.has(next))throw Error('Buffer calendar cursor invalid');
+    cursors.add(next);cursor=next;
   }
-  entries.sort((a,b)=>a.time.kind==='timed'&&b.time.kind==='timed'?
-    a.time.startUtc.localeCompare(b.time.startUtc)||a.id.localeCompare(b.id):a.id.localeCompare(b.id));
-  return {entries,truncated:rows.length===MAX_BUFFER_ROWS||actor.allowedProjectIds.length>500,available:true};
+  const fromUtc=resolveCalendarLocal(range.fromDate+'T00:00');
+  const toUtc=resolveCalendarLocal(range.toDateExclusive+'T00:00');
+  const projected=projectBufferCalendar(records,CHANNEL_ID,fromUtc,toUtc);
+  const syncedAt=new Date().toISOString();
+  return {entries:projected.map(post=>{
+    const providerId=post.id.slice(('buffer:'+CHANNEL_ID+':').length);
+    const status=post.status==='published'?'buffer_published':post.status==='failed'?'failed':'scheduled';
+    return {
+      id:'buffer:'+PROJECT_ID+':'+CHANNEL_ID+':'+providerId,
+      source:{kind:'buffer' as const,projectId:PROJECT_ID,postId:providerId},
+      title:post.title,
+      time:{kind:'timed' as const,startUtc:post.atUtc,endUtc:null,timeZone:'Europe/Stockholm' as const},
+      projectId:PROJECT_ID,status,editable:false,href:post.permalink,pendingChange:null,
+      bufferDetail:{fullText:post.fullText,channel:'linkedin' as const,providerId,
+        syncedAt,sentAt:post.sentAt,permalink:post.permalink},
+    };
+  }),truncated:hasNextPage,available:true};
 }

@@ -94,6 +94,6 @@ export function CalendarEventPanel({state:s,undated}:{state:CalendarWorkspaceSta
   </form>}
   {!f&&s.saveError&&<p className={styles.error} role="alert">{s.saveError}</p>}
   {s.selected?.linkedWorkflow?.href&&<a className={styles.sourceLink} href={s.selected.linkedWorkflow.href}>Öppna planeringsflödet <span aria-hidden="true">↗</span></a>}
-  {s.selected?.href&&<a className={styles.sourceLink} href={s.selected.href}>{source==='media'?'Öppna nyhetsfilmerna':social||source==='monthly'?'Öppna granskningen':'Visa arbetsflödet'} <span aria-hidden="true">↗</span></a>}
+  {s.selected?.href&&s.selected.source.kind!=='buffer'&&<a className={styles.sourceLink} href={s.selected.href}>{source==='media'?'Öppna nyhetsfilmerna':social||source==='monthly'?'Öppna granskningen':'Visa arbetsflödet'} <span aria-hidden="true">↗</span></a>}
  </aside>;
 }

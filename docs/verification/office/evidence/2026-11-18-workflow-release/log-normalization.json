@@ -1,0 +1,125 @@
+{
+  "originalDirectory": "C:\\Users\\Andre\\Projects\\Omnira\\Temp\\office-workflow-release-original-evidence-20261118",
+  "logs": [
+    {
+      "path": "build-design.txt",
+      "originalSha256": "660e246a6ecf81e272af38b038548ed9a7059f6cacbaf2f9e557d8ed303b7ce0",
+      "gitTextSha256": "9e3e499f1612cfd07797501db44927b31f05d798dd88166cc0ab1ecc192b5e4e",
+      "trimTrailingWhitespaceOnly": true
+    },
+    {
+      "path": "build-local_guard.txt",
+      "originalSha256": "edb959cce7e456d2daeba2b8fd0bcbfaa97c7ce411f8adac725bb33c8589ab61",
+      "gitTextSha256": "74ef545e2b869d294e456b07e487e2495e04bc6da12d9774340a1cbfd486eb92",
+      "trimTrailingWhitespaceOnly": true
+    },
+    {
+      "path": "build-next-cached-web-deps.txt",
+      "originalSha256": "e3539eef7c84ce491d6a4f695e6cb986e0b51affba941309e63484f281ccc13b",
+      "gitTextSha256": "8c51a957a7e61ec67b43241889ad61da2498b22979634453a8d0595249f5694e",
+      "trimTrailingWhitespaceOnly": true
+    },
+    {
+      "path": "build-next-owned-local-package.txt",
+      "originalSha256": "c08c71ecca31ceea82b71a3f21fdf0d19a604047dfe28b83b2ac14bfefebb98a",
+      "gitTextSha256": "586d13774fcc1940500ca9d1b0cc7bf9221331b25d0798b097179305f67bea5b",
+      "trimTrailingWhitespaceOnly": true
+    },
+    {
+      "path": "build-next.txt",
+      "originalSha256": "3b0079bddbb9a614b61c05b62b82cb51be5ac838ae074a6d4980b7c4544d4ad6",
+      "gitTextSha256": "42571faae5eecb78ec6a737f430b47a471a024a6a1ad9910454ec03ba0bb70fb",
+      "trimTrailingWhitespaceOnly": true
+    },
+    {
+      "path": "build-vad.txt",
+      "originalSha256": "883247b9e59b72932ded46c6ce297058c2f879dd93b105a144c98b8b0a9cdd75",
+      "gitTextSha256": "8ecb5ccfd3b763cbe6a76840d4a2281ea71251e07dc001c52b8265bd677ee9aa",
+      "trimTrailingWhitespaceOnly": true
+    },
+    {
+      "path": "guard_release.txt",
+      "originalSha256": "0d8c3347b4c5bfda8be5b7dcae0d3a58056f3aba11b71e0b0fb91f3fb2836d7f",
+      "gitTextSha256": "62702342923147222fc18d074c85e1052f7e06cd7d840a4b15d51a36b8a422dc",
+      "trimTrailingWhitespaceOnly": true
+    },
+    {
+      "path": "legacy-red.txt",
+      "originalSha256": "e6643b905cc4bea7650d6b1143974f5c2b0c9248592467ad56d9eeb437864d4d",
+      "gitTextSha256": "3257f49b87de8a9251438201a0e1e015b894d923566dee8ca6c8302befdcdb5c",
+      "trimTrailingWhitespaceOnly": true
+    },
+    {
+      "path": "office_full.txt",
+      "originalSha256": "bdfced82ae864f34f11b75f39758753023607dd371802768fa7e43590642a82b",
+      "gitTextSha256": "b3c9794f8c92a58cf7d552130dc2ca9879e9b84706bccea26bffd2282dd79dc2",
+      "trimTrailingWhitespaceOnly": true
+    },
+    {
+      "path": "organization-integration-resolved.txt",
+      "originalSha256": "5b63017a49504354accef7b32b387db9e9d4708418316f3cb2ede0d018e096a9",
+      "gitTextSha256": "0f8d99482396451ce668b6198eb4f8992a8988a97d76ad62ae18bf2efddb7390",
+      "trimTrailingWhitespaceOnly": true
+    },
+    {
+      "path": "organization-integration.txt",
+      "originalSha256": "34e755e317d9af581c8cd757f6239fa6dd15ef37bc26659f3881953cf6c37cba",
+      "gitTextSha256": "854fb9886297c060941a68d99a3f6a33ef9224e3661a713cb091d4f423c6df29",
+      "trimTrailingWhitespaceOnly": true
+    },
+    {
+      "path": "sql-green.txt",
+      "originalSha256": "da5a95def47f27ddf80c74f6080d9428d82896847a26ad1ed331cae196dd9e95",
+      "gitTextSha256": "9026d7f215848f0d6773eba82060f4b8a854b31cdd8656a8d219031f1c5178df",
+      "trimTrailingWhitespaceOnly": true
+    },
+    {
+      "path": "vitest-office-release.config.ts.txt",
+      "originalSha256": "10e5428e33b6a6e1f7a7d27a0b0f49227710c4349b6d394132b24a991ade9313",
+      "gitTextSha256": "d73b0fff1f9f743090b1edb4e947a729ef0f0f9df4da3b0d013271f2115a7e61",
+      "trimTrailingWhitespaceOnly": true
+    },
+    {
+      "path": "office-full\\office_activity_transport.txt",
+      "originalSha256": "953baea54fa2cdd989416d81d287e25af5ac50b15f3f8650342fc926d801894c",
+      "gitTextSha256": "16d931d7f8b34f3b42e930f5ceab13ed68ca4ea7970d6eeef7793045ce51c983",
+      "trimTrailingWhitespaceOnly": true
+    },
+    {
+      "path": "office-full\\office_companion.txt",
+      "originalSha256": "bb6b62492e856ab82abf1ab732eab5dbc3c93e7944f7c053aa923d1b0b0cae30",
+      "gitTextSha256": "ff812f736d64ec276adc21387817efadb0edd17729282601f807a0147f4ba61b",
+      "trimTrailingWhitespaceOnly": true
+    },
+    {
+      "path": "office-full\\office_legacy_transport.txt",
+      "originalSha256": "2bf1476ae7276ec92f6fa702c73aab95e6537ace70337bb9c09d20a85b73b963",
+      "gitTextSha256": "118030da7b8078f480cb2c1163395c6302fd8a391bd395ca1311b49c2b3a1c71",
+      "trimTrailingWhitespaceOnly": true
+    },
+    {
+      "path": "office-full\\office_node.txt",
+      "originalSha256": "e5daf895d4f9dc9a247a49e651311d253ca2278dd017fe606f36babfb4488ce2",
+      "gitTextSha256": "f2d63eab20ca86311ca5bb4a19a7d76127a639ede2539de2f32dcf4c8c87fbcc",
+      "trimTrailingWhitespaceOnly": true
+    },
+    {
+      "path": "office-full\\office_sql.txt",
+      "originalSha256": "101ba29fbb2c0817263b670fbf5603876f635f67a1b5a2266fd5c9236d4b6864",
+      "gitTextSha256": "8631f7bfc079c90cf649395a079e51ef458e034f9e6eb2b5706fc8ef63f7c89a",
+      "trimTrailingWhitespaceOnly": true
+    },
+    {
+      "path": "office-full\\office_strict_types.txt",
+      "originalSha256": "98ebbee0310d32943b4a8677fe022907d6bfa33167f18d7d2a7a06281379792f",
+      "gitTextSha256": "cb7bfb89edecc6a0fbc651518baf7cfa554595522ff084cc98101c666a645bb9",
+      "trimTrailingWhitespaceOnly": true
+    },
+    {
+      "path": "office-full\\office_workflow_transport.txt",
+      "originalSha256": "49ddb299349ca031a1a67c82dcd92a4722601dd206d1dbcb98f58bfde93b1e13",
+      "gitTextSha256": "220b8a12680a9e84c173b5325865ccb4bd31b1bbcb89939122ce68d3fb542ebc",
+      "trimTrailingWhitespaceOnly": true
+    }
+  ]
+}

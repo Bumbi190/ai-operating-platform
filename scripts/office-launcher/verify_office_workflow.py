@@ -1,5 +1,5 @@
 """Focused local verification, capturing real exit codes without shell pipelines.
-Requires existing Node/TypeScript and cached postgres:16; never installs packages.
+Requires existing Node/TypeScript and cached postgres:17-alpine; never installs packages.
 Use --node-path to borrow existing dependencies and --receiver for the native pure
 receiver integration. Neither option edits those source/dependency directories. Includes browser, relay,
 legacy/activity/workflow transport, SQL and scoped strict TypeScript regression.

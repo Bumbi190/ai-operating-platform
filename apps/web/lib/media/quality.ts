@@ -17,7 +17,7 @@ import { CONTENT_GROWTH_QA_GUIDANCE } from '@/lib/content-growth/guidance'
 import { getMediaTextClient } from '@/lib/media/text-client'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 import type { ExecutionContract } from '@/lib/governance/execution-stop'
-import { parseQualityScore, type QualityScore } from './quality-evaluation'
+import { failedQualityScore, parseQualityScore, type QualityScore } from './quality-evaluation'
 export { failedQualityScore, shouldRegenerate, parseQualityScore } from './quality-evaluation'
 export type { QualityScore } from './quality-evaluation'
 
@@ -92,7 +92,7 @@ export async function scoreScript(
 
   const res = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 400,
+    max_tokens: 800,
     system: QUALITY_SYSTEM,
     messages: [{
       role: 'user',
@@ -107,7 +107,20 @@ ${sourceContext.slice(0, 600)}`,
     }],
   })
 
-  const raw = res.content[0].type === 'text' ? res.content[0].text : ''
-  return parseQualityScore(raw)
+  const raw = res.content.filter(block => block.type === 'text').map(block => block.text).join('\n')
+  // Preserve the fail-closed gate. Only emit non-sensitive response metadata.
+  if (res.stop_reason === 'max_tokens') {
+    console.warn('[quality] Incomplete editorial response', { reason: 'max_tokens', chars: raw.length })
+    return failedQualityScore('Quality check truncated — manual editorial review required.')
+  }
+  const quality = parseQualityScore(raw)
+  if (quality.verdict === 'Quality check invalid or malformed — manual editorial review required.') {
+    console.warn('[quality] Invalid editorial response', {
+      stopReason: res.stop_reason,
+      contentTypes: res.content.map(block => block.type),
+      chars: raw.length,
+    })
+  }
+  return quality
 }
 

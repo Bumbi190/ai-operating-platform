@@ -2,7 +2,7 @@
 CREATE FUNCTION public.assert_ok(ok boolean, label text) RETURNS void LANGUAGE plpgsql AS $$ BEGIN IF ok IS DISTINCT FROM true THEN RAISE EXCEPTION '%',label; END IF; END $$;
 CREATE TABLE public.workflow_fixture(id uuid);
 DO $$
-DECLARE j jsonb; v uuid:=public.test_visit(3); legacy uuid; prior bigint; bad jsonb;
+DECLARE j jsonb; v uuid:=public.test_visit(3); legacy uuid; prior bigint; bad jsonb; mutation text;
 BEGIN
  SELECT id INTO legacy FROM public.fixture_ids;
  PERFORM public.assert_ok((SELECT read_scope='identity_v1' AND workflow_revision=0 FROM office_private.visits WHERE id=legacy),'old grant upgraded');
@@ -27,13 +27,13 @@ BEGIN
  j:=public.office_visit_workflow_presence(v,repeat('b',64));
  PERFORM public.assert_ok(j->'workflowFacts'='{"complete":true,"runs":[]}'::jsonb AND (j->>'workflowRevision')::bigint=1,'empty census or revision');
  -- A selected run is projected without input, prompt, logs, agent names.
- INSERT INTO public.runs VALUES('44444444-4444-4444-8444-444444444444','22222222-2222-4222-8222-222222222222','running','55555555-5555-4555-8555-555555555555',clock_timestamp()-interval '10 seconds',clock_timestamp()+interval '15 seconds',NULL,false,false,'[{"order":0,"agent_id":"33333333-3333-4333-8333-333333333333","prompt":"SECRET_STEP"}]',clock_timestamp(),'SECRET_INPUT');
+ INSERT INTO public.runs(id,project_id,status,claim_id,claimed_at,lease_until,finished_at,cancel_requested,reconciliation_required,steps_snapshot,created_at,input) VALUES('44444444-4444-4444-8444-444444444444','22222222-2222-4222-8222-222222222222','running','55555555-5555-4555-8555-555555555555',clock_timestamp()-interval '10 seconds',clock_timestamp()+interval '15 seconds',NULL,false,false,'[{"order":0,"agent_id":"33333333-3333-4333-8333-333333333333","prompt":"SECRET_STEP"}]',clock_timestamp(),'SECRET_INPUT');
  j:=public.office_visit_workflow_presence(v,repeat('b',64));
  PERFORM public.assert_ok(j->'workflowFacts'->>'complete'='true' AND jsonb_array_length(j->'workflowFacts'->'runs')=1,'selected run omitted');
  PERFORM public.assert_ok(j::text NOT LIKE '%SECRET_%' AND j::text NOT LIKE '%"prompt"%' AND j::text NOT LIKE '%"input"%','content leaked');
  -- Valid unrelated-agent and other-project rows do not manufacture busy.
  UPDATE public.runs SET steps_snapshot='[{"order":0,"agent_id":"99999999-9999-4999-8999-999999999999"}]';
- INSERT INTO public.runs SELECT gen_random_uuid(),'99999999-9999-4999-8999-999999999999','running',NULL,NULL,NULL,NULL,false,false,NULL,clock_timestamp(),'SECRET_OTHER_PROJECT';
+ INSERT INTO public.runs(id,project_id,status,claim_id,claimed_at,lease_until,finished_at,cancel_requested,reconciliation_required,steps_snapshot,created_at,input) SELECT gen_random_uuid(),'99999999-9999-4999-8999-999999999999','running',NULL,NULL,NULL,NULL,false,false,NULL,clock_timestamp(),'SECRET_OTHER_PROJECT';
  j:=public.office_visit_workflow_presence(v,repeat('b',64));
  PERFORM public.assert_ok(j->'workflowFacts'='{"complete":true,"runs":[]}'::jsonb,'wrong selection affected census');
  DELETE FROM public.runs WHERE project_id<>'22222222-2222-4222-8222-222222222222';
@@ -58,9 +58,37 @@ BEGIN
  j:=public.office_visit_workflow_presence(v,repeat('b',64));
  PERFORM public.assert_ok(jsonb_array_length(j->'workflowFacts'->'runs')=1,'unknown status hidden');
  DELETE FROM public.runs;
- INSERT INTO public.runs SELECT gen_random_uuid(),'22222222-2222-4222-8222-222222222222','pending',NULL,NULL,NULL,NULL,false,false,'[{"order":0,"agent_id":"99999999-9999-4999-8999-999999999999"}]',clock_timestamp(),'UNRELATED_FIXTURE' FROM generate_series(1,12);
+ INSERT INTO public.runs(id,project_id,status,claim_id,claimed_at,lease_until,finished_at,cancel_requested,reconciliation_required,steps_snapshot,created_at,input) SELECT gen_random_uuid(),'22222222-2222-4222-8222-222222222222','pending',NULL,NULL,NULL,NULL,false,false,'[{"order":0,"agent_id":"99999999-9999-4999-8999-999999999999"}]',clock_timestamp(),'UNRELATED_FIXTURE' FROM generate_series(1,12);
  j:=public.office_visit_workflow_presence(v,repeat('b',64));
  PERFORM public.assert_ok(j->'workflowFacts'='{"complete":false,"runs":[]}'::jsonb,'candidate cap bypassed');
+ DELETE FROM public.runs;
+ -- Legacy failed workflow with no reservation markers is historical, not active.
+ -- Match the observed old shape without inventing finished_at or editing history.
+ INSERT INTO public.runs(id,project_id,status,cancel_requested,reconciliation_required,created_at,workflow_id)
+ VALUES('44444444-4444-4444-8444-444444444444','22222222-2222-4222-8222-222222222222','failed',false,false,'2026-05-19T20:40:14Z','77777777-7777-4777-8777-777777777777');
+ j:=public.office_visit_workflow_presence(v,repeat('b',64));
+ PERFORM public.assert_ok(j->'workflowFacts'='{"complete":true,"runs":[]}'::jsonb,'legacy failed workflow blocked idle');
+ PERFORM public.assert_ok((SELECT count(*)=1 AND bool_and(finished_at IS NULL AND status='failed') FROM public.runs),'legacy history was rewritten');
+ -- Each near miss must still prevent a complete idle census. NULL status is
+ -- particularly important: SQL three-valued logic must never exempt it.
+ FOREACH mutation IN ARRAY ARRAY[
+  'claim_id=''55555555-5555-4555-8555-555555555555''',
+  'claimed_at=clock_timestamp()', 'lease_until=clock_timestamp()+interval ''1 minute''',
+  'workflow_instance_id=''55555555-5555-4555-8555-555555555555''',
+  'steps_snapshot=''[]''::jsonb', 'steps_snapshot=''null''::jsonb',
+  'kind=''workflow''', 'cancel_requested=true', 'cancel_requested=NULL',
+  'reconciliation_required=true', 'reconciliation_required=NULL',
+  'workflow_id=NULL', 'status=NULL', 'status=''pending''', 'status=''running''',
+  'status=''awaiting_approval''', 'status=''unexpected''',
+  'status=''done''', 'status=''cancelled''', 'status=''rejected'''
+ ] LOOP
+  UPDATE public.runs SET status='failed',claim_id=NULL,claimed_at=NULL,lease_until=NULL,
+   workflow_instance_id=NULL,steps_snapshot=NULL,kind=NULL,cancel_requested=false,
+   reconciliation_required=false,workflow_id='77777777-7777-4777-8777-777777777777';
+  EXECUTE 'UPDATE public.runs SET '||mutation;
+  j:=public.office_visit_workflow_presence(v,repeat('b',64));
+  PERFORM public.assert_ok(j->'workflowFacts'='{"complete":false,"runs":[]}'::jsonb,'legacy near miss hidden: '||mutation);
+ END LOOP;
  DELETE FROM public.runs;
  -- Mutable identity is re-authorized on every read, before renewal.
  SELECT workflow_revision INTO prior FROM office_private.visits WHERE id=v;

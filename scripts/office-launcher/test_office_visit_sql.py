@@ -19,11 +19,12 @@ class VisitSQL(unittest.TestCase):
                                   capture_output=True, timeout=45)
         started = docker('run', '--rm', '-d', '--name', name, '--network', 'none',
                          '--tmpfs', '/var/lib/postgresql/data', '-e',
-                         'POSTGRES_HOST_AUTH_METHOD=trust', 'postgres:16')
+                         'POSTGRES_HOST_AUTH_METHOD=trust', 'postgres:17-alpine')
         self.assertEqual(started.returncode, 0, started.stderr)
         try:
             for _ in range(80):
-                if docker('exec', name, 'pg_isready', '-U', 'postgres').returncode == 0:
+                logs=docker('logs', name)
+                if 'PostgreSQL init process complete; ready for start up.' in logs.stdout+logs.stderr and docker('exec', name, 'pg_isready', '-U', 'postgres').returncode == 0:
                     break
                 time.sleep(.25)
             bootstrap = """

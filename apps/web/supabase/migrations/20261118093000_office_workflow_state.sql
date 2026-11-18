@@ -53,6 +53,16 @@ BEGIN
    WHERE project_id=v.project_id AND (
     status IS NULL OR status NOT IN ('done','failed','cancelled','rejected')
     OR finished_at IS NULL OR finished_at>t OR reconciliation_required IS DISTINCT FROM false)
+   -- Old failed workflow rows predate durable claims/snapshots. They have no
+   -- reservation to renew. Exclude only this exact inert shape, read-only;
+   -- do not fabricate finished_at or rewrite execution history.
+   -- Every term must be two-valued: a NULL status must remain a candidate.
+   AND NOT (
+    status IS NOT DISTINCT FROM 'failed' AND finished_at IS NULL
+    AND claim_id IS NULL AND claimed_at IS NULL AND lease_until IS NULL
+    AND steps_snapshot IS NULL AND workflow_instance_id IS NULL AND kind IS NULL
+    AND workflow_id IS NOT NULL AND cancel_requested IS FALSE
+    AND reconciliation_required IS FALSE)
    ORDER BY created_at DESC,id LIMIT 12
   )
   SELECT coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(

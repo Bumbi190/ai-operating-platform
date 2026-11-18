@@ -17,11 +17,12 @@ class ActivitySQL(unittest.TestCase):
         name = 'omnira-office-activity-' + uuid.uuid4().hex[:12]
         def docker(*args, sql=None):
             return subprocess.run(['docker', *args], input=sql, text=True, capture_output=True, timeout=45)
-        result = docker('run', '--rm', '-d', '--name', name, '--network', 'none', '--tmpfs', '/var/lib/postgresql/data', '-e', 'POSTGRES_HOST_AUTH_METHOD=trust', 'postgres:16')
+        result = docker('run', '--rm', '-d', '--name', name, '--network', 'none', '--tmpfs', '/var/lib/postgresql/data', '-e', 'POSTGRES_HOST_AUTH_METHOD=trust', 'postgres:17-alpine')
         self.assertEqual(result.returncode, 0, result.stderr)
         try:
             for _ in range(80):
-                if docker('exec', name, 'pg_isready', '-U', 'postgres').returncode == 0: break
+                logs=docker('logs', name)
+                if 'PostgreSQL init process complete; ready for start up.' in logs.stdout+logs.stderr and docker('exec', name, 'pg_isready', '-U', 'postgres').returncode == 0: break
                 time.sleep(.25)
             bootstrap = """
 CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;

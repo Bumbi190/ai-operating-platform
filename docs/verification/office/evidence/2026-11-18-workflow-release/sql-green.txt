@@ -1,0 +1,7 @@
+workflow_sql_fixture_and_http_scenarios=6; native_receiver=False
+activity_sql_fixture_seconds=0.282
+...
+----------------------------------------------------------------------
+Ran 3 tests in 11.751s
+
+OK

@@ -1,0 +1,2 @@
+import base from "D:/Projekt/Omnira/Worktrees/office-workflow-status-20261118/apps/web/vitest.config.ts";
+export default {...base,resolve:{...base.resolve,alias:{...base.resolve?.alias,...{"@supabase/ssr": "C:/Users/Andre/Projects/Omnira/.worktrees/atlas-office-entry-20261106/node_modules/@supabase/ssr/dist/main/index.js", "@supabase/supabase-js": "C:/Users/Andre/Projects/Omnira/.worktrees/atlas-office-entry-20261106/node_modules/@supabase/supabase-js/dist/index.cjs"}}}};

@@ -150,7 +150,7 @@ export async function middleware(request: NextRequest) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
       const allowedPage = !denied && (
-        (pathname === '/organization' || pathname === '/organization/atlas' || pathname === '/organization/reviews' || pathname.startsWith('/organization/projects/')) || pathname.startsWith('/auth/') ||
+        (pathname === '/organization' || pathname === '/organization/atlas' || pathname === '/organization/calendar' || pathname === '/organization/office' || pathname === '/organization/reviews' || pathname.startsWith('/organization/projects/')) || pathname.startsWith('/auth/') ||
         pathname === '/update-password' || pathname === '/forgot-password' ||
         pathname === '/privacy' || pathname === '/terms'
       )

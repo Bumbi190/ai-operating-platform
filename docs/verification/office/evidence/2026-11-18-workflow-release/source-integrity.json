@@ -1,0 +1,19 @@
+{
+  "borrowedWorkspaceContract": {
+    "package.json": {
+      "matchesGitWorktreeLF": true,
+      "sha256LF": "662e5cee1fd9e5bb13002f31793f54b50ea0a1eb67ab34a2931977f583c27cb3"
+    },
+    "index.mjs": {
+      "matchesGitWorktreeLF": true,
+      "sha256LF": "16f15ab26703d4e9654935901a8d580fef6331eff6c540374b9e5f8cefd83e5c"
+    },
+    "index.d.mts": {
+      "matchesGitWorktreeLF": true,
+      "sha256LF": "107af97eacd20026891de71ec013911fbb9decabf0a013aa7b92b147aab8f1c8"
+    }
+  },
+  "generatedDesignBuildSha256": "f4a4c921a78d721e58f163438cfd69ce45a5546dbff3db0061ce1dc4f2c62c16",
+  "restoredOwnedDesignGitBlobSha256": "f4a4c921a78d721e58f163438cfd69ce45a5546dbff3db0061ce1dc4f2c62c16",
+  "foreignDirtyDesignUnchangedSha256": "f4a4c921a78d721e58f163438cfd69ce45a5546dbff3db0061ce1dc4f2c62c16"
+}

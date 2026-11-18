@@ -92,7 +92,8 @@ export async function scoreScript(
 
   const res = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 400,
+    // Allow the full six-score JSON envelope to finish; truncated output remains fail-closed.
+    max_tokens: 800,
     system: QUALITY_SYSTEM,
     messages: [{
       role: 'user',

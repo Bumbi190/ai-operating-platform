@@ -11,17 +11,20 @@ def main(args):
         print('Använd --workflow-visit utan extra argument.');return 1
     relay=lease=None
     try:
-        from office_launcher import WindowsBackend, default_target
+        from office_launcher import WindowsBackend
+        from office_workflow_target import default_workflow_target,matching_workflow
+        from office_workflow_bundle import verify_bundle
         from office_workflow_native_guard import check_workflow_native
-        target=default_target()
-        output=check_workflow_native(target,Path(__file__).resolve().parent)
+        source=verify_bundle(Path(__file__).resolve().parent)
+        target=default_workflow_target()
+        output=check_workflow_native(target,source)
         from office_visit_client import OfficeVisitClient
         from office_visit_process import acquire_office_process
         from office_visit_relay import OfficeVisitRelay
         import webbrowser
         relay=OfficeVisitRelay(output,None,OfficeVisitClient(),workflow=True)
         output.mkdir(parents=True,exist_ok=True);relay._acquire_writer()
-        lease=acquire_office_process(target,WindowsBackend());relay.process=lease
+        lease=acquire_office_process(target,WindowsBackend(),matcher=matching_workflow);relay.process=lease
         relay.start()
         if not webbrowser.open(relay.pairing_url()):raise RuntimeError('Browser unavailable')
         print('Välj agent och arbets- och fritidsstatus på sidan. Ctrl+C avslutar besöket.')

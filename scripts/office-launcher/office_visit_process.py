@@ -13,7 +13,7 @@ class WindowsProcessLease:
         self._dead=False
 
     @classmethod
-    def pin(cls,pid,target,backend):
+    def pin(cls,pid,target,backend,*,matcher=matching_office):
         if sys.platform!='win32':raise OfficeUnavailable('Office kräver Windows.')
         import ctypes
         from ctypes import wintypes as W
@@ -28,7 +28,7 @@ class WindowsProcessLease:
         if not handle:raise OfficeUnavailable('Office-processen kunde inte verifieras.')
         try:
             # Re-enumerate after acquiring the handle; failure never starts duplicates.
-            matches=[p for p in backend.running() if p.pid==pid and matching_office(p,target)]
+            matches=[p for p in backend.running() if p.pid==pid and matcher(p,target)]
             if len(matches)!=1:raise OfficeUnavailable('Office-processens identitet ändrades.')
             value=cls(handle,kernel,ctypes,W,str(target.engine),None)
             value._created=value._identity()
@@ -61,16 +61,16 @@ class WindowsProcessLease:
             self._kernel.CloseHandle(self._handle);self._handle=None
 
 
-def acquire_office_process(target,backend):
+def acquire_office_process(target,backend,*,matcher=matching_office):
     target.verify()
     with backend.lock():
-        matches=[p for p in backend.running() if matching_office(p,target)]
+        matches=[p for p in backend.running() if matcher(p,target)]
         if len(matches)>1:raise OfficeUnavailable('Flera Office-spel är öppna. Välj en enda session.')
-        if matches:return WindowsProcessLease.pin(matches[0].pid,target,backend)
+        if matches:return WindowsProcessLease.pin(matches[0].pid,target,backend,matcher=matcher)
         pid=backend.start(target.argv(),str(target.project.parent))
         deadline=time.monotonic()+90
         while time.monotonic()<deadline:
-            matches=[p for p in backend.running() if p.pid==pid and matching_office(p,target)]
-            if matches:return WindowsProcessLease.pin(pid,target,backend)
+            matches=[p for p in backend.running() if p.pid==pid and matcher(p,target)]
+            if matches:return WindowsProcessLease.pin(pid,target,backend,matcher=matcher)
             time.sleep(.25)
     raise OfficeUnavailable('Office-starten kunde inte verifieras inom 90 sekunder.')

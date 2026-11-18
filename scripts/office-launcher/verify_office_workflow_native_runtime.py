@@ -9,7 +9,7 @@ from office_workflow import WorkflowVisitPresenceReceiver
 from office_presence import AvatarBinding,write_presence
 from office_workflow_ack import ack_path,read_native_ack
 
-def start(root,output,repo):
+def start(root,output,repo,*,saved_enabled=False):
     root,output,repo=Path(root),Path(output),Path(repo)
     meta=json.loads((output/'native-candidate.json').read_text());assert meta['passed']
     folder=root/'Saved/OfficeWorkflowRuntime'/str(uuid.uuid4());folder.mkdir(parents=True)
@@ -17,7 +17,7 @@ def start(root,output,repo):
     lvl=u.get_editor_subsystem(u.LevelEditorSubsystem);ed=u.get_editor_subsystem(u.UnrealEditorSubsystem);sub=u.get_editor_subsystem(u.EditorActorSubsystem)
     perf=u.get_default_object(u.load_class(None,'/Script/UnrealEd.EditorPerformanceSettings'));oldperf=perf.get_editor_property('bThrottleCPUWhenNotForeground');perf.set_editor_property('bThrottleCPUWhenNotForeground',False)
     oldfps=u.SystemLibrary.get_console_variable_float_value('t.MaxFPS');oldblur=u.SystemLibrary.get_console_variable_int_value('r.MotionBlurQuality')
-    child=None;cam=None;log=None;err=None
+    child=None;cam=None;log=None;err=None;editor_consumer=None;saved_path=None
     def rec():(output/'runtime.json').write_text(json.dumps(q,indent=2))
     def cmd(**values):
         control.update(values);tmp=folder/'control.tmp';tmp.write_text(json.dumps(control));tmp.replace(folder/'control.json')
@@ -25,16 +25,22 @@ def start(root,output,repo):
         try:return json.loads((folder/'transport.json').read_text())
         except:return {}
     def seq():
-        nonlocal child,cam,log,err
+        nonlocal child,cam,log,err,editor_consumer,saved_path
         assert not lvl.is_in_play_in_editor();assert lvl.load_level(meta['map'])
+        if saved_enabled:
+            editor_consumer=next(a for a in sub.get_all_level_actors() if a.get_name()==meta['consumer'])
+            saved_path=editor_consumer.get_editor_property('FilePath');assert saved_path==str(root/'Saved/OfficePresence/office-familje-pling.json')
+            editor_consumer.set_editor_property('FilePath',str(folder/'office-familje-pling.json'));q['test_projection_override']=True
         cam=sub.spawn_actor_from_class(u.CameraActor,u.Vector(80,1440,715));cam.set_actor_label('TEMP Native workflow runtime camera');cam.camera_component.set_field_of_view(58);cam.set_actor_rotation(u.MathLibrary.find_look_at_rotation(cam.get_actor_location(),u.Vector(500,1890,605)),False)
         lvl.editor_request_begin_play();yield .55;game=ed.get_game_world()
         while not game or u.GameplayStatics.get_time_seconds(game)<1:yield .1;game=ed.get_game_world()
         actors={a.get_name():a for a in u.GameplayStatics.get_all_actors_of_class(game,u.Actor)};a=actors[meta['target']];c=actors[meta['consumer']];a.set_editor_property('FirstActivity',3);an=a.get_component_by_class(u.SkeletalMeshComponent).get_anim_instance()
         pc=u.GameplayStatics.get_player_controller(game,0);pc.get_controlled_pawn().set_actor_location(u.Vector(-1750,1100,99),False,True);pc.set_view_target_with_blend(actors[cam.get_name()],0)
         for value in ('t.MaxFPS 35','r.MotionBlurQuality 0'):u.SystemLibrary.execute_console_command(game,value,pc)
-        assert not c.get_editor_property('Enabled') and not c.get_editor_property('HasBinding');q['disabled_default']=True
-        c.set_editor_property('FilePath',str(folder/'office-familje-pling.json'));c.set_editor_property('Enabled',True);cmd()
+        assert c.get_editor_property('Enabled') is saved_enabled and not c.get_editor_property('HasBinding');q['disabled_default']=not saved_enabled;q['saved_enabled']=saved_enabled
+        if not saved_enabled:
+            c.set_editor_property('FilePath',str(folder/'office-familje-pling.json'));c.set_editor_property('Enabled',True)
+        cmd()
         harness=repo/'scripts/office-launcher/workflow_native_transport_fixture.mjs';assert 'FixtureNativeAck' not in harness.read_text()
         env=os.environ.copy();env['NODE_PATH']=r'C:\Users\Andre\Projects\Omnira\.worktrees\atlas-office-entry-20261106\node_modules';env['OFFICE_TEST_PYTHON']=r'C:\Python312\python.exe'
         log=(output/'native-transport.stdout.txt').open('w');err=(output/'native-transport.stderr.txt').open('w')
@@ -82,7 +88,9 @@ def start(root,output,repo):
         cmd(finish=True,gameAlive=False);deadline=time.monotonic()+8
         while child.poll() is None:assert time.monotonic()<deadline;yield .1
         assert child.returncode==0;q['transport']=transport();assert q['transport'].get('revoked') is True;q['passed']=True;q['phase']='complete';rec();lvl.editor_request_end_play();yield 1.2
-        sub.destroy_actor(cam);perf.set_editor_property('bThrottleCPUWhenNotForeground',oldperf)
+        sub.destroy_actor(cam)
+        if editor_consumer:editor_consumer.set_editor_property('FilePath',saved_path)
+        perf.set_editor_property('bThrottleCPUWhenNotForeground',oldperf)
         for value in ('t.MaxFPS '+str(oldfps),'r.MotionBlurQuality '+str(oldblur)):u.SystemLibrary.execute_console_command(ed.get_editor_world(),value)
         log.close();err.close()
     gen=seq();state={'next':0,'busy':False,'start':time.monotonic()}

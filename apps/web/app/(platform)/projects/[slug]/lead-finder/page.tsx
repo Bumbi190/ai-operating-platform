@@ -34,13 +34,15 @@ export default async function LeadFinderPage({ params, searchParams }: {
   let researchExtractEnabled = false
   let archivedResearch: ArchiveReview = { status: 'disabled' }
   let archiveSaveEnabled = false
+  let scbCandidateWriteEnabled = false
   const localFlag = process.env.NODE_ENV === 'development' && process.platform === 'win32' &&
     process.env.HB_LEADFINDER_LOCAL_REVIEW_ENABLED === 'true'
   const importFlag = process.env.HB_LEADFINDER_IMPORT_PREVIEW_ENABLED === 'true'
+  const scbCandidateWriteFlag = process.env.VERCEL_ENV !== 'production' && process.env.HB_LEADFINDER_SCB_CANDIDATE_WRITE_ENABLED === 'true'
 
   // RLS project visibility alone does not authorize reading personal files
   // or showing import controls. Only the verified project owner is allowed.
-  if (localFlag || importFlag) {
+  if (localFlag || importFlag || scbCandidateWriteFlag) {
     const sessionDb = await createClient()
     const { data: { user }, error: authError } = await sessionDb.auth.getUser()
     if (!authError && user) {
@@ -52,6 +54,7 @@ export default async function LeadFinderPage({ params, searchParams }: {
         .maybeSingle()
       if (!ownerError && ownedProject) {
         if (localFlag) localReview = await loadLocalReviewForOwner(project.id)
+        scbCandidateWriteEnabled = scbCandidateWriteFlag
         importPreviewEnabled = importFlag
         importWriteEnabled = importFlag && process.env.HB_LEADFINDER_IMPORT_WRITE_ENABLED === 'true'
         researchEnabled = importFlag && process.env.VERCEL_ENV !== 'production' && process.env.HB_LEADFINDER_RESEARCH_ENABLED === 'true' &&
@@ -86,5 +89,6 @@ export default async function LeadFinderPage({ params, searchParams }: {
     researchExtractEnabled={researchExtractEnabled}
     archivedResearch={archivedResearch}
     archiveSaveEnabled={archiveSaveEnabled}
+    scbCandidateWriteEnabled={scbCandidateWriteEnabled}
   />
 }

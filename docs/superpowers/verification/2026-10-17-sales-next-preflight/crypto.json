@@ -1,0 +1,12 @@
+{
+  "observedDate": "2026-10-17",
+  "nodeVersion": "v22.22.3",
+  "rsaBits": 3072,
+  "privatePkcs8Base64Bytes": 2392,
+  "credentialBlobLimit": 2560,
+  "wrappedKeyBytes": 384,
+  "roundtrip": true,
+  "realMailboxCredential": false,
+  "privateKeyPersisted": false,
+  "scope": "Node-only throwaway feasibility probe; not browser interoperability or a completed product"
+}

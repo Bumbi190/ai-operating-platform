@@ -1,0 +1,603 @@
+{
+  "scope": "Owner-approved schema only; no feature/policy/host/send activation",
+  "projectId": "iboepohjwrhtgshrqaol",
+  "sourceHead": "c85617642cd5abfd2e208d137b536f1c6efbe400",
+  "migrationFile": "apps/web/supabase/migrations/20261103074241_sales_initial_sending.sql",
+  "approvedSourceSha256": "9fc16dd5406ed097cd6bbcb2740c9a6eb235202a3aa5cb9433d45a436f32658c",
+  "sessionLimits": {
+    "lockTimeout": "5s",
+    "statementTimeout": "60s"
+  },
+  "ledger": [
+    {
+      "name": "sales_initial_sending",
+      "version": "20261103082558"
+    }
+  ],
+  "businessTablesUnchanged": true,
+  "businessBefore": [
+    {
+      "name": "sales_contact_history_revisions",
+      "rows": 89,
+      "fingerprint": "ba06a7e91a3be51c6a277df6e1352409"
+    },
+    {
+      "name": "sales_contact_timing_rules",
+      "rows": 1,
+      "fingerprint": "965eba75d0711cfe477cd58ccd35a6fe"
+    },
+    {
+      "name": "sales_contacts",
+      "rows": 167,
+      "fingerprint": "48576d98edf23becd81113611708b7d2"
+    },
+    {
+      "name": "sales_discovery_batches",
+      "rows": 0,
+      "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    {
+      "name": "sales_discovery_candidates",
+      "rows": 0,
+      "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    {
+      "name": "sales_draft_revisions",
+      "rows": 3,
+      "fingerprint": "46003e88134d41deefe0792b1861562c"
+    },
+    {
+      "name": "sales_email_copy_revisions",
+      "rows": 2,
+      "fingerprint": "5d788e87895153a8876f4bc8b2775a04"
+    },
+    {
+      "name": "sales_evidence",
+      "rows": 1,
+      "fingerprint": "cd498f2e1873ab94497470ec40624143"
+    },
+    {
+      "name": "sales_host_events",
+      "rows": 21,
+      "fingerprint": "0d588d5a47bac42faf3db7717b85d0bb"
+    },
+    {
+      "name": "sales_inbox_batches",
+      "rows": 1275,
+      "fingerprint": "52fd4eb05e87fa63e486bf0595a5cd41"
+    },
+    {
+      "name": "sales_inbox_configs",
+      "rows": 1,
+      "fingerprint": "140cb7840278375253ee07da37421f0e"
+    },
+    {
+      "name": "sales_inbox_messages",
+      "rows": 17,
+      "fingerprint": "2cca0cbf6be53d141bab53080c1a9613"
+    },
+    {
+      "name": "sales_inbox_occurrences",
+      "rows": 17,
+      "fingerprint": "22141d8e5ce0748502d3146918b3dfa0"
+    },
+    {
+      "name": "sales_jobs",
+      "rows": 1,
+      "fingerprint": "e66aa4cd9a92ec3bebd15729facc13af"
+    },
+    {
+      "name": "sales_mailbox_connections",
+      "rows": 1,
+      "fingerprint": "b57ed9b3bb45d1ba8afd940189f0e361"
+    },
+    {
+      "name": "sales_mailbox_setups",
+      "rows": 6,
+      "fingerprint": "98734455ad84a634ac5b46e1471b3650"
+    },
+    {
+      "name": "sales_model_attempts",
+      "rows": 1,
+      "fingerprint": "0cd359641191085eb153ddf8d8b535e0"
+    },
+    {
+      "name": "sales_offer_revisions",
+      "rows": 3,
+      "fingerprint": "362f742981c7b66c9a0a3f2e9d95bbcf"
+    },
+    {
+      "name": "sales_reply_attempts",
+      "rows": 1,
+      "fingerprint": "1788695f62ed242e2eb66c9549d8e299"
+    },
+    {
+      "name": "sales_reply_draft_revisions",
+      "rows": 2,
+      "fingerprint": "d1bb50768d4ef25ba94e1ad8a75de4e0"
+    },
+    {
+      "name": "sales_reply_jobs",
+      "rows": 1,
+      "fingerprint": "89dc38b1ea7cf950b00cddadead26df6"
+    },
+    {
+      "name": "sales_send_events",
+      "rows": 4,
+      "fingerprint": "70a77c78d82611310f128f21d89dc4f0"
+    },
+    {
+      "name": "sales_send_jobs",
+      "rows": 1,
+      "fingerprint": "59f51f26a9fac72b8eb97e776a93c13f"
+    },
+    {
+      "name": "sales_send_policies",
+      "rows": 1,
+      "fingerprint": "197a22a8ca6a6c4e6075544e7d786626"
+    },
+    {
+      "name": "sales_worker_registrations",
+      "rows": 2,
+      "fingerprint": "b2ed57105caedbe5381f6bc7828c0628"
+    }
+  ],
+  "businessAfter": [
+    {
+      "name": "sales_contact_history_revisions",
+      "rows": 89,
+      "fingerprint": "ba06a7e91a3be51c6a277df6e1352409"
+    },
+    {
+      "name": "sales_contact_timing_rules",
+      "rows": 1,
+      "fingerprint": "965eba75d0711cfe477cd58ccd35a6fe"
+    },
+    {
+      "name": "sales_contacts",
+      "rows": 167,
+      "fingerprint": "48576d98edf23becd81113611708b7d2"
+    },
+    {
+      "name": "sales_discovery_batches",
+      "rows": 0,
+      "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    {
+      "name": "sales_discovery_candidates",
+      "rows": 0,
+      "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    {
+      "name": "sales_draft_revisions",
+      "rows": 3,
+      "fingerprint": "46003e88134d41deefe0792b1861562c"
+    },
+    {
+      "name": "sales_email_copy_revisions",
+      "rows": 2,
+      "fingerprint": "5d788e87895153a8876f4bc8b2775a04"
+    },
+    {
+      "name": "sales_evidence",
+      "rows": 1,
+      "fingerprint": "cd498f2e1873ab94497470ec40624143"
+    },
+    {
+      "name": "sales_host_events",
+      "rows": 21,
+      "fingerprint": "0d588d5a47bac42faf3db7717b85d0bb"
+    },
+    {
+      "name": "sales_inbox_batches",
+      "rows": 1275,
+      "fingerprint": "52fd4eb05e87fa63e486bf0595a5cd41"
+    },
+    {
+      "name": "sales_inbox_configs",
+      "rows": 1,
+      "fingerprint": "140cb7840278375253ee07da37421f0e"
+    },
+    {
+      "name": "sales_inbox_messages",
+      "rows": 17,
+      "fingerprint": "2cca0cbf6be53d141bab53080c1a9613"
+    },
+    {
+      "name": "sales_inbox_occurrences",
+      "rows": 17,
+      "fingerprint": "22141d8e5ce0748502d3146918b3dfa0"
+    },
+    {
+      "name": "sales_jobs",
+      "rows": 1,
+      "fingerprint": "e66aa4cd9a92ec3bebd15729facc13af"
+    },
+    {
+      "name": "sales_mailbox_connections",
+      "rows": 1,
+      "fingerprint": "b57ed9b3bb45d1ba8afd940189f0e361"
+    },
+    {
+      "name": "sales_mailbox_setups",
+      "rows": 6,
+      "fingerprint": "98734455ad84a634ac5b46e1471b3650"
+    },
+    {
+      "name": "sales_model_attempts",
+      "rows": 1,
+      "fingerprint": "0cd359641191085eb153ddf8d8b535e0"
+    },
+    {
+      "name": "sales_offer_revisions",
+      "rows": 3,
+      "fingerprint": "362f742981c7b66c9a0a3f2e9d95bbcf"
+    },
+    {
+      "name": "sales_reply_attempts",
+      "rows": 1,
+      "fingerprint": "1788695f62ed242e2eb66c9549d8e299"
+    },
+    {
+      "name": "sales_reply_draft_revisions",
+      "rows": 2,
+      "fingerprint": "d1bb50768d4ef25ba94e1ad8a75de4e0"
+    },
+    {
+      "name": "sales_reply_jobs",
+      "rows": 1,
+      "fingerprint": "89dc38b1ea7cf950b00cddadead26df6"
+    },
+    {
+      "name": "sales_send_events",
+      "rows": 4,
+      "fingerprint": "70a77c78d82611310f128f21d89dc4f0"
+    },
+    {
+      "name": "sales_send_jobs",
+      "rows": 1,
+      "fingerprint": "59f51f26a9fac72b8eb97e776a93c13f"
+    },
+    {
+      "name": "sales_send_policies",
+      "rows": 1,
+      "fingerprint": "197a22a8ca6a6c4e6075544e7d786626"
+    },
+    {
+      "name": "sales_worker_registrations",
+      "rows": 2,
+      "fingerprint": "b2ed57105caedbe5381f6bc7828c0628"
+    }
+  ],
+  "verification": {
+    "ledger": [
+      {
+        "name": "sales_initial_sending",
+        "version": "20261103082558"
+      }
+    ],
+    "tables": [
+      {
+        "rls": true,
+        "anon": false,
+        "name": "sales_initial_send_events",
+        "policies": 0,
+        "authenticated": false,
+        "serviceDelete": false,
+        "serviceInsert": true,
+        "serviceSelect": true,
+        "serviceUpdate": false
+      },
+      {
+        "rls": true,
+        "anon": false,
+        "name": "sales_initial_send_jobs",
+        "policies": 0,
+        "authenticated": false,
+        "serviceDelete": false,
+        "serviceInsert": true,
+        "serviceSelect": true,
+        "serviceUpdate": true
+      },
+      {
+        "rls": true,
+        "anon": false,
+        "name": "sales_initial_send_policies",
+        "policies": 0,
+        "authenticated": false,
+        "serviceDelete": false,
+        "serviceInsert": true,
+        "serviceSelect": true,
+        "serviceUpdate": true
+      }
+    ],
+    "indexes": [
+      {
+        "name": "sales_initial_send_events_pkey",
+        "definition": "CREATE UNIQUE INDEX sales_initial_send_events_pkey ON public.sales_initial_send_events USING btree (id)"
+      },
+      {
+        "name": "sales_initial_send_events_project_id_request_key_key",
+        "definition": "CREATE UNIQUE INDEX sales_initial_send_events_project_id_request_key_key ON public.sales_initial_send_events USING btree (project_id, request_key)"
+      },
+      {
+        "name": "sales_initial_send_event_job",
+        "definition": "CREATE INDEX sales_initial_send_event_job ON public.sales_initial_send_events USING btree (send_job_id)"
+      },
+      {
+        "name": "sales_initial_send_jobs_pkey",
+        "definition": "CREATE UNIQUE INDEX sales_initial_send_jobs_pkey ON public.sales_initial_send_jobs USING btree (id)"
+      },
+      {
+        "name": "sales_initial_send_jobs_project_id_request_key_key",
+        "definition": "CREATE UNIQUE INDEX sales_initial_send_jobs_project_id_request_key_key ON public.sales_initial_send_jobs USING btree (project_id, request_key)"
+      },
+      {
+        "name": "sales_initial_send_jobs_revision_id_key",
+        "definition": "CREATE UNIQUE INDEX sales_initial_send_jobs_revision_id_key ON public.sales_initial_send_jobs USING btree (revision_id)"
+      },
+      {
+        "name": "sales_initial_send_jobs_project_id_id_key",
+        "definition": "CREATE UNIQUE INDEX sales_initial_send_jobs_project_id_id_key ON public.sales_initial_send_jobs USING btree (project_id, id)"
+      },
+      {
+        "name": "sales_initial_send_queue",
+        "definition": "CREATE INDEX sales_initial_send_queue ON public.sales_initial_send_jobs USING btree (project_id, status, created_at)"
+      },
+      {
+        "name": "sales_initial_send_policy",
+        "definition": "CREATE INDEX sales_initial_send_policy ON public.sales_initial_send_jobs USING btree (policy_id)"
+      },
+      {
+        "name": "sales_initial_send_one_recipient",
+        "definition": "CREATE UNIQUE INDEX sales_initial_send_one_recipient ON public.sales_initial_send_jobs USING btree (project_id, recipient) WHERE (status = ANY (ARRAY['queued'::text, 'claimed'::text, 'dispatching'::text, 'smtp_accepted'::text, 'delivery_unknown'::text]))"
+      },
+      {
+        "name": "sales_initial_send_one_entity",
+        "definition": "CREATE UNIQUE INDEX sales_initial_send_one_entity ON public.sales_initial_send_jobs USING btree (project_id, entity_key) WHERE (status = ANY (ARRAY['queued'::text, 'claimed'::text, 'dispatching'::text, 'smtp_accepted'::text, 'delivery_unknown'::text]))"
+      },
+      {
+        "name": "sales_initial_send_policies_pkey",
+        "definition": "CREATE UNIQUE INDEX sales_initial_send_policies_pkey ON public.sales_initial_send_policies USING btree (id)"
+      },
+      {
+        "name": "sales_initial_send_policies_project_id_mailbox_id_recipient_key",
+        "definition": "CREATE UNIQUE INDEX sales_initial_send_policies_project_id_mailbox_id_recipient_key ON public.sales_initial_send_policies USING btree (project_id, mailbox_id, recipient)"
+      }
+    ],
+    "trigger": [
+      {
+        "name": "sales_initial_send_authority_immutable",
+        "enabled": "O",
+        "definition": "CREATE TRIGGER sales_initial_send_authority_immutable BEFORE DELETE OR UPDATE ON public.sales_initial_send_jobs FOR EACH ROW EXECUTE FUNCTION sales_initial_send_immutable()"
+      }
+    ],
+    "sequence": {
+      "anon": false,
+      "serviceUsage": true,
+      "authenticated": false
+    },
+    "functions": [
+      {
+        "anon": false,
+        "args": "p_token_hash text, p_input jsonb",
+        "name": "sales_initial_send_heartbeat",
+        "config": [
+          "search_path=\"\""
+        ],
+        "bodyMd5": "340595b117693f797f6d0f2b16c350ae",
+        "definer": false,
+        "service": true,
+        "authenticated": false
+      },
+      {
+        "anon": false,
+        "args": "pid uuid, cid uuid, at timestamp with time zone",
+        "name": "sales_timing_evaluate",
+        "config": [
+          "search_path=\"\""
+        ],
+        "bodyMd5": "a063549930abe5b74d64400ef98e9f05",
+        "definer": false,
+        "service": true,
+        "authenticated": false
+      },
+      {
+        "anon": false,
+        "args": "",
+        "name": "sales_initial_send_immutable",
+        "config": [
+          "search_path=\"\""
+        ],
+        "bodyMd5": "94faaa004eb217a91017410339508589",
+        "definer": false,
+        "service": true,
+        "authenticated": false
+      },
+      {
+        "anon": false,
+        "args": "j sales_initial_send_jobs",
+        "name": "sales_initial_send_json",
+        "config": [
+          "search_path=\"\""
+        ],
+        "bodyMd5": "6e44dbb16a0f2aab49a9178acbdc1de6",
+        "definer": false,
+        "service": true,
+        "authenticated": false
+      },
+      {
+        "anon": false,
+        "args": "p_token_hash text, p_input jsonb",
+        "name": "sales_initial_send_begin_dispatch",
+        "config": [
+          "search_path=\"\""
+        ],
+        "bodyMd5": "cc6abba0007ad1ca8437712b1f43815a",
+        "definer": false,
+        "service": true,
+        "authenticated": false
+      },
+      {
+        "anon": false,
+        "args": "p_principal jsonb, p_input jsonb",
+        "name": "sales_initial_send_cancel",
+        "config": [
+          "search_path=\"\""
+        ],
+        "bodyMd5": "df135a630b09e95d708cb77eb0bb51c4",
+        "definer": false,
+        "service": true,
+        "authenticated": false
+      },
+      {
+        "anon": false,
+        "args": "w sales_worker_registrations, v jsonb",
+        "name": "sales_initial_send_access",
+        "config": [
+          "search_path=\"\""
+        ],
+        "bodyMd5": "cbbb448e6f7d4eaace926c22487e8b73",
+        "definer": false,
+        "service": true,
+        "authenticated": false
+      },
+      {
+        "anon": false,
+        "args": "pid uuid, uid uuid, v jsonb, own_job uuid",
+        "name": "sales_initial_send_authority",
+        "config": [
+          "search_path=\"\""
+        ],
+        "bodyMd5": "014dca7554b4949f37553e6eec3866c9",
+        "definer": false,
+        "service": true,
+        "authenticated": false
+      },
+      {
+        "anon": false,
+        "args": "p_token_hash text, p_input jsonb",
+        "name": "sales_initial_send_claim",
+        "config": [
+          "search_path=\"\""
+        ],
+        "bodyMd5": "2d82ff362a40bfa2efd95bbfa709f386",
+        "definer": false,
+        "service": true,
+        "authenticated": false
+      },
+      {
+        "anon": false,
+        "args": "p_token_hash text, p_input jsonb",
+        "name": "sales_initial_send_complete",
+        "config": [
+          "search_path=\"\""
+        ],
+        "bodyMd5": "7e6336eaddc43638dc0970771e9044ab",
+        "definer": false,
+        "service": true,
+        "authenticated": false
+      },
+      {
+        "anon": false,
+        "args": "p_principal jsonb, p_input jsonb",
+        "name": "sales_initial_send_confirm",
+        "config": [
+          "search_path=\"\""
+        ],
+        "bodyMd5": "05a5b885696de0eb3a4e1172b1aeaa22",
+        "definer": false,
+        "service": true,
+        "authenticated": false
+      },
+      {
+        "anon": false,
+        "args": "p_principal jsonb, p_input jsonb",
+        "name": "sales_initial_send_preview",
+        "config": [
+          "search_path=\"\""
+        ],
+        "bodyMd5": "5d389eeaa4f1f1b17df40a3a0b44efa9",
+        "definer": false,
+        "service": true,
+        "authenticated": false
+      },
+      {
+        "anon": false,
+        "args": "p_principal jsonb, p_input jsonb",
+        "name": "sales_initial_send_read",
+        "config": [
+          "search_path=\"\""
+        ],
+        "bodyMd5": "2b56d4ab25d10433ead33c9239cc2d41",
+        "definer": false,
+        "service": true,
+        "authenticated": false
+      },
+      {
+        "anon": false,
+        "args": "p_token_hash text, p_input jsonb",
+        "name": "sales_initial_send_read_receipt",
+        "config": [
+          "search_path=\"\""
+        ],
+        "bodyMd5": "c1b27dd6054d1e1a71dd2fcefd12e6a1",
+        "definer": false,
+        "service": true,
+        "authenticated": false
+      },
+      {
+        "anon": false,
+        "args": "p_token_hash text, p_input jsonb",
+        "name": "sales_initial_send_report_uncertain",
+        "config": [
+          "search_path=\"\""
+        ],
+        "bodyMd5": "009ec452c883ad15d1bca87f8dfb6ebb",
+        "definer": false,
+        "service": true,
+        "authenticated": false
+      }
+    ],
+    "newCounts": {
+      "jobs": 0,
+      "events": 0,
+      "policies": 0,
+      "enabledPolicies": 0
+    },
+    "ledgerCount": 195
+  },
+  "advisorNewFindings": [
+    {
+      "name": "rls_enabled_no_policy",
+      "level": "INFO",
+      "detail": "Table \\`public.sales_initial_send_events\\` has RLS enabled, but no policies exist",
+      "metadata": {
+        "name": "sales_initial_send_events",
+        "type": "table",
+        "schema": "public"
+      }
+    },
+    {
+      "name": "rls_enabled_no_policy",
+      "level": "INFO",
+      "detail": "Table \\`public.sales_initial_send_jobs\\` has RLS enabled, but no policies exist",
+      "metadata": {
+        "name": "sales_initial_send_jobs",
+        "type": "table",
+        "schema": "public"
+      }
+    },
+    {
+      "name": "rls_enabled_no_policy",
+      "level": "INFO",
+      "detail": "Table \\`public.sales_initial_send_policies\\` has RLS enabled, but no policies exist",
+      "metadata": {
+        "name": "sales_initial_send_policies",
+        "type": "table",
+        "schema": "public"
+      }
+    }
+  ],
+  "runnerPayloadMd5VerifiedFromLedger": "7d7d9e484891de6c7e8cec9740c8394d"
+}

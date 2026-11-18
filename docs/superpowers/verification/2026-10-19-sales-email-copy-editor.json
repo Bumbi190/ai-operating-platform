@@ -1,0 +1,209 @@
+{
+  "ownerApprovedAt": "2026-10-19T10:07:35Z",
+  "scope": "Recipient-free copy editor on the existing sales workspace; no recipient selection, scheduling, approval or transport authority.",
+  "runtimeCommit": "1733d9f7ae5c685c14e5783686a36c2339256f30",
+  "preview": {
+    "id": "dpl_GafvgEVi24bsZGuQSuuhn4UF295n",
+    "state": "READY",
+    "sha": "1733d9f7ae5c685c14e5783686a36c2339256f30",
+    "url": "https://ai-operating-platform-29zzz97om-bumbi190s-projects.vercel.app/projects/handlarborsen/sales#email-templates",
+    "uiCheck": "Browser login wall blocked signed-in visual verification. 14 fixture browser cases and live owner workspace SQL read passed."
+  },
+  "migration": {
+    "file": "apps/web/supabase/migrations/20261019101120_sales_email_copy_versions.sql",
+    "ledgerVersion": "20261019102356",
+    "sha256": "9832a385ccc84edcee4e905ebd98ce6e6ae3e6aa11b55a731c9ff75975ed8964",
+    "exactLedgerBytes": true,
+    "seedRowsDuringMigration": 0,
+    "separateOwnerDraftInitializations": 2,
+    "catalog": {
+      "rows": 0,
+      "table": {
+        "rls": true,
+        "anon": false,
+        "policies": 0,
+        "authenticated": false,
+        "serviceDelete": false,
+        "serviceInsert": true,
+        "serviceSelect": true,
+        "serviceUpdate": false
+      },
+      "ledger": [
+        {
+          "name": "sales_email_copy_versions",
+          "version": "20261019102356"
+        }
+      ],
+      "functions": [
+        {
+          "anon": false,
+          "name": "sales_email_copy_json",
+          "invoker": true,
+          "service": true,
+          "searchPath": [
+            "search_path=\"\""
+          ],
+          "authenticated": false
+        },
+        {
+          "anon": false,
+          "name": "sales_email_copy_read",
+          "invoker": true,
+          "service": true,
+          "searchPath": [
+            "search_path=\"\""
+          ],
+          "authenticated": false
+        },
+        {
+          "anon": false,
+          "name": "sales_email_copy_save",
+          "invoker": true,
+          "service": true,
+          "searchPath": [
+            "search_path=\"\""
+          ],
+          "authenticated": false
+        }
+      ]
+    },
+    "guard": {
+      "canonical": 149,
+      "enforced": 135,
+      "grandfathered": 14,
+      "legacyOnly": 30,
+      "liveLedger": 172,
+      "override": false
+    },
+    "whitespaceNote": "The exact already-applied migration has a blank final line; commit whitespace check disables only blank-at-eof for this style-only case. Canonical and ledger SHA256 remain identical."
+  },
+  "behavior": {
+    "collapsedByDefault": true,
+    "editable": [
+      "subject",
+      "body"
+    ],
+    "immutableMetadata": true,
+    "oldVersionsRetained": true,
+    "refreshPreservesUnsavedEditor": true,
+    "compareAndSet": true,
+    "responseRetryIdempotent": true,
+    "allCopiesRemainDraft": true,
+    "recipient": null,
+    "scheduledAt": null
+  },
+  "tests": {
+    "apiRed": {
+      "passed": 15,
+      "failedAsExpected": 4
+    },
+    "metadataRed": "INCOMPLETE_OFFER_METADATA_ALLOWED observed against the pre-guard function",
+    "scoped": {
+      "passed": 646,
+      "failed": 0,
+      "pendingDbSuites": 7
+    },
+    "browser": {
+      "passed": 14,
+      "failed": 0,
+      "viewports": [
+        1440,
+        390
+      ],
+      "checks": [
+        "collapse",
+        "exact copy",
+        "version history",
+        "reload saved revisions",
+        "in-page refresh retains unsaved text",
+        "stale save retains text",
+        "lost response uses same request key",
+        "no transport controls",
+        "mobile overflow"
+      ]
+    },
+    "typecheck": {
+      "exit": 0
+    },
+    "database": {
+      "exit": 0,
+      "includes": [
+        "full existing isolated sales SQL contracts",
+        "five negative seed/offer metadata fixtures",
+        "copy seed/edit/replay/CAS/history/owner/transport boundaries",
+        "real concurrent CAS has exactly one winner",
+        "three parallel response retries reuse one revision",
+        "unchanged contact and job rows",
+        "existing timing race/regression checks"
+      ]
+    },
+    "fullWeb": {
+      "total": 15257,
+      "passed": 13519,
+      "failed": 401,
+      "pending": 1333,
+      "green": false,
+      "failureNames": "2026-10-19-sales-email-copy-test-failures.json",
+      "note": "Full run after final changes. All failed test names and module-load errors recorded; no unrelated failures hidden or reclassified as passing."
+    }
+  },
+  "review": {
+    "reviewer": "email_copy_review fresh-context agent",
+    "initialImportant": 1,
+    "initialCritical": 0,
+    "resolved": [
+      "Independent first-version seed/offer metadata validation with five observed RED→GREEN SQL cases",
+      "Migration replacement-token quoting issue corrected and compiled in isolated PostgreSQL before apply",
+      "Controlled Swedish network fallback verified with browser response-loss case"
+    ],
+    "finalFindings": 0
+  },
+  "live": {
+    "held": 139,
+    "contactHash": "f37f80260e89372bccc895f97789f5d7",
+    "contactRowsUnchanged": true,
+    "other18MemoryHash": "c0ddd7e450b54d800d6f23cf4bac8943",
+    "other18MemoriesUnchanged": true,
+    "sourceCopyMemoryChange": "Only annotations updated to point Atlas to current workspace.emailTemplates; original two source texts preserved.",
+    "templateRevisions": [
+      {
+        "id": "ed85e7cc-8ba6-44cb-b8dc-0d5de7535d41",
+        "templateKey": "pilot-six-months-initial-v1",
+        "version": 1,
+        "subject": "Vill ni testa Handlarbörsen kostnadsfritt i sex månader?",
+        "status": "draft",
+        "recipient": null,
+        "scheduledAt": null,
+        "ownerTextReviewed": false
+      },
+      {
+        "id": "7ce4d966-620c-4db9-8511-711beadc7d0e",
+        "templateKey": "pilot-six-months-reminder-v1",
+        "version": 1,
+        "subject": "En kort uppföljning om Handlarbörsen",
+        "status": "draft",
+        "recipient": null,
+        "scheduledAt": null,
+        "ownerTextReviewed": false
+      }
+    ],
+    "initialJobs": 0,
+    "replyJobs": 1,
+    "sendJobs": 1,
+    "sendEvents": 4,
+    "offers": 2,
+    "histories": 5,
+    "rules": 1,
+    "initialAllowed": 0,
+    "customerSendingEnabled": false
+  },
+  "advisors": {
+    "newObjectFinding": "INFO rls_enabled_no_policy is intentional for a service-only table with no browser grants",
+    "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy"
+  },
+  "remainingLimits": [
+    "Actual signed-in preview UI verification blocked by an Omnira sign-in wall; no auth bypass attempted.",
+    "Unsaved edits survive in-page refresh but not full browser close/reload; saved versions survive reload.",
+    "No merge or production frontend promotion. Founding5 source gaps and all139 suppression remain."
+  ]
+}

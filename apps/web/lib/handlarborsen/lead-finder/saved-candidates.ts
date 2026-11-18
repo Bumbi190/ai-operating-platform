@@ -66,9 +66,12 @@ export function parseSavedCandidates(rows: unknown, projectId: string): SavedCan
       !Array.isArray(row.exclusions) || !row.exclusions.every((s: unknown) => typeof s === 'string') ||
       !Array.isArray(row.sni_codes) || row.sni_codes.length < 1 || row.sni_codes.length > 2 || !row.sni_codes.every((s: unknown) => s === '47.811' || s === '46.711') ||
       !object(row.provenance) || row.provenance.source !== 'scb_foretagsregistret' ||
-      row.provenance.retrievedAt !== '2026-10-27' ||
-      row.provenance.audit !== 'hb-scb-status-audited-20261028-061729' ||
-      row.provenance.review !== 'awaiting_human_review') {
+      row.provenance.review !== 'awaiting_human_review' ||
+      !(
+        (row.provenance.retrievedAt === '2026-10-27' && row.provenance.audit === 'hb-scb-status-audited-20261028-061729' && row.provenance.workplaceCfar === undefined) ||
+        (typeof row.provenance.retrievedAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.provenance.retrievedAt) &&
+          row.provenance.audit === 'hb-scb-live-preview-v1' && typeof row.provenance.workplaceCfar === 'string' && /^\d{1,20}$/.test(row.provenance.workplaceCfar))
+      )) {
       return empty('unavailable')
     }
     const orgnr = normalizeOrgnr(typeof row.orgnr === 'string' ? row.orgnr : '')

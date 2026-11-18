@@ -1,0 +1,620 @@
+{
+  "status": "awaiting_owner_review",
+  "scope": "Five bounded partial histories, not first-contact permission, scheduling or sending",
+  "rulesRequest": {
+    "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+    "idempotencyKey": "875af145-d273-53c4-9ce4-6f979c43ac8a",
+    "expectedPreviousId": null,
+    "minWaitSeconds": 1209600,
+    "maxReminders": 1,
+    "maxSourceAgeSeconds": 900,
+    "confirmed": false
+  },
+  "historyCandidates": [
+    {
+      "company": "GP Motor",
+      "recipient": "info@gpmotor.se",
+      "request": {
+        "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+        "idempotencyKey": "e9b9358b-714f-5786-b66b-14858ab5e89f",
+        "expectedPreviousId": null,
+        "contactId": "7f92bfaf-d48f-4fb3-bdf6-9961e9506259",
+        "expectedContactVersion": 1,
+        "data": {
+          "schemaVersion": 1,
+          "contactVersions": [
+            {
+              "id": "7f92bfaf-d48f-4fb3-bdf6-9961e9506259",
+              "version": 1
+            }
+          ],
+          "history": "contacted",
+          "olderHistoryAttestation": null,
+          "sources": [
+            {
+              "sourceKey": "strato_sent",
+              "channel": "strato_sent",
+              "identityRef": "Strato mailbox 5964032c-aad9-47c5-b986-71dc7339d775 generation 6",
+              "scopeRef": "Sent Items; primary recipient info@gpmotor.se; other folders and older history excluded",
+              "since": "2026-10-06T22:00:00Z",
+              "through": "2026-10-19T09:31:06.445424+00:00",
+              "observedAt": "2026-10-19T09:31:08.539138+00:00",
+              "state": "gap",
+              "reference": "Read-only header audit2026-10-19; folder UIDVALIDITY 1791301211"
+            },
+            {
+              "sourceKey": "strato_inbox",
+              "channel": "strato_inbox",
+              "identityRef": "Strato mailbox 5964032c-aad9-47c5-b986-71dc7339d775 generation 6",
+              "scopeRef": "INBOX; primary recipient info@gpmotor.se; other folders and older history excluded",
+              "since": "2026-10-06T22:00:00Z",
+              "through": "2026-10-19T09:31:06.445424+00:00",
+              "observedAt": "2026-10-19T09:31:08.539138+00:00",
+              "state": "gap",
+              "reference": "Read-only header audit2026-10-19; folder UIDVALIDITY 1791301212"
+            },
+            {
+              "sourceKey": "resend",
+              "channel": "resend",
+              "identityRef": "Connected Resend account (dated connector read)",
+              "scopeRef": "Recent transactional list71 and two broadcasts; current sent broadcast25 recipients; no exact target match",
+              "since": "2026-10-06T22:00:00Z",
+              "through": "2026-10-19T09:33:43.929Z",
+              "observedAt": "2026-10-19T09:33:44.599Z",
+              "state": "gap",
+              "reference": "Dated read2026-10-19; no broader-history completeness assertion"
+            }
+          ],
+          "events": [
+            {
+              "id": "cbd954e2-da7a-5606-86d4-a50bb58ce8f1",
+              "sourceRefs": [
+                "strato_sent"
+              ],
+              "providerRefs": [
+                {
+                  "sourceKey": "strato_sent",
+                  "id": "Sent Items/1791301211/15"
+                }
+              ],
+              "occurredAt": "2026-10-08T13:29:33+02:00",
+              "direction": "outbound",
+              "outcome": "delivery_unknown",
+              "kind": "initial",
+              "invitationId": "de9bd8f0-1964-58dd-8f8f-c9f7a793db52",
+              "inReplyToEventId": null,
+              "reviewedDuplicateOf": null
+            },
+            {
+              "id": "0a489893-a844-55c5-88e7-88cf07c237b8",
+              "sourceRefs": [
+                "strato_sent"
+              ],
+              "providerRefs": [
+                {
+                  "sourceKey": "strato_sent",
+                  "id": "Sent Items/1791301211/25"
+                }
+              ],
+              "occurredAt": "2026-10-15T08:00:02+02:00",
+              "direction": "outbound",
+              "outcome": "delivery_unknown",
+              "kind": "reminder",
+              "invitationId": "de9bd8f0-1964-58dd-8f8f-c9f7a793db52",
+              "inReplyToEventId": "cbd954e2-da7a-5606-86d4-a50bb58ce8f1",
+              "reviewedDuplicateOf": null
+            }
+          ],
+          "correctionOf": null,
+          "reviewNote": "En påminnelse observerad 15 oktober. Avvakta svar; ingen ytterligare obesvarad påminnelse. Partiellt granskningsförslag. Skickat-kopior styrker observerad utgående historik; SMTP-kvitto/leverans är inte tekniskt verifierat. Alla kontaktspärrar kvarstår."
+        },
+        "confirmed": false
+      },
+      "status": "awaiting_owner_review",
+      "contactSuppressionMustRemain": true
+    },
+    {
+      "company": "Autolane",
+      "recipient": "daniel@autolane.se",
+      "request": {
+        "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+        "idempotencyKey": "8961e6ae-3a94-52fd-ab5c-afbb79db0bd7",
+        "expectedPreviousId": null,
+        "contactId": "6c6960cf-8bb3-46b7-99bc-e7ce1e756d55",
+        "expectedContactVersion": 1,
+        "data": {
+          "schemaVersion": 1,
+          "contactVersions": [
+            {
+              "id": "6c6960cf-8bb3-46b7-99bc-e7ce1e756d55",
+              "version": 1
+            }
+          ],
+          "history": "contacted",
+          "olderHistoryAttestation": null,
+          "sources": [
+            {
+              "sourceKey": "strato_sent",
+              "channel": "strato_sent",
+              "identityRef": "Strato mailbox 5964032c-aad9-47c5-b986-71dc7339d775 generation 6",
+              "scopeRef": "Sent Items; primary recipient daniel@autolane.se; other folders and older history excluded",
+              "since": "2026-10-06T22:00:00Z",
+              "through": "2026-10-19T09:31:06.445424+00:00",
+              "observedAt": "2026-10-19T09:31:08.539138+00:00",
+              "state": "gap",
+              "reference": "Read-only header audit2026-10-19; folder UIDVALIDITY 1791301211"
+            },
+            {
+              "sourceKey": "strato_inbox",
+              "channel": "strato_inbox",
+              "identityRef": "Strato mailbox 5964032c-aad9-47c5-b986-71dc7339d775 generation 6",
+              "scopeRef": "INBOX; primary recipient daniel@autolane.se; other folders and older history excluded",
+              "since": "2026-10-06T22:00:00Z",
+              "through": "2026-10-19T09:31:06.445424+00:00",
+              "observedAt": "2026-10-19T09:31:08.539138+00:00",
+              "state": "gap",
+              "reference": "Read-only header audit2026-10-19; folder UIDVALIDITY 1791301212"
+            },
+            {
+              "sourceKey": "resend",
+              "channel": "resend",
+              "identityRef": "Connected Resend account (dated connector read)",
+              "scopeRef": "Recent transactional list71 and two broadcasts; current sent broadcast25 recipients; no exact target match",
+              "since": "2026-10-06T22:00:00Z",
+              "through": "2026-10-19T09:33:43.929Z",
+              "observedAt": "2026-10-19T09:33:44.599Z",
+              "state": "gap",
+              "reference": "Dated read2026-10-19; no broader-history completeness assertion"
+            }
+          ],
+          "events": [
+            {
+              "id": "b18bc7d0-4009-5e3f-8f2b-fc3976d428dd",
+              "sourceRefs": [
+                "strato_sent"
+              ],
+              "providerRefs": [
+                {
+                  "sourceKey": "strato_sent",
+                  "id": "Sent Items/1791301211/16"
+                }
+              ],
+              "occurredAt": "2026-10-08T13:38:14+02:00",
+              "direction": "outbound",
+              "outcome": "delivery_unknown",
+              "kind": "initial",
+              "invitationId": "e05bd01b-e7a7-5de3-89f1-fdb07a552d24",
+              "inReplyToEventId": null,
+              "reviewedDuplicateOf": null
+            },
+            {
+              "id": "b3c0f75f-369b-5c64-a0e4-120979e4f856",
+              "sourceRefs": [
+                "strato_sent"
+              ],
+              "providerRefs": [
+                {
+                  "sourceKey": "strato_sent",
+                  "id": "Sent Items/1791301211/26"
+                }
+              ],
+              "occurredAt": "2026-10-15T08:00:45+02:00",
+              "direction": "outbound",
+              "outcome": "delivery_unknown",
+              "kind": "reminder",
+              "invitationId": "e05bd01b-e7a7-5de3-89f1-fdb07a552d24",
+              "inReplyToEventId": null,
+              "reviewedDuplicateOf": null
+            }
+          ],
+          "correctionOf": null,
+          "reviewNote": "En påminnelse observerad 15 oktober. Avvakta svar; ingen ytterligare obesvarad påminnelse. Partiellt granskningsförslag. Skickat-kopior styrker observerad utgående historik; SMTP-kvitto/leverans är inte tekniskt verifierat. Alla kontaktspärrar kvarstår."
+        },
+        "confirmed": false
+      },
+      "status": "awaiting_owner_review",
+      "contactSuppressionMustRemain": true
+    },
+    {
+      "company": "Moberg Bil",
+      "recipient": "tobias@mobergbil.se",
+      "request": {
+        "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+        "idempotencyKey": "575f5e4d-d85c-530b-bd73-e1aeb5de6bfd",
+        "expectedPreviousId": null,
+        "contactId": "b401f228-1db1-4ab3-b8ef-1023ad22dcb2",
+        "expectedContactVersion": 1,
+        "data": {
+          "schemaVersion": 1,
+          "contactVersions": [
+            {
+              "id": "b401f228-1db1-4ab3-b8ef-1023ad22dcb2",
+              "version": 1
+            }
+          ],
+          "history": "contacted",
+          "olderHistoryAttestation": null,
+          "sources": [
+            {
+              "sourceKey": "strato_sent",
+              "channel": "strato_sent",
+              "identityRef": "Strato mailbox 5964032c-aad9-47c5-b986-71dc7339d775 generation 6",
+              "scopeRef": "Sent Items; primary recipient tobias@mobergbil.se; other folders and older history excluded",
+              "since": "2026-10-06T22:00:00Z",
+              "through": "2026-10-19T09:31:06.445424+00:00",
+              "observedAt": "2026-10-19T09:31:08.539138+00:00",
+              "state": "gap",
+              "reference": "Read-only header audit2026-10-19; folder UIDVALIDITY 1791301211"
+            },
+            {
+              "sourceKey": "strato_inbox",
+              "channel": "strato_inbox",
+              "identityRef": "Strato mailbox 5964032c-aad9-47c5-b986-71dc7339d775 generation 6",
+              "scopeRef": "INBOX; primary recipient tobias@mobergbil.se; other folders and older history excluded",
+              "since": "2026-10-06T22:00:00Z",
+              "through": "2026-10-19T09:31:06.445424+00:00",
+              "observedAt": "2026-10-19T09:31:08.539138+00:00",
+              "state": "gap",
+              "reference": "Read-only header audit2026-10-19; folder UIDVALIDITY 1791301212"
+            },
+            {
+              "sourceKey": "resend",
+              "channel": "resend",
+              "identityRef": "Connected Resend account (dated connector read)",
+              "scopeRef": "Recent transactional list71 and two broadcasts; current sent broadcast25 recipients; no exact target match",
+              "since": "2026-10-06T22:00:00Z",
+              "through": "2026-10-19T09:33:43.929Z",
+              "observedAt": "2026-10-19T09:33:44.599Z",
+              "state": "gap",
+              "reference": "Dated read2026-10-19; no broader-history completeness assertion"
+            }
+          ],
+          "events": [
+            {
+              "id": "4924f88f-2f43-552e-aaf3-18d4d4652744",
+              "sourceRefs": [
+                "strato_sent"
+              ],
+              "providerRefs": [
+                {
+                  "sourceKey": "strato_sent",
+                  "id": "Sent Items/1791301211/17"
+                }
+              ],
+              "occurredAt": "2026-10-08T13:41:42+02:00",
+              "direction": "outbound",
+              "outcome": "delivery_unknown",
+              "kind": "initial",
+              "invitationId": "1503bc62-b68b-572e-8d8e-19155c69391a",
+              "inReplyToEventId": null,
+              "reviewedDuplicateOf": null
+            },
+            {
+              "id": "0e6d524c-5071-539e-9906-8ada9cc5d9ca",
+              "sourceRefs": [
+                "strato_inbox"
+              ],
+              "providerRefs": [
+                {
+                  "sourceKey": "strato_inbox",
+                  "id": "INBOX/1791301212/13"
+                }
+              ],
+              "occurredAt": "2026-10-08T12:42:28+00:00",
+              "direction": "inbound",
+              "outcome": "received",
+              "kind": "unclassified",
+              "invitationId": "1503bc62-b68b-572e-8d8e-19155c69391a",
+              "inReplyToEventId": "4924f88f-2f43-552e-aaf3-18d4d4652744",
+              "reviewedDuplicateOf": null
+            },
+            {
+              "id": "8b5b9f62-dabf-51d6-89d2-f4cd6cecb29e",
+              "sourceRefs": [
+                "strato_sent"
+              ],
+              "providerRefs": [
+                {
+                  "sourceKey": "strato_sent",
+                  "id": "Sent Items/1791301211/20"
+                }
+              ],
+              "occurredAt": "2026-10-08T16:10:29+02:00",
+              "direction": "outbound",
+              "outcome": "delivery_unknown",
+              "kind": "requested_reply",
+              "invitationId": "1503bc62-b68b-572e-8d8e-19155c69391a",
+              "inReplyToEventId": "0e6d524c-5071-539e-9906-8ada9cc5d9ca",
+              "reviewedDuplicateOf": null
+            },
+            {
+              "id": "bd796fe8-bcb0-5f9c-b7af-813f22754035",
+              "sourceRefs": [
+                "strato_sent"
+              ],
+              "providerRefs": [
+                {
+                  "sourceKey": "strato_sent",
+                  "id": "Sent Items/1791301211/24"
+                }
+              ],
+              "occurredAt": "2026-10-15T07:32:22+02:00",
+              "direction": "outbound",
+              "outcome": "delivery_unknown",
+              "kind": "reminder",
+              "invitationId": "1503bc62-b68b-572e-8d8e-19155c69391a",
+              "inReplyToEventId": "0e6d524c-5071-539e-9906-8ada9cc5d9ca",
+              "reviewedDuplicateOf": null
+            },
+            {
+              "id": "a7fc55f3-6272-5aac-a52e-012070982875",
+              "sourceRefs": [
+                "strato_inbox"
+              ],
+              "providerRefs": [
+                {
+                  "sourceKey": "strato_inbox",
+                  "id": "INBOX/1791301212/19"
+                }
+              ],
+              "occurredAt": "2026-10-15T12:16:37+00:00",
+              "direction": "inbound",
+              "outcome": "received",
+              "kind": "unclassified",
+              "invitationId": "1503bc62-b68b-572e-8d8e-19155c69391a",
+              "inReplyToEventId": "bd796fe8-bcb0-5f9c-b7af-813f22754035",
+              "reviewedDuplicateOf": null
+            },
+            {
+              "id": "4eeabd2b-d4d6-532c-bb39-90083513d4fb",
+              "sourceRefs": [
+                "strato_sent"
+              ],
+              "providerRefs": [
+                {
+                  "sourceKey": "strato_sent",
+                  "id": "Sent Items/1791301211/28"
+                }
+              ],
+              "occurredAt": "2026-10-15T14:32:53+02:00",
+              "direction": "outbound",
+              "outcome": "delivery_unknown",
+              "kind": "requested_reply",
+              "invitationId": "1503bc62-b68b-572e-8d8e-19155c69391a",
+              "inReplyToEventId": "a7fc55f3-6272-5aac-a52e-012070982875",
+              "reviewedDuplicateOf": null
+            },
+            {
+              "id": "0e4a7404-d288-5e65-ae82-e780b4f452c3",
+              "sourceRefs": [
+                "strato_inbox"
+              ],
+              "providerRefs": [
+                {
+                  "sourceKey": "strato_inbox",
+                  "id": "INBOX/1791301212/20"
+                }
+              ],
+              "occurredAt": "2026-10-15T13:53:47+00:00",
+              "direction": "inbound",
+              "outcome": "received",
+              "kind": "unclassified",
+              "invitationId": "1503bc62-b68b-572e-8d8e-19155c69391a",
+              "inReplyToEventId": "4eeabd2b-d4d6-532c-bb39-90083513d4fb",
+              "reviewedDuplicateOf": null
+            }
+          ],
+          "correctionOf": null,
+          "reviewNote": "Påminnelse 15 oktober, sedan dialog och önskemål om att vänta. November är endast en föreslagen period; ingen tid bokas. Partiellt granskningsförslag. Skickat-kopior styrker observerad utgående historik; SMTP-kvitto/leverans är inte tekniskt verifierat. Alla kontaktspärrar kvarstår."
+        },
+        "confirmed": false
+      },
+      "status": "awaiting_owner_review",
+      "contactSuppressionMustRemain": true
+    },
+    {
+      "company": "Tjänstebils Experten",
+      "recipient": "zeljko.barnjak@tjanstebilsexperten.se",
+      "request": {
+        "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+        "idempotencyKey": "6fb481f9-d80a-5b20-8f65-96a30947efdd",
+        "expectedPreviousId": null,
+        "contactId": "78ad0318-7f1b-4379-aa9c-e8557de7da05",
+        "expectedContactVersion": 1,
+        "data": {
+          "schemaVersion": 1,
+          "contactVersions": [
+            {
+              "id": "78ad0318-7f1b-4379-aa9c-e8557de7da05",
+              "version": 1
+            }
+          ],
+          "history": "contacted",
+          "olderHistoryAttestation": null,
+          "sources": [
+            {
+              "sourceKey": "strato_sent",
+              "channel": "strato_sent",
+              "identityRef": "Strato mailbox 5964032c-aad9-47c5-b986-71dc7339d775 generation 6",
+              "scopeRef": "Sent Items; primary recipient zeljko.barnjak@tjanstebilsexperten.se; other folders and older history excluded",
+              "since": "2026-10-06T22:00:00Z",
+              "through": "2026-10-19T09:31:06.445424+00:00",
+              "observedAt": "2026-10-19T09:31:08.539138+00:00",
+              "state": "gap",
+              "reference": "Read-only header audit2026-10-19; folder UIDVALIDITY 1791301211"
+            },
+            {
+              "sourceKey": "strato_inbox",
+              "channel": "strato_inbox",
+              "identityRef": "Strato mailbox 5964032c-aad9-47c5-b986-71dc7339d775 generation 6",
+              "scopeRef": "INBOX; primary recipient zeljko.barnjak@tjanstebilsexperten.se; other folders and older history excluded",
+              "since": "2026-10-06T22:00:00Z",
+              "through": "2026-10-19T09:31:06.445424+00:00",
+              "observedAt": "2026-10-19T09:31:08.539138+00:00",
+              "state": "gap",
+              "reference": "Read-only header audit2026-10-19; folder UIDVALIDITY 1791301212"
+            },
+            {
+              "sourceKey": "resend",
+              "channel": "resend",
+              "identityRef": "Connected Resend account (dated connector read)",
+              "scopeRef": "Recent transactional list71 and two broadcasts; current sent broadcast25 recipients; no exact target match",
+              "since": "2026-10-06T22:00:00Z",
+              "through": "2026-10-19T09:33:43.929Z",
+              "observedAt": "2026-10-19T09:33:44.599Z",
+              "state": "gap",
+              "reference": "Dated read2026-10-19; no broader-history completeness assertion"
+            }
+          ],
+          "events": [
+            {
+              "id": "02a2f3de-bb4b-5467-8505-562c4f338e4f",
+              "sourceRefs": [
+                "strato_sent"
+              ],
+              "providerRefs": [
+                {
+                  "sourceKey": "strato_sent",
+                  "id": "Sent Items/1791301211/18"
+                }
+              ],
+              "occurredAt": "2026-10-08T13:43:45+02:00",
+              "direction": "outbound",
+              "outcome": "delivery_unknown",
+              "kind": "initial",
+              "invitationId": "1e83d0ce-9d23-5d10-b42c-c4f1e456eec5",
+              "inReplyToEventId": null,
+              "reviewedDuplicateOf": null
+            },
+            {
+              "id": "6c03f5c1-87f7-527c-98d5-9a9c49512b86",
+              "sourceRefs": [
+                "strato_sent"
+              ],
+              "providerRefs": [
+                {
+                  "sourceKey": "strato_sent",
+                  "id": "Sent Items/1791301211/27"
+                }
+              ],
+              "occurredAt": "2026-10-15T08:01:08+02:00",
+              "direction": "outbound",
+              "outcome": "delivery_unknown",
+              "kind": "reminder",
+              "invitationId": "1e83d0ce-9d23-5d10-b42c-c4f1e456eec5",
+              "inReplyToEventId": null,
+              "reviewedDuplicateOf": null
+            }
+          ],
+          "correctionOf": null,
+          "reviewNote": "En påminnelse observerad 15 oktober. Avvakta svar; ingen ytterligare obesvarad påminnelse. Partiellt granskningsförslag. Skickat-kopior styrker observerad utgående historik; SMTP-kvitto/leverans är inte tekniskt verifierat. Alla kontaktspärrar kvarstår."
+        },
+        "confirmed": false
+      },
+      "status": "awaiting_owner_review",
+      "contactSuppressionMustRemain": true
+    },
+    {
+      "company": "Newman Bil Hässleholm",
+      "recipient": "huni.hallsson@newmanbil.se",
+      "request": {
+        "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+        "idempotencyKey": "b08c69c8-793a-5b97-b960-b009f867a6ee",
+        "expectedPreviousId": null,
+        "contactId": "d8212e35-3bfa-4cf4-b9ed-30509bdb3617",
+        "expectedContactVersion": 1,
+        "data": {
+          "schemaVersion": 1,
+          "contactVersions": [
+            {
+              "id": "d8212e35-3bfa-4cf4-b9ed-30509bdb3617",
+              "version": 1
+            }
+          ],
+          "history": "contacted",
+          "olderHistoryAttestation": null,
+          "sources": [
+            {
+              "sourceKey": "strato_sent",
+              "channel": "strato_sent",
+              "identityRef": "Strato mailbox 5964032c-aad9-47c5-b986-71dc7339d775 generation 6",
+              "scopeRef": "Sent Items; primary recipient huni.hallsson@newmanbil.se; other folders and older history excluded",
+              "since": "2026-10-06T22:00:00Z",
+              "through": "2026-10-19T09:31:06.445424+00:00",
+              "observedAt": "2026-10-19T09:31:08.539138+00:00",
+              "state": "gap",
+              "reference": "Read-only header audit2026-10-19; folder UIDVALIDITY 1791301211"
+            },
+            {
+              "sourceKey": "strato_inbox",
+              "channel": "strato_inbox",
+              "identityRef": "Strato mailbox 5964032c-aad9-47c5-b986-71dc7339d775 generation 6",
+              "scopeRef": "INBOX; primary recipient huni.hallsson@newmanbil.se; other folders and older history excluded",
+              "since": "2026-10-06T22:00:00Z",
+              "through": "2026-10-19T09:31:06.445424+00:00",
+              "observedAt": "2026-10-19T09:31:08.539138+00:00",
+              "state": "gap",
+              "reference": "Read-only header audit2026-10-19; folder UIDVALIDITY 1791301212"
+            },
+            {
+              "sourceKey": "resend",
+              "channel": "resend",
+              "identityRef": "Connected Resend account (dated connector read)",
+              "scopeRef": "Recent transactional list71 and two broadcasts; current sent broadcast25 recipients; no exact target match",
+              "since": "2026-10-06T22:00:00Z",
+              "through": "2026-10-19T09:33:43.929Z",
+              "observedAt": "2026-10-19T09:33:44.599Z",
+              "state": "gap",
+              "reference": "Dated read2026-10-19; no broader-history completeness assertion"
+            }
+          ],
+          "events": [
+            {
+              "id": "ae621dd1-283e-5c22-a233-6c784060080d",
+              "sourceRefs": [
+                "strato_sent"
+              ],
+              "providerRefs": [
+                {
+                  "sourceKey": "strato_sent",
+                  "id": "Sent Items/1791301211/13"
+                }
+              ],
+              "occurredAt": "2026-10-08T13:20:47+02:00",
+              "direction": "outbound",
+              "outcome": "delivery_unknown",
+              "kind": "initial",
+              "invitationId": "a65cdd37-3c12-586d-b0b2-8b610daf8b92",
+              "inReplyToEventId": null,
+              "reviewedDuplicateOf": null
+            }
+          ],
+          "correctionOf": null,
+          "reviewNote": "Svar 9 oktober om att de inte kan börja nu. Avvakta. Evas separata adress hör till samma verifierade tråd; huvudmottagaren byts inte. Partiellt granskningsförslag. Skickat-kopior styrker observerad utgående historik; SMTP-kvitto/leverans är inte tekniskt verifierat. Alla kontaktspärrar kvarstår."
+        },
+        "confirmed": false
+      },
+      "status": "awaiting_owner_review",
+      "contactSuppressionMustRemain": true
+    }
+  ],
+  "relatedNewmanThread": {
+    "primaryRecipient": "huni.hallsson@newmanbil.se",
+    "separateReplyAddress": "eva.karlsson@kronobergsbil.se",
+    "evidence": [
+      "INBOX/1791301212/14",
+      "Sent Items/1791301211/21"
+    ],
+    "includedAsPrimaryRecipientEvents": false,
+    "reason": "Same original thread verified; alternative address is not merged or substituted."
+  },
+  "expectedAfterFutureApproval": {
+    "heldContacts": 139,
+    "initialAllowed": 0,
+    "customerSendingEnabled": false,
+    "sourceGapRemains": true,
+    "reminderCountMayRemainUnknown": true,
+    "intervalFloorMayRemainNull": true
+  },
+  "proposedAt": "2026-10-19T09:33:44.599Z"
+}

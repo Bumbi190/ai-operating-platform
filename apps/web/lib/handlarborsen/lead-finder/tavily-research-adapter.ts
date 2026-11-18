@@ -28,6 +28,8 @@ export interface TavilyAdapterOptions {
   /** Internal callback for the optional extract stage: public URL candidates only,
    * never returned to the owner as evidence unless independently verified. */
   onCandidateUrl?: (job: ResearchJob, url: string) => void
+  /** Internal server callback; never accepted from request bodies. Defaults retain the car-only pilot. */
+  queryForJob?: (job: ResearchJob) => string
 }
 
 const SALE_SIGNALS: [BusinessIndicator, RegExp][] = [
@@ -198,7 +200,8 @@ export function makeTavilyResearchAdapter(options: TavilyAdapterOptions): Search
       seen.add(job.id)
 
       // Search for the legal entity first, not broad marketplace car listings.
-      const query = `"${job.legalName}" ${job.orgnr} officiell webbplats bilhandel`
+      const query = options.queryForJob?.(job) ?? `"${job.legalName}" ${job.orgnr} officiell webbplats bilhandel`
+      if (typeof query !== 'string' || query.length > 500) throw new Error('query_invalid')
       const response = await fetchImpl(TAVILY_SEARCH_URL, {
         method: 'POST',
         redirect: 'error',
@@ -207,6 +210,7 @@ export function makeTavilyResearchAdapter(options: TavilyAdapterOptions): Search
         headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
         body: JSON.stringify({
           query, search_depth: 'basic', max_results: TAVILY_MAX_RESULTS,
+          ...(options.queryForJob ? { auto_parameters: false } : {}),
           include_answer: false, include_raw_content: false, include_images: false,
         }),
       })

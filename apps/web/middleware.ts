@@ -41,6 +41,12 @@ function refuseOfficePairing(): NextResponse {
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
   const isOfficePairingPage = path === '/atlas/office/connect'
+  // This exact, opt-in Preview route performs its own explicit operator JWT check.
+  // Avoid session refresh and membership/project database reads in the OIDC-only probe.
+  // Other methods are rejected by the route/framework; no other route bypasses middleware.
+  if (path === '/api/atlas/handlarborsen/lead-finder/webbuilder-oidc-preflight') {
+    return NextResponse.next({ request })
+  }
   // Diagnostics are preview-only, including when live streaming is enabled.
   if (process.env.VERCEL_ENV === 'production' &&
       (path === '/atlas-voice-provider-probe.html' || path === '/atlas-voice-connection-probe.html')) {

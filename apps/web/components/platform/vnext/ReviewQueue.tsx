@@ -19,6 +19,7 @@ import {
   type ReviewDecision,
 } from '@/lib/os/review-queue-shared'
 import styles from './ReviewQueue.module.css'
+import {SalesReplies} from './sales/SalesReplies'
 
 /**
  * Granskningar — the global review queue in vNext.
@@ -201,7 +202,7 @@ function QueueRow({
         onClick={() => onSelect(item.id, { open: true })}
       >
         <span className={styles.rowMain}>
-          <span className={styles.rowTitle}>{item.outputKey ?? item.kind ?? 'Utan utdatanyckel'}</span>
+          <span className={styles.rowTitle}>{item.kind==='sales_reply_review'?'Mejl att granska':item.outputKey ?? item.kind ?? 'Utan utdatanyckel'}</span>
           <span className={styles.rowMeta}>
             {item.project ? (
               <span className={styles.projectMark}>
@@ -237,6 +238,10 @@ function StatusChip({ item }: { item: ReviewItem }) {
 
 function Inspector({ item, onClose }: { item: ReviewItem; onClose: () => void }) {
   if(item.kind==='local_text_review'||item.kind==='local_text_incident')return <section><button onClick={onClose}>Stäng</button><LocalTextApprovalCard key={item.id} approvalId={item.id} kind={item.kind} status={item.status}/></section>
+  if(item.kind==='sales_reply_review')return <div className={styles.detail}>
+    <div className={styles.detailHead}><button type="button" className={styles.back} onClick={onClose}>Tillbaka till kön</button><h2 className={styles.detailTitle}>Mejl att granska</h2></div>
+    {item.project?<SalesReplies key={item.id} projectId={item.project.id} approvalId={item.id}/>:<p role="status">Mejlets projekt kunde inte verifieras. Inget beslut kan tas.</p>}
+  </div>
   return (
     <div className={styles.detail}>
       <div className={styles.detailHead}>

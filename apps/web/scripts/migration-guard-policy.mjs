@@ -100,6 +100,31 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 export const EXPECTED_CANONICAL_SQL_COUNT = 177
 export const EXPECTED_ENFORCED_COUNT = 163
 
+// Both former external references now exist in the canonical 177-file corpus.
+// Keep exact ledger-version and SQL-hash pins for attestation verification; never count them twice.
+export const REFERENCED_LEDGER_MIGRATIONS = Object.freeze(
+  [
+  {
+    "name": "office_visit_sessions",
+    "ledgerVersion": "20261113122811",
+    "sourceCommit": "1435667c3423801e51a50252fc2ebdafbe6a216a",
+    "sourcePath": "apps/web/supabase/migrations/20261113105758_office_visit_sessions.sql",
+    "sourceBlob": "c50298e3c98c542fc6a3f2a2d23be14862427695",
+    "sqlSha256": "a77bbd8837122cf419c271e534b594811217caec5c9142941bd6eecd8a7fb337"
+  },
+  {
+    "name": "family_daily_social_capacity_20261114",
+    "ledgerVersion": "20261114104408",
+    "sourceCommit": "1435667c3423801e51a50252fc2ebdafbe6a216a",
+    "sourcePath": "apps/web/supabase/migrations/20261114104408_family_daily_social_capacity_20261114.sql",
+    "sourceBlob": "b3697b7962f704b3d3cc65ba5d9e0251224fff2b",
+    "sqlSha256": "9dbef873ee5604c1b37f875acdf5ad4907f8ba7a2fda7111f87f5a6513bd7431"
+  }
+].map(reference => Object.freeze(reference)),
+)
+export const EXPECTED_REFERENCED_LEDGER_COUNT = 0
+const EXPECTED_PINNED_LEDGER_METADATA_COUNT = 2
+
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([
   'media_images',
@@ -257,6 +282,21 @@ export function inspectCanonicalMigrationFiles(
     throw new Error(`legacy-only name(s) unexpectedly became canonical:\n${formatNames(legacyOverlap)}`)
   }
 
+  if (REFERENCED_LEDGER_MIGRATIONS.length !== EXPECTED_PINNED_LEDGER_METADATA_COUNT ||
+      EXPECTED_REFERENCED_LEDGER_COUNT !== 0) throw new Error('pinned migration metadata count drifted')
+  const pinnedNames = REFERENCED_LEDGER_MIGRATIONS.map(reference => reference.name)
+  if (duplicates(pinnedNames).length) throw new Error('duplicate pinned migration metadata')
+  for (const reference of REFERENCED_LEDGER_MIGRATIONS) {
+    if (!EXPLICIT_LEDGER_NAME.test(reference.name) || !/^\d+$/.test(reference.ledgerVersion) ||
+        !/^[a-f0-9]{40}$/.test(reference.sourceCommit) || !/^[a-f0-9]{40}$/.test(reference.sourceBlob) ||
+        !/^[a-f0-9]{64}$/.test(reference.sqlSha256) ||
+        !reference.sourcePath.endsWith('_' + reference.name + '.sql') ||
+        legacyOnlyNames.includes(reference.name) || grandfatheredNames.includes(reference.name) ||
+        (expectedCanonicalCount === EXPECTED_CANONICAL_SQL_COUNT && !repositoryNameSet.has(reference.name))) {
+      throw new Error('invalid or missing pinned canonical migration metadata')
+    }
+  }
+
   const grandfathered = new Set(grandfatheredNames)
   const enforcedNames = repositoryNames.filter((name) => !grandfathered.has(name))
   if (enforcedNames.length !== expectedEnforcedCount) {
@@ -267,6 +307,7 @@ export function inspectCanonicalMigrationFiles(
     policyVersion: MIGRATION_GUARD_POLICY_VERSION,
     sqlFiles,
     repositoryNames,
+    referencedMigrations: [],
     enforcedNames,
     grandfatheredNames: [...grandfatheredNames],
     legacyOnlyNames: [...legacyOnlyNames],
@@ -299,6 +340,7 @@ export function evaluateAppliedMigrationLedger(appliedNames, repositoryState) {
   return {
     policyVersion: repositoryState.policyVersion,
     canonicalSqlCount: repositoryState.sqlFiles.length,
+    referencedMigrationCount: repositoryState.referencedMigrations?.length ?? 0,
     enforcedCount: repositoryState.enforcedNames.length,
     grandfatheredCount: repositoryState.grandfatheredNames.length,
     legacyOnlyAllowlistCount: repositoryState.legacyOnlyNames.length,

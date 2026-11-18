@@ -1,0 +1,278 @@
+{
+  "state": "verified_saved_and_recalled_in_fresh_atlas_chat",
+  "capturedAt": "2026-10-18T18:00:51.016436+00:00",
+  "sourceCommit": "c072138a11e604a3904ca694959f0df6b5dc3e59",
+  "scope": {
+    "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+    "mailboxId": "5964032c-aad9-47c5-b986-71dc7339d775",
+    "folders": [
+      "INBOX",
+      "Sent Items"
+    ],
+    "since": "2026-10-07",
+    "through": "2026-10-18",
+    "readOnly": true
+  },
+  "readback": {
+    "headers": 41,
+    "selectedTexts": 18,
+    "attachmentsFetched": false,
+    "flagsUnchanged": true,
+    "credentialLogged": false,
+    "credentialChanged": false,
+    "backgroundSentSyncAdded": false
+  },
+  "verifiedFacts": {
+    "foundingFiveFirstSent": "2026-10-08",
+    "foundingFiveFreeMonths": 12,
+    "followedUpOnOctober15": [
+      "GP Motor",
+      "Autolane",
+      "Tjänstebils Experten"
+    ],
+    "moberg": {
+      "latestReply": "2026-10-15",
+      "decisionContactRole": "Sales Director",
+      "openingDate": "2026-10-30",
+      "ownerProposedReturn": "November 2026",
+      "automaticFollowupAuthorized": false
+    },
+    "newman": {
+      "replyDate": "2026-10-09",
+      "state": "Cannot start another system now; owner saved place",
+      "replyThreadMatched": true
+    },
+    "additionalOffers": {
+      "date": "2026-10-09",
+      "companies": [
+        "Ericssons Bilhandel",
+        "Kareby Bil"
+      ],
+      "freeMonths": 12,
+      "changesLockedFoundingFive": false,
+      "acceptanceVerified": false
+    }
+  },
+  "resendCrossCheck": {
+    "batch1Contacts": 25,
+    "batch2Contacts": 25,
+    "manualPilotRecipientAddressesCompared": 7,
+    "exactAddressOverlapBatch1": 0,
+    "exactAddressOverlapBatch2": 0,
+    "neverContactedInferenceAllowed": false,
+    "resendModified": false
+  },
+  "savedKnowledge": {
+    "before": 9,
+    "after": 12,
+    "changedExistingKeys": [
+      "handlarborsen.sales.wait",
+      "handlarborsen.sales.history_gap",
+      "handlarborsen.resend.batch2"
+    ],
+    "newKeys": [
+      "handlarborsen.strato.founding_history",
+      "handlarborsen.strato.newman_history",
+      "handlarborsen.strato.extra_offers"
+    ],
+    "maxValueChars": 191,
+    "projectOwnerGuarded": true,
+    "compareAndSet": true
+  },
+  "freshChat": {
+    "url": "https://ai-operating-platform-web-git-codex-a-fa6a7c-bumbi190s-projects.vercel.app/chat/307c8f8e-c3f1-4e50-888e-c291ebaf829b",
+    "promptProvidedHistoricalFacts": false,
+    "observedTool": "get_records",
+    "toolCompleted": true,
+    "correctDatesRepliesWaitAndExtraOffers": true,
+    "absenceNotProofOfNeverContacted": true,
+    "deliverableMarked": true,
+    "knownUnrelatedUiLimitation": "Generic navigation disclaimer is appended despite no navigation request."
+  },
+  "after": {
+    "replyJobs": 1,
+    "sendJobs": 1,
+    "sendEventKinds": {
+      "claimed": 1,
+      "confirmed": 1,
+      "dispatching": 1,
+      "smtp_accepted": 1
+    },
+    "contacts": 0,
+    "offerRevisions": 0,
+    "newMail": false,
+    "newSendPolicy": false,
+    "schemaChange": false,
+    "productionPromotion": false
+  },
+  "limitations": [
+    "Snapshot of INBOX and Sent Items for the bounded date range; Archive, Trash, other addresses and channels were not reconciled.",
+    "No response found does not establish no response exists elsewhere.",
+    "Knowledge is saved in project memory; it is not an import into the sales contact or offer tables.",
+    "No automatic November followup or customer send is authorized."
+  ],
+  "evidence": [
+    {
+      "folder": "Sent Items",
+      "uid": "13",
+      "uidValidity": "1791301211",
+      "date": "2026-10-08T13:20:47+02:00",
+      "headerSha256": "e62c92dacbfdaf175fe8e774b5e708d1db6e428379635d14919a556703057912",
+      "textSha256": "5247df5ad9d50e5bae97757c8d11f048edae397472751bf82936f1a310348edf",
+      "flagsUnchanged": true
+    },
+    {
+      "folder": "Sent Items",
+      "uid": "15",
+      "uidValidity": "1791301211",
+      "date": "2026-10-08T13:29:33+02:00",
+      "headerSha256": "ec68627984209fdb9c2ff2b0c1fbcbc77a52bf845237afc3c873dfbf744cc76e",
+      "textSha256": "613431d3ef77a26e67bf2b29acd26e682eddd7f2633fa35f4e2eb692bb83f935",
+      "flagsUnchanged": true
+    },
+    {
+      "folder": "Sent Items",
+      "uid": "16",
+      "uidValidity": "1791301211",
+      "date": "2026-10-08T13:38:14+02:00",
+      "headerSha256": "7409e70f63ee24ec9a0aee9cf7ac4ce629da14ef4764daf155b3dce699e342fd",
+      "textSha256": "1549ee245557c18367b3d3b3ab330c81695d9fb81c2751b5563aa87403149c92",
+      "flagsUnchanged": true
+    },
+    {
+      "folder": "Sent Items",
+      "uid": "17",
+      "uidValidity": "1791301211",
+      "date": "2026-10-08T13:41:42+02:00",
+      "headerSha256": "e92d2c3a829dfe64eb866f957d79bb848bff515127baaa6d90511476896d4f04",
+      "textSha256": "7b0e2c7b2c3c380fd5e6c9d6a450eae020f2cc7ef4be2c8eafd5a1c5a9c2a977",
+      "flagsUnchanged": true
+    },
+    {
+      "folder": "Sent Items",
+      "uid": "18",
+      "uidValidity": "1791301211",
+      "date": "2026-10-08T13:43:45+02:00",
+      "headerSha256": "979f644ae2481ce8d9b71362536c37651d64eb0d0e05a167be9b4c7a403d9ecf",
+      "textSha256": "9aa4d9aaeab8f69c38c711963455dcb258fcd951767e8bf6eff5567196384819",
+      "flagsUnchanged": true
+    },
+    {
+      "folder": "Sent Items",
+      "uid": "20",
+      "uidValidity": "1791301211",
+      "date": "2026-10-08T16:10:29+02:00",
+      "headerSha256": "f1b9e6108adce70c3400d658a008a9c9b05bf86eb2c1b3262812d0162cce12c5",
+      "textSha256": "777de6bc148dbadfc5d2bf64ae48ceb823de9cbbc8c850c110a853bb8bdca9b7",
+      "flagsUnchanged": true
+    },
+    {
+      "folder": "Sent Items",
+      "uid": "21",
+      "uidValidity": "1791301211",
+      "date": "2026-10-09T14:17:58+02:00",
+      "headerSha256": "03463cca1f3b9818739473336ac1b44006d3ff7055f2afe30646bcb25a7ac1fe",
+      "textSha256": "1fe14a738d70b0573424d7b7d42ea4677a8488d5a7530e4e27151d96ad5666fb",
+      "flagsUnchanged": true
+    },
+    {
+      "folder": "Sent Items",
+      "uid": "22",
+      "uidValidity": "1791301211",
+      "date": "2026-10-09T15:06:19+02:00",
+      "headerSha256": "64dc06874660fb6cbb51848b97adab32dc3e0146074abaf711e54a78443bc820",
+      "textSha256": "899f2f2a72b6378acf97da5feef502f83b531aafad38259e42a8e87441766bad",
+      "flagsUnchanged": true
+    },
+    {
+      "folder": "Sent Items",
+      "uid": "23",
+      "uidValidity": "1791301211",
+      "date": "2026-10-09T15:06:50+02:00",
+      "headerSha256": "561e38a65edc1cc8ca1a0dfc0c09540c65d6cadac73e5b3b45c1884e31f2e3d6",
+      "textSha256": "733b753e08edeaf5486c0fa5d5cd7a4dd1002a9784bd57f9932866a6af962c37",
+      "flagsUnchanged": true
+    },
+    {
+      "folder": "Sent Items",
+      "uid": "24",
+      "uidValidity": "1791301211",
+      "date": "2026-10-15T07:32:22+02:00",
+      "headerSha256": "78b8e7c3f580561051000db3f7821c140d4726643cdcbdd51abaa442ab3aee39",
+      "textSha256": "ab488891c81d0cf319e5c7d73cca4f000606687080bf22dab215f24b01b529f8",
+      "flagsUnchanged": true
+    },
+    {
+      "folder": "Sent Items",
+      "uid": "25",
+      "uidValidity": "1791301211",
+      "date": "2026-10-15T08:00:02+02:00",
+      "headerSha256": "36036bf1eee3b481475d4cd00933b2c068ad94ada70deba7e3233ca4de8697aa",
+      "textSha256": "6866f2c388c2b5edde0a45ce20e997bcd3f1fe1966a61f417e0fcb643bbe645d",
+      "flagsUnchanged": true
+    },
+    {
+      "folder": "Sent Items",
+      "uid": "26",
+      "uidValidity": "1791301211",
+      "date": "2026-10-15T08:00:45+02:00",
+      "headerSha256": "6318d8a2773af51cd112ae910efe1bdf167328b288b06dc1e79684429e7129d3",
+      "textSha256": "e7d01a6000b7484b858300c264c20392e9004f6e084ad4d5920cc5640a0ce497",
+      "flagsUnchanged": true
+    },
+    {
+      "folder": "Sent Items",
+      "uid": "27",
+      "uidValidity": "1791301211",
+      "date": "2026-10-15T08:01:08+02:00",
+      "headerSha256": "e80996aa8f0bd0ff685f3a147356eff37752f60a9314990ab0d5f5eddfa53d17",
+      "textSha256": "770ca6895596e96e5054b477eab533a16c95d1b380c6f1be9cd4c02a63547e34",
+      "flagsUnchanged": true
+    },
+    {
+      "folder": "Sent Items",
+      "uid": "28",
+      "uidValidity": "1791301211",
+      "date": "2026-10-15T14:32:53+02:00",
+      "headerSha256": "e014f4801d5a0a1b69d2e918dd5c01174415a9305fcc349719726960611cf345",
+      "textSha256": "fa270223343722f8a5d430c83307176bbcec2664e9d9d7b0768e9ceccf6dab78",
+      "flagsUnchanged": true
+    },
+    {
+      "folder": "INBOX",
+      "uid": "13",
+      "uidValidity": "1791301212",
+      "date": "2026-10-08T12:42:28+00:00",
+      "headerSha256": "eab06dd3445ad7d1740bb664c00d6e4400f2d1c60ad1f93e0dbd40da55491718",
+      "textSha256": "7fdffea2fb675a28ea6a2469dbd60201b0fbc5207827fde5d3b7b707642bf466",
+      "flagsUnchanged": true
+    },
+    {
+      "folder": "INBOX",
+      "uid": "14",
+      "uidValidity": "1791301212",
+      "date": "2026-10-09T12:05:38+00:00",
+      "headerSha256": "986c46d65831c8bd845a1fadd769db55ec58f11cd87f4be50023d9720c5c478d",
+      "textSha256": "4e4bd3a091bd9ccd92efdba3422a7e916dc4a482084fc7d94742d49b61860b32",
+      "flagsUnchanged": true
+    },
+    {
+      "folder": "INBOX",
+      "uid": "19",
+      "uidValidity": "1791301212",
+      "date": "2026-10-15T12:16:37+00:00",
+      "headerSha256": "76d59002e7bd98f604515c32e0a23561767d4c92454b3de5140959534f79e23c",
+      "textSha256": "e29977c3b8f6992c69e3d22c6c1386689a2d9ea2224c247be5a11065f40ddcb6",
+      "flagsUnchanged": true
+    },
+    {
+      "folder": "INBOX",
+      "uid": "20",
+      "uidValidity": "1791301212",
+      "date": "2026-10-15T13:53:47+00:00",
+      "headerSha256": "7a5a572580b3b5ec283d1487d8729ed92347c8267ba07a5e5348c891911e0dc8",
+      "textSha256": "accc643dfc3916b83d2aee6b73fc4f17fe08e5087a01304bfca72d2a078e3709",
+      "flagsUnchanged": true
+    }
+  ]
+}

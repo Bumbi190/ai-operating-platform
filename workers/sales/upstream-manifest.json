@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/ethanplusai/harvey",
+  "commit": "e114e95471b1bf155454fca108f0730b66a47a01",
+  "files": {
+    "vendor/LICENSE": "8ca493501d87377b67fb191cf01a70630cd9f1cdfe11f2e726d34b82f1a7f60e",
+    "vendor/skills/lead_qualification.md": "bd19fc3843f0ee9525768a88d881e9168750a58522223d2d73dbf3ec4851d148",
+    "vendor/skills/email_frameworks.md": "731fdfc7bb70c9e6f7e76bf7eea80c6b6fc771cba4fc8db9b9ab964fdf1ce9a1"
+  }
+}

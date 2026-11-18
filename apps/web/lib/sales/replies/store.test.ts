@@ -1,0 +1,8 @@
+import {describe,it,expect} from 'vitest'
+import {prepareReply,readReplyJob,readReplyDrafts,editReplyDraft,reviewReplyDraft,cancelReplyJob} from './store'
+const id=(n:number)=>`10000000-0000-4000-8000-${String(n).padStart(12,'0')}`
+const p={userId:id(2),allowedProjectIds:[id(1)]},input={projectId:id(1),conversationId:id(3),messageId:id(4),messageVersion:1,contactId:id(5),contactVersion:1,offerRevisionId:id(6),idempotencyKey:id(7)}
+describe('owner reply boundary',()=>{
+ it('refuses another project before any privileged query',async()=>{let called=false;const db={rpc:async()=>{called=true;throw Error('must not query')}};await expect(prepareReply(db as never,p,{...input,projectId:id(8)})).rejects.toThrow();expect(called).toBe(false)})
+ it('keeps operation and principal exact without serializing extra authority',async()=>{const requests:any[]=[];const db={rpc:async(name:string,args:any)=>{requests.push([name,args]);return {data:{id:id(9),sendingEnabled:false},error:null}}};await prepareReply(db as never,p,input);await readReplyJob(db as never,p,{projectId:id(1),jobId:id(9)});await readReplyDrafts(db as never,p,{projectId:id(1)});await editReplyDraft(db as never,p,{projectId:id(1),revisionId:id(9),expectedHash:'a'.repeat(64),subject:'Svar',body:'Tack',questions:[]});await reviewReplyDraft(db as never,p,{projectId:id(1),revisionId:id(9),expectedHash:'a'.repeat(64),decision:'rejected'});await cancelReplyJob(db as never,p,{projectId:id(1),jobId:id(9)});expect(requests.map(x=>x[0])).toEqual(['sales_reply_prepare','sales_reply_read_job','sales_reply_read_drafts','sales_reply_edit_draft','sales_reply_review_draft','sales_reply_cancel_job']);expect(requests.every(x=>x[1].p_principal===p)).toBe(true);expect(requests[0][1].p_input).toEqual(input)})
+})

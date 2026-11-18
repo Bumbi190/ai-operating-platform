@@ -252,9 +252,14 @@ describe('Handlarbörsen reply lifecycle: no-contact, bounded owner metadata', (
   it('forces only named lifecycle tool and bypasses generic content/nav fast paths', () => {
     const route = readFileSync(resolve('app/api/chat/route.ts'), 'utf8')
     expect(route).toContain('const hbReplyLifecycleReadIntent =')
-    const fastPath = route.match(/const fastPath = ([^\n]+)/)?.[1] ?? ''
-    expect(fastPath).toContain('!hbReplyLifecycleReadIntent')
-    expect(fastPath).toContain('!socialPreparationIntent')
+    // Check the actual declaration: all three exclusions precede the content-mode branch.
+    const fastPathGuard = route.match(/^\s*const fastPath = ([^\r\n]+) && \(mode === 'content' \|\| isFastPathContent\(lastUserText\)\)$/m)?.[1] ?? ''
+    expect(fastPathGuard).not.toBe('')
+    expect(fastPathGuard).not.toContain('||')
+    const fastPathConjuncts = fastPathGuard.split(/\s*&&\s*/)
+    expect(fastPathConjuncts).toContain('!hbReplyLifecycleReadIntent')
+    expect(fastPathConjuncts).toContain('!needsStoredContext(lastUserText)')
+    expect(fastPathConjuncts).toContain('!socialPreparationIntent')
     expect(route).toContain('isNavIntent(lastUserText) && !hbReplyLifecycleReadIntent')
     expect(route).toContain("hbReplyLifecycleReadIntent ? TOOLS.filter(tool => tool.name === 'handlarborsen_reply_lifecycle')")
     expect(route).toContain('name: forceHbReadFirstTurn')

@@ -1,0 +1,73 @@
+{
+  "createdAt": "2026-10-19T10:06:02.268Z",
+  "scope": "Owner-requested future mail copy preparation, not product implementation, contact approval, scheduling or sending.",
+  "templates": {
+    "notes": "Textunderlag i Atlas projektminne, inte registrerade mottagarspecifika utkast, erbjudandeversioner eller sändningsbeslut. Alla139 kontaktspärrar kvar. Befintlig granskningsvy saknar mottagarfria mallar.",
+    "status": "draft_copy_only",
+    "createdAt": "2026-10-19T10:03:49.715Z",
+    "scheduled": false,
+    "templates": [
+      {
+        "id": "pilot-six-months-initial-v1",
+        "body": "Hej!\n\nJag heter Andre och driver Handlarbörsen, en stängd B2B-marknadsplats där svenska bilhandlare kan köpa och sälja fordon direkt med varandra.\n\nVi bjuder in fler bilhandlare att testa tjänsten kostnadsfritt i sex månader. Under piloten kan ni bland annat lägga ut fordon till fast pris eller auktion. Det vi önskar tillbaka är att ni testar tjänsten och berättar vad som fungerar bra och vad vi kan förbättra.\n\nNi behöver inte lämna några betaluppgifter och piloten övergår inte automatiskt till ett betalt abonnemang. Efter pilotperioden väljer ni själva om ni vill fortsätta. Det planerade priset är 995 kr/mån exkl. moms utan bindningstid.\n\nÄr det intressant att få veta mer?\n\nVänliga hälsningar,\nAndre\nHandlarbörsen\n\nSäg gärna till om ni inte vill ha fler mejl från mig.",
+        "kind": "initial",
+        "usage": "Textförslag för en framtida första kontakt med verifierad sexmånadersnivå. Ingen mottagare vald. Aktuellt erbjudande, historik och exakt mottagare måste granskas separat.",
+        "subject": "Vill ni testa Handlarbörsen kostnadsfritt i sex månader?",
+        "recipient": null,
+        "senderName": "Andre",
+        "pilotMonths": 6,
+        "scheduledAt": null,
+        "senderEmail": "info@handlarborsen.se",
+        "editorialStatus": "draft",
+        "offerRevisionId": "6875d17b-9fa9-41db-b2b8-f9ef3a4c9b71"
+      },
+      {
+        "id": "pilot-six-months-reminder-v1",
+        "body": "Hej!\n\nJag följer upp mitt tidigare mejl om att testa Handlarbörsen kostnadsfritt i sex månader.\n\nVi vill gärna få återkoppling från bilhandlare som handlar med fordon mellan företag. Är det något ni vill veta mer om, eller är det inte aktuellt just nu?\n\nOm det inte passar avslutar jag här. Säg gärna till om ni inte vill ha fler mejl från mig.\n\nVänliga hälsningar,\nAndre\nHandlarbörsen",
+        "kind": "reminder",
+        "usage": "Endast textförslag. Kan bli aktuellt först efter en verifierad tidigare inbjudan, minst 14 hela dygn från senaste utgående säljmejl, ingen redan använd obesvarad påminnelse, inget nytt svar och inga väntelägen/spärrar. Får inte användas för Founding 5 nu.",
+        "subject": "En kort uppföljning om Handlarbörsen",
+        "recipient": null,
+        "senderName": "Andre",
+        "pilotMonths": 6,
+        "scheduledAt": null,
+        "senderEmail": "info@handlarborsen.se",
+        "editorialStatus": "draft",
+        "offerRevisionId": "6875d17b-9fa9-41db-b2b8-f9ef3a4c9b71"
+      }
+    ],
+    "recipientFree": true,
+    "schemaVersion": 1,
+    "ownerTextReviewed": false,
+    "customerSendingEnabled": false
+  },
+  "libraryReview": {
+    "libraryFileId": "libfile_469784029be88191bfb6a9eedb86317f",
+    "filename": "Handlarborsen-mejltexter-for-granskning-20261019.html"
+  },
+  "verification": {
+    "exactSavedCopy": true,
+    "allPrior18MemoriesUnchanged": true,
+    "all139ContactsUnchanged": true,
+    "held": 139,
+    "rules": 1,
+    "offers": 2,
+    "sendJobs": 1,
+    "histories": 5,
+    "replyJobs": 1,
+    "sendEvents": 4,
+    "contactHash": "f37f80260e89372bccc895f97789f5d7",
+    "initialJobs": 0,
+    "initialDrafts": 0,
+    "oldMemoryHash": "c0ddd7e450b54d800d6f23cf4bac8943"
+  },
+  "interfaceFinding": "Existing exact-recipient preparation correctly blocks all139 held contacts. It has no recipient-free text-template editor. Do not fabricate contact drafts, jobs, evidence or approval rows to work around these guards.",
+  "boundedDesignProposal": {
+    "status": "awaiting_design_approval",
+    "ui": "A collapsed Mejlmallar section on the existing sales workspace displaying full sender/subject/body/offer reference and draft status without recipient or date.",
+    "edit": "Owner may edit subject/body; append a new template content version and preserve prior versions. Text remains draft; no recipient-specific approval inferred.",
+    "persistence": "Use project-scoped content storage with owner access and version conflict protection; preserve all other project memories.",
+    "boundaries": "No transport, queue, scheduling, recipient selection or contact/history/rule mutation. Exact-recipient review remains a separate later step.",
+    "validation": "Verify persisted edits/version conflicts, preserved old versions, collapsed mobile layout and unchanged existing eligibility/sending controls."
+  }
+}

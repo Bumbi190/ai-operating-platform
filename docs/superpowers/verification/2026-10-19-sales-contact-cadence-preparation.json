@@ -1,0 +1,128 @@
+{
+  "kind": "preparation-only",
+  "asOf": "2026-10-19T06:15:54.03796+00:00",
+  "held": 139,
+  "offers": 2,
+  "sendJobs": 1,
+  "replyJobs": 1,
+  "sendEvents": 4,
+  "contactHash": "8f4453f74cf90dfbbee077d26937229a",
+  "initialJobs": 0,
+  "newMemories": [
+    {
+      "key": "handlarborsen.sales.cadence_proposal",
+      "value": "Planförslag 2026-10-19, ej aktiverad regel: vänta minst 14 hela dygn från senaste utgående säljmejl före en obesvarad uppföljning. Högst en påminnelse per aktuell inbjudan, inklusive redan skickade; därefter paus. Nytt svar eller önskad väntetid stoppar sekvensen för granskning. Detta är en försiktig rekommendation, inte sändningstillstånd.",
+      "source": "incident-verification"
+    },
+    {
+      "key": "handlarborsen.sales.preflight_requirement",
+      "value": "Före framtida sändningsbeslut: stäm av aktuell Strato Skickat/inkorg och Resend-logg; saknad historik blockerar första kontakt och datumförslag. Kontrollera samma mottagare över filialer/kanaler utan att slå ihop filialrader. Behåll studs-, avregistrerings-, nej- och avvaktaspärrar. Skickat synkas inte löpande; automatisk intervallkontroll är ännu inte implementerad.",
+      "source": "incident-verification"
+    },
+    {
+      "key": "handlarborsen.sales.research_20261019",
+      "value": "Första fem av 82 nya källgranskade: Shiftgear och Göte Carlssons sparade adresser finns på respektive officiell kontaktsida. För J BIL Tagene, Täby och Vällingby bekräftar officiella sidor anläggningarna men de sparade adresserna har inte verifierats där. Alla fem har okänd kontakthistorik, är obekräftade och fortsatt spärrade. Ingen webbträff bevisar leverans eller rätt till utskick.",
+      "source": "incident-verification"
+    },
+    {
+      "key": "handlarborsen.sales.review_requirement",
+      "value": "Andre 2026-10-19: Alla kundmejl ska granskas före utskick: exakt mottagare, avsändare, ämne, text, erbjudande och tidpunkt. Textgodkännande är inte sändningstillstånd. Ändring kräver ny granskning. Kundutskick är pausade; inget får skickas eller schemaläggas nu.",
+      "source": "operator"
+    }
+  ],
+  "contactCount": 139,
+  "priorMemoryHash": "afe62b96687c377351aa324476bd05ba",
+  "triage": {
+    "total": 139,
+    "held": 139,
+    "excluded": [
+      {
+        "id": "90861da9-1676-5c5b-987e-2e40d41095e4",
+        "companyName": "Bilenia"
+      },
+      {
+        "id": "42c1e69f-39bf-54d0-8fd4-095e0d522ac5",
+        "companyName": "Cartrade Europe AB"
+      }
+    ],
+    "history": {
+      "contacted": 32,
+      "unknown": 107
+    },
+    "unconfirmed": 82,
+    "unconfirmedNotExcluded": 80,
+    "invalidSyntaxCount": 0,
+    "duplicateExactEmailGroups": [],
+    "missingWebsiteNew82": 82,
+    "lastSentAtStructuredField": false
+  },
+  "research": {
+    "scope": "first five non-excluded new contacts in original row order",
+    "exactAddressPublishedOnOfficialPage": [
+      {
+        "contactId": "8dc634d6-2e29-54c7-b8da-dc833186d7fe",
+        "companyName": "Shiftgear AB",
+        "sourceUrl": "https://www.shiftgear.se/kontakt.html"
+      },
+      {
+        "contactId": "36045972-6697-5aad-ac16-f241fd2aadb2",
+        "companyName": "Göte Carlsson i Göteborg AB",
+        "sourceUrl": "https://www.gotecarlsson.se/"
+      }
+    ],
+    "branchPublishedButSavedAddressNotVerified": [
+      {
+        "contactId": "082f6763-c94c-58ae-8fb5-8443d831e8e6",
+        "companyName": "J BIL Tagene",
+        "sourceUrl": "https://www.jbil.se/anlaggningar/tagene/"
+      },
+      {
+        "contactId": "188ab920-0fa2-5f02-a006-2ae003afc94d",
+        "companyName": "J BIL Täby",
+        "sourceUrl": "https://www.jbil.se/anlaggningar/taby/"
+      },
+      {
+        "contactId": "65108b11-1bc6-5c8a-9f45-5124f15738db",
+        "companyName": "J BIL Vällingby",
+        "sourceUrl": "https://www.jbil.se/anlaggningar/vallingby/"
+      }
+    ],
+    "remainingNonExcludedNewRowsNotSourceReviewed": 75,
+    "deliverabilityProven": false,
+    "historyStillUnknown": true,
+    "confirmedStateChanged": false
+  },
+  "atlasCheck": {
+    "conversationId": "d3c6648d-df65-4aed-bedc-341e34ff2993",
+    "prompt": "Läs Handlarbörsens sparade projektminne på nytt, särskilt de nya anteckningarna om granskning, kontaktintervall, kontroll före framtida utskick och källgranskningen av de första nya kontakterna. Sammanfatta kort på svenska: vad kräver Andre inför varje framtida kundmejl, vilket kontaktintervall är bara ett förslag, vilka tekniska kontroller saknas ännu och vad gäller vid okänd historik eller redan skickad påminnelse? Skilj tydligt på sparad plan och implementerad funktion. Det är endast läsning och planering: ändra inget, skapa inga uppdrag, utkast, mejl, scheman eller andra poster.",
+    "responseAt": "2026-10-19T06:06:06Z",
+    "readOnlySummaryMatchedSavedPlan": true,
+    "toolCallsThisTurn": 0,
+    "evidenceMethod": "Persisted project memories were reflected in actual chat response. No claim of an explicit new tool read; the reply used available project context.",
+    "clarificationAfterChat": "Cadence memory wording clarified to count 14 full days from latest outgoing sales email. Existing screenshot/response predates that wording clarification.",
+    "automationImplemented": false
+  },
+  "unchanged": {
+    "prior13Memories": true,
+    "all139ContactPayloads": true,
+    "offers": true,
+    "initialJobs": true,
+    "replyJobs": true,
+    "sendJobs": true,
+    "sendEvents": true,
+    "runtimeCode": true,
+    "schema": true,
+    "worker": true,
+    "mailboxScope": true,
+    "resend": true,
+    "sendPolicy": true
+  },
+  "limits": [
+    "14-day/max-one cadence is a conservative proposal, not a universally safe threshold, user-approved final interval, scheduled action or enforced server gate.",
+    "No new per-contact scheduled dates or first-contact jobs; all139suppressed.",
+    "Known historical sent dates remain dated source observations, not proof of no later manual message.",
+    "Two official email matches do not prove delivery, contact consent or never-contacted history.",
+    "All82new rows remain unconfirmed/historyunknown. No two-month offer revision was created.",
+    "Before customer sending, structured cross-channel contact history, per-recipient interval validation and exact current preview approval remain implementation/verification work."
+  ]
+}

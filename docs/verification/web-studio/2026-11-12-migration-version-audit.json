@@ -1,0 +1,3096 @@
+{
+  "schemaVersion": 1,
+  "purpose": "read-only-audit-not-release-authority",
+  "repository": "Bumbi190/ai-operating-platform",
+  "sourceHead": "7c3fc0926e5deb4d0f23237bf993921fb28f830f",
+  "observedAt": "2026-11-12T15:49:34.029Z",
+  "target": {
+    "projectId": "iboepohjwrhtgshrqaol",
+    "databaseName": "postgres"
+  },
+  "provenance": {
+    "method": "supabase.execute_sql/read-only",
+    "projectId": "iboepohjwrhtgshrqaol",
+    "query": "SELECT current_database(), current_timestamp, version, name, cardinality(statements), SHA256(UTF8(array_to_string(statements, LF))) FROM supabase_migrations.schema_migrations; metadata only; no DDL/DML",
+    "sqlHashFormat": "sha256-utf8-statements-joined-with-lf",
+    "limitations": [
+      "Point-in-time metadata observation; does not authenticate a future database connection.",
+      "This file never authorizes mutation. Refresh through an authenticated read-only channel and review its pin before a future release."
+    ]
+  },
+  "ledger": [
+    {
+      "name": "media_scripts_updated_at_and_stuck_watchdog",
+      "version": "20260601071917",
+      "rawSha256": "2518b77a6fed95bec896f66f8044f66d7f371e0ef5a75abe5b0e22d050134de8",
+      "statementCount": 1
+    },
+    {
+      "name": "add_render_input_props_for_edge_render",
+      "version": "20260601072505",
+      "rawSha256": "c94f981a5f4a93e97c33a9d4366ab122376383d3c8254cae61c7ddff8784f9d6",
+      "statementCount": 1
+    },
+    {
+      "name": "20260601_business_metrics",
+      "version": "20260601073550",
+      "rawSha256": "b4356f68e1598f092c6e97d721e7b6147f2e09bcdda74e5b31d364a63b85596b",
+      "statementCount": 1
+    },
+    {
+      "name": "20260601_media_insights",
+      "version": "20260601093023",
+      "rawSha256": "06a6bc0abe9f7ea73b6e45597341255a1d6115a3ee45cd72e3f17b09f36f9381",
+      "statementCount": 1
+    },
+    {
+      "name": "20260601_insights_cron",
+      "version": "20260601093204",
+      "rawSha256": "151608e9a3a8a629a953542a11893fd8d111e964e8924b1fd757efe5616e42a4",
+      "statementCount": 1
+    },
+    {
+      "name": "20260601_briefing_cron",
+      "version": "20260601100502",
+      "rawSha256": "031baadab9dea0e1015f9e38d5d492a5baf600dce2faf9913e000bcd8283be00",
+      "statementCount": 1
+    },
+    {
+      "name": "add_youtube_columns",
+      "version": "20260601102516",
+      "rawSha256": "23e8840834040b3eb01d3a837a8eee428aabc4af3de52c413720c17140e05dd5",
+      "statementCount": 1
+    },
+    {
+      "name": "cost_events",
+      "version": "20260602045914",
+      "rawSha256": "88055e213fbac739ef6c71cd7f2aa08ad121d6a0eb739fa6cead3ab8d7ce382f",
+      "statementCount": 1
+    },
+    {
+      "name": "project_budgets",
+      "version": "20260602051807",
+      "rawSha256": "2848737fb9bce324d711820436b0cfeb4a390427bc0c89c034a2853d20a4ba42",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_bi_foundation",
+      "version": "20260602113831",
+      "rawSha256": "06caefe88bd13a6358de0aa91b7c35bde6a340638907bcde3407ad920118f511",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_growth_account_snapshots",
+      "version": "20260602161429",
+      "rawSha256": "73e9a24b0c73fb289e79167219edcb31689de0bdf4ab491a1f39a8c2ba01fc94",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_growth_opportunities",
+      "version": "20260602161432",
+      "rawSha256": "4a5ce71ac48811a9e77750eec6e8ed98b79a0e74025e578633d63d1b08bc6fab",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_growth_script_topic_format",
+      "version": "20260602162046",
+      "rawSha256": "f5ab91143519b6c2f772afe6dd06c34c1c64e753c55e4704b833205b87fc2dc0",
+      "statementCount": 1
+    },
+    {
+      "name": "g1_multitenant_platform_tokens",
+      "version": "20260602175032",
+      "rawSha256": "cdec814c505a866bf38345ad49804ddacdb167fe4641ed18ee6f152fe8e758e8",
+      "statementCount": 1
+    },
+    {
+      "name": "stripe_intelligence_revenue_snapshots",
+      "version": "20260602175605",
+      "rawSha256": "ef88ada4323d1295ea662327a413157da6a810f9d4244c2bbc6a37e6e6a9c7c0",
+      "statementCount": 1
+    },
+    {
+      "name": "durable_runs_claim_reaper",
+      "version": "20260603055456",
+      "rawSha256": "d8d988291fc63df2a9b3dca6b30d913b7351a65f626a4db41eb291d2e041cd49",
+      "statementCount": 1
+    },
+    {
+      "name": "durable_runs_claim_public_rpc",
+      "version": "20260603055620",
+      "rawSha256": "4765262786fd1f4c6c76ef31605487ae0b94e7ea4c42d11fbee422564a98581c",
+      "statementCount": 1
+    },
+    {
+      "name": "token_health_monitoring",
+      "version": "20260603084745",
+      "rawSha256": "6f03e73d8806012e836536e526168fed4c5fe9ea69e24439ab614b0003cca2ba",
+      "statementCount": 1
+    },
+    {
+      "name": "pipeline_retry_state",
+      "version": "20260603085842",
+      "rawSha256": "02bf082e31b14c045386daa7e4acabb1b9ab7cc9086ea0ae7fe2072b08a00cdf",
+      "statementCount": 1
+    },
+    {
+      "name": "cron_heartbeat",
+      "version": "20260603091319",
+      "rawSha256": "405ffdb9f423cd5190108279166747356728ebd93ed4d3651b4675c7d01667ae",
+      "statementCount": 1
+    },
+    {
+      "name": "marketing_engine_foundation",
+      "version": "20260603135744",
+      "rawSha256": "ec581d56f259767f23cb2c40a1a39f22bd3918b9dc1d971e1ca2cb4303f12553",
+      "statementCount": 1
+    },
+    {
+      "name": "media_insights_multiplatform",
+      "version": "20260605071529",
+      "rawSha256": "bd29b60044d8214d87ca435412c82d8784c52488800248ff0d1865786ca4b4d0",
+      "statementCount": 1
+    },
+    {
+      "name": "media_insights_retention",
+      "version": "20260605213648",
+      "rawSha256": "390846a61efd21ab9156320d7cd298c1c2c8b2031f98a0580adc49cd76873ef9",
+      "statementCount": 1
+    },
+    {
+      "name": "media_scripts_breaking_flag",
+      "version": "20260605232026",
+      "rawSha256": "dbdfc0b0410f1e5734378c97650253c9cbfecddceee95c088fe6dfc0dc33e1b7",
+      "statementCount": 1
+    },
+    {
+      "name": "pr2_route_webhook_isolation",
+      "version": "20260606013407",
+      "rawSha256": "f1525ae8126993690f4e38d732ecc75cf8ba88bf95094c4f45a5311b2c8bd9f1",
+      "statementCount": 1
+    },
+    {
+      "name": "schedule_dream_cron",
+      "version": "20260606032600",
+      "rawSha256": "36570de242843186ddc1e21cc0d0d80f1c0699571c0b6423bc704e055c61675e",
+      "statementCount": 1
+    },
+    {
+      "name": "bug_monitoring_foundation",
+      "version": "20260606051956",
+      "rawSha256": "c09b8b7b636710c4736dfed77fe163898a0ceed653997712b1ee3cd7aa908684",
+      "statementCount": 1
+    },
+    {
+      "name": "create_website_content_system_a",
+      "version": "20260608110948",
+      "rawSha256": "a38333a1fa1878396eea42833b396e1589be1b861e7abde6825aec976ec88e5a",
+      "statementCount": 1
+    },
+    {
+      "name": "manager_task_dream_link",
+      "version": "20260609075336",
+      "rawSha256": "c1b8a33f2396a96a5e52a5f02c5758381160018bf30b1cbee1a3380e7e032fbd",
+      "statementCount": 1
+    },
+    {
+      "name": "dream_issues_ledger",
+      "version": "20260609082919",
+      "rawSha256": "e6a31b1161c5fee9ba8681986562db3e3841e8a814db42c9dfacbdba923f7b93",
+      "statementCount": 1
+    },
+    {
+      "name": "enable_rls_cost_rates_dream_issues",
+      "version": "20260609164447",
+      "rawSha256": "1435ae12ae0d4ecefe91b25387148b3a84e0775a3da6e6d205d197d91c2345dc",
+      "statementCount": 1
+    },
+    {
+      "name": "harden_set_updated_at_search_path",
+      "version": "20260609165615",
+      "rawSha256": "0210a5e12290cb3b500f1a3791a874a424eda3d2f455c558ca34dfc9c11dd890",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_actions",
+      "version": "20260611084813",
+      "rawSha256": "59b00af04b9c513a7b4c85ea41915b2aaf0f7a86e6f5623ce27aeafcb9432b6d",
+      "statementCount": 1
+    },
+    {
+      "name": "media_rls_hardening",
+      "version": "20260613063430",
+      "rawSha256": "6538859ea77a38f045027d51b40696400189db1c6523fb7acaeb80c66640180b",
+      "statementCount": 1
+    },
+    {
+      "name": "h1p1_execution_policy_foundation",
+      "version": "20260613074403",
+      "rawSha256": "820b57d0ef28e3cb7f752703e3d7d055f7b727546ff7baf4485935ee8df2990c",
+      "statementCount": 1
+    },
+    {
+      "name": "h1p3_run_steps_snapshot",
+      "version": "20260613230750",
+      "rawSha256": "a30f87cc03fbeb1ebd7f37dcb346c233432b3079dcd41a25d866ae0d6ca89084",
+      "statementCount": 1
+    },
+    {
+      "name": "migration_guard_fn",
+      "version": "20260614000935",
+      "rawSha256": "3f07aa3816b9902acd3cbe38af07319c9b6a681be40727a9af5a88cc3bf6ef2f",
+      "statementCount": 1
+    },
+    {
+      "name": "h1p4_run_policy_snapshot",
+      "version": "20260614015805",
+      "rawSha256": "ed988e57fa2479517c61645def19bb824e015d80485c21af21106de46ec8ed14",
+      "statementCount": 1
+    },
+    {
+      "name": "h1p4_pr2_run_rejected_status",
+      "version": "20260614032512",
+      "rawSha256": "b11a0d701a56cd9c9759a0bde500e378df9980a1ca83cc7074cfa91ef40fdbd8",
+      "statementCount": 1
+    },
+    {
+      "name": "website_content_hero_image",
+      "version": "20260614041600",
+      "rawSha256": "92cf5c63a1b4f726de7366ce8824e4740571b17f02eb3263eee99acca14191d8",
+      "statementCount": 1
+    },
+    {
+      "name": "h1p5_outputs_run_id_unique",
+      "version": "20260615062127",
+      "rawSha256": "1478fb2928dfbcc2fd5fb59579c21e11f75e64441d284ec0bc72280364cc1028",
+      "statementCount": 1
+    },
+    {
+      "name": "website_content_hero_image_brief",
+      "version": "20260615071318",
+      "rawSha256": "3c0a79a57abed1188541e9f1c0cfa6ec56bd137bcf1504be26b5633011005879",
+      "statementCount": 1
+    },
+    {
+      "name": "website_content_hero_editor_brief_rename",
+      "version": "20260615081009",
+      "rawSha256": "4747b1da1a2321af78e7746472f3bf5f835a25469da5b96e4fa10126011a87c1",
+      "statementCount": 1
+    },
+    {
+      "name": "website_content_hero_image_observability",
+      "version": "20260616063310",
+      "rawSha256": "8b3dc051f020caf83eed4448c744ad236ee7851be57864df7e26d103f62a7647",
+      "statementCount": 1
+    },
+    {
+      "name": "h1p5_runs_claim_id",
+      "version": "20260616074642",
+      "rawSha256": "9d9815f34f7cd3df86de5c97370c14a11af15198570ba2682f33842718182e45",
+      "statementCount": 1
+    },
+    {
+      "name": "h1p5_runs_cancel_requested",
+      "version": "20260616083707",
+      "rawSha256": "dca50bd0cb960210a2ccf74c6475640eb8a913e466289afcc92b0bff3cc5dfd5",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_schema_init",
+      "version": "20260617062612",
+      "rawSha256": "ab6a5f550e4b4013c1c017ca3447fbee61fa8c79a2a7ae63aba2189e717573b1",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_memory_events",
+      "version": "20260617062622",
+      "rawSha256": "fdbd718c695f984e2f20eed80f9bc85e25ce39510b0fef1b18aa456202d611cf",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_memories",
+      "version": "20260617062636",
+      "rawSha256": "8eafcb45897d54233a021c1ed12971f7f2a65d16dc30f77b9618c980c43a5904",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_memory_rls",
+      "version": "20260617062644",
+      "rawSha256": "789ea9e04379dc03e907474a59b03709fd11cdec300e70c1ca1560ecb2fac474",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_record_event_fn",
+      "version": "20260618063935",
+      "rawSha256": "58bddce009e3994344feccc6362623878d3018085f597e3ddddced592cdbded9",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_salience_fn",
+      "version": "20260618064002",
+      "rawSha256": "9fdbb2bf9e96780f357621a0ed56b6c927ddca5a8c6f5a675867ec3a6e364e6f",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_event_type_to_class_fn",
+      "version": "20260618064026",
+      "rawSha256": "881377d9926fd35f890041418af5ca9bdfdeac41bbe5d1cd38e07fb6c4be4ed5",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_consolidate_fn",
+      "version": "20260618064056",
+      "rawSha256": "8e0817e0e6f9f957f4bc4bf6837afc0949e208331008403cc89a54b7bd5f0023",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_memory_cron",
+      "version": "20260618064127",
+      "rawSha256": "ecccbfdd670b468e537fac276160245d0d473e1f28aba0a4059cf857f9e9cdc9",
+      "statementCount": 1
+    },
+    {
+      "name": "h5_atlas_observability",
+      "version": "20260618143256",
+      "rawSha256": "73f3f29d1f6143088d8c527911ca5af5dbc70be09dc4e2ad2da2d89ad0315899",
+      "statementCount": 1
+    },
+    {
+      "name": "h1_episodic_retention",
+      "version": "20260618145627",
+      "rawSha256": "5f8d7f4a73030ba6799d06c6216bd22d0dff74bb4d8db4f799ead9d02c08594f",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_signals",
+      "version": "20260619113319",
+      "rawSha256": "7d3731a42396c903ebb811c25e5f49e28629a58f5e27b1999475f505fa197aad",
+      "statementCount": 1
+    },
+    {
+      "name": "150100_atlas_signals_evolution",
+      "version": "20260624053615",
+      "rawSha256": "0aa2c9be5161110ce2e9214a422fbf0430bfe3191b26ef3ecfa40baefa51bf4c",
+      "statementCount": 1
+    },
+    {
+      "name": "150000_atlas_project_lifecycle",
+      "version": "20260624192603",
+      "rawSha256": "51545d332ea578b7ff9c060a888ff7221385681cf390364c50769f4bf478ecc4",
+      "statementCount": 1
+    },
+    {
+      "name": "150200_collector_runs",
+      "version": "20260624192614",
+      "rawSha256": "41379ba204aad230a8403cbc39318c1e0b0d839e56f2d07dcc072cc542e66b3d",
+      "statementCount": 1
+    },
+    {
+      "name": "150300_atlas_collector_cron",
+      "version": "20260624192624",
+      "rawSha256": "27154fd7ef31c14d0d04375ab41695a4d5ad2dfdc62a2308ba099552ae98360c",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_recall_fn",
+      "version": "20260630191638",
+      "rawSha256": "bb7f6ef5938d841be1e53cce7f19651c73bddf8b9c19df6dce381d0df7e2dc98",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_memory_health",
+      "version": "20260630191717",
+      "rawSha256": "5d1d0c33aca6235a79917264e474f1796d2e11aa35336bfe47849fce73d4734e",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_recall_pin_focus_ranking",
+      "version": "20260630191741",
+      "rawSha256": "56e451950cd4f2fd446259e153ac4c3dd236130ee3590e5797ad0c9d5745ce94",
+      "statementCount": 1
+    },
+    {
+      "name": "backfill_platform_memory",
+      "version": "20260630191757",
+      "rawSha256": "fb286331d2db2cdaceaf75147e55e05fa5c7eac980ea36dccd3b80cdeac5c38b",
+      "statementCount": 1
+    },
+    {
+      "name": "backfill_content_feedback",
+      "version": "20260630191814",
+      "rawSha256": "0f1c9120e907bf4ced8eab264d554008c7994c0080a6e4a99a358f3e706f58b4",
+      "statementCount": 1
+    },
+    {
+      "name": "backfill_dream_issues",
+      "version": "20260630191829",
+      "rawSha256": "2c2d13515c6e26156a469087b47c47517a382d5f8c99c31ca145198b9529cd92",
+      "statementCount": 1
+    },
+    {
+      "name": "backfill_operator_memories",
+      "version": "20260630191844",
+      "rawSha256": "81fa08cc4603e56cc02f82fbf8c4469d0d249861d77a17605c1694a5174d7e4b",
+      "statementCount": 1
+    },
+    {
+      "name": "enable_public_rls_for_internal_tables",
+      "version": "20260707172102",
+      "rawSha256": "684ea915e812f0acee5df9c9f05ffa2e0f023cd8e66a4b6fd82f449fbc60d205",
+      "statementCount": 1
+    },
+    {
+      "name": "publish_channel_state",
+      "version": "20260719184902",
+      "rawSha256": "fa51dcc143bedfe3944a68556a6ca2ef87e12d5c5f69db9ca75a8404215d4727",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_authorizations",
+      "version": "20260819060855",
+      "rawSha256": "8463eccc49c80c04dfaec9ee6f25202e371739d124704289753f05fd342fe567",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_decision_ledger",
+      "version": "20260819092739",
+      "rawSha256": "9f7ca45ebd2964f86b6cadc588cedbf9ca1d4edd0921fc70c75c8a898295a5c5",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_mission_ledger",
+      "version": "20260820054225",
+      "rawSha256": "dc8d39f746066c22cf2dbe94c65dd5176015f4e6c84fda5086f7515b1b5f4083",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_delegation_ledger",
+      "version": "20260820091102",
+      "rawSha256": "7092eb14bd3e7d7f579b4eb1974dc469b3f73b43dafefcc8f2a5ef367f70da24",
+      "statementCount": 1
+    },
+    {
+      "name": "manager_tasks_work_packages",
+      "version": "20260820184619",
+      "rawSha256": "809cd90d6aa268bca3ea7387cf1a2ef925861af5d4d2ac3ac5c2af729d6ed1b4",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_entities",
+      "version": "20260821075928",
+      "rawSha256": "f132f46d067a091ed1459266ac54bfd9ce6250282aff11421ff7947abf84550f",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_intelligence",
+      "version": "20260821080031",
+      "rawSha256": "3d2b89a0df0030937ecf5e7f2398f0fce0bdb8578963bd304412ef85f60c5250",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_intelligence_cron",
+      "version": "20260821080053",
+      "rawSha256": "e58baf6fdfb41f6be505aeeaf38eb4d7e402feb58165436b57899f425157aec6",
+      "statementCount": 1
+    },
+    {
+      "name": "project_api_credentials",
+      "version": "20260822093410",
+      "rawSha256": "10f12659027861d3b9faa2676bc26ecc73e07b4d8d7f0152255134bf9f3d8c87",
+      "statementCount": 1
+    },
+    {
+      "name": "workflow_instance_core",
+      "version": "20260829123901",
+      "rawSha256": "dfe1ab1db6aac916fb76098476d3fc51662e37307c5a75977a3efd49732ca4ba",
+      "statementCount": 1
+    },
+    {
+      "name": "workflow_instance_core_hardening",
+      "version": "20260829124116",
+      "rawSha256": "4be11fb40a971c155143c28c5e63e24df6a641fdb164d65cfec2e3a12b2b5266",
+      "statementCount": 1
+    },
+    {
+      "name": "workflow_gate_authorization",
+      "version": "20260829174736",
+      "rawSha256": "aa2cb0470e27f8b65e167e2e040e77de560a7ce2f42bbea6ef623367f03dd998",
+      "statementCount": 1
+    },
+    {
+      "name": "workflow_scheduled_continuation",
+      "version": "20260829180847",
+      "rawSha256": "11eb6e02c3387ab718af433106034019869789149e54830b946b0684cc3e7f21",
+      "statementCount": 1
+    },
+    {
+      "name": "workflow_scheduler_project_pause",
+      "version": "20260829181028",
+      "rawSha256": "a202b551a58aa204a8358d0c083083defa2aeb9728f4ffe4a29bb2f100356178",
+      "statementCount": 1
+    },
+    {
+      "name": "workflow_attested_evidence",
+      "version": "20260829191341",
+      "rawSha256": "bd7a127402d0dad5b53238eb70c9dd9ae12d3ce790ae28cf0d7f519ab4555eb0",
+      "statementCount": 1
+    },
+    {
+      "name": "workflow_escalation_index",
+      "version": "20260829193325",
+      "rawSha256": "e6aca2bf5ff6850165e3cfefd0c980f62559d29af57c1ac9b70bd890a358c6b9",
+      "statementCount": 1
+    },
+    {
+      "name": "execution_stop_safety",
+      "version": "20260830071842",
+      "rawSha256": "2b61924cdc3380c6c01ac2303fd4db617ad05275a9461ec376ea965cb4e7072b",
+      "statementCount": 1
+    },
+    {
+      "name": "spend_budget_gate",
+      "version": "20260830102935",
+      "rawSha256": "da99945cb69ef410a39f72c4db3adfaabe237210b9546241a3862a1eb5eec019",
+      "statementCount": 1
+    },
+    {
+      "name": "workflow_action_binding",
+      "version": "20260830111355",
+      "rawSha256": "c2081953360fbdeb77792368e2eb40dc72050a645fd42ee9700b76af3f2a0059",
+      "statementCount": 1
+    },
+    {
+      "name": "action_failure_model",
+      "version": "20260830113216",
+      "rawSha256": "018a482a332a268a73f17e52618cfb491ad2f0f029a3d8d509cd731544692bae",
+      "statementCount": 1
+    },
+    {
+      "name": "readonly_action_authorization",
+      "version": "20260830163251",
+      "rawSha256": "8aed9f2b43de385c6b643ad2d2c71638232cee5c3db55ee7fcf68806adce77d4",
+      "statementCount": 1
+    },
+    {
+      "name": "budget_scopes",
+      "version": "20260831073146",
+      "rawSha256": "1ea6d38464508fc6e580133d437dbadda9cb2e7abe22b71e78c48c594141ed17",
+      "statementCount": 1
+    },
+    {
+      "name": "unified_stop_authority",
+      "version": "20260901102808",
+      "rawSha256": "ac7d2097a1df335ed0f2f04505af0b4c54019ac888d33f8572f1baca1d25f872",
+      "statementCount": 1
+    },
+    {
+      "name": "workflow_transition_stop_guard",
+      "version": "20260901132705",
+      "rawSha256": "4d31faa17f28342ff5adabddf341cf05b3e4f5ea29f34b7a37972df1604f7565",
+      "statementCount": 1
+    },
+    {
+      "name": "stop_atomic_execution_admission",
+      "version": "20260902104023",
+      "rawSha256": "65f8cf45a32050809c4631a4613e6f4807dc7fbd4e5ad525b301b32376ede1ab",
+      "statementCount": 1
+    },
+    {
+      "name": "media_asset_foundation",
+      "version": "20260902130337",
+      "rawSha256": "2783eb30f0411e296b364c0844de966ebd4b994185853379962c9d76dc8e3587",
+      "statementCount": 1
+    },
+    {
+      "name": "media_job_lifecycle",
+      "version": "20260903062550",
+      "rawSha256": "b1c7e641d8308cb0c8d25921c416ab986d48016e47b30f714c289c5a97ccf253",
+      "statementCount": 1
+    },
+    {
+      "name": "media_job_lifecycle_repairs",
+      "version": "20260903070644",
+      "rawSha256": "d77f0c0bd53bd8169a8366f737f77046c3b1fcb35935fc6d53e5c20cd76f100d",
+      "statementCount": 1
+    },
+    {
+      "name": "durable_cancellation_reaper",
+      "version": "20260903182048",
+      "rawSha256": "a0025a3709d7b601a9af7647d5bf8def7902bea6c597fe3ce38f36cccecec161",
+      "statementCount": 1
+    },
+    {
+      "name": "workflow_stories",
+      "version": "20260904101452",
+      "rawSha256": "b2e25e51a896f4d9b2d5332ce9ca21c96a3cbe328ec8d85cc713efb9e1ace6e4",
+      "statementCount": 1
+    },
+    {
+      "name": "workflow_manual_privileged_provenance",
+      "version": "20260907051014",
+      "rawSha256": "7379c8072905a9cbaf9480dff0438dcb8a9e5e7e7974a63c867f288c4052236c",
+      "statementCount": 1
+    },
+    {
+      "name": "spend_advisory_overrides",
+      "version": "20260907113728",
+      "rawSha256": "a474f135f60782bc05bdb8dd83c7496540e3c0d1794d41581d5958b25081a7ba",
+      "statementCount": 1
+    },
+    {
+      "name": "workflow_stories_rls",
+      "version": "20260909193225",
+      "rawSha256": "0761cf5caa51455be8d5dfae9baa7a0c0c7d1bf4c4993b1fb1f5b750edba3539",
+      "statementCount": 1
+    },
+    {
+      "name": "declarative_rls_parity",
+      "version": "20260910054144",
+      "rawSha256": "a2e3dc6c5eca65f4efe7b8222cf727b4752be9bc81e75ac8e2ec5291edf2bd86",
+      "statementCount": 1
+    },
+    {
+      "name": "cost_ledger_rls_isolation",
+      "version": "20260910080008",
+      "rawSha256": "460ba95651994cdabc654dd812445b9c5c839bc5f60008cd86881be404e1bbee",
+      "statementCount": 1
+    },
+    {
+      "name": "agent_scorecards_view_isolation",
+      "version": "20260910133125",
+      "rawSha256": "0ce248fa0bc63f4ca3d0f0bf8a22a74442595809bb37959a3dfecea5364488f5",
+      "statementCount": 1
+    },
+    {
+      "name": "platform_tokens_client_revoke",
+      "version": "20260914060229",
+      "rawSha256": "1cff9de90d12bcab420faac17f8dff96cf317e2fc7e9cd0d0d71c894bee0a06a",
+      "statementCount": 1
+    },
+    {
+      "name": "platform_credential_events",
+      "version": "20260914060314",
+      "rawSha256": "0957334a075f763bf71a2c0565e0003a45fac938575aa68563965ac7f97d0331",
+      "statementCount": 1
+    },
+    {
+      "name": "platform_credential_events_search_path",
+      "version": "20260914060754",
+      "rawSha256": "4b5b7526eadf9c8c2d8f95f1fa3d8253d2975f50cacec05bd7701991b09ca92d",
+      "statementCount": 1
+    },
+    {
+      "name": "social_account_bindings",
+      "version": "20260914113332",
+      "rawSha256": "afaeee6206c9fd159c9c5cffecf86e577147d900c5ae25ac059e7454c90bf22d",
+      "statementCount": 1
+    },
+    {
+      "name": "platform_credential_events_account_binding",
+      "version": "20260914113400",
+      "rawSha256": "662aa4a8b5e52fbe2a2bb8bc5bb87f49c082670ec3889757c1b52bba8edd4b12",
+      "statementCount": 1
+    },
+    {
+      "name": "social_credential_health",
+      "version": "20260914113426",
+      "rawSha256": "31d5384fe216fd40f0847f383a03f1ae5455cac440694fb2115e04873786974c",
+      "statementCount": 1
+    },
+    {
+      "name": "platform_tokens_project_binding",
+      "version": "20260914113447",
+      "rawSha256": "b6248c226991dc75c9bec928ffbed8c783d8d995e6a7e754605427e96da09efe",
+      "statementCount": 1
+    },
+    {
+      "name": "social_account_bindings_the_prompt_evidence",
+      "version": "20260914113522",
+      "rawSha256": "aa7890719107de3f83f260af759f772ff4c7ef160b9c8e351ffedc85cc304c32",
+      "statementCount": 1
+    },
+    {
+      "name": "youtube_project_oauth",
+      "version": "20260915190533",
+      "rawSha256": "4304834507c0ef8da38cab30b4aed6d33f3e3836e8cd0f60f9f07974e232ef47",
+      "statementCount": 1
+    },
+    {
+      "name": "sdf1b1_code_work_control_plane",
+      "version": "20260919054123",
+      "rawSha256": "54484f5af5d7addbb36729353ecc9f0213c9ec52d5b67bd4f5d015d29d60caa5",
+      "statementCount": 1
+    },
+    {
+      "name": "dream_issue_reconciliation",
+      "version": "20260919154957",
+      "rawSha256": "2531c5bc89445b66d955242918c229d820de663998961c0d1848f34a52cb1ff7",
+      "statementCount": 1
+    },
+    {
+      "name": "survival_state_events",
+      "version": "20260923191631",
+      "rawSha256": "29e18ae8694a914a676ed965fc52a771dc72283a4385845c422a41fa2d5f70da",
+      "statementCount": 1
+    },
+    {
+      "name": "sdf1c1_trusted_broker_identity",
+      "version": "20260924053015",
+      "rawSha256": "1eab24646457871331da4097f9a47df133af98a5bad6929fe95d963e57aada75",
+      "statementCount": 1
+    },
+    {
+      "name": "sdf1c1b_broker_claim_credentials",
+      "version": "20260924064457",
+      "rawSha256": "31489ea3a5317ab9bfd2451fd720f79937716bb8542ef5028918f4becd9ae8f5",
+      "statementCount": 1
+    },
+    {
+      "name": "survival_funding_phase2b",
+      "version": "20260924081629",
+      "rawSha256": "e4f6934cbe0a846866be3c88ff3e5c8806e6a7051f402380d195200d7dfaf3ea",
+      "statementCount": 1
+    },
+    {
+      "name": "sdf1c2_broker_control_channel",
+      "version": "20260924122958",
+      "rawSha256": "a9aba2832efa283c8af76b6f22df84c3395bded79d1ab3d2fe53c56266ee3976",
+      "statementCount": 1
+    },
+    {
+      "name": "autonomy_license_phase2c",
+      "version": "20260925102918",
+      "rawSha256": "b3091ffa77fbaa9bbc3d73a1030fac8bb6cc9d80b1d1f9f3b1eb5491c4b1e460",
+      "statementCount": 1
+    },
+    {
+      "name": "autonomy_trace_decisions",
+      "version": "20260926082643",
+      "rawSha256": "3324ddbaff60523e5f2ab096a6871c49c6c9e7c648a13198bf1ed865a1b97c8e",
+      "statementCount": 1
+    },
+    {
+      "name": "autonomy_bind_atomic",
+      "version": "20261001130412",
+      "rawSha256": "601c24b756bd096ebfb268fd91457bd326239c71ce830e025573817eca16b5a2",
+      "statementCount": 1
+    },
+    {
+      "name": "m0_durable_spend_settlement",
+      "version": "20261002062908",
+      "rawSha256": "13c5582d72f02e35095aec4edba1375861279bb72e0ba3a38d3075fa6a66ac16",
+      "statementCount": 1
+    },
+    {
+      "name": "autonomy_authority_serialization",
+      "version": "20261002134227",
+      "rawSha256": "c84f604d845d946e187561393ed6f28ca2919c45121109585d3575301d787cd5",
+      "statementCount": 1
+    },
+    {
+      "name": "survival_input_epoch",
+      "version": "20261003053532",
+      "rawSha256": "93e002f0e4308b606816895b91c810c324f66754d3d058026566e898a5761d80",
+      "statementCount": 1
+    },
+    {
+      "name": "survival_commit_fence",
+      "version": "20261003183855",
+      "rawSha256": "c114496b834bd90cd626bc9275c537990130be18c2414e3614751a19a9752cb7",
+      "statementCount": 1
+    },
+    {
+      "name": "survival_threshold_status_canonical",
+      "version": "20261007094814",
+      "rawSha256": "2ea819a30fa705fd4e561230c6db9d63385a940fd6a85f648706c1ad2ec11f91",
+      "statementCount": 1
+    },
+    {
+      "name": "m4a_licensed_authority_substrate",
+      "version": "20261007095425",
+      "rawSha256": "d9ecf8024cf2e393e8616ccbe41593b0e1c4b250db10703ad5302fada719f593",
+      "statementCount": 1
+    },
+    {
+      "name": "m4b_licensed_bind",
+      "version": "20261007100001",
+      "rawSha256": "d4e124c759b4cdf2f45c1a874fa8c2278a7e598547e002d626a3f2f32aa417d3",
+      "statementCount": 1
+    },
+    {
+      "name": "handlarborsen_marketplace_snapshots",
+      "version": "20261010080307",
+      "rawSha256": "ee59a8c936dc0692715e60b1f4ec2e4870681c9433fbde384ff8d1d434441653",
+      "statementCount": 1
+    },
+    {
+      "name": "handlarborsen_guarded_snapshot_store",
+      "version": "20261011110737",
+      "rawSha256": "9cef7582c17b5812aac242c6fafa48d9f8d3f1c86122332cea6edc0d22b2fe20",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_analysis_drafts",
+      "version": "20261013051724",
+      "rawSha256": "0582d94689b34e6704c26a830b879741d233ff81a7139bf28ce3642e83000738",
+      "statementCount": 1
+    },
+    {
+      "name": "omnira_org_memberships_v1",
+      "version": "20261013203916",
+      "rawSha256": "ccae70c6a493e49a44aa5aef0ff210298e8b1425570d19f913659600ea8e6fae",
+      "statementCount": 1
+    },
+    {
+      "name": "omnira_collaborator_proposals_v1",
+      "version": "20261014101610",
+      "rawSha256": "f3d085130142e7e212dce02ecaa9b6ff8a2dfbdaf026b64a542726db7f704500",
+      "statementCount": 1
+    },
+    {
+      "name": "website_build_sessions",
+      "version": "20261014112755",
+      "rawSha256": "a3a36396a181af89340482f5a51210a65b5fef6f03480651155177d56363fa0b",
+      "statementCount": 1
+    },
+    {
+      "name": "handlarborsen_competitor_observations_v1",
+      "version": "20261014133814",
+      "rawSha256": "244747e5019371f7634129d74da3e546b9133c35c59d4703cd9654f09bc05089",
+      "statementCount": 1
+    },
+    {
+      "name": "website_build_planning_v1",
+      "version": "20261014185247",
+      "rawSha256": "0abd0a7ac17669b8db9bc8fcb3b298d158a1678e157932adfd1911e5765496b4",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_builder_studio_workspace",
+      "version": "20261015100050",
+      "rawSha256": "4a488c4febcf6f91f239f1ee07687ef36df2b392aaf3788023700376bda38bfa",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_builder_output_allowance_v2",
+      "version": "20261015123510",
+      "rawSha256": "64e1944587506cb72db938218fb2fbf0706ee68ee4620bbfe11d133af223f66a",
+      "statementCount": 1
+    },
+    {
+      "name": "website_saved_draft_worker_protocol",
+      "version": "20261015160933",
+      "rawSha256": "11a2b605da712d8a81beafc0773519211b6e959679f369c86c7697624a52c641",
+      "statementCount": 1
+    },
+    {
+      "name": "website_mockup_review",
+      "version": "20261015213043",
+      "rawSha256": "516487ed7f2ade1782d5a19aeeda9151109fcce81119634a1505a59b3cc3dd25",
+      "statementCount": 1
+    },
+    {
+      "name": "social_launch_plans_v1",
+      "version": "20261016054513",
+      "rawSha256": "21e7d1d3985ab3e37d5f580a082bcac4030d8ebf4831bef18d7e94c60f2ba0be",
+      "statementCount": 1
+    },
+    {
+      "name": "social_project_connections_v1",
+      "version": "20261016071026",
+      "rawSha256": "fbc20a80dc2cbd84c5a0bed4d3170faa38cc0302e6d4966e35c84911ba8edbf8",
+      "statementCount": 1
+    },
+    {
+      "name": "social_content_preparation_v1",
+      "version": "20261016103411",
+      "rawSha256": "638305f235bc453729bc3fd414faf602a536854342220d8e5ade9e34ce40d967",
+      "statementCount": 1
+    },
+    {
+      "name": "social_project_profiles_v1",
+      "version": "20261016123853",
+      "rawSha256": "32ba235a7a7e3d8ec40fe4e552af84b30441c2048312a883b528b666a7371d74",
+      "statementCount": 1
+    },
+    {
+      "name": "social_manual_publication_v1",
+      "version": "20261016123902",
+      "rawSha256": "7e90994492f3c62493e68cef41f9b515b782204f7beb63ae874a6ba1ee938bf2",
+      "statementCount": 1
+    },
+    {
+      "name": "handlarborsen_competitor_candidates_v1",
+      "version": "20261016195144",
+      "rawSha256": "80da3be508a233fc2921da08eba4c69cb62adc62dd06d7cc24c93779eebf4110",
+      "statementCount": 1
+    },
+    {
+      "name": "handlarborsen_competitor_review_decisions_v1",
+      "version": "20261017084522",
+      "rawSha256": "8574536a660db3173eeefb83d4cb16cbc8c8d9175fdc49f6d98856094cd12f8f",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_sales_pilot",
+      "version": "20261017130254",
+      "rawSha256": "7ea3de34909ac582d2534b291b448fb9ba3781c196167c0475fc4e1f2c301ca9",
+      "statementCount": 1
+    },
+    {
+      "name": "handlarborsen_candidate_inbox_v1",
+      "version": "20261017151021",
+      "rawSha256": "e7f3efe782086aa8f818ab071dab7c96ccadde95ec58320e30048bd487fe663c",
+      "statementCount": 1
+    },
+    {
+      "name": "sales_managed_host",
+      "version": "20261017151718",
+      "rawSha256": "a258d7fc159632564747c9a49c5b48037c8c75726b26859892301127dfbf832a",
+      "statementCount": 1
+    },
+    {
+      "name": "sales_strato_connection",
+      "version": "20261017151722",
+      "rawSha256": "2e3301eb992694901c15904899c586093632dfb2acf91db2474c8447c6243b1e",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_local_text",
+      "version": "20261017174301",
+      "rawSha256": "5024a72db523f63ce7f42f4a5e0f774d50b34cda9a3f6e6f1c3f698610eba180",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_local_text_lifecycle",
+      "version": "20261017180713",
+      "rawSha256": "d5c1ca9aba0c993a6be27625cfa9852d0eb719be5ccc5eb826bfa95acfd0aba3",
+      "statementCount": 1
+    },
+    {
+      "name": "sales_strato_inbox",
+      "version": "20261017191904",
+      "rawSha256": "1013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1",
+      "statementCount": 1
+    },
+    {
+      "name": "handlarborsen_test_data_reviews",
+      "version": "20261017193411",
+      "rawSha256": "b71a8deed4b8467f2ee5b995dd6e4329f31ccf8b69dccf4f340c79910846806c",
+      "statementCount": 1
+    },
+    {
+      "name": "handlarborsen_watch_runs_v1",
+      "version": "20261017200436",
+      "rawSha256": "687d8cb87f8edf04f15618ed446d14fcae9dd9ebbf979f46b171429b7f7e9691",
+      "statementCount": 1
+    },
+    {
+      "name": "sales_reply_preparation",
+      "version": "20261018040242",
+      "rawSha256": "7516d8566ae7776086452ff8fdd51058ce34a10ab70973bcdbf4ee14f655a3cc",
+      "statementCount": 1
+    },
+    {
+      "name": "sales_reply_sending",
+      "version": "20261018074615",
+      "rawSha256": "80158d54a4cc5d7f15901f0ed8e67dc7fa04a8738054e14fb1c7be1cf484e49e",
+      "statementCount": 1
+    },
+    {
+      "name": "social_publication_reconciliation",
+      "version": "20261018085701",
+      "rawSha256": "6b3eb4f0289e73f0ca0087a32870dee6832be514f8eab4c7bc50d2ebaea18565",
+      "statementCount": 1
+    },
+    {
+      "name": "social_schedule_batches",
+      "version": "20261018085707",
+      "rawSha256": "a399284f6c965a2688c32a2a82b793af7f016ba2ad2109f5e0859367875ee6c4",
+      "statementCount": 1
+    },
+    {
+      "name": "social_schedule_checkpoint_recovery",
+      "version": "20261018085708",
+      "rawSha256": "3523565e72b42b0d654d47e480d73cc9e342d2329304f73b75bb097b6a23bac6",
+      "statementCount": 1
+    },
+    {
+      "name": "social_schedule_review_snapshots",
+      "version": "20261018085733",
+      "rawSha256": "281dc56f53fba4fdee10a1e8f73b8b6d9c8293b819f044f7fa878185769cf3e4",
+      "statementCount": 1
+    },
+    {
+      "name": "handlarborsen_metrics_definition",
+      "version": "20261018090826",
+      "rawSha256": "1bf12413b39227d13f3a3088ce79411f204b69c8c82d5be6b456cdc7c95ad7fc",
+      "statementCount": 1
+    },
+    {
+      "name": "handlarborsen_test_data_integration",
+      "version": "20261018090827",
+      "rawSha256": "05ecd416f91ab653a044166e495d7f6bc5e001eac7faea3761a0558476656e2f",
+      "statementCount": 1
+    },
+    {
+      "name": "media_news_review_evidence",
+      "version": "20261018182224",
+      "rawSha256": "9cfd8807817878d492814cc29240114c3e3101ac8504651f377f375089b63e52",
+      "statementCount": 1
+    },
+    {
+      "name": "sales_contact_timing",
+      "version": "20261019073559",
+      "rawSha256": "8c651b4962445328991f837ff509b7146139921f8437ac2bfd7afbff0af27476",
+      "statementCount": 1
+    },
+    {
+      "name": "sales_email_copy_versions",
+      "version": "20261019102356",
+      "rawSha256": "9832a385ccc84edcee4e905ebd98ce6e6ae3e6aa11b55a731c9ff75975ed8964",
+      "statementCount": 1
+    },
+    {
+      "name": "user_calendar_v1",
+      "version": "20261020054803",
+      "rawSha256": "6bb10d31b39c3733e1646138cda08fc432135abdcfd00cfda6283b9e0d082c4e",
+      "statementCount": 1
+    },
+    {
+      "name": "user_calendar_recurrence",
+      "version": "20261020054828",
+      "rawSha256": "230afaf7e877b262a73a409f034487d316cef2b7dfe2874cec4e4df2b0bd9e34",
+      "statementCount": 1
+    },
+    {
+      "name": "higgsfield_mcp_readonly",
+      "version": "20261022202014",
+      "rawSha256": "ee6ad45fe81e70be10ddc5f86ef9aa357824db1b785bb07b9ebe93e540e7eae5",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_fallback_reservation_ceiling",
+      "version": "20261023100303",
+      "rawSha256": "2a6ecad226854eaf34443d607d101ecc37f997367c9f1700aa668e7bfbf91dad",
+      "statementCount": 1
+    },
+    {
+      "name": "atlas_fallback_reservation_locktime",
+      "version": "20261023100514",
+      "rawSha256": "b536e52ca2c34cead171250f6aeec7a3b3149de8018c451ec003e2954cba5882",
+      "statementCount": 1
+    },
+    {
+      "name": "human_story_start",
+      "version": "20261026061026",
+      "rawSha256": "6b6db6891ce9dbc9f2a5354669100adeee8e8255205cd7ef9389052d49682351",
+      "statementCount": 1
+    },
+    {
+      "name": "user_calendar_responsibility",
+      "version": "20261026061036",
+      "rawSha256": "488525cbd5d7a09be02c3cb1a5a7b0fdfe968e4cb7f13a12073a04caa266c4da",
+      "statementCount": 1
+    },
+    {
+      "name": "user_calendar_workflow_link",
+      "version": "20261026061039",
+      "rawSha256": "e9de55100a2e876c68c630b293401e378d6adf16103c3bd8f6a6d5b9ea944531",
+      "statementCount": 1
+    },
+    {
+      "name": "family_social_repeat_guard",
+      "version": "20261026073245",
+      "rawSha256": "71ce1bb9b556fcdce9fef8b3f24567edf2934d2a01cbfed7dd5720aa517b3897",
+      "statementCount": 1
+    },
+    {
+      "name": "instagram_receipt_reconciliation",
+      "version": "20261026080719",
+      "rawSha256": "6cb37eff35c042790bb7572dcaf0c10199bd03f418e621b7f43363be98f0995a",
+      "statementCount": 1
+    },
+    {
+      "name": "social_schedule_cancelled_reservations",
+      "version": "20261026083842",
+      "rawSha256": "b6adaa647380b55d7ea2a29f7713b6d41c6f18b378cb6b9df520b884aa148bc3",
+      "statementCount": 1
+    },
+    {
+      "name": "family_weekly_preparation",
+      "version": "20261026092629",
+      "rawSha256": "a29f2fb3bc0125e09d32d263a4e3ea2f238a388339a85e9671f9b97be969f068",
+      "statementCount": 1
+    },
+    {
+      "name": "calendar_manual_publication_reports",
+      "version": "20261027211328",
+      "rawSha256": "ea999015088720550345103fb17689f6294b86010a796bf7a803aa084eb69e87",
+      "statementCount": 1
+    },
+    {
+      "name": "handlarborsen_scb_review_only_candidates",
+      "version": "20261028072659",
+      "rawSha256": "f5e9833bda07c1fe78d4da5655bccfc29f8b25fe8de3d8b0726b1a67e2bc830c",
+      "statementCount": 1
+    },
+    {
+      "name": "handlarborsen_owner_review_archive_20261029",
+      "version": "20261029065156",
+      "rawSha256": "b773777a1ab92a4d934221dfbc4d537dae23f18636c366120f2a29f2eedaeb23",
+      "statementCount": 1
+    },
+    {
+      "name": "sales_b2b_offers",
+      "version": "20261031120736",
+      "rawSha256": "1e2cc43fa44f8c81cbc9c071070f640da63616dca45d7cb182c18d7ccc00c244",
+      "statementCount": 1
+    },
+    {
+      "name": "sales_discovery_candidates",
+      "version": "20261031120804",
+      "rawSha256": "15ffe03d728ebc1867a87e7a70d37f5653c2e4247f9d4dab15b11377c305a7e4",
+      "statementCount": 1
+    },
+    {
+      "name": "social_owner_crosschat_context",
+      "version": "20261031145817",
+      "rawSha256": "432fa4aca873e9a91ccf0876fe6a5324b519b6c6eb3f1a826a673027a0c7dde6",
+      "statementCount": 1
+    },
+    {
+      "name": "human_story_exact_claim",
+      "version": "20261031204433",
+      "rawSha256": "a7ffd88a4b1881b3173e4dfe98af5d6d6ea1d7bb47b0c09411954cbd698a32e6",
+      "statementCount": 1
+    },
+    {
+      "name": "social_campaign_preparation",
+      "version": "20261101062748",
+      "rawSha256": "1c2606bbb98cb3192b4a240b017fc6452a005e93d81183ae8373e11c97367aa1",
+      "statementCount": 1
+    },
+    {
+      "name": "handlarborsen_scb_live_preview_candidates",
+      "version": "20261102070352",
+      "rawSha256": "4afd7939f23b79e820a7aca974f0abcab6e44f5244677ed388d0a082f3862efc",
+      "statementCount": 1
+    },
+    {
+      "name": "sales_editorial_only_drafts",
+      "version": "20261102095321",
+      "rawSha256": "3526aa5c4f066a4c790b8bb23663b766a0aa1469a5f52ebac29e458b2b71ef4d",
+      "statementCount": 1
+    },
+    {
+      "name": "sales_initial_sending",
+      "version": "20261103082558",
+      "rawSha256": "3751874fd82242ef63755253e157dd2afe9bcc2af30bcff4154853cb0831ce4d",
+      "statementCount": 1
+    },
+    {
+      "name": "project_total_allowance",
+      "version": "20261104104329",
+      "rawSha256": "3522149a5519af153655c1f7fbb5348063306af13311edfb344ac8db8ed979e2",
+      "statementCount": 1
+    },
+    {
+      "name": "posthog_approved_read",
+      "version": "20261104135920",
+      "rawSha256": "c40c2a05a06e09beea1667665d4b7aa43a4813bf1c4215a6d03354260d3d242b",
+      "statementCount": 1
+    },
+    {
+      "name": "webbuilder_prospects",
+      "version": "20261109111500",
+      "rawSha256": "669fdaca272a4140a210b222e003895e9f7c171b0d0ae9265d69e9382c32e5d9",
+      "statementCount": 1
+    }
+  ],
+  "sourceManifest": [
+    {
+      "file": "20260520_media_images.sql",
+      "sha256": "e1d544a46214f72d09588b66725989c5caf9ef4ce6bb8e53c34c34850264ca58"
+    },
+    {
+      "file": "20260520_media_tables.sql",
+      "sha256": "ec1a18ef576352e99d2b38b54da6d2c8db6cb5b409b38e4ece3921135200e07c"
+    },
+    {
+      "file": "20260525_media_scripts_facebook.sql",
+      "sha256": "c819e8016268ba8ab662f2d0bc434c54befe1ab2ab1469bc8363df9322b00aa4"
+    },
+    {
+      "file": "20260525_media_scripts_quality_music.sql",
+      "sha256": "71b92bb1a1e473b25ab7ac1127652980f640a64175e1d3c87fb232df33949cf6"
+    },
+    {
+      "file": "20260527_platform_tokens.sql",
+      "sha256": "1dc59764389d9057fdf21e1d1420bce6279c9c6bab77fcf8cefb9b6f1e367272"
+    },
+    {
+      "file": "20260528_agent_decisions.sql",
+      "sha256": "3de952005933051e4a07ef596a4a65e702116da711a805d1270594d7f22e7482"
+    },
+    {
+      "file": "20260601_revenue_os.sql",
+      "sha256": "f5313ab84c3588d281695c2c289651489e8636759614dc56bc8f34af9d8d1a41"
+    },
+    {
+      "file": "20260602_atlas_bi_foundation.sql",
+      "sha256": "82f887b45b6f3791690201e1f0a98ca3e14a2037882f0a9e2f0b988b1cea330a"
+    },
+    {
+      "file": "20260602_cost_events.sql",
+      "sha256": "5f21c2a1dde3f0b361f83fe853e0c3da4625ba0334a03b18a0063c700ccdf26d"
+    },
+    {
+      "file": "20260602_project_budgets.sql",
+      "sha256": "06c69818e0878750d6180cb0b43f33ab46828e8fb478994156d11707b54ffe67"
+    },
+    {
+      "file": "20260608110948_create_website_content_system_a.sql",
+      "sha256": "c2a367c556609673b845776daa4f61e11d3a1ec4d43736740e8d9949d46e9a85"
+    },
+    {
+      "file": "20260613_h1p1_execution_policy_foundation.sql",
+      "sha256": "c6cc1e9f2061b348606a04c3808e602978e3a1780fa2f578d09ff0754a29fb19"
+    },
+    {
+      "file": "20260613_media_rls_hardening.sql",
+      "sha256": "d6336e696194465ef4ae5a9d3e31439885a5dcc47dbe07a2ddef0803da681a91"
+    },
+    {
+      "file": "20260614090000_h1p5_outputs_run_id_unique.sql",
+      "sha256": "44abacbd44715db90bf159b46a5933118766f9f67f9a0337bb89d49ded10b58e"
+    },
+    {
+      "file": "20260614091000_h1p5_runs_claim_id.sql",
+      "sha256": "86e4b2eb903eb9bac8f3c24c78e2599c83f1aea5d9bf861c092f8e9c499d6e37"
+    },
+    {
+      "file": "20260614091500_h1p5_runs_cancel_requested.sql",
+      "sha256": "d0911dca00a2d2f93d3d22cd198201005c5dd8c8c8dee602993f3559d7b69e4a"
+    },
+    {
+      "file": "20260614_h1p3_run_steps_snapshot.sql",
+      "sha256": "5e9927731c1abfe12f2d1a36c94e77388587dafd7694e2279cca8302e1888fe1"
+    },
+    {
+      "file": "20260615_migration_guard_fn.sql",
+      "sha256": "edd267fb59e1b78fb9919cc1bd1aa05177c57b66138ea8225bc8dc49ebea7b78"
+    },
+    {
+      "file": "20260616120000_atlas_schema_init.sql",
+      "sha256": "891a24f7a5c5a1a2bd608edc37c201831a517a0c2f5f7621b3acc6227f9f0060"
+    },
+    {
+      "file": "20260616120100_atlas_memory_events.sql",
+      "sha256": "12d34f8dfe45ad5ddac77dced0789100026ef80ca2240e872cbca6c6abcc119c"
+    },
+    {
+      "file": "20260616120200_atlas_memories.sql",
+      "sha256": "6639b9da41e49e9d62259caa77753bf334bc613549cda29be44751567b9875c6"
+    },
+    {
+      "file": "20260616120300_atlas_memory_rls.sql",
+      "sha256": "a789a39e6b1d657be06ab83fc23dc9b1ae09e152d154f4802ad5767b3fb5be8a"
+    },
+    {
+      "file": "20260616_h1p4_run_policy_snapshot.sql",
+      "sha256": "026166ec765cb0852847af89f0fd31c6e4c1523fb9ee005d167f8c83adb6a16e"
+    },
+    {
+      "file": "20260617130000_atlas_record_event_fn.sql",
+      "sha256": "371ab79af6ce715c2ed2a09dcb71d3bc838dd2e0e5b0f781c4a1ed5049eace03"
+    },
+    {
+      "file": "20260617130100_atlas_salience_fn.sql",
+      "sha256": "8628bf272be504e6218bf2d7615ad9de5412280fd095911f95500106d15683ee"
+    },
+    {
+      "file": "20260617140000_atlas_event_type_to_class_fn.sql",
+      "sha256": "5f812c315b54caa452455384d01e8b085fed7e62c3fe0d0056edee384a15782f"
+    },
+    {
+      "file": "20260617140100_atlas_consolidate_fn.sql",
+      "sha256": "c39f1a5943c7c2e4d88f7af1cd8b6107fae48b6b54259333a86c9e5e5f17ff0c"
+    },
+    {
+      "file": "20260617140200_atlas_memory_cron.sql",
+      "sha256": "90855ec2758931ddc062b3cd837902e9e5ff0ffd6d0f6c8a34db874174e422c4"
+    },
+    {
+      "file": "20260617150000_atlas_recall_fn.sql",
+      "sha256": "a52b0c57ea74da36631bae70e8d189ced1a65882f1bea568d7f3ef5ff4dcc9f7"
+    },
+    {
+      "file": "20260617150100_atlas_memory_health.sql",
+      "sha256": "2dacfc026f3e969579ceabe1a53539452940d57a6f0c96a38c171e307b5f3d09"
+    },
+    {
+      "file": "20260617150200_atlas_recall_pin_focus_ranking.sql",
+      "sha256": "879d52d5de95e192f2ab2ca112354b044a57e345a26c02b2fb998022ed0dbc05"
+    },
+    {
+      "file": "20260617160000_backfill_platform_memory.sql",
+      "sha256": "ce5338b46416c5bcc0bc27391484a4734e83097eb9d4d6996a314f86e7b0f60b"
+    },
+    {
+      "file": "20260617160100_backfill_content_feedback.sql",
+      "sha256": "490ef972d767f409faa29b1e67622da99951c2884fbbbc0f0eac9f667b243c25"
+    },
+    {
+      "file": "20260617160200_backfill_dream_issues.sql",
+      "sha256": "8c24978a6d94756b0349531b144c3400c6e407dde8285f53203f2eebe7692ac3"
+    },
+    {
+      "file": "20260617160300_backfill_operator_memories.sql",
+      "sha256": "33b3c68594da62257447222349d28d9cc5e127e38b4e396478e640f18ae8f6d1"
+    },
+    {
+      "file": "20260617_h1p4_pr2_run_rejected_status.sql",
+      "sha256": "aa78d52d3a03c2ca18cf27a56f23e32daa0dd21d81c519eac959201d287b17a3"
+    },
+    {
+      "file": "20260618_website_content_hero_image.sql",
+      "sha256": "ee03b41775eeffafb60dc68b75b0b4df0cef07cb0bd81e9035ea062b3c4306b3"
+    },
+    {
+      "file": "20260619_website_content_hero_image_brief.sql",
+      "sha256": "cac0ae92ae2fa7daf7ebf01ff82bd6590b7fbc70408e9b48698fcf7b1adbb082"
+    },
+    {
+      "file": "20260620_website_content_hero_editor_brief_rename.sql",
+      "sha256": "1437091008eacbe8be37a640a197931ce3e57487b96b4ea19d4196599d8c3e8e"
+    },
+    {
+      "file": "20260621_website_content_hero_image_observability.sql",
+      "sha256": "8d1e06264ec8d5a42593409482b4951261d8bca95f5e34e20380d3676c71b884"
+    },
+    {
+      "file": "20260622_atlas_signals.sql",
+      "sha256": "061c7911139dbf04215f699ada220e08f7647365b495d5cd81485523057d5b73"
+    },
+    {
+      "file": "20260622_h5_atlas_observability.sql",
+      "sha256": "50841c21b66b5260e4ca576b7a991b2b2f7c73f5876e62be41d47751b5513cf1"
+    },
+    {
+      "file": "20260623_150000_atlas_project_lifecycle.sql",
+      "sha256": "f61fc2a2effdadce0087b747aa31488dc4011186ae702b25c80c63add1fae979"
+    },
+    {
+      "file": "20260623_150100_atlas_signals_evolution.sql",
+      "sha256": "8ac5a0116b6066701c4185f2e59404430800582396520617108326fc03ce4788"
+    },
+    {
+      "file": "20260623_150200_collector_runs.sql",
+      "sha256": "27b117d293c03e0f20ba06083aaf1cbca5ff1b44ecfd2030858722815f89d635"
+    },
+    {
+      "file": "20260623_150300_atlas_collector_cron.sql",
+      "sha256": "7521d557756d7739ec48f8ab171b2453a89de410898c444200a0f30b520f3032"
+    },
+    {
+      "file": "20260623_h1_episodic_retention.sql",
+      "sha256": "08128fed772ed29b455b99d1afe2cef4dd5d5646729b773a6ebaf5ea8c78fec5"
+    },
+    {
+      "file": "20260719_publish_channel_state.sql",
+      "sha256": "417c18b483c3ba221b4280809403c41843f4c130d52fd1146450dbdbed66a550"
+    },
+    {
+      "file": "20260819_atlas_authorizations.sql",
+      "sha256": "9c3789b3908f4f6f654c6114829d328e15138f2bc1f1cd9ffc735d4cae972bcc"
+    },
+    {
+      "file": "20260819_atlas_decision_ledger.sql",
+      "sha256": "67949c6964a249a21ad1dde5f0374bfb89d24fd89f827a8e8e783b8c0827067e"
+    },
+    {
+      "file": "20260819_atlas_mission_ledger.sql",
+      "sha256": "dc8d39f746066c22cf2dbe94c65dd5176015f4e6c84fda5086f7515b1b5f4083"
+    },
+    {
+      "file": "20260820_atlas_delegation_ledger.sql",
+      "sha256": "7092eb14bd3e7d7f579b4eb1974dc469b3f73b43dafefcc8f2a5ef367f70da24"
+    },
+    {
+      "file": "20260820_manager_tasks_work_packages.sql",
+      "sha256": "809cd90d6aa268bca3ea7387cf1a2ef925861af5d4d2ac3ac5c2af729d6ed1b4"
+    },
+    {
+      "file": "20260821_atlas_entities.sql",
+      "sha256": "7601f3798b267265097654b670c9e6af50f18f2f363fc4ad2bb275d7d7279595"
+    },
+    {
+      "file": "20260821_atlas_intelligence.sql",
+      "sha256": "fff2ba6968073e95d50d9f0934d15d864bd691100ed9ce87f0c0433f412e40a8"
+    },
+    {
+      "file": "20260821_atlas_intelligence_cron.sql",
+      "sha256": "daf8b41731480c3c4037aa5daa9051e0226e60965b9ab4e44662c46223aee027"
+    },
+    {
+      "file": "20260821_project_api_credentials.sql",
+      "sha256": "add4dfe9d238a3ab7b11404dd3e321dc8f1059ad55fc4743deae16d5bc1f787e"
+    },
+    {
+      "file": "20260829_workflow_attested_evidence.sql",
+      "sha256": "325eecc30e7f69430201d4384259b8404165301b3bc461be5f1fa0529b12e5e6"
+    },
+    {
+      "file": "20260829_workflow_escalation_index.sql",
+      "sha256": "a0aa486b0b95939bb261187cd3edf3829f02db1113f3b00e27d5bd80669606f5"
+    },
+    {
+      "file": "20260829_workflow_gate_authorization.sql",
+      "sha256": "387c4e8e87f147f2f4435136c1f2300c96131c3e9056a7489f0400354fd40024"
+    },
+    {
+      "file": "20260829_workflow_instance_core.sql",
+      "sha256": "4354b9e168a974d726d7c5867494fdf49713a48d4535359d76cdfbac096c398a"
+    },
+    {
+      "file": "20260829_workflow_instance_core_hardening.sql",
+      "sha256": "b41f28f394b1dc5acbada7aa585cfede52dba8552432d2ceabba12fb571ed476"
+    },
+    {
+      "file": "20260829_workflow_scheduled_continuation.sql",
+      "sha256": "b493abecd710c6913798c855cc28639e07d72092137b04755272b5bdf4a94240"
+    },
+    {
+      "file": "20260829_workflow_scheduler_project_pause.sql",
+      "sha256": "d75b73f0aff0cd4a6335683fd4fe60ef57f1a0431703134157b6c2fc0d7769b5"
+    },
+    {
+      "file": "20260830_action_failure_model.sql",
+      "sha256": "be1e90f6e47fb39328a21853a26c87e9f6b1bcd42338edf5847f8c376ff3b183"
+    },
+    {
+      "file": "20260830_execution_stop_safety.sql",
+      "sha256": "df3e7141383f3534c93a927737b4cbab901cb89a9c5680f201801b87ced0f279"
+    },
+    {
+      "file": "20260830_readonly_action_authorization.sql",
+      "sha256": "85fb5f972e6631322ef24b813112c753e71595fe6b339b9925380e242bf594a3"
+    },
+    {
+      "file": "20260830_spend_budget_gate.sql",
+      "sha256": "4ff46783ea9c94a01d245ca2d1f8e257b9af7cde00d4fea51bf8b44f74029419"
+    },
+    {
+      "file": "20260830_workflow_action_binding.sql",
+      "sha256": "aae8807b3f1f5c289a9c5e09fb1ffaf436bbb36e676bc46e3070de102ab3fb25"
+    },
+    {
+      "file": "20260831_budget_scopes.sql",
+      "sha256": "bc88522ad3e95debd4cc8ccef20623e4b3a47ce978b976a8cb89ee2c5778785b"
+    },
+    {
+      "file": "20260831_unified_stop_authority.sql",
+      "sha256": "0551d2fad50ab20484143198724d6dde4c34c71445afce41492fea465823b5ac"
+    },
+    {
+      "file": "20260901110134_workflow_transition_stop_guard.sql",
+      "sha256": "466bc1466c441f57e62fec0bf506db7a110221c52513a0fd31f05cce074285c5"
+    },
+    {
+      "file": "20260902081500_stop_atomic_execution_admission.sql",
+      "sha256": "452e90c1e30159c959cb6ed32fc437843a888d85bdcffcbc99fb994caf87878c"
+    },
+    {
+      "file": "20260902_media_asset_foundation.sql",
+      "sha256": "7e6054de70046aca46e28de3dfbc0233002e468f7fe19d4311f651884d6c14d7"
+    },
+    {
+      "file": "20260903062550_media_job_lifecycle.sql",
+      "sha256": "af1957d737a6b195726d82c8421c10ba09f6994d87e5c46dc94f77610ed067a6"
+    },
+    {
+      "file": "20260903070644_media_job_lifecycle_repairs.sql",
+      "sha256": "40036a4f20c2e38b5d8a88f7ebb6f0c1bdb86388819ff20313c0c2d7cb075a99"
+    },
+    {
+      "file": "20260903120000_durable_cancellation_reaper.sql",
+      "sha256": "a58f06f87ec982b08414590642007106df23e621abbbb171cd528de696575a56"
+    },
+    {
+      "file": "20260904120000_workflow_stories.sql",
+      "sha256": "3674669b4bc26771b6b8651fc2dd086b38b6c6742ba32876bc37aa96280087ba"
+    },
+    {
+      "file": "20260906_workflow_manual_privileged_provenance.sql",
+      "sha256": "98428b62052312cef23040cac9b1d2cb40c08614c1a03493e4ae3ec3cd783493"
+    },
+    {
+      "file": "20260907090000_spend_advisory_overrides.sql",
+      "sha256": "02b2a0c2ac1844fc4c6a19283ee5a7d83093b12f8e93b0882f82cdc01f301b87"
+    },
+    {
+      "file": "20260909120000_workflow_stories_rls.sql",
+      "sha256": "38e5d6997a41cf11001dd921b7ce0d6bf6143d45396854b92c6879a28a58e768"
+    },
+    {
+      "file": "20260910090000_declarative_rls_parity.sql",
+      "sha256": "83550ac63a3ef8727fe07d0dc9d08afb9bf33adcb9373bd23d44ac4b997896c7"
+    },
+    {
+      "file": "20260910120000_cost_ledger_rls_isolation.sql",
+      "sha256": "460ba95651994cdabc654dd812445b9c5c839bc5f60008cd86881be404e1bbee"
+    },
+    {
+      "file": "20260910150000_agent_scorecards_view_isolation.sql",
+      "sha256": "0ce248fa0bc63f4ca3d0f0bf8a22a74442595809bb37959a3dfecea5364488f5"
+    },
+    {
+      "file": "20260914090000_platform_tokens_client_revoke.sql",
+      "sha256": "1cff9de90d12bcab420faac17f8dff96cf317e2fc7e9cd0d0d71c894bee0a06a"
+    },
+    {
+      "file": "20260914090100_platform_credential_events.sql",
+      "sha256": "0957334a075f763bf71a2c0565e0003a45fac938575aa68563965ac7f97d0331"
+    },
+    {
+      "file": "20260914090200_platform_credential_events_search_path.sql",
+      "sha256": "4b5b7526eadf9c8c2d8f95f1fa3d8253d2975f50cacec05bd7701991b09ca92d"
+    },
+    {
+      "file": "20260914120000_social_account_bindings.sql",
+      "sha256": "afaeee6206c9fd159c9c5cffecf86e577147d900c5ae25ac059e7454c90bf22d"
+    },
+    {
+      "file": "20260914120100_platform_credential_events_account_binding.sql",
+      "sha256": "662aa4a8b5e52fbe2a2bb8bc5bb87f49c082670ec3889757c1b52bba8edd4b12"
+    },
+    {
+      "file": "20260914120200_social_credential_health.sql",
+      "sha256": "31d5384fe216fd40f0847f383a03f1ae5455cac440694fb2115e04873786974c"
+    },
+    {
+      "file": "20260914120300_platform_tokens_project_binding.sql",
+      "sha256": "b6248c226991dc75c9bec928ffbed8c783d8d995e6a7e754605427e96da09efe"
+    },
+    {
+      "file": "20260914120400_social_account_bindings_the_prompt_evidence.sql",
+      "sha256": "aa7890719107de3f83f260af759f772ff4c7ef160b9c8e351ffedc85cc304c32"
+    },
+    {
+      "file": "20260915170000_youtube_project_oauth.sql",
+      "sha256": "4304834507c0ef8da38cab30b4aed6d33f3e3836e8cd0f60f9f07974e232ef47"
+    },
+    {
+      "file": "20260918095827_sdf1b1_code_work_control_plane.sql",
+      "sha256": "54484f5af5d7addbb36729353ecc9f0213c9ec52d5b67bd4f5d015d29d60caa5"
+    },
+    {
+      "file": "20260919120000_dream_issue_reconciliation.sql",
+      "sha256": "2531c5bc89445b66d955242918c229d820de663998961c0d1848f34a52cb1ff7"
+    },
+    {
+      "file": "20260923120000_survival_state_events.sql",
+      "sha256": "fb1ca8bc96164419da0f860011e6c390d5e0093e86dca470ac52ea4af3fcb004"
+    },
+    {
+      "file": "20260923150000_sdf1c1_trusted_broker_identity.sql",
+      "sha256": "1eab24646457871331da4097f9a47df133af98a5bad6929fe95d963e57aada75"
+    },
+    {
+      "file": "20260924080000_sdf1c1b_broker_claim_credentials.sql",
+      "sha256": "31489ea3a5317ab9bfd2451fd720f79937716bb8542ef5028918f4becd9ae8f5"
+    },
+    {
+      "file": "20260924120000_survival_funding_phase2b.sql",
+      "sha256": "453ebe143fcc1fe2693fc03a2ededd7650ec67acd07614b0d98ffa9e1b1865c4"
+    },
+    {
+      "file": "20260924140000_sdf1c2_broker_control_channel.sql",
+      "sha256": "a9aba2832efa283c8af76b6f22df84c3395bded79d1ab3d2fe53c56266ee3976"
+    },
+    {
+      "file": "20260924180000_autonomy_license_phase2c.sql",
+      "sha256": "22348156e1415b7137ef0aa80ecf3e10010484fe5561f4407e89875a524ebe20"
+    },
+    {
+      "file": "20260925120000_autonomy_trace_decisions.sql",
+      "sha256": "a7ecff5bf6593e38d4585ef6fb767b3032b2986171d951dfe7252a6584eb3a17"
+    },
+    {
+      "file": "20260926120000_autonomy_bind_atomic.sql",
+      "sha256": "601c24b756bd096ebfb268fd91457bd326239c71ce830e025573817eca16b5a2"
+    },
+    {
+      "file": "20261001160000_m0_durable_spend_settlement.sql",
+      "sha256": "13c5582d72f02e35095aec4edba1375861279bb72e0ba3a38d3075fa6a66ac16"
+    },
+    {
+      "file": "20261002140000_autonomy_authority_serialization.sql",
+      "sha256": "c84f604d845d946e187561393ed6f28ca2919c45121109585d3575301d787cd5"
+    },
+    {
+      "file": "20261002190000_survival_input_epoch.sql",
+      "sha256": "93e002f0e4308b606816895b91c810c324f66754d3d058026566e898a5761d80"
+    },
+    {
+      "file": "20261003120000_survival_commit_fence.sql",
+      "sha256": "c114496b834bd90cd626bc9275c537990130be18c2414e3614751a19a9752cb7"
+    },
+    {
+      "file": "20261004090000_survival_threshold_status_canonical.sql",
+      "sha256": "2ea819a30fa705fd4e561230c6db9d63385a940fd6a85f648706c1ad2ec11f91"
+    },
+    {
+      "file": "20261004100000_m4a_licensed_authority_substrate.sql",
+      "sha256": "d9ecf8024cf2e393e8616ccbe41593b0e1c4b250db10703ad5302fada719f593"
+    },
+    {
+      "file": "20261004110000_m4b_licensed_bind.sql",
+      "sha256": "d4e124c759b4cdf2f45c1a874fa8c2278a7e598547e002d626a3f2f32aa417d3"
+    },
+    {
+      "file": "20261010100000_handlarborsen_marketplace_snapshots.sql",
+      "sha256": "ee59a8c936dc0692715e60b1f4ec2e4870681c9433fbde384ff8d1d434441653"
+    },
+    {
+      "file": "20261010130000_handlarborsen_guarded_snapshot_store.sql",
+      "sha256": "9cef7582c17b5812aac242c6fafa48d9f8d3f1c86122332cea6edc0d22b2fe20"
+    },
+    {
+      "file": "20261012183305_atlas_analysis_drafts.sql",
+      "sha256": "0582d94689b34e6704c26a830b879741d233ff81a7139bf28ce3642e83000738"
+    },
+    {
+      "file": "20261013193000_omnira_org_memberships_v1.sql",
+      "sha256": "57d08b7127d18a821cf2fb3e36e9023b18ef104442670aa721bae45836c61f08"
+    },
+    {
+      "file": "20261014065527_website_build_sessions.sql",
+      "sha256": "a3a36396a181af89340482f5a51210a65b5fef6f03480651155177d56363fa0b"
+    },
+    {
+      "file": "20261014121500_omnira_collaborator_proposals_v1.sql",
+      "sha256": "8d056da9f62ede335e150b5ca6a339d884971ac300ad02fa2bebc40d6b585c4e"
+    },
+    {
+      "file": "20261014143000_handlarborsen_competitor_observations_v1.sql",
+      "sha256": "19d5208a1a75e0623a60ac259d7a0ae604cdff2138f2922bf2a5c15d3edd317e"
+    },
+    {
+      "file": "20261014153354_website_build_planning_v1.sql",
+      "sha256": "0abd0a7ac17669b8db9bc8fcb3b298d158a1678e157932adfd1911e5765496b4"
+    },
+    {
+      "file": "20261015041654_atlas_builder_studio_workspace.sql",
+      "sha256": "4a488c4febcf6f91f239f1ee07687ef36df2b392aaf3788023700376bda38bfa"
+    },
+    {
+      "file": "20261015122500_atlas_builder_output_allowance_v2.sql",
+      "sha256": "64e1944587506cb72db938218fb2fbf0706ee68ee4620bbfe11d133af223f66a"
+    },
+    {
+      "file": "20261015154741_website_saved_draft_worker_protocol.sql",
+      "sha256": "ffee33c4739747d385722b9872731ccde4e57c9b4f1c11df976c7a1e510f2571"
+    },
+    {
+      "file": "20261015210000_website_mockup_review.sql",
+      "sha256": "516487ed7f2ade1782d5a19aeeda9151109fcce81119634a1505a59b3cc3dd25"
+    },
+    {
+      "file": "20261016052226_social_launch_plans_v1.sql",
+      "sha256": "653737ccd06ccdb21286f353a843a60fb210a13c1142f08a33e7d4662f487ae4"
+    },
+    {
+      "file": "20261016061728_social_project_connections_v1.sql",
+      "sha256": "a78ca6111173ab908d93bd994746c92d68e7e113f0e286c8c7ae0d68d9c67083"
+    },
+    {
+      "file": "20261016100941_social_content_preparation_v1.sql",
+      "sha256": "638305f235bc453729bc3fd414faf602a536854342220d8e5ade9e34ce40d967"
+    },
+    {
+      "file": "20261016113247_social_project_profiles_v1.sql",
+      "sha256": "32ba235a7a7e3d8ec40fe4e552af84b30441c2048312a883b528b666a7371d74"
+    },
+    {
+      "file": "20261016115402_social_manual_publication_v1.sql",
+      "sha256": "7e90994492f3c62493e68cef41f9b515b782204f7beb63ae874a6ba1ee938bf2"
+    },
+    {
+      "file": "20261016195000_handlarborsen_competitor_candidates_v1.sql",
+      "sha256": "34de441c3836b4616e615709fdfdd8370004899b9f8741225e70b21eb3421187"
+    },
+    {
+      "file": "20261017080000_handlarborsen_competitor_review_decisions_v1.sql",
+      "sha256": "8574536a660db3173eeefb83d4cb16cbc8c8d9175fdc49f6d98856094cd12f8f"
+    },
+    {
+      "file": "20261017090351_atlas_local_text.sql",
+      "sha256": "5024a72db523f63ce7f42f4a5e0f774d50b34cda9a3f6e6f1c3f698610eba180"
+    },
+    {
+      "file": "20261017100633_atlas_sales_pilot.sql",
+      "sha256": "7ea3de34909ac582d2534b291b448fb9ba3781c196167c0475fc4e1f2c301ca9"
+    },
+    {
+      "file": "20261017115403_atlas_local_text_lifecycle.sql",
+      "sha256": "d5c1ca9aba0c993a6be27625cfa9852d0eb719be5ccc5eb826bfa95acfd0aba3"
+    },
+    {
+      "file": "20261017141000_sales_managed_host.sql",
+      "sha256": "a258d7fc159632564747c9a49c5b48037c8c75726b26859892301127dfbf832a"
+    },
+    {
+      "file": "20261017142000_sales_strato_connection.sql",
+      "sha256": "2e3301eb992694901c15904899c586093632dfb2acf91db2474c8447c6243b1e"
+    },
+    {
+      "file": "20261017151021_handlarborsen_candidate_inbox_v1.sql",
+      "sha256": "e7f3efe782086aa8f818ab071dab7c96ccadde95ec58320e30048bd487fe663c"
+    },
+    {
+      "file": "20261017184015_handlarborsen_metrics_definition.sql",
+      "sha256": "1bf12413b39227d13f3a3088ce79411f204b69c8c82d5be6b456cdc7c95ad7fc"
+    },
+    {
+      "file": "20261017191904_sales_strato_inbox.sql",
+      "sha256": "1013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1"
+    },
+    {
+      "file": "20261017192903_handlarborsen_test_data_integration.sql",
+      "sha256": "05ecd416f91ab653a044166e495d7f6bc5e001eac7faea3761a0558476656e2f"
+    },
+    {
+      "file": "20261017193411_handlarborsen_test_data_reviews.sql",
+      "sha256": "b71a8deed4b8467f2ee5b995dd6e4329f31ccf8b69dccf4f340c79910846806c"
+    },
+    {
+      "file": "20261017200038_handlarborsen_watch_runs_v1.sql",
+      "sha256": "687d8cb87f8edf04f15618ed446d14fcae9dd9ebbf979f46b171429b7f7e9691"
+    },
+    {
+      "file": "20261018040242_sales_reply_preparation.sql",
+      "sha256": "7516d8566ae7776086452ff8fdd51058ce34a10ab70973bcdbf4ee14f655a3cc"
+    },
+    {
+      "file": "20261018070155_social_publication_reconciliation.sql",
+      "sha256": "6b3eb4f0289e73f0ca0087a32870dee6832be514f8eab4c7bc50d2ebaea18565"
+    },
+    {
+      "file": "20261018071209_social_schedule_batches.sql",
+      "sha256": "a399284f6c965a2688c32a2a82b793af7f016ba2ad2109f5e0859367875ee6c4"
+    },
+    {
+      "file": "20261018073425_social_schedule_checkpoint_recovery.sql",
+      "sha256": "3523565e72b42b0d654d47e480d73cc9e342d2329304f73b75bb097b6a23bac6"
+    },
+    {
+      "file": "20261018074426_social_schedule_review_snapshots.sql",
+      "sha256": "281dc56f53fba4fdee10a1e8f73b8b6d9c8293b819f044f7fa878185769cf3e4"
+    },
+    {
+      "file": "20261018074615_sales_reply_sending.sql",
+      "sha256": "80158d54a4cc5d7f15901f0ed8e67dc7fa04a8738054e14fb1c7be1cf484e49e"
+    },
+    {
+      "file": "20261018083917_media_news_review_evidence.sql",
+      "sha256": "9cfd8807817878d492814cc29240114c3e3101ac8504651f377f375089b63e52"
+    },
+    {
+      "file": "20261018182213_user_calendar_v1.sql",
+      "sha256": "6bb10d31b39c3733e1646138cda08fc432135abdcfd00cfda6283b9e0d082c4e"
+    },
+    {
+      "file": "20261019065056_sales_contact_timing.sql",
+      "sha256": "8c651b4962445328991f837ff509b7146139921f8437ac2bfd7afbff0af27476"
+    },
+    {
+      "file": "20261019081000_user_calendar_recurrence.sql",
+      "sha256": "230afaf7e877b262a73a409f034487d316cef2b7dfe2874cec4e4df2b0bd9e34"
+    },
+    {
+      "file": "20261019101120_sales_email_copy_versions.sql",
+      "sha256": "9832a385ccc84edcee4e905ebd98ce6e6ae3e6aa11b55a731c9ff75975ed8964"
+    },
+    {
+      "file": "20261022075921_higgsfield_mcp_readonly.sql",
+      "sha256": "ee6ad45fe81e70be10ddc5f86ef9aa357824db1b785bb07b9ebe93e540e7eae5"
+    },
+    {
+      "file": "20261023120000_atlas_fallback_reservation_ceiling.sql",
+      "sha256": "7d6ba58a779bf0084421d67181c4f88d8b01e8536d6d0698147a6c222955e72e"
+    },
+    {
+      "file": "20261023122000_atlas_fallback_reservation_locktime.sql",
+      "sha256": "f379cc160466d36a2c4ac9100cf65de1c66647b147f89249ffdb9f936a825418"
+    },
+    {
+      "file": "20261024172905_human_story_start.sql",
+      "sha256": "a66eec2b0506fd1a1083db737839307da00b2b385a23d664c0c75199a93e153c"
+    },
+    {
+      "file": "20261024174000_user_calendar_responsibility.sql",
+      "sha256": "3d5459f7e6eea60ca2cb1d98ceb823b8ed3a80dce0ca3f534d92b96c605ceb66"
+    },
+    {
+      "file": "20261024174001_user_calendar_workflow_link.sql",
+      "sha256": "8e1244f64af3a3057d662cee41b768ac88634e7ce440c924f934ab830307d914"
+    },
+    {
+      "file": "20261026070303_family_social_repeat_guard.sql",
+      "sha256": "b0acbf66da50eac4a2c8360eb43e6c16dfdeefb9f387b82dec98acc8eca00912"
+    },
+    {
+      "file": "20261026075458_instagram_receipt_reconciliation.sql",
+      "sha256": "3c90a269497a3ea9ad060769eb2eb6630aa2d6077f2b0c14983ee835acd1d5db"
+    },
+    {
+      "file": "20261026082914_social_schedule_cancelled_reservations.sql",
+      "sha256": "e906e33eb087fd3f5ab90e502d9105202b17ed8ded39727be2c15790efb78621"
+    },
+    {
+      "file": "20261026090516_family_weekly_preparation.sql",
+      "sha256": "afcead9a0c0c56f5aa814065ddfc2d021a4ceeca4eca6912002bbce9e358788d"
+    },
+    {
+      "file": "20261027215500_calendar_manual_publication_reports.sql",
+      "sha256": "b09f950091fa6ac34abeb547bebf4ee3edcc0ff2a12214ec28eb5875b86a35c9"
+    },
+    {
+      "file": "20261028072659_handlarborsen_scb_review_only_candidates.sql",
+      "sha256": "45c671d21c17b202eef1140ee9c673e3f3ec16830c94015daa50dda4ef75a284"
+    },
+    {
+      "file": "20261029065156_handlarborsen_owner_review_archive_20261029.sql",
+      "sha256": "c1576acad11f3cb3cddc75821749bde35720cd5ccf9641265b46b8e5600456a0"
+    },
+    {
+      "file": "20261031100000_sales_b2b_offers.sql",
+      "sha256": "800f26eae81dd488c6940685b57a85ab5bb5dce5f216d804276f94b596c3b0a3"
+    },
+    {
+      "file": "20261031110000_sales_discovery_candidates.sql",
+      "sha256": "d4554400122bb3e29cf02b5aa49a2a4230409f8e0dd09ce5e1aededc3b485174"
+    },
+    {
+      "file": "20261031150000_social_owner_crosschat_context.sql",
+      "sha256": "9fdaac74439e120c6f8d6b741cbdab46c8d0510a6864464b57de2f566dae519e"
+    },
+    {
+      "file": "20261031204433_human_story_exact_claim.sql",
+      "sha256": "a7ffd88a4b1881b3173e4dfe98af5d6d6ea1d7bb47b0c09411954cbd698a32e6"
+    },
+    {
+      "file": "20261101062259_social_campaign_preparation.sql",
+      "sha256": "1c2606bbb98cb3192b4a240b017fc6452a005e93d81183ae8373e11c97367aa1"
+    },
+    {
+      "file": "20261102064659_handlarborsen_scb_live_preview_candidates.sql",
+      "sha256": "cf12468800265c9b54f42fdaa5f27f2eadb9357eb6ede833d95b5f3a0a3f26b7"
+    },
+    {
+      "file": "20261102090200_sales_editorial_only_drafts.sql",
+      "sha256": "072897c68f1ed2d85b0f84bed1f5214bb56f9290170b58e8d3c284012e5d7ec1"
+    },
+    {
+      "file": "20261103074241_sales_initial_sending.sql",
+      "sha256": "9fc16dd5406ed097cd6bbcb2740c9a6eb235202a3aa5cb9433d45a436f32658c"
+    },
+    {
+      "file": "20261104110000_project_total_allowance.sql",
+      "sha256": "3522149a5519af153655c1f7fbb5348063306af13311edfb344ac8db8ed979e2"
+    },
+    {
+      "file": "20261104135920_posthog_approved_read.sql",
+      "sha256": "31610ee2209085726932b5fc5108b3d4967654b8b39bcd5ddfc07bade741b795"
+    },
+    {
+      "file": "20261108094559_webbuilder_prospects.sql",
+      "sha256": "03dfd37e3749030523094dbdbca20b86a54b410b7be4acfa79f2ed6592b6014c"
+    }
+  ],
+  "verifiedSqlEquivalences": [
+    {
+      "name": "project_total_allowance",
+      "version": "20261104104329",
+      "ledgerRawSha256": "3522149a5519af153655c1f7fbb5348063306af13311edfb344ac8db8ed979e2",
+      "sourceLfSha256": "3522149a5519af153655c1f7fbb5348063306af13311edfb344ac8db8ed979e2",
+      "basis": "Byte identity in Harvey; prior read-only comparison confirmed."
+    },
+    {
+      "name": "posthog_approved_read",
+      "version": "20261104135920",
+      "ledgerRawSha256": "c40c2a05a06e09beea1667665d4b7aa43a4813bf1c4215a6d03354260d3d242b",
+      "sourceLfSha256": "31610ee2209085726932b5fc5108b3d4967654b8b39bcd5ddfc07bade741b795",
+      "basis": "Only one extra final LF in Harvey, independently compared in the preceding audit; no semantic SQL rewrite."
+    },
+    {
+      "name": "webbuilder_prospects",
+      "version": "20261109111500",
+      "ledgerRawSha256": "669fdaca272a4140a210b222e003895e9f7c171b0d0ae9265d69e9382c32e5d9",
+      "sourceLfSha256": "03dfd37e3749030523094dbdbca20b86a54b410b7be4acfa79f2ed6592b6014c",
+      "basis": "Only CRLF to LF in Harvey; exact production raw hash matches WebBuilder worktree in preceding audit."
+    }
+  ],
+  "approvedPending": [],
+  "historicalDebt": {
+    "versionMismatches": [
+      {
+        "file": "20260602_atlas_bi_foundation.sql",
+        "name": "atlas_bi_foundation",
+        "sourceVersion": "20260602",
+        "ledgerVersion": "20260602113831"
+      },
+      {
+        "file": "20260602_cost_events.sql",
+        "name": "cost_events",
+        "sourceVersion": "20260602",
+        "ledgerVersion": "20260602045914"
+      },
+      {
+        "file": "20260602_project_budgets.sql",
+        "name": "project_budgets",
+        "sourceVersion": "20260602",
+        "ledgerVersion": "20260602051807"
+      },
+      {
+        "file": "20260613_h1p1_execution_policy_foundation.sql",
+        "name": "h1p1_execution_policy_foundation",
+        "sourceVersion": "20260613",
+        "ledgerVersion": "20260613074403"
+      },
+      {
+        "file": "20260613_media_rls_hardening.sql",
+        "name": "media_rls_hardening",
+        "sourceVersion": "20260613",
+        "ledgerVersion": "20260613063430"
+      },
+      {
+        "file": "20260614090000_h1p5_outputs_run_id_unique.sql",
+        "name": "h1p5_outputs_run_id_unique",
+        "sourceVersion": "20260614090000",
+        "ledgerVersion": "20260615062127"
+      },
+      {
+        "file": "20260614091000_h1p5_runs_claim_id.sql",
+        "name": "h1p5_runs_claim_id",
+        "sourceVersion": "20260614091000",
+        "ledgerVersion": "20260616074642"
+      },
+      {
+        "file": "20260614091500_h1p5_runs_cancel_requested.sql",
+        "name": "h1p5_runs_cancel_requested",
+        "sourceVersion": "20260614091500",
+        "ledgerVersion": "20260616083707"
+      },
+      {
+        "file": "20260614_h1p3_run_steps_snapshot.sql",
+        "name": "h1p3_run_steps_snapshot",
+        "sourceVersion": "20260614",
+        "ledgerVersion": "20260613230750"
+      },
+      {
+        "file": "20260615_migration_guard_fn.sql",
+        "name": "migration_guard_fn",
+        "sourceVersion": "20260615",
+        "ledgerVersion": "20260614000935"
+      },
+      {
+        "file": "20260616120000_atlas_schema_init.sql",
+        "name": "atlas_schema_init",
+        "sourceVersion": "20260616120000",
+        "ledgerVersion": "20260617062612"
+      },
+      {
+        "file": "20260616120100_atlas_memory_events.sql",
+        "name": "atlas_memory_events",
+        "sourceVersion": "20260616120100",
+        "ledgerVersion": "20260617062622"
+      },
+      {
+        "file": "20260616120200_atlas_memories.sql",
+        "name": "atlas_memories",
+        "sourceVersion": "20260616120200",
+        "ledgerVersion": "20260617062636"
+      },
+      {
+        "file": "20260616120300_atlas_memory_rls.sql",
+        "name": "atlas_memory_rls",
+        "sourceVersion": "20260616120300",
+        "ledgerVersion": "20260617062644"
+      },
+      {
+        "file": "20260616_h1p4_run_policy_snapshot.sql",
+        "name": "h1p4_run_policy_snapshot",
+        "sourceVersion": "20260616",
+        "ledgerVersion": "20260614015805"
+      },
+      {
+        "file": "20260617130000_atlas_record_event_fn.sql",
+        "name": "atlas_record_event_fn",
+        "sourceVersion": "20260617130000",
+        "ledgerVersion": "20260618063935"
+      },
+      {
+        "file": "20260617130100_atlas_salience_fn.sql",
+        "name": "atlas_salience_fn",
+        "sourceVersion": "20260617130100",
+        "ledgerVersion": "20260618064002"
+      },
+      {
+        "file": "20260617140000_atlas_event_type_to_class_fn.sql",
+        "name": "atlas_event_type_to_class_fn",
+        "sourceVersion": "20260617140000",
+        "ledgerVersion": "20260618064026"
+      },
+      {
+        "file": "20260617140100_atlas_consolidate_fn.sql",
+        "name": "atlas_consolidate_fn",
+        "sourceVersion": "20260617140100",
+        "ledgerVersion": "20260618064056"
+      },
+      {
+        "file": "20260617140200_atlas_memory_cron.sql",
+        "name": "atlas_memory_cron",
+        "sourceVersion": "20260617140200",
+        "ledgerVersion": "20260618064127"
+      },
+      {
+        "file": "20260617150000_atlas_recall_fn.sql",
+        "name": "atlas_recall_fn",
+        "sourceVersion": "20260617150000",
+        "ledgerVersion": "20260630191638"
+      },
+      {
+        "file": "20260617150100_atlas_memory_health.sql",
+        "name": "atlas_memory_health",
+        "sourceVersion": "20260617150100",
+        "ledgerVersion": "20260630191717"
+      },
+      {
+        "file": "20260617150200_atlas_recall_pin_focus_ranking.sql",
+        "name": "atlas_recall_pin_focus_ranking",
+        "sourceVersion": "20260617150200",
+        "ledgerVersion": "20260630191741"
+      },
+      {
+        "file": "20260617160000_backfill_platform_memory.sql",
+        "name": "backfill_platform_memory",
+        "sourceVersion": "20260617160000",
+        "ledgerVersion": "20260630191757"
+      },
+      {
+        "file": "20260617160100_backfill_content_feedback.sql",
+        "name": "backfill_content_feedback",
+        "sourceVersion": "20260617160100",
+        "ledgerVersion": "20260630191814"
+      },
+      {
+        "file": "20260617160200_backfill_dream_issues.sql",
+        "name": "backfill_dream_issues",
+        "sourceVersion": "20260617160200",
+        "ledgerVersion": "20260630191829"
+      },
+      {
+        "file": "20260617160300_backfill_operator_memories.sql",
+        "name": "backfill_operator_memories",
+        "sourceVersion": "20260617160300",
+        "ledgerVersion": "20260630191844"
+      },
+      {
+        "file": "20260617_h1p4_pr2_run_rejected_status.sql",
+        "name": "h1p4_pr2_run_rejected_status",
+        "sourceVersion": "20260617",
+        "ledgerVersion": "20260614032512"
+      },
+      {
+        "file": "20260618_website_content_hero_image.sql",
+        "name": "website_content_hero_image",
+        "sourceVersion": "20260618",
+        "ledgerVersion": "20260614041600"
+      },
+      {
+        "file": "20260619_website_content_hero_image_brief.sql",
+        "name": "website_content_hero_image_brief",
+        "sourceVersion": "20260619",
+        "ledgerVersion": "20260615071318"
+      },
+      {
+        "file": "20260620_website_content_hero_editor_brief_rename.sql",
+        "name": "website_content_hero_editor_brief_rename",
+        "sourceVersion": "20260620",
+        "ledgerVersion": "20260615081009"
+      },
+      {
+        "file": "20260621_website_content_hero_image_observability.sql",
+        "name": "website_content_hero_image_observability",
+        "sourceVersion": "20260621",
+        "ledgerVersion": "20260616063310"
+      },
+      {
+        "file": "20260622_atlas_signals.sql",
+        "name": "atlas_signals",
+        "sourceVersion": "20260622",
+        "ledgerVersion": "20260619113319"
+      },
+      {
+        "file": "20260622_h5_atlas_observability.sql",
+        "name": "h5_atlas_observability",
+        "sourceVersion": "20260622",
+        "ledgerVersion": "20260618143256"
+      },
+      {
+        "file": "20260623_150000_atlas_project_lifecycle.sql",
+        "name": "150000_atlas_project_lifecycle",
+        "sourceVersion": "20260623",
+        "ledgerVersion": "20260624192603"
+      },
+      {
+        "file": "20260623_150100_atlas_signals_evolution.sql",
+        "name": "150100_atlas_signals_evolution",
+        "sourceVersion": "20260623",
+        "ledgerVersion": "20260624053615"
+      },
+      {
+        "file": "20260623_150200_collector_runs.sql",
+        "name": "150200_collector_runs",
+        "sourceVersion": "20260623",
+        "ledgerVersion": "20260624192614"
+      },
+      {
+        "file": "20260623_150300_atlas_collector_cron.sql",
+        "name": "150300_atlas_collector_cron",
+        "sourceVersion": "20260623",
+        "ledgerVersion": "20260624192624"
+      },
+      {
+        "file": "20260623_h1_episodic_retention.sql",
+        "name": "h1_episodic_retention",
+        "sourceVersion": "20260623",
+        "ledgerVersion": "20260618145627"
+      },
+      {
+        "file": "20260719_publish_channel_state.sql",
+        "name": "publish_channel_state",
+        "sourceVersion": "20260719",
+        "ledgerVersion": "20260719184902"
+      },
+      {
+        "file": "20260819_atlas_authorizations.sql",
+        "name": "atlas_authorizations",
+        "sourceVersion": "20260819",
+        "ledgerVersion": "20260819060855"
+      },
+      {
+        "file": "20260819_atlas_decision_ledger.sql",
+        "name": "atlas_decision_ledger",
+        "sourceVersion": "20260819",
+        "ledgerVersion": "20260819092739"
+      },
+      {
+        "file": "20260819_atlas_mission_ledger.sql",
+        "name": "atlas_mission_ledger",
+        "sourceVersion": "20260819",
+        "ledgerVersion": "20260820054225"
+      },
+      {
+        "file": "20260820_atlas_delegation_ledger.sql",
+        "name": "atlas_delegation_ledger",
+        "sourceVersion": "20260820",
+        "ledgerVersion": "20260820091102"
+      },
+      {
+        "file": "20260820_manager_tasks_work_packages.sql",
+        "name": "manager_tasks_work_packages",
+        "sourceVersion": "20260820",
+        "ledgerVersion": "20260820184619"
+      },
+      {
+        "file": "20260821_atlas_entities.sql",
+        "name": "atlas_entities",
+        "sourceVersion": "20260821",
+        "ledgerVersion": "20260821075928"
+      },
+      {
+        "file": "20260821_atlas_intelligence.sql",
+        "name": "atlas_intelligence",
+        "sourceVersion": "20260821",
+        "ledgerVersion": "20260821080031"
+      },
+      {
+        "file": "20260821_atlas_intelligence_cron.sql",
+        "name": "atlas_intelligence_cron",
+        "sourceVersion": "20260821",
+        "ledgerVersion": "20260821080053"
+      },
+      {
+        "file": "20260821_project_api_credentials.sql",
+        "name": "project_api_credentials",
+        "sourceVersion": "20260821",
+        "ledgerVersion": "20260822093410"
+      },
+      {
+        "file": "20260829_workflow_attested_evidence.sql",
+        "name": "workflow_attested_evidence",
+        "sourceVersion": "20260829",
+        "ledgerVersion": "20260829191341"
+      },
+      {
+        "file": "20260829_workflow_escalation_index.sql",
+        "name": "workflow_escalation_index",
+        "sourceVersion": "20260829",
+        "ledgerVersion": "20260829193325"
+      },
+      {
+        "file": "20260829_workflow_gate_authorization.sql",
+        "name": "workflow_gate_authorization",
+        "sourceVersion": "20260829",
+        "ledgerVersion": "20260829174736"
+      },
+      {
+        "file": "20260829_workflow_instance_core.sql",
+        "name": "workflow_instance_core",
+        "sourceVersion": "20260829",
+        "ledgerVersion": "20260829123901"
+      },
+      {
+        "file": "20260829_workflow_instance_core_hardening.sql",
+        "name": "workflow_instance_core_hardening",
+        "sourceVersion": "20260829",
+        "ledgerVersion": "20260829124116"
+      },
+      {
+        "file": "20260829_workflow_scheduled_continuation.sql",
+        "name": "workflow_scheduled_continuation",
+        "sourceVersion": "20260829",
+        "ledgerVersion": "20260829180847"
+      },
+      {
+        "file": "20260829_workflow_scheduler_project_pause.sql",
+        "name": "workflow_scheduler_project_pause",
+        "sourceVersion": "20260829",
+        "ledgerVersion": "20260829181028"
+      },
+      {
+        "file": "20260830_action_failure_model.sql",
+        "name": "action_failure_model",
+        "sourceVersion": "20260830",
+        "ledgerVersion": "20260830113216"
+      },
+      {
+        "file": "20260830_execution_stop_safety.sql",
+        "name": "execution_stop_safety",
+        "sourceVersion": "20260830",
+        "ledgerVersion": "20260830071842"
+      },
+      {
+        "file": "20260830_readonly_action_authorization.sql",
+        "name": "readonly_action_authorization",
+        "sourceVersion": "20260830",
+        "ledgerVersion": "20260830163251"
+      },
+      {
+        "file": "20260830_spend_budget_gate.sql",
+        "name": "spend_budget_gate",
+        "sourceVersion": "20260830",
+        "ledgerVersion": "20260830102935"
+      },
+      {
+        "file": "20260830_workflow_action_binding.sql",
+        "name": "workflow_action_binding",
+        "sourceVersion": "20260830",
+        "ledgerVersion": "20260830111355"
+      },
+      {
+        "file": "20260831_budget_scopes.sql",
+        "name": "budget_scopes",
+        "sourceVersion": "20260831",
+        "ledgerVersion": "20260831073146"
+      },
+      {
+        "file": "20260831_unified_stop_authority.sql",
+        "name": "unified_stop_authority",
+        "sourceVersion": "20260831",
+        "ledgerVersion": "20260901102808"
+      },
+      {
+        "file": "20260901110134_workflow_transition_stop_guard.sql",
+        "name": "workflow_transition_stop_guard",
+        "sourceVersion": "20260901110134",
+        "ledgerVersion": "20260901132705"
+      },
+      {
+        "file": "20260902081500_stop_atomic_execution_admission.sql",
+        "name": "stop_atomic_execution_admission",
+        "sourceVersion": "20260902081500",
+        "ledgerVersion": "20260902104023"
+      },
+      {
+        "file": "20260902_media_asset_foundation.sql",
+        "name": "media_asset_foundation",
+        "sourceVersion": "20260902",
+        "ledgerVersion": "20260902130337"
+      },
+      {
+        "file": "20260903120000_durable_cancellation_reaper.sql",
+        "name": "durable_cancellation_reaper",
+        "sourceVersion": "20260903120000",
+        "ledgerVersion": "20260903182048"
+      },
+      {
+        "file": "20260904120000_workflow_stories.sql",
+        "name": "workflow_stories",
+        "sourceVersion": "20260904120000",
+        "ledgerVersion": "20260904101452"
+      },
+      {
+        "file": "20260906_workflow_manual_privileged_provenance.sql",
+        "name": "workflow_manual_privileged_provenance",
+        "sourceVersion": "20260906",
+        "ledgerVersion": "20260907051014"
+      },
+      {
+        "file": "20260907090000_spend_advisory_overrides.sql",
+        "name": "spend_advisory_overrides",
+        "sourceVersion": "20260907090000",
+        "ledgerVersion": "20260907113728"
+      },
+      {
+        "file": "20260909120000_workflow_stories_rls.sql",
+        "name": "workflow_stories_rls",
+        "sourceVersion": "20260909120000",
+        "ledgerVersion": "20260909193225"
+      },
+      {
+        "file": "20260910090000_declarative_rls_parity.sql",
+        "name": "declarative_rls_parity",
+        "sourceVersion": "20260910090000",
+        "ledgerVersion": "20260910054144"
+      },
+      {
+        "file": "20260910120000_cost_ledger_rls_isolation.sql",
+        "name": "cost_ledger_rls_isolation",
+        "sourceVersion": "20260910120000",
+        "ledgerVersion": "20260910080008"
+      },
+      {
+        "file": "20260910150000_agent_scorecards_view_isolation.sql",
+        "name": "agent_scorecards_view_isolation",
+        "sourceVersion": "20260910150000",
+        "ledgerVersion": "20260910133125"
+      },
+      {
+        "file": "20260914090000_platform_tokens_client_revoke.sql",
+        "name": "platform_tokens_client_revoke",
+        "sourceVersion": "20260914090000",
+        "ledgerVersion": "20260914060229"
+      },
+      {
+        "file": "20260914090100_platform_credential_events.sql",
+        "name": "platform_credential_events",
+        "sourceVersion": "20260914090100",
+        "ledgerVersion": "20260914060314"
+      },
+      {
+        "file": "20260914090200_platform_credential_events_search_path.sql",
+        "name": "platform_credential_events_search_path",
+        "sourceVersion": "20260914090200",
+        "ledgerVersion": "20260914060754"
+      },
+      {
+        "file": "20260914120000_social_account_bindings.sql",
+        "name": "social_account_bindings",
+        "sourceVersion": "20260914120000",
+        "ledgerVersion": "20260914113332"
+      },
+      {
+        "file": "20260914120100_platform_credential_events_account_binding.sql",
+        "name": "platform_credential_events_account_binding",
+        "sourceVersion": "20260914120100",
+        "ledgerVersion": "20260914113400"
+      },
+      {
+        "file": "20260914120200_social_credential_health.sql",
+        "name": "social_credential_health",
+        "sourceVersion": "20260914120200",
+        "ledgerVersion": "20260914113426"
+      },
+      {
+        "file": "20260914120300_platform_tokens_project_binding.sql",
+        "name": "platform_tokens_project_binding",
+        "sourceVersion": "20260914120300",
+        "ledgerVersion": "20260914113447"
+      },
+      {
+        "file": "20260914120400_social_account_bindings_the_prompt_evidence.sql",
+        "name": "social_account_bindings_the_prompt_evidence",
+        "sourceVersion": "20260914120400",
+        "ledgerVersion": "20260914113522"
+      },
+      {
+        "file": "20260915170000_youtube_project_oauth.sql",
+        "name": "youtube_project_oauth",
+        "sourceVersion": "20260915170000",
+        "ledgerVersion": "20260915190533"
+      },
+      {
+        "file": "20260918095827_sdf1b1_code_work_control_plane.sql",
+        "name": "sdf1b1_code_work_control_plane",
+        "sourceVersion": "20260918095827",
+        "ledgerVersion": "20260919054123"
+      },
+      {
+        "file": "20260919120000_dream_issue_reconciliation.sql",
+        "name": "dream_issue_reconciliation",
+        "sourceVersion": "20260919120000",
+        "ledgerVersion": "20260919154957"
+      },
+      {
+        "file": "20260923120000_survival_state_events.sql",
+        "name": "survival_state_events",
+        "sourceVersion": "20260923120000",
+        "ledgerVersion": "20260923191631"
+      },
+      {
+        "file": "20260923150000_sdf1c1_trusted_broker_identity.sql",
+        "name": "sdf1c1_trusted_broker_identity",
+        "sourceVersion": "20260923150000",
+        "ledgerVersion": "20260924053015"
+      },
+      {
+        "file": "20260924080000_sdf1c1b_broker_claim_credentials.sql",
+        "name": "sdf1c1b_broker_claim_credentials",
+        "sourceVersion": "20260924080000",
+        "ledgerVersion": "20260924064457"
+      },
+      {
+        "file": "20260924120000_survival_funding_phase2b.sql",
+        "name": "survival_funding_phase2b",
+        "sourceVersion": "20260924120000",
+        "ledgerVersion": "20260924081629"
+      },
+      {
+        "file": "20260924140000_sdf1c2_broker_control_channel.sql",
+        "name": "sdf1c2_broker_control_channel",
+        "sourceVersion": "20260924140000",
+        "ledgerVersion": "20260924122958"
+      },
+      {
+        "file": "20260924180000_autonomy_license_phase2c.sql",
+        "name": "autonomy_license_phase2c",
+        "sourceVersion": "20260924180000",
+        "ledgerVersion": "20260925102918"
+      },
+      {
+        "file": "20260925120000_autonomy_trace_decisions.sql",
+        "name": "autonomy_trace_decisions",
+        "sourceVersion": "20260925120000",
+        "ledgerVersion": "20260926082643"
+      },
+      {
+        "file": "20260926120000_autonomy_bind_atomic.sql",
+        "name": "autonomy_bind_atomic",
+        "sourceVersion": "20260926120000",
+        "ledgerVersion": "20261001130412"
+      },
+      {
+        "file": "20261001160000_m0_durable_spend_settlement.sql",
+        "name": "m0_durable_spend_settlement",
+        "sourceVersion": "20261001160000",
+        "ledgerVersion": "20261002062908"
+      },
+      {
+        "file": "20261002140000_autonomy_authority_serialization.sql",
+        "name": "autonomy_authority_serialization",
+        "sourceVersion": "20261002140000",
+        "ledgerVersion": "20261002134227"
+      },
+      {
+        "file": "20261002190000_survival_input_epoch.sql",
+        "name": "survival_input_epoch",
+        "sourceVersion": "20261002190000",
+        "ledgerVersion": "20261003053532"
+      },
+      {
+        "file": "20261003120000_survival_commit_fence.sql",
+        "name": "survival_commit_fence",
+        "sourceVersion": "20261003120000",
+        "ledgerVersion": "20261003183855"
+      },
+      {
+        "file": "20261004090000_survival_threshold_status_canonical.sql",
+        "name": "survival_threshold_status_canonical",
+        "sourceVersion": "20261004090000",
+        "ledgerVersion": "20261007094814"
+      },
+      {
+        "file": "20261004100000_m4a_licensed_authority_substrate.sql",
+        "name": "m4a_licensed_authority_substrate",
+        "sourceVersion": "20261004100000",
+        "ledgerVersion": "20261007095425"
+      },
+      {
+        "file": "20261004110000_m4b_licensed_bind.sql",
+        "name": "m4b_licensed_bind",
+        "sourceVersion": "20261004110000",
+        "ledgerVersion": "20261007100001"
+      },
+      {
+        "file": "20261010100000_handlarborsen_marketplace_snapshots.sql",
+        "name": "handlarborsen_marketplace_snapshots",
+        "sourceVersion": "20261010100000",
+        "ledgerVersion": "20261010080307"
+      },
+      {
+        "file": "20261010130000_handlarborsen_guarded_snapshot_store.sql",
+        "name": "handlarborsen_guarded_snapshot_store",
+        "sourceVersion": "20261010130000",
+        "ledgerVersion": "20261011110737"
+      },
+      {
+        "file": "20261012183305_atlas_analysis_drafts.sql",
+        "name": "atlas_analysis_drafts",
+        "sourceVersion": "20261012183305",
+        "ledgerVersion": "20261013051724"
+      },
+      {
+        "file": "20261013193000_omnira_org_memberships_v1.sql",
+        "name": "omnira_org_memberships_v1",
+        "sourceVersion": "20261013193000",
+        "ledgerVersion": "20261013203916"
+      },
+      {
+        "file": "20261014065527_website_build_sessions.sql",
+        "name": "website_build_sessions",
+        "sourceVersion": "20261014065527",
+        "ledgerVersion": "20261014112755"
+      },
+      {
+        "file": "20261014121500_omnira_collaborator_proposals_v1.sql",
+        "name": "omnira_collaborator_proposals_v1",
+        "sourceVersion": "20261014121500",
+        "ledgerVersion": "20261014101610"
+      },
+      {
+        "file": "20261014143000_handlarborsen_competitor_observations_v1.sql",
+        "name": "handlarborsen_competitor_observations_v1",
+        "sourceVersion": "20261014143000",
+        "ledgerVersion": "20261014133814"
+      },
+      {
+        "file": "20261014153354_website_build_planning_v1.sql",
+        "name": "website_build_planning_v1",
+        "sourceVersion": "20261014153354",
+        "ledgerVersion": "20261014185247"
+      },
+      {
+        "file": "20261015041654_atlas_builder_studio_workspace.sql",
+        "name": "atlas_builder_studio_workspace",
+        "sourceVersion": "20261015041654",
+        "ledgerVersion": "20261015100050"
+      },
+      {
+        "file": "20261015122500_atlas_builder_output_allowance_v2.sql",
+        "name": "atlas_builder_output_allowance_v2",
+        "sourceVersion": "20261015122500",
+        "ledgerVersion": "20261015123510"
+      },
+      {
+        "file": "20261015154741_website_saved_draft_worker_protocol.sql",
+        "name": "website_saved_draft_worker_protocol",
+        "sourceVersion": "20261015154741",
+        "ledgerVersion": "20261015160933"
+      },
+      {
+        "file": "20261015210000_website_mockup_review.sql",
+        "name": "website_mockup_review",
+        "sourceVersion": "20261015210000",
+        "ledgerVersion": "20261015213043"
+      },
+      {
+        "file": "20261016052226_social_launch_plans_v1.sql",
+        "name": "social_launch_plans_v1",
+        "sourceVersion": "20261016052226",
+        "ledgerVersion": "20261016054513"
+      },
+      {
+        "file": "20261016061728_social_project_connections_v1.sql",
+        "name": "social_project_connections_v1",
+        "sourceVersion": "20261016061728",
+        "ledgerVersion": "20261016071026"
+      },
+      {
+        "file": "20261016100941_social_content_preparation_v1.sql",
+        "name": "social_content_preparation_v1",
+        "sourceVersion": "20261016100941",
+        "ledgerVersion": "20261016103411"
+      },
+      {
+        "file": "20261016113247_social_project_profiles_v1.sql",
+        "name": "social_project_profiles_v1",
+        "sourceVersion": "20261016113247",
+        "ledgerVersion": "20261016123853"
+      },
+      {
+        "file": "20261016115402_social_manual_publication_v1.sql",
+        "name": "social_manual_publication_v1",
+        "sourceVersion": "20261016115402",
+        "ledgerVersion": "20261016123902"
+      },
+      {
+        "file": "20261016195000_handlarborsen_competitor_candidates_v1.sql",
+        "name": "handlarborsen_competitor_candidates_v1",
+        "sourceVersion": "20261016195000",
+        "ledgerVersion": "20261016195144"
+      },
+      {
+        "file": "20261017080000_handlarborsen_competitor_review_decisions_v1.sql",
+        "name": "handlarborsen_competitor_review_decisions_v1",
+        "sourceVersion": "20261017080000",
+        "ledgerVersion": "20261017084522"
+      },
+      {
+        "file": "20261017090351_atlas_local_text.sql",
+        "name": "atlas_local_text",
+        "sourceVersion": "20261017090351",
+        "ledgerVersion": "20261017174301"
+      },
+      {
+        "file": "20261017100633_atlas_sales_pilot.sql",
+        "name": "atlas_sales_pilot",
+        "sourceVersion": "20261017100633",
+        "ledgerVersion": "20261017130254"
+      },
+      {
+        "file": "20261017115403_atlas_local_text_lifecycle.sql",
+        "name": "atlas_local_text_lifecycle",
+        "sourceVersion": "20261017115403",
+        "ledgerVersion": "20261017180713"
+      },
+      {
+        "file": "20261017141000_sales_managed_host.sql",
+        "name": "sales_managed_host",
+        "sourceVersion": "20261017141000",
+        "ledgerVersion": "20261017151718"
+      },
+      {
+        "file": "20261017142000_sales_strato_connection.sql",
+        "name": "sales_strato_connection",
+        "sourceVersion": "20261017142000",
+        "ledgerVersion": "20261017151722"
+      },
+      {
+        "file": "20261017184015_handlarborsen_metrics_definition.sql",
+        "name": "handlarborsen_metrics_definition",
+        "sourceVersion": "20261017184015",
+        "ledgerVersion": "20261018090826"
+      },
+      {
+        "file": "20261017192903_handlarborsen_test_data_integration.sql",
+        "name": "handlarborsen_test_data_integration",
+        "sourceVersion": "20261017192903",
+        "ledgerVersion": "20261018090827"
+      },
+      {
+        "file": "20261017200038_handlarborsen_watch_runs_v1.sql",
+        "name": "handlarborsen_watch_runs_v1",
+        "sourceVersion": "20261017200038",
+        "ledgerVersion": "20261017200436"
+      },
+      {
+        "file": "20261018070155_social_publication_reconciliation.sql",
+        "name": "social_publication_reconciliation",
+        "sourceVersion": "20261018070155",
+        "ledgerVersion": "20261018085701"
+      },
+      {
+        "file": "20261018071209_social_schedule_batches.sql",
+        "name": "social_schedule_batches",
+        "sourceVersion": "20261018071209",
+        "ledgerVersion": "20261018085707"
+      },
+      {
+        "file": "20261018073425_social_schedule_checkpoint_recovery.sql",
+        "name": "social_schedule_checkpoint_recovery",
+        "sourceVersion": "20261018073425",
+        "ledgerVersion": "20261018085708"
+      },
+      {
+        "file": "20261018074426_social_schedule_review_snapshots.sql",
+        "name": "social_schedule_review_snapshots",
+        "sourceVersion": "20261018074426",
+        "ledgerVersion": "20261018085733"
+      },
+      {
+        "file": "20261018083917_media_news_review_evidence.sql",
+        "name": "media_news_review_evidence",
+        "sourceVersion": "20261018083917",
+        "ledgerVersion": "20261018182224"
+      },
+      {
+        "file": "20261018182213_user_calendar_v1.sql",
+        "name": "user_calendar_v1",
+        "sourceVersion": "20261018182213",
+        "ledgerVersion": "20261020054803"
+      },
+      {
+        "file": "20261019065056_sales_contact_timing.sql",
+        "name": "sales_contact_timing",
+        "sourceVersion": "20261019065056",
+        "ledgerVersion": "20261019073559"
+      },
+      {
+        "file": "20261019081000_user_calendar_recurrence.sql",
+        "name": "user_calendar_recurrence",
+        "sourceVersion": "20261019081000",
+        "ledgerVersion": "20261020054828"
+      },
+      {
+        "file": "20261019101120_sales_email_copy_versions.sql",
+        "name": "sales_email_copy_versions",
+        "sourceVersion": "20261019101120",
+        "ledgerVersion": "20261019102356"
+      },
+      {
+        "file": "20261022075921_higgsfield_mcp_readonly.sql",
+        "name": "higgsfield_mcp_readonly",
+        "sourceVersion": "20261022075921",
+        "ledgerVersion": "20261022202014"
+      },
+      {
+        "file": "20261023120000_atlas_fallback_reservation_ceiling.sql",
+        "name": "atlas_fallback_reservation_ceiling",
+        "sourceVersion": "20261023120000",
+        "ledgerVersion": "20261023100303"
+      },
+      {
+        "file": "20261023122000_atlas_fallback_reservation_locktime.sql",
+        "name": "atlas_fallback_reservation_locktime",
+        "sourceVersion": "20261023122000",
+        "ledgerVersion": "20261023100514"
+      },
+      {
+        "file": "20261024172905_human_story_start.sql",
+        "name": "human_story_start",
+        "sourceVersion": "20261024172905",
+        "ledgerVersion": "20261026061026"
+      },
+      {
+        "file": "20261024174000_user_calendar_responsibility.sql",
+        "name": "user_calendar_responsibility",
+        "sourceVersion": "20261024174000",
+        "ledgerVersion": "20261026061036"
+      },
+      {
+        "file": "20261024174001_user_calendar_workflow_link.sql",
+        "name": "user_calendar_workflow_link",
+        "sourceVersion": "20261024174001",
+        "ledgerVersion": "20261026061039"
+      },
+      {
+        "file": "20261026070303_family_social_repeat_guard.sql",
+        "name": "family_social_repeat_guard",
+        "sourceVersion": "20261026070303",
+        "ledgerVersion": "20261026073245"
+      },
+      {
+        "file": "20261026075458_instagram_receipt_reconciliation.sql",
+        "name": "instagram_receipt_reconciliation",
+        "sourceVersion": "20261026075458",
+        "ledgerVersion": "20261026080719"
+      },
+      {
+        "file": "20261026082914_social_schedule_cancelled_reservations.sql",
+        "name": "social_schedule_cancelled_reservations",
+        "sourceVersion": "20261026082914",
+        "ledgerVersion": "20261026083842"
+      },
+      {
+        "file": "20261026090516_family_weekly_preparation.sql",
+        "name": "family_weekly_preparation",
+        "sourceVersion": "20261026090516",
+        "ledgerVersion": "20261026092629"
+      },
+      {
+        "file": "20261027215500_calendar_manual_publication_reports.sql",
+        "name": "calendar_manual_publication_reports",
+        "sourceVersion": "20261027215500",
+        "ledgerVersion": "20261027211328"
+      },
+      {
+        "file": "20261031100000_sales_b2b_offers.sql",
+        "name": "sales_b2b_offers",
+        "sourceVersion": "20261031100000",
+        "ledgerVersion": "20261031120736"
+      },
+      {
+        "file": "20261031110000_sales_discovery_candidates.sql",
+        "name": "sales_discovery_candidates",
+        "sourceVersion": "20261031110000",
+        "ledgerVersion": "20261031120804"
+      },
+      {
+        "file": "20261031150000_social_owner_crosschat_context.sql",
+        "name": "social_owner_crosschat_context",
+        "sourceVersion": "20261031150000",
+        "ledgerVersion": "20261031145817"
+      },
+      {
+        "file": "20261101062259_social_campaign_preparation.sql",
+        "name": "social_campaign_preparation",
+        "sourceVersion": "20261101062259",
+        "ledgerVersion": "20261101062748"
+      },
+      {
+        "file": "20261102064659_handlarborsen_scb_live_preview_candidates.sql",
+        "name": "handlarborsen_scb_live_preview_candidates",
+        "sourceVersion": "20261102064659",
+        "ledgerVersion": "20261102070352"
+      },
+      {
+        "file": "20261102090200_sales_editorial_only_drafts.sql",
+        "name": "sales_editorial_only_drafts",
+        "sourceVersion": "20261102090200",
+        "ledgerVersion": "20261102095321"
+      },
+      {
+        "file": "20261103074241_sales_initial_sending.sql",
+        "name": "sales_initial_sending",
+        "sourceVersion": "20261103074241",
+        "ledgerVersion": "20261103082558"
+      },
+      {
+        "file": "20261104110000_project_total_allowance.sql",
+        "name": "project_total_allowance",
+        "sourceVersion": "20261104110000",
+        "ledgerVersion": "20261104104329"
+      },
+      {
+        "file": "20261108094559_webbuilder_prospects.sql",
+        "name": "webbuilder_prospects",
+        "sourceVersion": "20261108094559",
+        "ledgerVersion": "20261109111500"
+      }
+    ],
+    "sharedVersionGroups": [
+      {
+        "version": "20260520",
+        "files": [
+          "20260520_media_images.sql",
+          "20260520_media_tables.sql"
+        ]
+      },
+      {
+        "version": "20260525",
+        "files": [
+          "20260525_media_scripts_facebook.sql",
+          "20260525_media_scripts_quality_music.sql"
+        ]
+      },
+      {
+        "version": "20260602",
+        "files": [
+          "20260602_atlas_bi_foundation.sql",
+          "20260602_cost_events.sql",
+          "20260602_project_budgets.sql"
+        ]
+      },
+      {
+        "version": "20260613",
+        "files": [
+          "20260613_h1p1_execution_policy_foundation.sql",
+          "20260613_media_rls_hardening.sql"
+        ]
+      },
+      {
+        "version": "20260622",
+        "files": [
+          "20260622_atlas_signals.sql",
+          "20260622_h5_atlas_observability.sql"
+        ]
+      },
+      {
+        "version": "20260623",
+        "files": [
+          "20260623_150000_atlas_project_lifecycle.sql",
+          "20260623_150100_atlas_signals_evolution.sql",
+          "20260623_150200_collector_runs.sql",
+          "20260623_150300_atlas_collector_cron.sql",
+          "20260623_h1_episodic_retention.sql"
+        ]
+      },
+      {
+        "version": "20260819",
+        "files": [
+          "20260819_atlas_authorizations.sql",
+          "20260819_atlas_decision_ledger.sql",
+          "20260819_atlas_mission_ledger.sql"
+        ]
+      },
+      {
+        "version": "20260820",
+        "files": [
+          "20260820_atlas_delegation_ledger.sql",
+          "20260820_manager_tasks_work_packages.sql"
+        ]
+      },
+      {
+        "version": "20260821",
+        "files": [
+          "20260821_atlas_entities.sql",
+          "20260821_atlas_intelligence.sql",
+          "20260821_atlas_intelligence_cron.sql",
+          "20260821_project_api_credentials.sql"
+        ]
+      },
+      {
+        "version": "20260829",
+        "files": [
+          "20260829_workflow_attested_evidence.sql",
+          "20260829_workflow_escalation_index.sql",
+          "20260829_workflow_gate_authorization.sql",
+          "20260829_workflow_instance_core.sql",
+          "20260829_workflow_instance_core_hardening.sql",
+          "20260829_workflow_scheduled_continuation.sql",
+          "20260829_workflow_scheduler_project_pause.sql"
+        ]
+      },
+      {
+        "version": "20260830",
+        "files": [
+          "20260830_action_failure_model.sql",
+          "20260830_execution_stop_safety.sql",
+          "20260830_readonly_action_authorization.sql",
+          "20260830_spend_budget_gate.sql",
+          "20260830_workflow_action_binding.sql"
+        ]
+      },
+      {
+        "version": "20260831",
+        "files": [
+          "20260831_budget_scopes.sql",
+          "20260831_unified_stop_authority.sql"
+        ]
+      }
+    ],
+    "shortVersionFiles": [
+      "20260520_media_images.sql",
+      "20260520_media_tables.sql",
+      "20260525_media_scripts_facebook.sql",
+      "20260525_media_scripts_quality_music.sql",
+      "20260527_platform_tokens.sql",
+      "20260528_agent_decisions.sql",
+      "20260601_revenue_os.sql",
+      "20260602_atlas_bi_foundation.sql",
+      "20260602_cost_events.sql",
+      "20260602_project_budgets.sql",
+      "20260613_h1p1_execution_policy_foundation.sql",
+      "20260613_media_rls_hardening.sql",
+      "20260614_h1p3_run_steps_snapshot.sql",
+      "20260615_migration_guard_fn.sql",
+      "20260616_h1p4_run_policy_snapshot.sql",
+      "20260617_h1p4_pr2_run_rejected_status.sql",
+      "20260618_website_content_hero_image.sql",
+      "20260619_website_content_hero_image_brief.sql",
+      "20260620_website_content_hero_editor_brief_rename.sql",
+      "20260621_website_content_hero_image_observability.sql",
+      "20260622_atlas_signals.sql",
+      "20260622_h5_atlas_observability.sql",
+      "20260623_150000_atlas_project_lifecycle.sql",
+      "20260623_150100_atlas_signals_evolution.sql",
+      "20260623_150200_collector_runs.sql",
+      "20260623_150300_atlas_collector_cron.sql",
+      "20260623_h1_episodic_retention.sql",
+      "20260719_publish_channel_state.sql",
+      "20260819_atlas_authorizations.sql",
+      "20260819_atlas_decision_ledger.sql",
+      "20260819_atlas_mission_ledger.sql",
+      "20260820_atlas_delegation_ledger.sql",
+      "20260820_manager_tasks_work_packages.sql",
+      "20260821_atlas_entities.sql",
+      "20260821_atlas_intelligence.sql",
+      "20260821_atlas_intelligence_cron.sql",
+      "20260821_project_api_credentials.sql",
+      "20260829_workflow_attested_evidence.sql",
+      "20260829_workflow_escalation_index.sql",
+      "20260829_workflow_gate_authorization.sql",
+      "20260829_workflow_instance_core.sql",
+      "20260829_workflow_instance_core_hardening.sql",
+      "20260829_workflow_scheduled_continuation.sql",
+      "20260829_workflow_scheduler_project_pause.sql",
+      "20260830_action_failure_model.sql",
+      "20260830_execution_stop_safety.sql",
+      "20260830_readonly_action_authorization.sql",
+      "20260830_spend_budget_gate.sql",
+      "20260830_workflow_action_binding.sql",
+      "20260831_budget_scopes.sql",
+      "20260831_unified_stop_authority.sql",
+      "20260902_media_asset_foundation.sql",
+      "20260906_workflow_manual_privileged_provenance.sql"
+    ],
+    "unrecordedSourceNames": [
+      "media_images",
+      "media_tables",
+      "media_scripts_facebook",
+      "media_scripts_quality_music",
+      "platform_tokens",
+      "agent_decisions",
+      "revenue_os"
+    ],
+    "ledgerOnlyNames": [
+      "media_scripts_updated_at_and_stuck_watchdog",
+      "add_render_input_props_for_edge_render",
+      "20260601_business_metrics",
+      "20260601_media_insights",
+      "20260601_insights_cron",
+      "20260601_briefing_cron",
+      "add_youtube_columns",
+      "atlas_growth_account_snapshots",
+      "atlas_growth_opportunities",
+      "atlas_growth_script_topic_format",
+      "g1_multitenant_platform_tokens",
+      "stripe_intelligence_revenue_snapshots",
+      "durable_runs_claim_reaper",
+      "durable_runs_claim_public_rpc",
+      "token_health_monitoring",
+      "pipeline_retry_state",
+      "cron_heartbeat",
+      "marketing_engine_foundation",
+      "media_insights_multiplatform",
+      "media_insights_retention",
+      "media_scripts_breaking_flag",
+      "pr2_route_webhook_isolation",
+      "schedule_dream_cron",
+      "bug_monitoring_foundation",
+      "manager_task_dream_link",
+      "dream_issues_ledger",
+      "enable_rls_cost_rates_dream_issues",
+      "harden_set_updated_at_search_path",
+      "atlas_actions",
+      "enable_public_rls_for_internal_tables"
+    ],
+    "resolution": "Unresolved. No filename changes, no history repairs, no exceptions granting database release."
+  },
+  "historicalSourceFixtureScope": {
+    "purpose": "inactive test data only; never read as an active migration catalog or executed",
+    "source": "Three verified local working-tree copies absent from capture HEAD; original ledger, manifest and debt observations remain unchanged."
+  },
+  "historicalSourceFixtures": [
+    {
+      "file": "20261104110000_project_total_allowance.sql",
+      "sha256": "3522149a5519af153655c1f7fbb5348063306af13311edfb344ac8db8ed979e2",
+      "sql": "-- Optional, non-renewing owner allowance in the existing budget/receipt ledger.\n-- Not activated by this migration. No project is seeded, resumed or funded.\n-- Deploy migration before the four-argument intent caller. Old callers remain\n-- compatible for uncapped projects and fail closed for capped projects.\nbegin;\nalter table public.project_budgets\n add column total_usd_limit_micros bigint,\n add column total_usd_committed_micros bigint not null default 0,\n add column total_approval_sha256 text,\n add constraint project_total_allowance_valid check (\n  (total_usd_limit_micros is null and total_usd_committed_micros=0 and total_approval_sha256 is null)\n  or (total_usd_limit_micros is not null and total_usd_limit_micros between 1 and 100000000000\n   and total_usd_committed_micros between 0 and total_usd_limit_micros\n   and total_approval_sha256 is not null and total_approval_sha256 ~ '^[0-9a-f]{64}$'));\nalter table public.spend_reservations\n add column total_allowance_micros bigint,\n add column total_allowance_usd_sek numeric,\n add constraint spend_total_allowance_valid check (\n  (total_allowance_micros is null and total_allowance_usd_sek is null)\n  or (total_allowance_micros is not null and total_allowance_micros>=0\n   and total_allowance_usd_sek is not null and total_allowance_usd_sek>0\n   and total_allowance_usd_sek not in ('NaN'::numeric,'Infinity'::numeric)));\n\ncreate or replace function public.project_total_allowance_guard()\nreturns trigger language plpgsql set search_path='' as $$\nbegin\n if TG_OP='DELETE' then\n  if old.total_usd_limit_micros is not null then raise exception 'TOTAL_ALLOWANCE_IMMUTABLE' using errcode='55000'; end if;\n  return old;\n end if;\n if TG_OP='UPDATE' and old.total_usd_limit_micros is not null and\n  (new.project_id is distinct from old.project_id or new.total_usd_limit_micros is distinct from old.total_usd_limit_micros\n   or new.total_approval_sha256 is distinct from old.total_approval_sha256\n   or new.total_usd_committed_micros<old.total_usd_committed_micros) then\n  raise exception 'TOTAL_ALLOWANCE_IMMUTABLE' using errcode='55000';\n end if;\n if (TG_OP='INSERT' and new.total_usd_limit_micros is not null)\n  or (TG_OP='UPDATE' and (new.total_usd_limit_micros,new.total_usd_committed_micros,new.total_approval_sha256)\n      is distinct from (old.total_usd_limit_micros,old.total_usd_committed_micros,old.total_approval_sha256)) then\n  if current_user<>'postgres' then raise exception 'TOTAL_ALLOWANCE_SERVICE_ONLY' using errcode='42501'; end if;\n end if;\n return new;\nend $$;\ncreate trigger project_total_allowance_guard before insert or update or delete on public.project_budgets\n for each row execute function public.project_total_allowance_guard();\nrevoke all on function public.project_total_allowance_guard() from public,anon,authenticated,service_role;\n\n-- Activation only for a paused, owned, not-yet-billed dedicated project.\n-- Imported local/other prior ceilings MUST be reconciled by the operator and\n-- passed explicitly, never assumed to be zero from absence of native costs.\ncreate or replace function public.budget_set_total_allowance(\n p_project_id uuid,p_owner_id uuid,p_limit_micros bigint,p_prior_committed_micros bigint,p_approval_sha256 text\n) returns boolean language plpgsql security definer set search_path='' as $$\ndeclare b public.project_budgets;\nbegin\n if p_limit_micros is null or p_limit_micros not between 1 and 100000000000\n  or p_prior_committed_micros is null or p_prior_committed_micros not between 0 and p_limit_micros\n  or p_approval_sha256 is null or p_approval_sha256 !~ '^[0-9a-f]{64}$' then\n  raise exception 'INVALID_TOTAL_ALLOWANCE' using errcode='22023';\n end if;\n perform 1 from public.projects where id=p_project_id and owner_id=p_owner_id and execution_paused=true for update;\n if not found then raise exception 'TOTAL_ALLOWANCE_REQUIRES_PAUSED_OWNER' using errcode='42501'; end if;\n select * into b from public.project_budgets where project_id=p_project_id for update;\n if not found or b.total_usd_limit_micros is not null then raise exception 'TOTAL_ALLOWANCE_ALREADY_SET_OR_MISSING' using errcode='55000'; end if;\n if exists(select 1 from public.cost_events where project_id=p_project_id)\n  or exists(select 1 from public.spend_reservations where project_id=p_project_id) then\n  raise exception 'TOTAL_ALLOWANCE_HISTORY_REQUIRES_RECONCILIATION' using errcode='55000';\n end if;\n update public.project_budgets set total_usd_limit_micros=p_limit_micros,\n  total_usd_committed_micros=p_prior_committed_micros,total_approval_sha256=p_approval_sha256,updated_at=now()\n  where project_id=p_project_id;\n return true;\nend $$;\nrevoke all on function public.budget_set_total_allowance(uuid,uuid,bigint,bigint,text) from public,anon,authenticated;\ngrant execute on function public.budget_set_total_allowance(uuid,uuid,bigint,bigint,text) to service_role;\n\n-- Admission and intent are ONE transaction. No race between a separate check\n-- and dispatch, and no refund after timeout, release, settlement or month end.\ncreate or replace function public.budget_mark_dispatch_intent(\n p_reservation_id uuid,p_dispatch_token uuid,p_ceiling_basis text,p_usd_sek numeric\n) returns boolean language plpgsql security definer set search_path='' as $$\ndeclare v public.spend_reservations; b public.project_budgets; amount numeric;\nbegin\n if p_reservation_id is null or p_dispatch_token is null then raise exception 'reservation and dispatch token are required' using errcode='22023'; end if;\n if p_ceiling_basis is null or p_ceiling_basis not in ('token_window','fixed_units','internal_fixed') then raise exception 'dispatch intent requires a hard-ceiling basis' using errcode='22023'; end if;\n select * into v from public.spend_reservations where id=p_reservation_id for update;\n if not found or v.status<>'open' then return false; end if;\n select * into b from public.project_budgets where project_id=v.project_id for update;\n if b.total_usd_limit_micros is not null then\n  if p_usd_sek is null or p_usd_sek<=0 or p_usd_sek in ('NaN'::numeric,'Infinity'::numeric,'-Infinity'::numeric) then return false; end if;\n  if v.dispatched_at is not null then\n   return v.dispatch_token=p_dispatch_token and v.ceiling_basis=p_ceiling_basis\n    and v.total_allowance_micros is not null and v.total_allowance_usd_sek=p_usd_sek;\n  end if;\n  amount=ceil(v.estimated_sek/p_usd_sek*1000000);\n  if amount<0 or amount>b.total_usd_limit_micros-b.total_usd_committed_micros then return false; end if;\n  update public.project_budgets set total_usd_committed_micros=total_usd_committed_micros+amount::bigint,updated_at=now() where project_id=v.project_id;\n else\n  if v.dispatched_at is not null then return v.dispatch_token=p_dispatch_token; end if;\n end if;\n update public.spend_reservations set dispatched_at=now(),dispatch_token=p_dispatch_token,ceiling_basis=p_ceiling_basis,\n  total_allowance_micros=case when b.total_usd_limit_micros is not null then amount::bigint else null end,\n  total_allowance_usd_sek=case when b.total_usd_limit_micros is not null then p_usd_sek else null end\n  where id=p_reservation_id;\n return true;\nend $$;\nrevoke all on function public.budget_mark_dispatch_intent(uuid,uuid,text,numeric) from public,anon,authenticated;\ngrant execute on function public.budget_mark_dispatch_intent(uuid,uuid,text,numeric) to service_role;\n\n-- Explicit legacy overload: absence of FX is not permission to skip a cap.\ncreate or replace function public.budget_mark_dispatch_intent(\n p_reservation_id uuid,p_dispatch_token uuid,p_ceiling_basis text\n) returns boolean language sql security definer set search_path='' as $$\n select public.budget_mark_dispatch_intent(p_reservation_id,p_dispatch_token,p_ceiling_basis,null::numeric);\n$$;\nrevoke all on function public.budget_mark_dispatch_intent(uuid,uuid,text) from public,anon,authenticated;\ngrant execute on function public.budget_mark_dispatch_intent(uuid,uuid,text) to service_role;\ncomment on column public.project_budgets.total_usd_committed_micros is 'Non-renewing conservative admitted ceilings, not invoices. Never automatically refunded, reset or topped up.';\ncommit;\n"
+    },
+    {
+      "file": "20261104135920_posthog_approved_read.sql",
+      "sha256": "31610ee2209085726932b5fc5108b3d4967654b8b39bcd5ddfc07bade741b795",
+      "sql": "-- Human-approved dashboard read: atomic quota reservation and safe audit.\n-- No PostHog credentials or provider data are stored.\nbegin;\ncreate table public.atlas_posthog_read_events (\n  event_id uuid primary key default gen_random_uuid(),\n  attempt_id uuid not null,\n  outcome text not null check (outcome in ('reserved','succeeded','failed')),\n  project_id uuid not null references public.projects(id),\n  principal_id uuid not null,\n  authorization_id uuid not null,\n  request_hash text not null check (request_hash ~ '^[a-f0-9]{64}$'),\n  occurred_at timestamptz not null default clock_timestamp()\n);\ncreate unique index atlas_posthog_read_one_reservation on public.atlas_posthog_read_events(attempt_id) where outcome='reserved';\ncreate unique index atlas_posthog_read_one_outcome on public.atlas_posthog_read_events(attempt_id) where outcome<>'reserved';\ncreate index atlas_posthog_read_quota on public.atlas_posthog_read_events(project_id,occurred_at) where outcome='reserved';\nalter table public.atlas_posthog_read_events enable row level security;\nrevoke all on public.atlas_posthog_read_events from public,anon,authenticated,service_role;\ngrant select on public.atlas_posthog_read_events to service_role;\n\ncreate function public.atlas_posthog_read_reject_mutation()\nreturns trigger language plpgsql set search_path='' as $$\nbegin raise exception 'posthog_read_audit_immutable' using errcode='23001'; end;\n$$;\ncreate trigger atlas_posthog_read_immutable before update or delete or truncate\non public.atlas_posthog_read_events for each statement\nexecute function public.atlas_posthog_read_reject_mutation();\nrevoke all on function public.atlas_posthog_read_reject_mutation() from public,anon,authenticated;\n\ncreate function public.atlas_posthog_reserve_read(\n  p_project_id uuid, p_principal_id uuid, p_authorization_id uuid,\n  p_request_hash text, p_authorization_event_ids uuid[]\n) returns uuid language plpgsql security definer set search_path='' set lock_timeout='2s' as $$\ndeclare\n  v_ids uuid[];\n  v_now timestamptz;\n  v_attempt uuid;\nbegin\n  if p_project_id is null or p_principal_id is null or p_authorization_id is null or\n     p_request_hash is null or p_request_hash !~ '^[a-f0-9]{64}$' or\n     coalesce(cardinality(p_authorization_event_ids),0) <> 2 then\n    raise exception 'posthog_read_not_authorized';\n  end if;\n  -- Freeze the V1 chain during reservation; this is a short local transaction.\n  lock table public.atlas_authorizations in share mode;\n  perform 1 from public.projects where id=p_project_id and owner_id=p_principal_id for share;\n  if not found then raise exception 'posthog_read_not_authorized'; end if;\n  perform pg_advisory_xact_lock(hashtextextended('posthog_read:'||p_project_id::text,0));\n  v_now := clock_timestamp();\n  select array_agg(event_id order by event_id) into v_ids from public.atlas_authorizations\n    where authorization_id=p_authorization_id;\n  if v_ids is null or v_ids is distinct from\n    (select array_agg(x order by x) from unnest(p_authorization_event_ids) x) or\n    (select count(*) from public.atlas_authorizations where authorization_id=p_authorization_id and event_type='requested') <> 1 or\n    (select count(*) from public.atlas_authorizations where authorization_id=p_authorization_id and event_type='granted'\n       and expires_at > v_now + interval '5 seconds') <> 1 or\n    exists (select 1 from public.atlas_authorizations where authorization_id=p_authorization_id and (\n      project_id is distinct from p_project_id or principal_id is distinct from p_principal_id or\n      authority_basis is distinct from 'founder_owner' or\n      action_kind is distinct from 'analytics.posthog.dashboards.read' or\n      target_type is distinct from 'posthog_dashboard_read' or\n      target_id is distinct from p_project_id::text or target_version_hash is distinct from p_request_hash or\n      conditions is distinct from '[]'::jsonb or occurred_at > v_now or event_type not in ('requested','granted')\n    )) or\n    (select occurred_at from public.atlas_authorizations where authorization_id=p_authorization_id and event_type='requested') >\n    (select occurred_at from public.atlas_authorizations where authorization_id=p_authorization_id and event_type='granted') then\n    raise exception 'posthog_read_not_authorized';\n  end if;\n  if (select count(*) from public.atlas_posthog_read_events\n      where project_id=p_project_id and outcome='reserved' and occurred_at>v_now-interval '60 seconds') >= 3 or\n     (select count(*) from public.atlas_posthog_read_events where project_id=p_project_id and outcome='reserved'\n      and occurred_at >= (date_trunc('day',v_now at time zone 'UTC') at time zone 'UTC')) >= 20 then\n    raise exception 'posthog_read_quota_exceeded';\n  end if;\n  v_attempt := gen_random_uuid();\n  insert into public.atlas_posthog_read_events(attempt_id,outcome,project_id,principal_id,authorization_id,request_hash)\n    values(v_attempt,'reserved',p_project_id,p_principal_id,p_authorization_id,p_request_hash);\n  return v_attempt;\nend;\n$$;\nrevoke all on function public.atlas_posthog_reserve_read(uuid,uuid,uuid,text,uuid[]) from public,anon,authenticated;\ngrant execute on function public.atlas_posthog_reserve_read(uuid,uuid,uuid,text,uuid[]) to service_role;\n\ncreate function public.atlas_posthog_finish_read(p_attempt_id uuid,p_principal_id uuid,p_outcome text)\nreturns boolean language plpgsql security definer set search_path='' set lock_timeout='2s' as $$\ndeclare v_event public.atlas_posthog_read_events%rowtype; v_prior text;\nbegin\n  if p_attempt_id is null or p_principal_id is null or p_outcome is null or p_outcome not in ('succeeded','failed') then\n    raise exception 'posthog_read_invalid_outcome';\n  end if;\n  perform pg_advisory_xact_lock(hashtextextended('posthog_finish:'||p_attempt_id::text,0));\n  select * into v_event from public.atlas_posthog_read_events where attempt_id=p_attempt_id and outcome='reserved';\n  if not found or v_event.principal_id is distinct from p_principal_id then raise exception 'posthog_read_unknown_attempt'; end if;\n  select outcome into v_prior from public.atlas_posthog_read_events where attempt_id=p_attempt_id and outcome<>'reserved';\n  if found then\n    if v_prior is distinct from p_outcome then raise exception 'posthog_read_outcome_conflict'; end if;\n    return true;\n  end if;\n  insert into public.atlas_posthog_read_events(attempt_id,outcome,project_id,principal_id,authorization_id,request_hash)\n    values(p_attempt_id,p_outcome,v_event.project_id,v_event.principal_id,v_event.authorization_id,v_event.request_hash);\n  return true;\nend;\n$$;\nrevoke all on function public.atlas_posthog_finish_read(uuid,uuid,text) from public,anon,authenticated;\ngrant execute on function public.atlas_posthog_finish_read(uuid,uuid,text) to service_role;\ncomment on table public.atlas_posthog_read_events is 'Append-only audit and shared quotas for exact human-approved PostHog metadata reads. No provider data.';\ncommit;\n"
+    },
+    {
+      "file": "20261108094559_webbuilder_prospects.sql",
+      "sha256": "03dfd37e3749030523094dbdbca20b86a54b410b7be4acfa79f2ed6592b6014c",
+      "sql": "-- Etapp 1: owner-scoped, immutable prospect evidence. No contact, message or send authority.\nbegin;\n\ncreate table public.website_prospects (\n id uuid primary key default gen_random_uuid(),\n project_id uuid not null references public.projects(id) on delete cascade,\n created_by uuid not null references auth.users(id),\n orgnr text not null check (orgnr ~ '^[0-9]{10}$'),\n cfar text not null check (cfar ~ '^[0-9]{1,20}$'),\n current_revision_id uuid,\n created_at timestamptz not null default now(), updated_at timestamptz not null default now(),\n unique (id, project_id), unique (project_id, created_by, cfar)\n);\ncreate table public.website_prospect_revisions (\n id uuid primary key default gen_random_uuid(), prospect_id uuid not null, project_id uuid not null,\n number bigint not null check (number > 0), content jsonb not null,\n canonical_content text not null check (octet_length(canonical_content) between 1 and 65536),\n sha256 text not null check (sha256 ~ '^[a-f0-9]{64}$'),\n intent_key text not null check (intent_key ~ '^[A-Za-z0-9_-]{1,100}$'),\n created_at timestamptz not null default now(),\n foreign key (prospect_id, project_id) references public.website_prospects(id, project_id) on delete cascade,\n unique (id, prospect_id, project_id), unique (prospect_id, number), unique (prospect_id, intent_key),\n check (content = canonical_content::jsonb),\n check (sha256 = encode(sha256(convert_to(canonical_content, 'UTF8')), 'hex')),\n check ((content->>'version') = '1'),\n check (content->'company'->>'source' = 'scb'),\n check (jsonb_typeof(content->'improvements') = 'array' and jsonb_array_length(content->'improvements') in (0,3))\n);\nalter table public.website_prospects add foreign key (current_revision_id, id, project_id)\n references public.website_prospect_revisions(id, prospect_id, project_id);\ncreate table public.website_prospect_decisions (\n id uuid primary key default gen_random_uuid(), prospect_id uuid not null, project_id uuid not null,\n revision_id uuid not null, sha256 text not null check (sha256 ~ '^[a-f0-9]{64}$'),\n reviewed_by uuid not null references auth.users(id), reviewed_at timestamptz not null default now(),\n scope text not null default 'prospect_review' check (scope = 'prospect_review'),\n intent_key text not null check (intent_key ~ '^[A-Za-z0-9_-]{1,100}$'),\n foreign key (revision_id, prospect_id, project_id) references public.website_prospect_revisions(id, prospect_id, project_id),\n unique (prospect_id, revision_id), unique (project_id, reviewed_by, intent_key)\n);\ncreate index website_prospect_owner on public.website_prospects(created_by, project_id, updated_at desc);\ncreate index website_prospect_revision_project on public.website_prospect_revisions(project_id);\ncreate index website_prospect_decision_project on public.website_prospect_decisions(project_id);\nalter table public.website_prospects enable row level security;\nalter table public.website_prospect_revisions enable row level security;\nalter table public.website_prospect_decisions enable row level security;\ncreate policy website_prospect_owner_read on public.website_prospects for select to authenticated\n using (created_by = (select auth.uid()) and exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())));\ncreate policy website_prospect_revision_owner_read on public.website_prospect_revisions for select to authenticated\n using (exists (select 1 from public.website_prospects p where p.id = prospect_id and p.project_id = website_prospect_revisions.project_id and p.created_by = (select auth.uid())));\ncreate policy website_prospect_decision_owner_read on public.website_prospect_decisions for select to authenticated\n using (reviewed_by = (select auth.uid()) and exists (select 1 from public.website_prospects p where p.id = prospect_id and p.project_id = website_prospect_decisions.project_id and p.created_by = (select auth.uid())));\nrevoke all on public.website_prospects, public.website_prospect_revisions, public.website_prospect_decisions from anon, authenticated;\ngrant select on public.website_prospects, public.website_prospect_revisions, public.website_prospect_decisions to authenticated;\ngrant all on public.website_prospects, public.website_prospect_revisions, public.website_prospect_decisions to service_role;\n\ncreate function public.website_prospect_immutable() returns trigger\n language plpgsql security invoker set search_path = '' as $$\nbegin raise exception 'PROSPECT_IMMUTABLE' using errcode = '55000'; end $$;\ncreate trigger website_prospect_revision_no_update before update on public.website_prospect_revisions\n for each row execute function public.website_prospect_immutable();\ncreate trigger website_prospect_decision_no_update before update on public.website_prospect_decisions\n for each row execute function public.website_prospect_immutable();\n\ncreate function public.website_prospect_view(p_principal jsonb, p_input jsonb) returns jsonb\n language plpgsql security invoker set search_path = '' as $$\ndeclare p public.website_prospects; r public.website_prospect_revisions; d public.website_prospect_decisions;\nbegin\n perform public.website_build_check_access(p_principal, (p_input->>'projectId')::uuid, true);\n select * into strict p from public.website_prospects\n where id = (p_input->>'prospectId')::uuid and project_id = (p_input->>'projectId')::uuid and created_by = (p_principal->>'userId')::uuid;\n select * into strict r from public.website_prospect_revisions where id = p.current_revision_id and prospect_id = p.id and project_id = p.project_id;\n select * into d from public.website_prospect_decisions where prospect_id = p.id and revision_id = r.id and reviewed_by = p.created_by and sha256 = r.sha256;\n return jsonb_build_object('projectId', p.project_id, 'prospectId', p.id, 'revisionId', r.id, 'sha256', r.sha256,\n  'number', r.number, 'content', r.content, 'createdAt', p.created_at, 'updatedAt', p.updated_at,\n  'approval', case when d.id is null then null else jsonb_build_object('id',d.id,'revisionId',d.revision_id,'sha256',d.sha256,'reviewedBy',d.reviewed_by,'reviewedAt',d.reviewed_at,'scope',d.scope) end);\nend $$;\n\ncreate function public.website_prospect_list(p_principal jsonb, p_input jsonb) returns jsonb\n language plpgsql security invoker set search_path = '' as $$\ndeclare result jsonb;\nbegin\n perform public.website_build_check_access(p_principal, (p_input->>'projectId')::uuid, true);\n select coalesce(jsonb_agg(public.website_prospect_view(p_principal, jsonb_build_object('projectId',p.project_id,'prospectId',p.id)) order by p.updated_at desc), '[]'::jsonb) into result\n from (select * from public.website_prospects where project_id = (p_input->>'projectId')::uuid and created_by = (p_principal->>'userId')::uuid order by updated_at desc limit 100) p;\n return result;\nend $$;\n\n-- Server-only writes. Identity, asset and build references are checked inside the transaction as well.\ncreate function public.website_prospect_save(p_principal jsonb, p_input jsonb) returns jsonb\n language plpgsql security invoker set search_path = '' as $$\ndeclare pid uuid := (p_input->>'projectId')::uuid; uid uuid := (p_principal->>'userId')::uuid;\n p public.website_prospects; r public.website_prospect_revisions; rid uuid;\n c jsonb := p_input->'content'; canonical text := p_input->>'canonicalContent'; key text := p_input->>'idempotencyKey'; image jsonb; improvement jsonb; observation_id text;\nbegin\n perform public.website_build_check_access(p_principal, pid, true);\n if canonical is null or octet_length(canonical) > 65536 or canonical::jsonb is distinct from c or encode(sha256(convert_to(canonical,'UTF8')),'hex') is distinct from p_input->>'sha256'\n  or key is null or key !~ '^[A-Za-z0-9_-]{1,100}$' or c->>'version' is distinct from '1' or c->'company'->>'source' is distinct from 'scb'\n  or jsonb_typeof(c->'improvements') is distinct from 'array' then raise exception 'INVALID_PROSPECT' using errcode = '22023'; end if;\n if jsonb_array_length(c->'improvements') not in (0,3) then raise exception 'INVALID_PROSPECT' using errcode = '22023'; end if;\n if p_input->>'prospectId' is null then\n  insert into public.website_prospects(project_id,created_by,orgnr,cfar) values(pid,uid,c->'company'->>'orgnr',c->'company'->>'cfar') on conflict(project_id,created_by,cfar) do nothing;\n  select * into strict p from public.website_prospects where project_id=pid and created_by=uid and cfar=c->'company'->>'cfar' for update;\n else\n  select * into strict p from public.website_prospects where id=(p_input->>'prospectId')::uuid and project_id=pid and created_by=uid for update;\n end if;\n if p.orgnr is distinct from c->'company'->>'orgnr' or p.cfar is distinct from c->'company'->>'cfar' then raise exception 'INVALID_PROSPECT' using errcode='22023'; end if;\n select * into r from public.website_prospect_revisions where prospect_id=p.id and intent_key=key;\n if found then\n  if r.sha256 is distinct from p_input->>'sha256' then raise exception 'IDEMPOTENCY_CONFLICT' using errcode='23505'; end if;\n  return public.website_prospect_view(p_principal,jsonb_build_object('projectId',pid,'prospectId',p.id));\n end if;\n if p.current_revision_id is distinct from (p_input->>'expectedRevisionId')::uuid then raise exception 'PROSPECT_STALE' using errcode='55000'; end if;\n if c->'website' is distinct from 'null'::jsonb and (c->'website'->>'verifiedBy')::uuid is distinct from uid then raise exception 'INVALID_PROSPECT' using errcode='22023'; end if;\n if c->'capture' is distinct from 'null'::jsonb then\n  if c->'capture'->>'sourceUrl' is distinct from c->'website'->>'url' or jsonb_array_length(c->'capture'->'images') is distinct from 2 then raise exception 'INVALID_PROSPECT' using errcode='22023'; end if;\n  for image in select value from jsonb_array_elements(c->'capture'->'images') loop\n   if not exists(select 1 from public.assets a where a.id=(image->>'assetId')::uuid and a.project_id=pid and a.kind='image' and a.visibility='internal' and a.status='active' and a.checksum_sha256=image->>'sha256') then raise exception 'INVALID_PROSPECT_ASSET' using errcode='22023'; end if;\n  end loop;\n end if;\n for improvement in select value from jsonb_array_elements(c->'improvements') loop\n  if jsonb_typeof(improvement->'observationIds') is distinct from 'array' or jsonb_array_length(improvement->'observationIds') not between 1 and 8 then raise exception 'INVALID_PROSPECT' using errcode='22023'; end if;\n  for observation_id in select jsonb_array_elements_text(improvement->'observationIds') loop\n   if not exists(select 1 from jsonb_array_elements(c->'capture'->'observations') o where o->>'id'=observation_id) then raise exception 'INVALID_PROSPECT_EVIDENCE' using errcode='22023'; end if;\n  end loop;\n end loop;\n if c->'design' is distinct from 'null'::jsonb then\n  if jsonb_array_length(c->'improvements') <> 3 or not exists(select 1 from public.website_build_plan_revisions plan_revision join public.website_build_plans b on b.id=plan_revision.plan_id and b.project_id=plan_revision.project_id\n   where plan_revision.id=(c->'design'->>'revisionId')::uuid and plan_revision.plan_id=(c->'design'->>'planId')::uuid and plan_revision.project_id=pid and plan_revision.sha256=c->'design'->>'sha256' and b.created_by=uid and b.conversation_id=(c->'design'->>'conversationId')::uuid) then raise exception 'INVALID_PROSPECT_DESIGN' using errcode='22023'; end if;\n end if;\n if c->'build' is distinct from 'null'::jsonb then\n  if c->'design' = 'null'::jsonb or c->'build'->>'planRevisionId' is distinct from c->'design'->>'revisionId' or not exists(select 1 from public.website_build_sessions s where s.id=(c->'build'->>'sessionId')::uuid and s.project_id=pid and s.created_by=uid and s.plan_revision_id=(c->'design'->>'revisionId')::uuid) then raise exception 'INVALID_PROSPECT_BUILD' using errcode='22023'; end if;\n end if;\n if c->'demo' is distinct from 'null'::jsonb and (c->'build' = 'null'::jsonb or c->'demo'->>'artifactSha256' is distinct from c->'build'->>'sha256') then raise exception 'INVALID_PROSPECT_DEMO' using errcode='22023'; end if;\n insert into public.website_prospect_revisions(prospect_id,project_id,number,content,canonical_content,sha256,intent_key)\n values(p.id,pid,coalesce((select max(number) from public.website_prospect_revisions where prospect_id=p.id),0)+1,c,canonical,p_input->>'sha256',key) returning id into rid;\n update public.website_prospects set current_revision_id=rid,updated_at=now() where id=p.id;\n return public.website_prospect_view(p_principal,jsonb_build_object('projectId',pid,'prospectId',p.id));\nend $$;\n\ncreate function public.website_prospect_approve(p_principal jsonb,p_input jsonb) returns jsonb\n language plpgsql security invoker set search_path='' as $$\ndeclare p public.website_prospects; r public.website_prospect_revisions; d public.website_prospect_decisions; key text:=p_input->>'idempotencyKey'; c jsonb;\nbegin\n perform public.website_build_check_access(p_principal,(p_input->>'projectId')::uuid,true);\n select * into strict p from public.website_prospects where id=(p_input->>'prospectId')::uuid and project_id=(p_input->>'projectId')::uuid and created_by=(p_principal->>'userId')::uuid for update;\n select * into strict r from public.website_prospect_revisions where id=p.current_revision_id and prospect_id=p.id;\n if r.id is distinct from (p_input->>'revisionId')::uuid or r.sha256 is distinct from p_input->>'sha256' then raise exception 'PROSPECT_STALE' using errcode='55000'; end if;\n c:=r.content;\n if c->'company'->>'inactive' is distinct from 'false' or c->'website' is null or c->'website'='null'::jsonb or c->'capture' is null or c->'capture'='null'::jsonb\n  or jsonb_array_length(c->'improvements') is distinct from 3 or c->'design' is null or c->'design'='null'::jsonb or c->'build' is null or c->'build'='null'::jsonb or c->'demo' is null or c->'demo'='null'::jsonb\n  or c->'demo'->>'mobileOverflow' is distinct from 'false' or c->'demo'->>'desktopOverflow' is distinct from 'false' then raise exception 'PROSPECT_REVIEW_INCOMPLETE' using errcode='55000'; end if;\n if not exists(select 1 from public.website_build_plans b join public.website_build_mockup_decisions m on m.plan_id=b.id and m.project_id=b.project_id\n   where b.id=(c->'design'->>'planId')::uuid and b.current_revision_id=(c->'design'->>'revisionId')::uuid and b.project_id=p.project_id\n   and m.id=b.current_mockup_decision_id and m.revision_id=b.current_revision_id and m.approved_by=p.created_by and m.mockup_id=(c->'build'->>'mockupId')::uuid and m.sha256=c->'build'->>'mockupSha256') then raise exception 'PROSPECT_DESIGN_STALE' using errcode='55000'; end if;\n if key is null or key !~ '^[A-Za-z0-9_-]{1,100}$' then raise exception 'INVALID_IDEMPOTENCY_KEY' using errcode='22023'; end if;\n select * into d from public.website_prospect_decisions where project_id=p.project_id and reviewed_by=p.created_by and intent_key=key;\n if found and (d.prospect_id is distinct from p.id or d.revision_id is distinct from r.id) then raise exception 'IDEMPOTENCY_CONFLICT' using errcode='23505'; end if;\n insert into public.website_prospect_decisions(prospect_id,project_id,revision_id,sha256,reviewed_by,intent_key) values(p.id,p.project_id,r.id,r.sha256,p.created_by,key) on conflict(prospect_id,revision_id) do nothing;\n return public.website_prospect_view(p_principal,jsonb_build_object('projectId',p.project_id,'prospectId',p.id));\nend $$;\ndo $permissions$\ndeclare f record;\nbegin\n for f in select p.oid::regprocedure signature from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname like 'website_prospect_%'\n loop execute format('revoke all on function %s from public,anon,authenticated',f.signature); execute format('grant execute on function %s to service_role',f.signature); end loop;\nend $permissions$;\ncommit;\n"
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test'
+export default defineConfig({testDir:'./e2e',testMatch:['sales-email-copy.spec.ts','sales-timing.spec.ts','sales-pilot.spec.ts','sales-strato.spec.ts','sales-inbox.spec.ts'],workers:1,retries:0,timeout:30000,use:{baseURL:'http://127.0.0.1:54419',browserName:'chromium',screenshot:'only-on-failure'},outputDir:'../../.superpowers/email-copy-browser-results',webServer:{command:'node e2e/sales-pilot-server.mjs',env:{SALES_BROWSER_PORT:'54419'},url:'http://127.0.0.1:54419/sales',reuseExistingServer:false,timeout:30000}})

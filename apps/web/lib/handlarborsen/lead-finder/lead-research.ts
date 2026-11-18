@@ -14,7 +14,7 @@ export const LEAD_RESEARCH_MAX_OBSERVATIONS = 5
 export const LEAD_RESEARCH_MIN_OBSERVATION_DATE = '2026-10-28'
 export const LEAD_RESEARCH_EXCERPT_MAX = 160
 export const SWITCHBOARD_LABEL = 'company switchboard'
-export const GENERIC_MAILBOXES = ['info', 'kontakt', 'contact', 'kundservice', 'sales', 'foretag', 'service', 'order', 'support'] as const
+export const GENERIC_MAILBOXES = ['info', 'kontakt', 'contact', 'kundservice', 'sales', 'forsaljning', 'foretag', 'service', 'order', 'support'] as const
 
 export const SOURCE_KINDS = ['official_company_site', 'independent_business_source', 'search_snippet'] as const
 export type SourceKind = (typeof SOURCE_KINDS)[number]
@@ -274,7 +274,7 @@ function matchesOrgnr(v: unknown, orgnr: string): boolean {
 function parseEmail(v: unknown): string | null {
   if (typeof v !== 'string') return null
   const t = v.trim().toLowerCase()
-  return /^[a-z0-9]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(t) ? t : null
+  return /^[a-z0-9]+(?:[._-][a-z0-9]+)*@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(t) ? t : null
 }
 
 function parsePhone(v: unknown): string | null {
@@ -319,9 +319,14 @@ function parseObservation(raw: unknown, job: ResearchJob): Observation | null {
     const addr = parseEmail(raw.generalBusinessEmail)
     const where = parseSafePublicUrl(raw.emailSourceUrl)
     if (!addr) contactRejections.push('email_invalid')
-    else if (!(GENERIC_MAILBOXES as readonly string[]).includes(addr.split('@')[0])) contactRejections.push('email_not_generic')
-    else if (!where) contactRejections.push('email_source_url_unsafe')
-    else email = { value: addr, url: where }
+    else {
+      const local = addr.split('@')[0]
+      const functional = (GENERIC_MAILBOXES as readonly string[]).includes(local) ||
+        /^forsaljning\.[a-z0-9][a-z0-9.-]{1,48}$/.test(local)
+      if (!functional) contactRejections.push('email_not_generic')
+      else if (!where) contactRejections.push('email_source_url_unsafe')
+      else email = { value: addr, url: where }
+    }
   }
   let phone: Observation['phone'] = null
   if (raw.switchboardPhone !== undefined) {

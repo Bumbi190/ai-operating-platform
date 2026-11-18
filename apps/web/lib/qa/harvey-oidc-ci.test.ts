@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, existsSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, existsSync, fstatSync, readSync, writeSync, symlinkSync, linkSync, renameSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve, dirname } from 'node:path'
 import { generateKeyPairSync, sign, verify } from 'node:crypto'
@@ -106,7 +106,13 @@ function fixture() {
       return JSON.stringify(facts[path])
     }
     if (file === 'gh' && args[0] === 'attestation') {
-      const raw = readFileSync(args[2]), bundle = JSON.parse(readFileSync(args[args.indexOf('--bundle') + 1], 'utf8'))
+      const fromDescriptor = (index: number, fallback: string) => {
+        if (!options.stdio?.[index]) return readFileSync(fallback)
+        const fd = options.stdio[index], bytes = Buffer.alloc(fstatSync(fd).size)
+        if (readSync(fd, bytes, 0, bytes.length, 0) !== bytes.length) throw Error('short descriptor read')
+        return bytes
+      }
+      const raw = fromDescriptor(3, args[2]), bundle = JSON.parse(fromDescriptor(4, args[args.indexOf('--bundle') + 1]).toString('utf8'))
       const serialized = canonicalJson(bundle.results)
       if (!verify('sha256', Buffer.from(serialized), root.publicKey, Buffer.from(bundle.signature, 'base64')) || bundle.digest !== digest(raw)) throw Error('synthetic signature rejected')
       return JSON.stringify(bundle.results)
@@ -295,5 +301,168 @@ describe('whole CI chain through real Guard and receipt model, mocked GitHub/CLI
     expect(workflow).toContain('HARVEY_OIDC_ENVIRONMENT_ID:')
     const code = readFileSync(resolve(__dirname, '../../scripts/harvey-oidc-ci.mjs'), 'utf8')
     expect(code).not.toMatch(/MIGRATION_GUARD_OVERRIDE|fetch\(|createClient\(/)
+  })
+})
+
+describe('attestation file identity and immutable descriptor snapshots', () => {
+  async function ready() {
+    const f = fixture(), a = f.adapter(); await a.prepare(f.output)
+    f.e.LEDGER_BUNDLE = resolve(f.cwd, 'ledger-bundle.json')
+    f.bundle(f.e.LEDGER_BUNDLE, f.e.LEDGER_JSON)
+    return { f, a }
+  }
+  function intercept(f: ReturnType<typeof fixture>, action: (args: string[], options: any, result: () => string) => string) {
+    const original = f.command.getMockImplementation()!
+    f.command.mockImplementation((file: string, args: string[], options: any = {}) =>
+      file === 'gh' && args[0] === 'attestation'
+        ? action(args, options, () => original(file, args, options) as string)
+        : original(file, args, options))
+  }
+  function fdBytes(fd: number) {
+    const bytes = Buffer.alloc(fstatSync(fd).size)
+    expect(readSync(fd, bytes, 0, bytes.length, 0)).toBe(bytes.length)
+    return bytes
+  }
+  it('uses an inherited subject and private .json proof snapshot, closing both descriptors', async () => {
+    const { f, a } = await ready(); let descriptors: number[] = []
+    intercept(f, (args, options, result) => {
+      expect(args[2]).toBe('/proc/self/fd/3')
+      const proof = args[args.indexOf('--bundle') + 1]
+      expect(proof).toMatch(/bundle\.json$/)
+      expect(dirname(proof)).not.toBe(f.cwd)
+      expect(readFileSync(proof)).toEqual(readFileSync(f.e.LEDGER_BUNDLE))
+      descriptors = options.stdio.slice(3)
+      expect(descriptors).toHaveLength(2)
+      expect(fdBytes(descriptors[0]).toString()).toBe(f.e.LEDGER_JSON)
+      return result()
+    })
+    await a.guard(f.output)
+    for (const fd of descriptors) expect(() => fstatSync(fd)).toThrow()
+  })
+  it('never reuses a preseeded predictable subject cache', async () => {
+    const { f, a } = await ready()
+    const oldSubject = resolve(f.cwd, '.subject-' + digest(f.e.LEDGER_JSON) + '.json')
+    writeFileSync(oldSubject, 'attacker-controlled preseed')
+    await a.guard(f.output)
+    expect(readFileSync(oldSubject, 'utf8')).toBe('attacker-controlled preseed')
+  })
+  it('does not leak a subject cache beside the supplied bundle', async () => {
+    const { f, a } = await ready(); await a.guard(f.output)
+    expect(readdirSync(f.cwd).filter(name => name.startsWith('.subject-'))).toEqual([])
+  })
+  it('rejects a symlink bundle before invoking the verifier', async () => {
+    const { f, a } = await ready(), link = resolve(f.cwd, 'bundle-link.json')
+    symlinkSync(f.e.LEDGER_BUNDLE, link, 'file'); f.e.LEDGER_BUNDLE = link
+    await expect(a.guard(f.output)).rejects.toThrow()
+    expect(f.command.mock.calls.filter(c => c[0] === 'gh' && c[1][0] === 'attestation')).toHaveLength(0)
+  })
+  it('rejects a directory instead of a regular bundle', async () => {
+    const { f, a } = await ready(); f.e.LEDGER_BUNDLE = f.cwd
+    await expect(a.guard(f.output)).rejects.toThrow()
+  })
+  it('rejects a hardlinked bundle', async () => {
+    const { f, a } = await ready()
+    linkSync(f.e.LEDGER_BUNDLE, resolve(f.cwd, 'bundle-hardlink.json'))
+    await expect(a.guard(f.output)).rejects.toThrow()
+  })
+  it('keeps the verified bundle bytes when the original path is replaced during verification', async () => {
+    const { f, a } = await ready(), original = readFileSync(f.e.LEDGER_BUNDLE)
+    intercept(f, (_args, _options, result) => {
+      const verified = result()
+      renameSync(f.e.LEDGER_BUNDLE, f.e.LEDGER_BUNDLE + '.moved')
+      writeFileSync(f.e.LEDGER_BUNDLE, 'unverified replacement')
+      return verified
+    })
+    await a.guard(f.output)
+    expect(readFileSync(resolve(f.output, 'ledger.sigstore.json'))).toEqual(original)
+  })
+  it('keeps the verified receipt bundle after its original path is replaced', async () => {
+    const f = fixture(), a = await f.chain()
+    // Re-run only evidence in a fresh result directory, retaining the validated inputs.
+    rmSync(resolve(f.output, 'verification-summary.json')); rmSync(resolve(f.output, 'receipt.sigstore.json'))
+    const original = readFileSync(f.e.RECEIPT_BUNDLE)
+    intercept(f, (args, options, result) => {
+      const verified = result()
+      if (args[args.indexOf('--bundle') + 1] === f.e.RECEIPT_BUNDLE || (options.stdio?.[3] && fdBytes(options.stdio[3]).toString() !== f.e.LEDGER_JSON)) {
+        writeFileSync(f.e.RECEIPT_BUNDLE, 'unverified replacement')
+      }
+      return verified
+    })
+    await a.evidence(f.output)
+    expect(readFileSync(resolve(f.output, 'receipt.sigstore.json'))).toEqual(original)
+  })
+  it('rejects a source bundle replaced with a symlink after approval but before opening', async () => {
+    const { f, a } = await ready(), original = f.command.getMockImplementation()!
+    const target = resolve(f.cwd, 'other.json'); writeFileSync(target, readFileSync(f.e.LEDGER_BUNDLE))
+    f.command.mockImplementation((file: string, args: string[], options: any = {}) => {
+      if (file === 'gh' && args[0] === '--version') {
+        rmSync(f.e.LEDGER_BUNDLE); symlinkSync(target, f.e.LEDGER_BUNDLE, 'file')
+      }
+      return original(file, args, options)
+    })
+    await expect(a.guard(f.output)).rejects.toThrow()
+  })
+  it('detects in-place subject tampering even if a verifier double returns the old certificate', async () => {
+    const { f, a } = await ready()
+    intercept(f, (args, options, result) => {
+      const verified = result()
+      if (options.stdio?.[3]) writeSync(options.stdio[3], Buffer.from('X'), 0, 1, 0)
+      else writeFileSync(args[2], 'substituted subject')
+      return verified
+    })
+    await expect(a.guard(f.output)).rejects.toThrow()
+    expect(existsSync(resolve(f.output, 'receipt.json'))).toBe(false)
+  })
+  it('detects in-place bundle tampering after cryptographic verification', async () => {
+    const { f, a } = await ready()
+    intercept(f, (args, options, result) => {
+      const verified = result()
+      if (options.stdio?.[4]) writeSync(options.stdio[4], Buffer.from('X'), 0, 1, 0)
+      else writeFileSync(args[args.indexOf('--bundle') + 1], 'substituted proof')
+      return verified
+    })
+    await expect(a.guard(f.output)).rejects.toThrow()
+    expect(existsSync(resolve(f.output, 'receipt.json'))).toBe(false)
+  })
+  it('closes descriptor snapshots when the verifier fails', async () => {
+    const { f, a } = await ready(); let descriptors: number[] = []
+    intercept(f, (_args, options) => { descriptors = options.stdio?.slice(3) ?? []; throw Error('synthetic verifier failure') })
+    await expect(a.guard(f.output)).rejects.toThrow()
+    expect(descriptors).toHaveLength(2)
+    for (const fd of descriptors) expect(() => fstatSync(fd)).toThrow()
+  })
+  it('checks exact subject digest even when the signature verifier returns another signed subject', async () => {
+    const { f, a } = await ready()
+    intercept(f, (_args, _options, result) => {
+      const verified = JSON.parse(result()); verified[0].verificationResult.statement.subject[0].digest.sha256 = '0'.repeat(64)
+      return JSON.stringify(verified)
+    })
+    await expect(a.guard(f.output)).rejects.toThrow(deny)
+  })
+  it('refuses modified evidence before creating a publication reservation', async () => {
+    const f = fixture(), a = await f.chain(); f.approveReceipt()
+    writeFileSync(resolve(f.output, 'artifact.tar'), tar('output/config.json', 48, '{"version":3,"changed":true}'))
+    await expect(a.verifyPublication({ directory: f.output, approvalRunId: '901', journalDirectory: f.journal })).rejects.toThrow(deny)
+    expect(readdirSync(f.journal)).toEqual([])
+  })
+})
+
+describe('private gh-compatible bundle snapshot cannot be substituted', () => {
+  it.each(['regular-file','symlink'])('rejects a %s replacement after verifier returns', async kind => {
+    const f = fixture(), a = f.adapter(); await a.prepare(f.output)
+    f.e.LEDGER_BUNDLE = resolve(f.cwd, 'proof.json'); f.bundle(f.e.LEDGER_BUNDLE, f.e.LEDGER_JSON)
+    const original = f.command.getMockImplementation()!
+    f.command.mockImplementation((file: string, args: string[], options: any = {}) => {
+      const result = original(file, args, options)
+      if (file === 'gh' && args[0] === 'attestation') {
+        const path = args[args.indexOf('--bundle') + 1]
+        renameSync(path, path + '.moved')
+        if (kind === 'symlink') symlinkSync(path + '.moved', path, 'file')
+        else writeFileSync(path, readFileSync(path + '.moved'))
+      }
+      return result
+    })
+    await expect(a.guard(f.output)).rejects.toThrow()
+    expect(existsSync(resolve(f.output, 'receipt.json'))).toBe(false)
   })
 })

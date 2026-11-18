@@ -1,8 +1,9 @@
 // CI-only adapter. No database client, deployment command or production credential.
 import { execFileSync } from 'node:child_process'
-import { readFileSync, writeFileSync, readdirSync, mkdirSync, lstatSync, realpathSync, openSync, closeSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, readdirSync, mkdirSync, lstatSync, realpathSync, openSync, closeSync, existsSync, constants, fstatSync, readSync, mkdtempSync, unlinkSync, rmSync, chmodSync } from 'node:fs'
 import { resolve, relative, dirname, sep, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { tmpdir } from 'node:os'
 import { canonicalJson, digest, verifyLedgerAttestation, createPublicationReceipt, verifyPublicationReceipt } from './migration-guard-ledger-attestation.mjs'
 import { inspectCanonicalMigrationFiles } from './migration-guard-policy.mjs'
 
@@ -157,11 +158,73 @@ const runCommand = (file, args, options = {}) => {
   }) } catch { deny() } // Never surface command stderr, credentials or tokens through thrown errors.
 }
 
+
+// Read through one descriptor: a pathname/type check must never authorize a later reopen.
+function readEvidenceFile(path) {
+  let fd
+  try {
+    requireOk(isAbsolute(path))
+    fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0))
+    const before = fstatSync(fd), entry = lstatSync(path)
+    requireOk(before.isFile() && entry.isFile() && before.nlink === 1 &&
+      before.dev === entry.dev && before.ino === entry.ino && before.size > 0 && before.size <= MAX_BYTES)
+    const bytes = readFileSync(fd), after = fstatSync(fd)
+    requireOk(before.size === bytes.length && after.size === before.size &&
+      after.mtimeMs === before.mtimeMs && after.ctimeMs === before.ctimeMs)
+    return bytes
+  } catch { deny() }
+  finally { if (fd !== undefined) closeSync(fd) }
+}
+
+// The approved CI runner is Linux. The subject is an inherited read-only descriptor.
+// gh requires a .json bundle suffix: its separate snapshot stays in a private directory,
+// read-only on Linux, and is checked through the same descriptor after verification.
+// Local command doubles also consume these exact descriptors; they do not prove gh provenance.
+function withAttestationFiles(subjectBytes, bundlePath, verify) {
+  const subject = Buffer.from(subjectBytes), bundle = readEvidenceFile(bundlePath)
+  const directory = mkdtempSync(resolve(tmpdir(), 'harvey-oidc-attest-')), descriptors = []
+  const proofPath = resolve(directory, 'bundle.json')
+  try {
+    for (const [name, bytes] of [['subject', subject], ['bundle', bundle]]) {
+      const path = name === 'bundle' ? proofPath : resolve(directory, name)
+      writeFileSync(path, bytes, { flag: 'wx', mode: 0o600 })
+      const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
+      descriptors.push(fd)
+      const stat = fstatSync(fd)
+      requireOk(stat.isFile() && stat.nlink === 1 && stat.size === bytes.length)
+      if (name === 'subject') unlinkSync(path)
+      else if (process.platform === 'linux') chmodSync(path, 0o400)
+    }
+    if (process.platform === 'linux') chmodSync(directory, 0o500)
+    const result = verify('/proc/self/fd/3', proofPath, ['ignore', 'pipe', 'pipe', ...descriptors])
+    // A child must not be able to change either verified input in place.
+    for (const [index, expected] of [subject, bundle].entries()) {
+      const fd = descriptors[index], stat = fstatSync(fd), actual = Buffer.alloc(expected.length)
+      requireOk(stat.isFile() && stat.nlink === (index === 0 ? 0 : 1) && stat.size === expected.length)
+      if (index === 1) {
+        const entry = lstatSync(proofPath)
+        requireOk(entry.isFile() && entry.dev === stat.dev && entry.ino === stat.ino)
+      }
+      let offset = 0
+      while (offset < actual.length) {
+        const count = readSync(fd, actual, offset, actual.length - offset, offset)
+        requireOk(count > 0); offset += count
+      }
+      requireOk(digest(actual) === digest(expected))
+    }
+    return { result, bundleBytes: bundle }
+  } finally {
+    for (const fd of descriptors) closeSync(fd)
+    if (process.platform === 'linux') chmodSync(directory, 0o700)
+    rmSync(directory, { recursive: true, force: true })
+  }
+}
+
 export function createAdapter({ env = process.env, cwd = process.cwd(), command = runCommand,
   now = () => Math.floor(Date.now() / 1000),
   readMigrations = () => readdirSync(resolve(cwd, 'apps/web/supabase/migrations')) } = {}) {
   const trust = readTrust(env)
-  const gh = args => command('gh', args, { cwd, env: { ...cleanBuildEnv(env), GH_HOST: 'github.com', GH_TOKEN: env.GH_TOKEN, GH_PROMPT_DISABLED: '1' } })
+  const gh = (args, options = {}) => command('gh', args, { ...options, cwd, env: { ...cleanBuildEnv(env), GH_HOST: 'github.com', GH_TOKEN: env.GH_TOKEN, GH_PROMPT_DISABLED: '1' } })
   const api = path => JSON.parse(gh(['api', '--hostname', 'github.com', '--method', 'GET', `repos/${CI_POLICY.repo}/${path}`]))
   const git = args => command('git', args, { cwd, env: cleanBuildEnv(env) }).trim()
   const policyDigest = () => digest(readFileSync(resolve(cwd, 'apps/web/scripts/migration-guard-policy.mjs')))
@@ -191,21 +254,23 @@ export function createAdapter({ env = process.env, cwd = process.cwd(), command 
     policyDigest: policyDigest(), artifactDigest, runId, runAttempt: 1,
     project: CI_POLICY.project, targetProject: CI_POLICY.targetProject, target: 'preview',
   })
+  function verifySignature(bytes, bundle, runId) {
+    return withAttestationFiles(bytes, bundle, (subject, proof, stdio) => {
+      // --cert-identity and --signer-workflow are mutually exclusive in GitHub CLI.
+      const args = ['attestation', 'verify', subject, '--repo', CI_POLICY.repo, '--hostname', 'github.com',
+        '--bundle', proof, '--cert-identity', workflowURI(), '--cert-oidc-issuer', CI_POLICY.issuer,
+        '--signer-digest', trust.workflowSha, '--source-digest', trust.sha, '--source-ref', CI_POLICY.ref,
+        '--deny-self-hosted-runners', '--format', 'json']
+      return checkCertificate(JSON.parse(gh(args, { stdio })), trust, runId, bytes, now())
+    })
+  }
   async function verifiedOrigin(bytes, bundle, runId, binding) {
-    requireOk(ID.test(runId) && isAbsolute(bundle) && lstatSync(bundle).isFile())
+    const subject = Buffer.from(bytes)
+    requireOk(ID.test(runId) && isAbsolute(bundle))
     cliVersion(); checkRun(api(`actions/runs/${runId}`), trust, runId)
     const approvalId = ownerReview(reviews(binding.runId), binding, trust)
-    // --cert-identity and --signer-workflow are mutually exclusive in GitHub CLI.
-    const args = ['attestation', 'verify', '-', '--repo', CI_POLICY.repo, '--hostname', 'github.com',
-      '--bundle', bundle, '--cert-identity', workflowURI(), '--cert-oidc-issuer', CI_POLICY.issuer,
-      '--signer-digest', trust.workflowSha, '--source-digest', trust.sha, '--source-ref', CI_POLICY.ref,
-      '--deny-self-hosted-runners', '--format', 'json']
-    // gh verifies a real file, not stdin; the private temporary subject file is byte-checked below.
-    const subject = resolve(dirname(bundle), '.subject-' + digest(bytes) + '.json')
-    if (!existsSync(subject)) writeFileSync(subject, bytes, { flag: 'wx', mode: 0o600 })
-    requireOk(digest(readFileSync(subject)) === digest(bytes)); args[2] = subject
-    const result = JSON.parse(gh(args))
-    return { ...checkCertificate(result, trust, runId, bytes, now()), ownerApprovedDigest: digest(bytes), approvalId }
+    const { result, bundleBytes } = verifySignature(subject, bundle, runId)
+    return { ...result, ownerApprovedDigest: digest(subject), approvalId, bundleBytes }
   }
   async function build(output) {
     await preflight()
@@ -290,7 +355,7 @@ export function createAdapter({ env = process.env, cwd = process.cwd(), command 
       context: ctx, repositoryState: inspectCanonicalMigrationFiles(readMigrations()), now: now() })
     const receipt = createPublicationReceipt({ verifiedGuard, context: ctx, artifact, now: now() })
     writeFileSync(resolve(directory, 'receipt.json'), receipt, { flag: 'wx', mode: 0o600 })
-    writeFileSync(resolve(directory, 'ledger.sigstore.json'), readFileSync(env.LEDGER_BUNDLE), { flag: 'wx', mode: 0o600 })
+    writeFileSync(resolve(directory, 'ledger.sigstore.json'), origin.bundleBytes, { flag: 'wx', mode: 0o600 })
     return { status: 'GUARD_PASS_NOT_AUTHORIZED', receiptDigest: digest(receipt) }
   }
   async function evidence(directory) {
@@ -301,13 +366,9 @@ export function createAdapter({ env = process.env, cwd = process.cwd(), command 
     const ledgerRaw = readFileSync(resolve(directory, 'ledger.json'))
     await verifiedOrigin(ledgerRaw, resolve(directory, 'ledger.sigstore.json'), body.runId, binding)
     const version = gh(['--version']); requireOk(version.startsWith('gh version ' + trust.ghVersion + ' '))
-    const results = JSON.parse(gh(['attestation','verify',resolve(directory, 'receipt.json'),'--repo',CI_POLICY.repo,
-      '--hostname','github.com','--bundle',env.RECEIPT_BUNDLE,'--cert-identity',workflowURI(),
-      '--cert-oidc-issuer',CI_POLICY.issuer,'--signer-digest',trust.workflowSha,'--source-digest',trust.sha,
-      '--source-ref',CI_POLICY.ref,'--deny-self-hosted-runners','--format','json']))
-    checkCertificate(results, trust, body.runId, bytes, now())
+    const verifiedReceipt = verifySignature(bytes, env.RECEIPT_BUNDLE, body.runId)
     requireOk(body.exportDigest === digest(ledgerRaw) && body.expiresAt > now())
-    writeFileSync(resolve(directory, 'receipt.sigstore.json'), readFileSync(env.RECEIPT_BUNDLE), { flag: 'wx', mode: 0o600 })
+    writeFileSync(resolve(directory, 'receipt.sigstore.json'), verifiedReceipt.bundleBytes, { flag: 'wx', mode: 0o600 })
     const summary = { status: 'SIGNED_EVIDENCE_NOT_PUBLICATION_AUTHORIZATION', sourceSha: trust.sha,
       runId: body.runId, receiptDigest: digest(bytes), artifactDigest: body.artifactDigest, expiresAt: body.expiresAt,
       platformEnforced: false }

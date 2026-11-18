@@ -8,6 +8,7 @@ import {
   CI_POLICY, readTrust, checkInvocation, checkEnvironment, checkRun, ownerReview,
   checkCertificate, inspectTar, checkArtifact, cleanBuildEnv, createAdapter, main,
   JOURNAL_PREFIX, journalTrust, checkJournalPolicy,
+  OIDC_BUILD_PROFILE, OIDC_PROFILE_ENTRY, oidcBuildProfile, prepareOidcBuild, sealOidcOutput,
 } from '../../scripts/harvey-oidc-ci.mjs'
 import { canonicalJson, digest, LEDGER_EXPORT_QUERY } from '../../scripts/migration-guard-ledger-attestation.mjs'
 import { inspectCanonicalMigrationFiles, REFERENCED_LEDGER_MIGRATIONS } from '../../scripts/migration-guard-policy.mjs'
@@ -18,6 +19,7 @@ const issuer = CI_POLICY.issuer
 const root = generateKeyPairSync('rsa', { modulusLength: 2048 })
 const fixtureMigrations = readdirSync(resolve(__dirname, '../../supabase/migrations'))
 const state = inspectCanonicalMigrationFiles(fixtureMigrations)
+const productionVercel = readFileSync(resolve(__dirname, '../../vercel.json'), 'utf8')
 const temporary: string[] = []
 afterEach(() => { vi.unstubAllGlobals(); for (const p of temporary.splice(0)) rmSync(p, { recursive: true, force: true }) })
 const temp = () => { const p = mkdtempSync(resolve(tmpdir(), 'harvey-ci-synthetic-')); temporary.push(p); return p }
@@ -30,6 +32,8 @@ function branches() { return { total_count: 1, branch_policies: [{ type: 'branch
 function env() {
   return { NODE_ENV: 'test' as const, HARVEY_OIDC_ONCE_ENABLED: 'true', HARVEY_OIDC_APPROVED_SOURCE_SHA: sha,
     HARVEY_OIDC_TRUSTED_WORKFLOW_SHA: sha, HARVEY_OIDC_ENVIRONMENT_ID: '600', HARVEY_OIDC_GH_VERSION: '2.102.0',
+    HARVEY_OIDC_BUILD_PROFILE: OIDC_BUILD_PROFILE.id, HARVEY_OIDC_BUILD_PROJECT_ID: CI_POLICY.targetProject,
+    HARVEY_OIDC_BUILD_TEAM_ID: CI_POLICY.team, HARVEY_OIDC_BUILD_TARGET: 'preview',
     HARVEY_OIDC_VERCEL_CLI_VERSION: '50.0.0', GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted',
     GITHUB_SERVER_URL: 'https://github.com', GITHUB_API_URL: 'https://api.github.com', GITHUB_REPOSITORY: CI_POLICY.repo,
     GITHUB_REPOSITORY_ID: CI_POLICY.repoId, GITHUB_REPOSITORY_OWNER_ID: CI_POLICY.ownerId,
@@ -63,20 +67,23 @@ function certificate(bytes: Buffer, id = runId) {
       predicate: { verified: true, ownerApprovedDigest: 'untrusted-predicate-never-used' } },
     verifiedTimestamps: [{ timestamp: new Date((now - 1) * 1000).toISOString() }] } }]
 }
-function tar(name = 'output/config.json', kind = 48, content = '{"version":3}') {
+function tar(name = 'output/config.json', kind = 48, content = '{"version":3}', includeProfile = true): Buffer {
   const h = Buffer.alloc(512), data = Buffer.from(content)
   const octal = (at: number, len: number, value: number) => h.write(value.toString(8).padStart(len - 1, '0') + '\0', at, len)
   h.write(name, 0, 100); octal(100, 8, 0o644); octal(108, 8, 0); octal(116, 8, 0)
   octal(124, 12, data.length); octal(136, 12, now); h.fill(32, 148, 156); h[156] = kind
   h.write('ustar\0', 257); h.write('00', 263); octal(148, 8, h.reduce((s, v) => s + v, 0))
-  return Buffer.concat([h, data, Buffer.alloc((512 - data.length % 512) % 512), Buffer.alloc(1024)])
+  const tail = includeProfile ? tar(OIDC_PROFILE_ENTRY, 48, canonicalJson(OIDC_BUILD_PROFILE), false) : Buffer.alloc(1024)
+  return Buffer.concat([h, data, Buffer.alloc((512 - data.length % 512) % 512), tail])
 }
 function fixture(server = { refs: new Map<string, any>(), failCreate: false, loseReply: false, failPublish: false, publications: 0 }) {
   const cwd = temp(), output = resolve(cwd, 'evidence'), e: Record<string, string> & { NODE_ENV: 'test' } = env()
   const policyPath = 'apps/web/scripts/migration-guard-policy.mjs'
   mkdirSync(dirname(resolve(cwd, policyPath)), { recursive: true }); writeFileSync(resolve(cwd, policyPath), 'synthetic policy bytes')
+  writeFileSync(resolve(cwd, 'apps/web/vercel.json'), productionVercel)
   const artifact = tar(), sourceDigest = digest(canonicalJson([{ path: policyPath, sha256: digest('synthetic policy bytes') }]))
-  const manifest = { schema: 'omnira-oidc-build/v1', sourceSha: sha, checkoutSha: sha, sourceDigest,
+  const manifest = { schema: 'omnira-oidc-build/v1', buildProfile: OIDC_BUILD_PROFILE,
+    buildProfileDigest: digest(canonicalJson(OIDC_BUILD_PROFILE)), sourceSha: sha, checkoutSha: sha, sourceDigest,
     policyDigest: digest('synthetic policy bytes'), artifactDigest: digest(artifact), buildRunId, runAttempt: 1,
     targetProject: CI_POLICY.targetProject, target: 'preview', files: inspectTar(artifact) }
   const rows = state.enforcedNames.map(name => { const r = REFERENCED_LEDGER_MIGRATIONS.find(r => r.name === name)
@@ -236,7 +243,7 @@ describe('Harvey CI external trust and signed identity (synthetic)', () => {
   })
 })
 describe('Harvey immutable artifact admission', () => {
-  it('checks actual bytes and exact file manifest', () => { const f = fixture(); expect(inspectTar(f.artifact)).toHaveLength(1) })
+  it('checks actual bytes and exact file manifest', () => { const f = fixture(); expect(inspectTar(f.artifact)).toHaveLength(2) })
   it.each(['../config.json','/output/config.json','output/../config.json','output/.env.local','output/key.pem','output\\config.json'])('rejects unsafe archive name %s', name => {
     expect(() => inspectTar(tar(name))).toThrow(deny)
   })
@@ -654,4 +661,81 @@ it('rejects any proof ZIP containing raw ledger rather than sanitized evidence',
   })
   await expect(f.adapter().publish(output)).rejects.toThrow(deny)
   expect(f.server.refs.size).toBe(0);expect(f.server.publications).toBe(0)
+})
+
+
+describe('isolated cron-free OIDC build profile',()=>{
+  it('derives the isolated config without changing the production input',()=>{
+    const e=env(),raw=productionVercel,plan=oidcBuildProfile(e,raw)
+    expect(plan.config.crons).toEqual([])
+    expect(plan.config.functions).toEqual(JSON.parse(raw).functions)
+    expect(digest(canonicalJson(plan.config))).toBe(OIDC_BUILD_PROFILE.effectiveConfigDigest)
+    expect(productionVercel).toBe(raw)
+  })
+  it.each(['HARVEY_OIDC_BUILD_PROFILE','HARVEY_OIDC_BUILD_PROJECT_ID','HARVEY_OIDC_BUILD_TEAM_ID','HARVEY_OIDC_BUILD_TARGET'])('rejects missing profile input %s',key=>{
+    const e:any=env();delete e[key];expect(()=>oidcBuildProfile(e,productionVercel)).toThrow(deny)
+  })
+  it.each(['HARVEY_OIDC_BUILD_PROFILE','HARVEY_OIDC_BUILD_PROJECT_ID','HARVEY_OIDC_BUILD_TEAM_ID','HARVEY_OIDC_BUILD_TARGET','VERCEL_PROJECT_ID','VERCEL_ORG_ID','VERCEL_ENV','VERCEL_TARGET_ENV'])('rejects wrong profile or platform identity %s',key=>{
+    expect(()=>oidcBuildProfile({...env(),[key]:'wrong'},productionVercel)).toThrow(deny)
+  })
+  it.each(['extra','changed','missing','override'])('rejects an unexpected production configuration %s',kind=>{
+    const c=JSON.parse(productionVercel)
+    if(kind==='extra')c.crons.push({path:'/api/unexpected',schedule:'* * * * *'})
+    if(kind==='changed')c.crons[0].schedule='* * * * *'
+    if(kind==='missing')c.crons.pop()
+    if(kind==='override')c.buildCommand='unapproved-command'
+    expect(()=>oidcBuildProfile(env(),JSON.stringify(c))).toThrow(deny)
+  })
+  it('creates only a private local-config override and preserves production bytes',()=>{
+    const f=fixture(),before=readFileSync(resolve(f.cwd,'apps/web/vercel.json'))
+    const plan=prepareOidcBuild(f.cwd,f.e)
+    expect(plan.localConfigPath).toBe(resolve(f.cwd,'.vercel/harvey-oidc-test.json'))
+    expect(JSON.parse(readFileSync(plan.localConfigPath,'utf8')).crons).toEqual([])
+    expect(readFileSync(resolve(f.cwd,'apps/web/vercel.json'))).toEqual(before)
+    expect(()=>prepareOidcBuild(f.cwd,f.e)).toThrow()
+  })
+  it('uses the override in the actual command and binds profile bytes before the archive hash',async()=>{
+    const f=fixture(),before=readFileSync(resolve(f.cwd,'apps/web/vercel.json')),out=resolve(f.cwd,'build-proof')
+    await f.adapter().build(out)
+    const args=f.command.mock.calls.find(c=>c[0]==='npm')![1]
+    expect(args[args.indexOf('--local-config')+1]).toBe(resolve(f.cwd,'.vercel/harvey-oidc-test.json'))
+    const marker=resolve(f.cwd,'.vercel',OIDC_PROFILE_ENTRY)
+    expect(readFileSync(marker,'utf8')).toBe(canonicalJson(OIDC_BUILD_PROFILE))
+    const m=JSON.parse(readFileSync(resolve(out,'manifest.json'),'utf8'))
+    expect(m.buildProfileDigest).toBe(digest(readFileSync(marker)))
+    expect(m.artifactDigest).toBe(digest(readFileSync(resolve(out,'artifact.tar'))))
+    expect(readFileSync(resolve(f.cwd,'apps/web/vercel.json'))).toEqual(before)
+  })
+  it.each([null,{},[{path:'/api/media/cron/heartbeat',schedule:'0 7 * * *'}],[{path:'/api/unexpected',schedule:'* * * * *'}]])('rejects unexpected final cron output %#',async crons=>{
+    const f=fixture(),original=f.command.getMockImplementation()!
+    f.command.mockImplementation((file,args,options)=>{
+      const value=original(file,args,options)
+      if(file==='npm')writeFileSync(resolve(f.cwd,'.vercel/output/config.json'),JSON.stringify({version:3,crons}))
+      return value
+    })
+    await expect(f.adapter().build(resolve(f.cwd,'proof'))).rejects.toThrow(deny)
+    expect(f.command.mock.calls.filter(c=>c[0]==='tar')).toHaveLength(0)
+  })
+  it.each(['project','override','production'])('rejects tampering of the prepared %s bytes',kind=>{
+    const f=fixture(),plan=prepareOidcBuild(f.cwd,f.e),out=resolve(f.cwd,'.vercel/output')
+    mkdirSync(out);writeFileSync(resolve(out,'config.json'),'{"version":3}')
+    const file=kind==='project'?resolve(f.cwd,'.vercel/project.json'):kind==='override'?plan.localConfigPath:resolve(f.cwd,'apps/web/vercel.json')
+    writeFileSync(file,'{}')
+    expect(()=>sealOidcOutput(f.cwd,plan)).toThrow(deny)
+  })
+  it('rejects a missing profile marker even for a cron-free archive',()=>{
+    expect(()=>inspectTar(tar('output/config.json',48,'{"version":3}',false))).toThrow(deny)
+  })
+  it('rejects another project/profile marker inside an otherwise valid archive',()=>{
+    const config=tar('output/config.json',48,'{"version":3}',false)
+    const marker=tar(OIDC_PROFILE_ENTRY,48,canonicalJson({...OIDC_BUILD_PROFILE,projectId:'other-project'}),false)
+    expect(()=>inspectTar(Buffer.concat([config.subarray(0,-1024),marker]))).toThrow(deny)
+  })
+  it('rejects nested source cron definitions in the final archive',()=>{
+    const good=tar(),nested=tar('output/functions/fixture/vercel.json',48,productionVercel,false)
+    expect(()=>inspectTar(Buffer.concat([good.subarray(0,-1024),nested]))).toThrow(deny)
+  })
+  it.each(['buildProfile','buildProfileDigest'])('rejects altered manifest %s',key=>{
+    const f=fixture();expect(()=>checkArtifact(f.artifact,{...f.manifest,[key]:'wrong'},f.manifest)).toThrow()
+  })
 })

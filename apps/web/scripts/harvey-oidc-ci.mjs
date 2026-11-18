@@ -1,4 +1,4 @@
-// CI-only adapter. No database client, deployment command or production credential.
+// CI-only adapter. No database client or production credential; publication is owner-gated.
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync, readdirSync, mkdirSync, lstatSync, realpathSync, openSync, closeSync, existsSync, constants, fstatSync, readSync, mkdtempSync, unlinkSync, rmSync, chmodSync } from 'node:fs'
 import { resolve, relative, dirname, sep, isAbsolute } from 'node:path'
@@ -126,10 +126,68 @@ export function checkJournalPolicy(immutable, creator, trust) {
     String(creator.bypass_actors[0].actor_id) === trust.app && creator.bypass_actors[0].bypass_mode === 'always')
 }
 
+// This profile belongs only to the isolated project. Production vercel.json is an input,
+// never an output. Pin its canonical content so a new cron cannot be silently discarded.
+export const OIDC_BUILD_PROFILE = Object.freeze({
+  schema: 'omnira-oidc-build-profile/v1', id: 'harvey-oidc-test-v1',
+  projectId: CI_POLICY.targetProject, orgId: CI_POLICY.team, target: 'preview',
+  sourceConfigDigest: 'dcc992fb4aee2b2efc38cb90c67661665d84e328615fcf6579fbc22740beca88',
+  effectiveConfigDigest: '42536b7ec73167d20f2186d8af81af37a760d54b99cd7c68a4404c90a64176d1',
+  settingsDigest: 'e372232be110b2f963d526b7dea7c25a0f9ac4c82c35da9304fa378076cc97ba',
+})
+export const OIDC_PROFILE_ENTRY = 'output/diagnostics/harvey-oidc-build-profile.json'
+export function oidcBuildProfile(env, rawProductionConfig) {
+  requireOk(env.HARVEY_OIDC_BUILD_PROFILE === OIDC_BUILD_PROFILE.id &&
+    env.HARVEY_OIDC_BUILD_PROJECT_ID === CI_POLICY.targetProject &&
+    env.HARVEY_OIDC_BUILD_TEAM_ID === CI_POLICY.team && env.HARVEY_OIDC_BUILD_TARGET === 'preview' &&
+    (!env.VERCEL_PROJECT_ID || env.VERCEL_PROJECT_ID === CI_POLICY.targetProject) &&
+    (!env.VERCEL_ORG_ID || env.VERCEL_ORG_ID === CI_POLICY.team) &&
+    (!env.VERCEL_ENV || env.VERCEL_ENV === 'preview') &&
+    (!env.VERCEL_TARGET_ENV || env.VERCEL_TARGET_ENV === 'preview'))
+  const original = JSON.parse(rawProductionConfig)
+  requireOk(digest(canonicalJson(original)) === OIDC_BUILD_PROFILE.sourceConfigDigest)
+  const config = { ...original, crons: [] }
+  const settings = { projectId: CI_POLICY.targetProject, orgId: CI_POLICY.team, settings: {
+    framework: 'nextjs', rootDirectory: 'apps/web', nodeVersion: '24.x',
+    buildCommand: 'node scripts/build-voice-vad.mjs && node scripts/build-design-skills.mjs && next build',
+    installCommand: 'npm ci' } }
+  requireOk(digest(canonicalJson(config)) === OIDC_BUILD_PROFILE.effectiveConfigDigest &&
+    digest(canonicalJson(settings)) === OIDC_BUILD_PROFILE.settingsDigest)
+  return { profile: OIDC_BUILD_PROFILE, config, settings, sourceRawDigest: digest(rawProductionConfig) }
+}
+export function prepareOidcBuild(cwd, env) {
+  const plan = oidcBuildProfile(env, readEvidenceFile(resolve(cwd, 'apps/web/vercel.json')).toString('utf8'))
+  const folder = resolve(cwd, '.vercel')
+  mkdirSync(folder, { mode: 0o700 }) // Existing links/configuration are not adopted.
+  const localConfigPath = resolve(folder, 'harvey-oidc-test.json')
+  writeFileSync(localConfigPath, canonicalJson(plan.config), { flag: 'wx', mode: 0o600 })
+  writeFileSync(resolve(folder, 'project.json'), canonicalJson(plan.settings), { flag: 'wx', mode: 0o600 })
+  return { ...plan, localConfigPath }
+}
+function cronFreeOutput(config) {
+  return config?.version === 3 &&
+    (!Object.hasOwn(config, 'crons') || Array.isArray(config.crons) && config.crons.length === 0) &&
+    (!Object.hasOwn(config, 'daemons') || config.daemons && typeof config.daemons === 'object' &&
+      !Array.isArray(config.daemons) && Object.keys(config.daemons).length === 0)
+}
+export function sealOidcOutput(cwd, plan) {
+  requireOk(canonicalJson(plan.profile) === canonicalJson(OIDC_BUILD_PROFILE) &&
+    plan.localConfigPath === resolve(cwd, '.vercel/harvey-oidc-test.json') &&
+    digest(readEvidenceFile(resolve(cwd, 'apps/web/vercel.json'))) === plan.sourceRawDigest &&
+    digest(readEvidenceFile(plan.localConfigPath)) === OIDC_BUILD_PROFILE.effectiveConfigDigest &&
+    digest(canonicalJson(JSON.parse(readEvidenceFile(resolve(cwd, '.vercel/project.json')).toString('utf8')))) === OIDC_BUILD_PROFILE.settingsDigest)
+  const built = resolve(cwd, '.vercel/output')
+  requireOk(cronFreeOutput(JSON.parse(readEvidenceFile(resolve(built, 'config.json')).toString('utf8'))))
+  mkdirSync(resolve(built, 'diagnostics'), { recursive: true, mode: 0o700 })
+  // Written BEFORE packing/hashing. No fields from a ledger, credential or token belong here.
+  writeFileSync(resolve(cwd, '.vercel', OIDC_PROFILE_ENTRY), canonicalJson(OIDC_BUILD_PROFILE), { flag: 'wx', mode: 0o600 })
+  return built
+}
+
 // Regular files only; build packing dereferences links. Rejects PAX/GNU extensions and traversal.
 export function inspectTar(bytes) {
   requireOk(Buffer.isBuffer(bytes) && bytes.length > 0 && bytes.length <= MAX_BYTES && bytes.length % 512 === 0)
-  let at = 0, ended = false; const names = new Set(), files = []
+  let at = 0, ended = false, profileSeen = false; const names = new Set(), files = []
   while (at < bytes.length) {
     const h = bytes.subarray(at, at + 512)
     if (h.every(x => x === 0)) { requireOk(bytes.length - at >= 1024 && bytes.subarray(at).every(x => x === 0)); ended = true; break }
@@ -149,17 +207,27 @@ export function inspectTar(bytes) {
       const mode = octal(100, 108); requireOk((mode & ~0o777) === 0)
       if (name === 'output/config.json') {
         const config = JSON.parse(bytes.subarray(at + 512, at + 512 + size).toString('utf8'))
-        requireOk(config.version === 3 && !(config.crons?.length))
+        requireOk(cronFreeOutput(config))
+      }
+      if (name === OIDC_PROFILE_ENTRY) {
+        requireOk(bytes.subarray(at + 512, at + 512 + size).toString('utf8') === canonicalJson(OIDC_BUILD_PROFILE))
+        profileSeen = true
+      }
+      if (name.endsWith('/vercel.json')) {
+        const nested = JSON.parse(bytes.subarray(at + 512, at + 512 + size).toString('utf8'))
+        requireOk(!Object.hasOwn(nested, 'crons') || Array.isArray(nested.crons) && nested.crons.length === 0)
       }
       files.push({ path: name, sha256: digest(bytes.subarray(at + 512, at + 512 + size)), mode })
     }
     names.add(normalized); at += 512 + Math.ceil(size / 512) * 512
   }
-  requireOk(ended && files.some(f => f.path === 'output/config.json'))
+  requireOk(ended && profileSeen && files.some(f => f.path === 'output/config.json'))
   return files.sort((a, b) => a.path.localeCompare(b.path, 'en'))
 }
 
 export function checkArtifact(artifact, manifest, context) {
+  requireOk(canonicalJson(manifest.buildProfile) === canonicalJson(OIDC_BUILD_PROFILE) &&
+    manifest.buildProfileDigest === digest(canonicalJson(OIDC_BUILD_PROFILE)))
   requireOk(digest(artifact) === context.artifactDigest && manifest.schema === 'omnira-oidc-build/v1' &&
     manifest.sourceSha === context.sourceSha && manifest.checkoutSha === context.checkoutSha &&
     manifest.sourceDigest === context.sourceDigest && manifest.policyDigest === context.policyDigest &&
@@ -308,23 +376,19 @@ export function createAdapter({ env = process.env, cwd = process.cwd(), command 
   async function build(output) {
     await preflight()
     const before = sourceDigest(), pinnedCli = env.HARVEY_OIDC_VERCEL_CLI_VERSION
-    requireOk(/^\d+\.\d+\.\d+$/.test(pinnedCli ?? '') && !existsSync(resolve(cwd, '.vercel')))
-    // Local compilation only. The actual attest-based Guard is mandatory before any publication.
-    const settings = { projectId: CI_POLICY.targetProject, orgId: CI_POLICY.team, settings: {
-      framework: 'nextjs', rootDirectory: 'apps/web', nodeVersion: '24.x',
-      buildCommand: 'node scripts/build-voice-vad.mjs && node scripts/build-design-skills.mjs && next build',
-      installCommand: 'npm ci' } }
-    mkdirSync(resolve(cwd, '.vercel')); writeFileSync(resolve(cwd, '.vercel/project.json'), JSON.stringify(settings))
+    requireOk(/^\d+\.\d+\.\d+$/.test(pinnedCli ?? ''))
+    // Compilation remains separate from the mandatory attest-based Guard/publication gate.
+    const plan = prepareOidcBuild(cwd, env)
     const childEnv = cleanBuildEnv(env)
-    command('npm', ['exec', '--yes', '--package', `vercel@${pinnedCli}`, '--', 'vercel', 'build', '--yes', '--environment=preview'],
-      { cwd, env: childEnv, timeout: 1500000 })
+    command('npm', ['exec', '--yes', '--package', `vercel@${pinnedCli}`, '--', 'vercel', 'build', '--yes', '--environment=preview',
+      '--local-config', plan.localConfigPath], { cwd, env: childEnv, timeout: 1500000 })
     requireOk(sourceDigest() === before)
-    const built = resolve(cwd, '.vercel/output'), config = JSON.parse(readFileSync(resolve(built, 'config.json'), 'utf8'))
-    requireOk(config.version === 3 && !(config.crons?.length))
+    const built = sealOidcOutput(cwd, plan)
     const artifact = command('tar', ['--format=ustar', '--dereference', '-cf', '-', '-C', dirname(built), 'output'],
       { cwd, env: childEnv, encoding: null })
     const files = inspectTar(artifact)
-    const manifest = { schema: 'omnira-oidc-build/v1', sourceSha: trust.sha, checkoutSha: trust.sha,
+    const manifest = { schema: 'omnira-oidc-build/v1', buildProfile: OIDC_BUILD_PROFILE,
+      buildProfileDigest: digest(canonicalJson(OIDC_BUILD_PROFILE)), sourceSha: trust.sha, checkoutSha: trust.sha,
       sourceDigest: before, policyDigest: policyDigest(), artifactDigest: digest(artifact),
       buildRunId: env.GITHUB_RUN_ID, runAttempt: 1, targetProject: CI_POLICY.targetProject, target: 'preview', files }
     mkdirSync(output, { recursive: true }); writeFileSync(resolve(output, 'artifact.tar'), artifact)

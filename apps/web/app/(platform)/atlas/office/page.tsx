@@ -46,16 +46,43 @@ export default function OmniraOfficePage() {
             <h2 className="text-lg font-semibold">Omnira Office - Unreal</h2>
           </div>
           <p className="mt-3 text-sm leading-relaxed text-slate-300">
-            Den nya Unreal-v&auml;rlden med din karakt&auml;r, Pling, Nova och reggaebaren.
-            V0.82 &auml;r fortfarande under utveckling.
+            Bes&ouml;k kontoret med din karakt&auml;r, Nova, Pling och projektkontoren.
+            &Ouml;ppna den aktuella Unreal-v&auml;rlden i ett eget f&ouml;nster p&aring; din dator.
           </p>
-          <p className="mt-6 rounded-lg border border-amber-400/25 bg-amber-400/5 px-4 py-3 text-sm text-amber-100">
-            Starta tills vidare via v0.82-startfilen p&aring; datorn.
-            Direkt&ouml;ppning via Nova Desktop byggs separat.
+          <a
+            href="omnira-office://visit"
+            aria-describedby="unreal-office-visit-help"
+            className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-lg border border-cyan-400/40 bg-cyan-600/25 px-4 py-2 font-medium text-cyan-100 transition hover:bg-cyan-600/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300"
+          >
+            Öppna Office och anslut <ExternalLink size={17} aria-hidden="true" />
+          </a>
+          <p id="unreal-office-visit-help" className="mt-4 text-xs leading-relaxed text-slate-400">
+            Kräver den uppdaterade Office-startaren på din Windows-dator.
+            Välj figur, projekt och agent på sidan som öppnas och tryck på
+            &quot;Anslut för kontorsbesöket&quot;. När anslutningen är bekräftad kan du stänga sidan.
+            Kopplingen avslutas när Office stängs, senast efter fyra timmar.
+            Det valda agentnamnet visas i kontoret; arbetsstatus är ännu inte verifierad.
           </p>
-          <p className="mt-4 text-xs leading-relaxed text-slate-400">
-            En webbsida startar inte lokala program direkt. Det kr&auml;ver en betrodd desktopkoppling.
+          <a
+            href="omnira-office://open"
+            aria-describedby="unreal-office-help"
+            className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg border border-indigo-400/40 bg-indigo-600/25 px-4 py-2 font-medium text-indigo-100 transition hover:bg-indigo-600/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo-300"
+          >
+            Öppna utan agentanslutning <ExternalLink size={17} aria-hidden="true" />
+          </a>
+          <p id="unreal-office-help" className="mt-4 text-xs leading-relaxed text-slate-400">
+            Kr&auml;ver Windows-datorn d&auml;r Office och den lokala Office-startaren &auml;r installerade.
+            Webbl&auml;saren kan fr&aring;ga om du vill &ouml;ppna Omnira Office.
+            &Auml;r kontoret redan &ouml;ppet &aring;teranv&auml;nds det f&ouml;nstret.
           </p>
+          <details className="mt-4 text-xs leading-relaxed text-slate-400">
+            <summary className="cursor-pointer text-indigo-200">Om Office inte &ouml;ppnas</summary>
+            <p className="mt-2">
+              Till&aring;t &ouml;ppningen om webbl&auml;saren fr&aring;gar. Du kan &auml;ven starta
+              genv&auml;gen &quot;Omnira Office - Besok Nova i Unreal&quot; p&aring; skrivbordet.
+              P&aring; en annan dator beh&ouml;ver Office och startaren installeras f&ouml;rst.
+            </p>
+          </details>
         </section>
       </div>
     </main>

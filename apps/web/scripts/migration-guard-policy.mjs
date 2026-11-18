@@ -86,27 +86,22 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Owner-only, RLS-guarded HB research archive applied 2026-10-29
 // (ledger version 20261029065156, canonical file committed in PR #584).
 // An additive enforced migration: 163/149 -> 164/150. No bypass or grandfathering.
-// Harvey B2B offers and bounded discovery: 164/150 -> 166/152.
-// Both owner-approved migrations are applied (ledger 20261031120736 / 20261031120804).
-// Source-only sync from PR #609, b1c0bb5: social_owner_crosschat_context was
-// already applied by its workstream as ledger 20261031145817. Exact canonical SQL
-// and applied function body verified; no SQL is applied by this source sync.
-// 166/152 -> 167/153. Frozen grandfathered/legacy sets and enforcement stay intact.
-// Nov 1 source-only sync from 2a8fd87: human_story_exact_claim and
-// social_campaign_preparation are already applied (ledger 20261031204433 /
-// 20261101062748). Exact canonical SQL matches the applied statements; no SQL
-// is applied here. 167/153 -> 169/155; frozen histories and enforcement unchanged.
-// Nov 2 Harvey/Handlarbörsen live-SCB candidate provenance: 169/155 -> 170/156.
-// Forward-only constraint reconciliation only; no grandfathering or bypass.
-// Nov 2 explicit editorial-only drafts: one new enforced migration, no allowlist changes.
-// Controlled initial outreach: 172/158, enforced; pending reviewed live application.
-// Source-only dependency reconciliation: two exact SQL files from main, one
-// from reviewed PR #633. No apply, version repair, new exception or SQL rewrite.
-export const EXPECTED_CANONICAL_SQL_COUNT = 175
+// Owner cross-chat context APPLIED 20261031145817. Source-only reconciliation of
+// two parallel Harvey migrations already APPLIED 20261031120736 / 20261031120804.
+// Their exact SQL body hashes were matched to the production ledger before inclusion.
+// Source-only reconciliation, 2026-11-13: WebBuilder prospects SQL was ALREADY
+// applied in production as ledger 20261109111500_webbuilder_prospects. The exact
+// canonical source (file 20261108094559_) has SHA-256
+// 03dfd37e3749030523094dbdbca20b86a54b410b7be4acfa79f2ed6592b6014c
+// matching the CRLF-normalized applied statement. No SQL replay, history edit,
+// legacy allowlist expansion, emergency override, or frozen baseline adjustment.
+// Office visit sessions adds one enforced migration; pending reviewed apply.
+// Reconciled with the already-applied Family social migration restored in PR #638.
+export const EXPECTED_CANONICAL_SQL_COUNT = 177
 export const EXPECTED_ENFORCED_COUNT = 163
 
-// Two already-applied, hash-pinned main references; no SQL copy, apply, or legacy exception.
-// Local canonical SQL stays 175; 161 local + 2 references are mandatory.
+// Both former external references now exist in the canonical 177-file corpus.
+// Keep exact ledger-version and SQL-hash pins for attestation verification; never count them twice.
 export const REFERENCED_LEDGER_MIGRATIONS = Object.freeze(
   [
   {
@@ -127,7 +122,8 @@ export const REFERENCED_LEDGER_MIGRATIONS = Object.freeze(
   }
 ].map(reference => Object.freeze(reference)),
 )
-export const EXPECTED_REFERENCED_LEDGER_COUNT = 2
+export const EXPECTED_REFERENCED_LEDGER_COUNT = 0
+const EXPECTED_PINNED_LEDGER_METADATA_COUNT = 2
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([
@@ -221,7 +217,7 @@ export function assertMigrationGuardPolicyIntegrity({
   if (MIGRATION_GUARD_POLICY_VERSION !== 2) {
     throw new Error(`unexpected migration guard policy version: ${MIGRATION_GUARD_POLICY_VERSION}`)
   }
-  if (EXPECTED_CANONICAL_SQL_COUNT + EXPECTED_REFERENCED_LEDGER_COUNT !== EXPECTED_GRANDFATHERED_COUNT + EXPECTED_ENFORCED_COUNT) {
+  if (EXPECTED_CANONICAL_SQL_COUNT !== EXPECTED_GRANDFATHERED_COUNT + EXPECTED_ENFORCED_COUNT) {
     throw new Error('canonical, grandfathered, and enforced count tripwires disagree')
   }
   if (grandfatheredNames.length !== EXPECTED_GRANDFATHERED_COUNT) {
@@ -286,24 +282,23 @@ export function inspectCanonicalMigrationFiles(
     throw new Error(`legacy-only name(s) unexpectedly became canonical:\n${formatNames(legacyOverlap)}`)
   }
 
-  if (REFERENCED_LEDGER_MIGRATIONS.length !== EXPECTED_REFERENCED_LEDGER_COUNT) {
-    throw new Error('referenced migration count drifted')
-  }
+  if (REFERENCED_LEDGER_MIGRATIONS.length !== EXPECTED_PINNED_LEDGER_METADATA_COUNT ||
+      EXPECTED_REFERENCED_LEDGER_COUNT !== 0) throw new Error('pinned migration metadata count drifted')
+  const pinnedNames = REFERENCED_LEDGER_MIGRATIONS.map(reference => reference.name)
+  if (duplicates(pinnedNames).length) throw new Error('duplicate pinned migration metadata')
   for (const reference of REFERENCED_LEDGER_MIGRATIONS) {
     if (!EXPLICIT_LEDGER_NAME.test(reference.name) || !/^\d+$/.test(reference.ledgerVersion) ||
         !/^[a-f0-9]{40}$/.test(reference.sourceCommit) || !/^[a-f0-9]{40}$/.test(reference.sourceBlob) ||
         !/^[a-f0-9]{64}$/.test(reference.sqlSha256) ||
         !reference.sourcePath.endsWith('_' + reference.name + '.sql') ||
-        repositoryNameSet.has(reference.name) || legacyOnlyNames.includes(reference.name) ||
-        grandfatheredNames.includes(reference.name)) {
-      throw new Error('invalid or overlapping referenced migration')
+        legacyOnlyNames.includes(reference.name) || grandfatheredNames.includes(reference.name) ||
+        (expectedCanonicalCount === EXPECTED_CANONICAL_SQL_COUNT && !repositoryNameSet.has(reference.name))) {
+      throw new Error('invalid or missing pinned canonical migration metadata')
     }
   }
-  const references = REFERENCED_LEDGER_MIGRATIONS.map(reference => reference.name)
-  if (duplicates(references).length) throw new Error('duplicate referenced migration')
-  const trackedNames = [...repositoryNames, ...references]
+
   const grandfathered = new Set(grandfatheredNames)
-  const enforcedNames = trackedNames.filter((name) => !grandfathered.has(name))
+  const enforcedNames = repositoryNames.filter((name) => !grandfathered.has(name))
   if (enforcedNames.length !== expectedEnforcedCount) {
     throw new Error(`enforced migration count drifted: expected ${expectedEnforcedCount}, got ${enforcedNames.length}`)
   }
@@ -311,8 +306,8 @@ export function inspectCanonicalMigrationFiles(
   return {
     policyVersion: MIGRATION_GUARD_POLICY_VERSION,
     sqlFiles,
-    repositoryNames: trackedNames,
-    referencedMigrations: REFERENCED_LEDGER_MIGRATIONS,
+    repositoryNames,
+    referencedMigrations: [],
     enforcedNames,
     grandfatheredNames: [...grandfatheredNames],
     legacyOnlyNames: [...legacyOnlyNames],
@@ -381,7 +376,6 @@ export function evaluateAppliedMigrationLedger(appliedNames, repositoryState) {
 
 // Integrated maind3f9fcc: news-review source already applied; calendar remains pending. Canonical148/enforced134; frozen14/30 unchanged.
 
-// Historical rollout note retained from main; this merge applies no SQL.
 // Nov1 owner-approved Nova campaign rollout: human_story_exact_claim is source-only
 // reconciliation of live ledger20261031204433 (SHA256 a7ffd88a4b1881b3173e4dfe98af5d6d6ea1d7bb47b0c09411954cbd698a32e6).
 // social_campaign_preparation is the only new apply. Frozen14/30 lists unchanged.

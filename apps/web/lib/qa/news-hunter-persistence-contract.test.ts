@@ -214,7 +214,7 @@ describe('News Hunter persistence contract', () => {
     }))
   })
 
-  it('step1 passes its ten-second article budget to the HTTP client before any script spend', async () => {
+  it('step1 passes its six-second article budget to the HTTP client before any script spend', async () => {
     vi.useFakeTimers()
     const stop = new Error('synthetic stop before paid script generation')
     const db = makeDb({ mediaNewsInsertResults: [{ data: { id: 'news-new' }, error: null }] })
@@ -229,7 +229,7 @@ describe('News Hunter persistence contract', () => {
     mocks.callHermesRead.mockRejectedValue(stop)
     try {
       await expect(step1GET(cronRequest('/api/media/cron/step1'))).rejects.toThrow(stop)
-      expect(mocks.callHermesRead).toHaveBeenCalledWith('https://techcrunch.com/old-story', 10_000)
+      expect(mocks.callHermesRead).toHaveBeenCalledWith('https://techcrunch.com/old-story', 6_000)
       expect(mocks.runNewsHunter).toHaveBeenCalledTimes(1)
       expect(mocks.anthropicCreate).not.toHaveBeenCalled()
     } finally {

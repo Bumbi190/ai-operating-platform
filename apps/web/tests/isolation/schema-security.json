@@ -105,7 +105,8 @@
     "sales_discovery_live_reconciliation_note": "Scoped read-only production metadata observation 2026-11-01 in iboepohjwrhtgshrqaol for sales_discovery_batches and sales_discovery_candidates after the already-applied sales_discovery_candidates migration (ledger 20261031120804). Both tables: RLS enabled, FORCE RLS off, zero policies, no effective anon/authenticated table privileges, service_role SELECT/INSERT/UPDATE only. The service_role boolean records reachability, not unrestricted privileges. These two SERVER_ONLY rows replace their earlier created_not_live entries and planning note. No table data was read and no SQL writes or runtime activation were performed by this source reconciliation. The earlier full-catalog capture date and all 185 existing table rows remain unchanged.",
     "social_campaign_live_reconciliation_note": "Scoped read-only production metadata observation 2026-11-01 in iboepohjwrhtgshrqaol for social_campaigns and social_campaign_items after the already-applied social_campaign_preparation migration (ledger 20261101062748; canonical file 20261101062259). Both tables: RLS and FORCE RLS enabled, zero policies, no effective anon/authenticated table privileges, service_role SELECT/INSERT/UPDATE only. Classification SERVER_ONLY; the service_role boolean records reachability only. No table data was read and no SQL writes, image generation or publication were performed by this source reconciliation. Together with the two scoped Sales additions, the registry now contains 189 classified table rows; this is not a new full-catalog capture. Earlier table/view classifications and capture dates remain unchanged.",
     "sales_initial_sending_note": "Owner-approved sales_initial_sending applied to production 2026-11-03 at ledger version 20261103082558. Scoped live catalog verified three tables: RLS enabled, zero policies, no anon/authenticated privileges, service_role SELECT/INSERT (jobs/policies also UPDATE), no DELETE. All fifteen approved function bodies match; invoker, empty search_path, service-only EXECUTE. Events sequence revoked from clients. No policy seeded; all three tables empty. Only these three classifications were reconciled; no full-catalog recapture claimed.",
-    "webbuilder_prospect_scoped_observation": "Read-only catalog observation 2026-11-13T06:23:06.82672Z in iboepohjwrhtgshrqaol, postgres: website_prospects, website_prospect_revisions and website_prospect_decisions each have RLS enabled, one authenticated owner/project-scoped SELECT policy, no anon table privileges, authenticated SELECT only and technical service_role SELECT reachability. Only these three rows are newly classified TENANT_RLS; all other observations retain their original scopes/dates. No table rows read, SQL apply, history repair or runtime authority."
+    "webbuilder_prospect_scoped_observation": "Read-only catalog observation 2026-11-13T06:23:06.82672Z in iboepohjwrhtgshrqaol, postgres: website_prospects, website_prospect_revisions and website_prospect_decisions each have RLS enabled, one authenticated owner/project-scoped SELECT policy, no anon table privileges, authenticated SELECT only and technical service_role SELECT reachability. Only these three rows are newly classified TENANT_RLS; all other observations retain their original scopes/dates. No table rows read, SQL apply, history repair or runtime authority.",
+    "office_webbuilder_prospects_observation_20261113": "Scoped read-only production catalog observation 2026-11-13, iboepohjwrhtgshrqaol: website_prospects, website_prospect_revisions and website_prospect_decisions have RLS ON, FORCE OFF, exactly one authenticated owner-scoped SELECT policy each, no anon table privilege, authenticated SELECT only and service-role SELECT reachability. TENANT_RLS classification records existing access only. Existing canonical SQL is already applied under ledger20261109111500; no SQL application, privilege/policy change, business-data read or sending authority. All earlier entries and capture scopes remain unchanged."
   },
   "tables": {
     "sales_discovery_batches": {
@@ -1991,7 +1992,9 @@
       "policies": 1,
       "anon_grants": false,
       "authenticated_grants": true,
-      "service_role": true
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "website_prospect_revisions": {
       "class": "TENANT_RLS",
@@ -1999,7 +2002,9 @@
       "policies": 1,
       "anon_grants": false,
       "authenticated_grants": true,
-      "service_role": true
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "website_prospects": {
       "class": "TENANT_RLS",
@@ -2007,7 +2012,9 @@
       "policies": 1,
       "anon_grants": false,
       "authenticated_grants": true,
-      "service_role": true
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     }
   },
   "views": {

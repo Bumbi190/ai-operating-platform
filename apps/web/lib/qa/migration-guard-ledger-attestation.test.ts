@@ -65,7 +65,7 @@ describe('owner-attested ledger with external trust root', () => {
   it('passes a fresh, cryptographically authenticated synthetic ledger through actual Harvey Guard', async () => {
     const result = await verifyLedgerAttestation(input())
     expect(result.status).toBe('PASS')
-    expect(result.result).toMatchObject({ canonicalSqlCount: 175, referencedMigrationCount: 2, enforcedCount: 163 })
+    expect(result.result).toMatchObject({ canonicalSqlCount: 177, referencedMigrationCount: 0, enforcedCount: 163 })
   })
   it('runs without network, SCB, database clients or production credentials', async () => {
     const fetch = vi.fn(() => { throw Error('network forbidden') })

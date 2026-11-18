@@ -17,19 +17,9 @@ import { CONTENT_GROWTH_QA_GUIDANCE } from '@/lib/content-growth/guidance'
 import { getMediaTextClient } from '@/lib/media/text-client'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 import type { ExecutionContract } from '@/lib/governance/execution-stop'
-
-export interface QualityScore {
-  hook_strength: number          // Hook Score — stoppar de första <2s scrollen?
-  retention_score: number        // håller storyn kvar tittaren hela klippet?
-  visual_relevance: number       // kan storyn representeras av konkreta, story-specifika visuals?
-  shareability: number           // skulle någon faktiskt dela detta?
-  discussion_potential: number   // triggar det kommentarer/debatt?
-  hallucination_risk: number     // 10 = inga påhittade fakta, 0 = mycket riskabelt
-  overall: number
-  passed: boolean
-  verdict: string                // one-sentence explanation
-  weak_spots: string[]           // specific things to fix
-}
+import { failedQualityScore, parseQualityScore, type QualityScore } from './quality-evaluation'
+export { failedQualityScore, shouldRegenerate, parseQualityScore } from './quality-evaluation'
+export type { QualityScore } from './quality-evaluation'
 
 const QUALITY_SYSTEM = `You are the editorial quality director for "The Prompt" — a premium AI news channel.
 
@@ -102,7 +92,7 @@ export async function scoreScript(
 
   const res = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 400,
+    max_tokens: 800,
     system: QUALITY_SYSTEM,
     messages: [{
       role: 'user',
@@ -117,22 +107,20 @@ ${sourceContext.slice(0, 600)}`,
     }],
   })
 
-  const raw = res.content[0].type === 'text' ? res.content[0].text : ''
-  const clean = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
-
-  try {
-    return JSON.parse(clean) as QualityScore
-  } catch {
-    // Fallback if JSON parse fails — don't block the pipeline
-    return {
-      hook_strength: 8, retention_score: 8, visual_relevance: 8, shareability: 8,
-      discussion_potential: 8, hallucination_risk: 8, overall: 8.0, passed: true,
-      verdict: 'Quality check parse error — proceeding with caution.', weak_spots: [],
-    }
+  const raw = res.content.filter(block => block.type === 'text').map(block => block.text).join('\n')
+  // Preserve the fail-closed gate. Only emit non-sensitive response metadata.
+  if (res.stop_reason === 'max_tokens') {
+    console.warn('[quality] Incomplete editorial response', { reason: 'max_tokens', chars: raw.length })
+    return failedQualityScore('Quality check truncated — manual editorial review required.')
   }
+  const quality = parseQualityScore(raw)
+  if (quality.verdict === 'Quality check invalid or malformed — manual editorial review required.') {
+    console.warn('[quality] Invalid editorial response', {
+      stopReason: res.stop_reason,
+      contentTypes: res.content.map(block => block.type),
+      chars: raw.length,
+    })
+  }
+  return quality
 }
 
-/** Returns true if the script should be regenerated. Bar: overall ≥ 8, hook ≥ 8, faktasäkert. */
-export function shouldRegenerate(score: QualityScore): boolean {
-  return score.overall < 8.0 || score.hook_strength < 8 || score.hallucination_risk < 7
-}

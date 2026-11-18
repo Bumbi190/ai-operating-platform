@@ -231,15 +231,24 @@ describe('verified historical debt', () => {
     const guard = await import(guardPath)
     // These are explicit historical fixture counts, not a change to active
     // Guard defaults. The separate active-catalog test below uses no overrides.
-    const currentState = guard.inspectCanonicalMigrationFiles(files.map((x: any) => x.file), {
-      expectedCanonicalCount: 175, expectedEnforcedCount: 163,
-    })
+    const later = new Set<string>(guard.REFERENCED_LEDGER_MIGRATIONS.map((r: any) => r.name))
+    // Explicit historical fixture only: preserve its immutable 175 captured SQL
+    // files and model the two later mandatory names without altering active defaults.
+    const historicalNames = [...files.map((x: any) => guard.migrationNameFromFile(x.file)), ...later]
+    const currentState = {
+      policyVersion: guard.MIGRATION_GUARD_POLICY_VERSION,
+      sqlFiles: files.map((x: any) => x.file),
+      repositoryNames: historicalNames,
+      enforcedNames: historicalNames.filter((name: string) => !guard.GRANDFATHERED_MIGRATION_NAMES.includes(name)),
+      grandfatheredNames: [...guard.GRANDFATHERED_MIGRATION_NAMES],
+      legacyOnlyNames: [...guard.LEGACY_ONLY_PRODUCTION_LEDGER_NAMES],
+      referencedMigrations: [],
+    }
     // The immutable Nov12 capture predates both enforced main references.
     // Active Guard must reject it; this explicit historical model only proves
     // the pre-existing name-only limitation, without a runtime bypass.
     const names = observation.ledger.map((x: any) => x.name)
     expect(() => guard.evaluateAppliedMigrationLedger(names, currentState)).toThrow(/not applied to the production ledger/)
-    const later = new Set(guard.REFERENCED_LEDGER_MIGRATIONS.map((r: any) => r.name))
     const state = {
       ...currentState,
       repositoryNames: currentState.repositoryNames.filter((name: string) => !later.has(name)),

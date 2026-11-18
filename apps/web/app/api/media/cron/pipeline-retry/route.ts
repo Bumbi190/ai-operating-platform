@@ -216,7 +216,10 @@ export async function GET(request: Request) {
         log('Inget script genererat idag — kör om step1')
         const r = await callStep('/api/media/cron/step1', '')   // step1 ignorerar scriptId, kör hela hunten
         results.step1Guard = r
-        if (!r.ok) {
+        // Give the 5-minute recovery loop 15 minutes before declaring an incident.
+        // One mail per checkpoint instead of a false alarm on the first 504.
+        const minute = new Date().getUTCMinutes()
+        if (!r.ok && minute >= 15 && minute < 20) {
           await sendPipelineAlert({
             cronRoute: 'cron/pipeline-retry', step: 'step1_guard',
             error: `step1 producerade inget innehåll idag och omkörning misslyckades (HTTP ${r.status ?? '?'})`,

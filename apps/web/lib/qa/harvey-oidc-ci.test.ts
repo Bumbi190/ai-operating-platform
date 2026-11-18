@@ -842,3 +842,109 @@ describe.runIf(process.platform === 'linux')('GNU tar output packing (real local
     expect(()=>checkArtifact(artifact,manifest,manifest)).toThrow()
   })
 })
+
+// Synthetic GitHub boundaries; owner metadata is not technical egress isolation.
+describe('explicit owner-supervised verification-only handoff', () => {
+  async function ready() {
+    const f=fixture();await f.chain();f.publication()
+    delete f.e.VERCEL_TOKEN;delete f.e.HARVEY_OIDC_PUBLICATION_ENABLED
+    f.e.HARVEY_OIDC_HANDOFF_ENABLED='true';f.e.GITHUB_RUN_ID='902';f.facts['actions/runs/902']=run('902')
+    const isolation={schema:'omnira-oidc-isolation-review/v1',sourceSha:sha,targetProject:CI_POLICY.targetProject,
+      team:CI_POLICY.team,target:'preview',issuedAt:now-1,expiresAt:now+290,environmentVariableNames:[],domains:[],
+      gitConnected:false,deploymentCount:0,cronCount:0,productionAccessReviewedAbsent:true}
+    f.e.HARVEY_OIDC_ISOLATION_FILE=resolve(f.cwd,'harvey-oidc-secret/isolation.json')
+    const save=()=>{const raw=canonicalJson(isolation);writeFileSync(f.e.HARVEY_OIDC_ISOLATION_FILE,raw,{mode:0o600})
+      f.reviews['902']=[review({kind:'handoff',runId:'902',receiptRunId:runId,sourceSha:sha,
+        subjectDigest:digest(readFileSync(resolve(f.output,'receipt.json'))),artifactDigest:digest(f.artifact),
+        isolationDigest:digest(raw),targetProject:CI_POLICY.targetProject,target:'preview'})]}
+    save();return {...f,isolation,save,handoffOutput:resolve(f.cwd,'handoff')}
+  }
+  it('verifies exact signed evidence and emits only a non-authorizing summary, never a deployment',async()=>{
+    const f=await ready(),result=await f.adapter().handoff(f.handoffOutput)
+    expect(result).toMatchObject({status:'VERIFIED_HANDOFF_NOT_AUTHORIZED',sourceSha:sha,runId:'902',receiptRunId:runId,
+      artifactDigest:digest(f.artifact),cronDefinitions:0,publicationAuthorized:false,deployed:false,reserved:false,
+      globallySingleUse:false,ciExclusivePublication:false,separatePublicationApprovalRequired:true})
+    expect(readdirSync(f.handoffOutput)).toEqual(['handoff.json'])
+    const raw=readFileSync(resolve(f.handoffOutput,'handoff.json'),'utf8');expect(JSON.parse(raw)).toEqual(result)
+    for(const secret of [f.ledgerInput.value,f.e.GH_TOKEN,canonicalJson(f.isolation),'synthetic-publish-token'])expect(raw).not.toContain(secret)
+    expect(f.command.mock.calls.some(c=>c[0]==='vercel'||c[0]==='npm'||c[1].includes('POST'))).toBe(false)
+    expect(f.server.refs.size).toBe(0);expect(f.server.publications).toBe(0)
+  })
+  it.each(['HARVEY_OIDC_HANDOFF_ENABLED','HARVEY_OIDC_ISOLATION_FILE'])('denies missing explicit input %s',async key=>{
+    const f=await ready();delete f.e[key];await expect(f.adapter().handoff(f.handoffOutput)).rejects.toThrow();expect(existsSync(f.handoffOutput)).toBe(false)
+  })
+  it.each(['VERCEL_TOKEN','HARVEY_OIDC_PUBLICATION_ENABLED','SUPABASE_SERVICE_ROLE_KEY','NEXT_PUBLIC_SUPABASE_URL',
+    'DATABASE_URL','SCB_KEY','AWS_ACCESS_KEY_ID','CRON_SECRET','P256_PRIVATE_KEY'])('denies publish/production capability %s',async key=>{
+    const f=await ready();f.e[key]=key==='HARVEY_OIDC_PUBLICATION_ENABLED'?'true':'SYNTHETIC-FORBIDDEN-CANARY'
+    await expect(f.adapter().handoff(f.handoffOutput)).rejects.toThrow(deny);expect(f.server.publications).toBe(0)
+  })
+  it.each(['sourceSha','targetProject','team','target','issuedAt','expiresAt','environmentVariableNames','domains',
+    'gitConnected','deploymentCount','cronCount','productionAccessReviewedAbsent'])('denies bad owner-reviewed isolation field %s',async key=>{
+    const f=await ready();(f.isolation as any)[key]='wrong';f.save();await expect(f.adapter().handoff(f.handoffOutput)).rejects.toThrow(deny)
+  })
+  it('rejects unknown metadata fields instead of copying possible secrets',async()=>{
+    const f=await ready();(f.isolation as any).secret='SYNTHETIC-PRIVATE-CANARY';f.save()
+    await expect(f.adapter().handoff(f.handoffOutput)).rejects.toThrow(deny);expect(existsSync(f.handoffOutput)).toBe(false)
+  })
+  it.each([300,301])('denies expired metadata at +%s seconds',async delta=>{
+    const f=await ready();f.advance(now+delta);await expect(f.adapter().handoff(f.handoffOutput)).rejects.toThrow(deny)
+  })
+  it('denies lifetime above 300 seconds',async()=>{
+    const f=await ready();f.isolation.expiresAt=now+300;f.save();await expect(f.adapter().handoff(f.handoffOutput)).rejects.toThrow(deny)
+  })
+  it('denies symlink owner metadata',async()=>{
+    const f=await ready(),path=f.e.HARVEY_OIDC_ISOLATION_FILE;renameSync(path,path+'.real');symlinkSync(path+'.real',path,'file')
+    await expect(f.adapter().handoff(f.handoffOutput)).rejects.toThrow()
+  })
+  it.runIf(process.platform==='linux')('rejects publicly readable owner metadata',async()=>{
+    const f=await ready();chmodSync(f.e.HARVEY_OIDC_ISOLATION_FILE,0o644)
+    await expect(f.adapter().handoff(f.handoffOutput)).rejects.toThrow(deny)
+  })
+  it('CLI failure prints only a generic error, never supplied secrets',()=>{
+    const result=execFileSync(process.execPath,['--input-type=module','-e',
+      `import {spawnSync} from 'node:child_process';const r=spawnSync(process.execPath,[${JSON.stringify(resolve(__dirname,'../../scripts/harvey-oidc-ci.mjs'))},'handoff','--output','/tmp/unapproved-handoff'],{env:{HARVEY_OIDC_HANDOFF_ENABLED:'false',SCB_KEY:'SYNTHETIC-SECRET-CANARY'},encoding:'utf8'});process.stdout.write(JSON.stringify({code:r.status,out:r.stdout,err:r.stderr}));`],{encoding:'utf8'})
+    const r=JSON.parse(result);expect(r.code).toBe(1);expect(r.out).toBe('')
+    expect(r.err).toBe('harvey-oidc-ci: verification failed (fail-closed)\n');expect(result).not.toContain('SYNTHETIC-SECRET-CANARY')
+  })
+  it.each(['GITHUB_SHA','GITHUB_RUN_ID','GITHUB_ACTOR_ID','GITHUB_WORKFLOW_SHA','HARVEY_OIDC_BUILD_TARGET'])('denies wrong CI/profile %s',async key=>{
+    const f=await ready();f.e[key]='wrong';await expect(f.adapter().handoff(f.handoffOutput)).rejects.toThrow(deny)
+  })
+  it.each(['owner','approval','isolation-digest'])('denies absent or mismatched protected %s',async kind=>{
+    const f=await ready()
+    if(kind==='owner')f.reviews['902'][0].user.id=123
+    if(kind==='approval')f.reviews['902']=[]
+    if(kind==='isolation-digest'){f.isolation.issuedAt--;writeFileSync(f.e.HARVEY_OIDC_ISOLATION_FILE,canonicalJson(f.isolation))}
+    await expect(f.adapter().handoff(f.handoffOutput)).rejects.toThrow(deny)
+  })
+  it.each(['artifact','manifest','receipt','signature'])('denies modified %s before output',async kind=>{
+    const f=await ready(),file=kind==='signature'?'receipt.sigstore.json':kind==='artifact'?'artifact.tar':kind+'.json'
+    writeFileSync(resolve(f.output,file),kind==='artifact'?tar('output/config.json',48,'{"version":3,"crons":[{}]}'):'{}')
+    await expect(f.adapter().handoff(f.handoffOutput)).rejects.toThrow();expect(existsSync(f.handoffOutput)).toBe(false)
+  })
+  it.each(['head_sha','actor','path','run_attempt'])('denies wrong proof run %s',async key=>{
+    const f=await ready();f.facts[`actions/runs/${runId}`][key]='wrong';await expect(f.adapter().handoff(f.handoffOutput)).rejects.toThrow(deny)
+  })
+  it('rejects expired ledger receipt even with fresh owner metadata',async()=>{
+    const f=await ready();f.advance(now+291);f.isolation.issuedAt=now+291;f.isolation.expiresAt=now+299;f.save()
+    await expect(f.adapter().handoff(f.handoffOutput)).rejects.toThrow(deny)
+  })
+  it('keeps Guard fail-closed for tampered ledger before receipt issuance',async()=>{
+    const f=fixture();f.ledgerInput.value=canonicalJson({...f.ledger,contentDigest:'0'.repeat(64)});f.reviews[runId]=[review(f.binding())]
+    await expect(f.chain()).rejects.toThrow();expect(existsSync(resolve(f.output,'receipt.json'))).toBe(false)
+  })
+  it('does not overwrite prior output or claim global single use',async()=>{
+    const f=await ready();await f.adapter().handoff(f.handoffOutput);await expect(f.adapter().handoff(f.handoffOutput)).rejects.toThrow()
+    expect(f.server.publications).toBe(0)
+  })
+  it('never falls back to handoff when the automatic journal fails',async()=>{
+    const f=fixture();await f.chain();f.approveReceipt();const output=f.publication();f.e.HARVEY_OIDC_HANDOFF_ENABLED='true';f.server.failCreate=true
+    await expect(f.adapter().publish(output)).rejects.toThrow();expect(f.server.publications).toBe(0)
+    expect(f.command.mock.calls.some(c=>c[1].includes('handoff'))).toBe(false);expect(existsSync(resolve(output,'handoff.json'))).toBe(false)
+  })
+  it('workflow is separately gated, read-only, credential-free and exports only summary',()=>{
+    const yaml=readFileSync(resolve(__dirname,'../../../../.github/workflows/migration-guard-integrity.yml'),'utf8'),job=yaml.slice(yaml.indexOf('\n  oidc_handoff:'))
+    expect(job).toContain("inputs.oidc_phase == 'handoff-preview'");expect(job).toContain('environment: harvey-oidc-owner-once')
+    expect(job).toContain('contents: read');expect(job).toContain('actions: read');expect(job).not.toContain('contents: write')
+    expect(job).not.toContain('VERCEL_TOKEN');expect(job).not.toContain('deploy --prebuilt');expect(job).toContain('handoff/handoff.json');expect(job).toContain('if: always()')
+  })
+})

@@ -251,13 +251,14 @@ const runCommand = (file, args, options = {}) => {
 
 
 // Read through one descriptor: a pathname/type check must never authorize a later reopen.
-function readEvidenceFile(path, allowEmpty = false) {
+function readEvidenceFile(path, allowEmpty = false, privateInput = false) {
   let fd
   try {
     requireOk(isAbsolute(path))
     fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0))
     const before = fstatSync(fd), entry = lstatSync(path)
-    requireOk(before.isFile() && entry.isFile() && before.nlink === 1 &&
+    requireOk((!privateInput || process.platform !== 'linux' || (before.mode & 0o077) === 0) &&
+      before.isFile() && entry.isFile() && before.nlink === 1 &&
       before.dev === entry.dev && before.ino === entry.ino && (allowEmpty || before.size > 0) && before.size <= MAX_BYTES)
     const bytes = readFileSync(fd), after = fstatSync(fd)
     requireOk(before.size === bytes.length && after.size === before.size &&
@@ -591,6 +592,65 @@ export function createAdapter({ env = process.env, cwd = process.cwd(), command 
       return { ...admitted, deployed: true, url }
     } finally { rmSync(staged, { recursive: true, force: true }) }
   }
+  // Explicit verification-only handoff. No Vercel command, Git mutation or fallback.
+  // The owner review binds the isolation metadata; this is an administrative
+  // live-configuration attestation, not an egress sandbox or a secret scanner.
+  async function handoff(output) {
+    requireOk(env.HARVEY_OIDC_HANDOFF_ENABLED === 'true' &&
+      env.HARVEY_OIDC_PUBLICATION_ENABLED !== 'true' && !env.VERCEL_TOKEN)
+    for (const [name, value] of Object.entries(env))
+      requireOk(!value || !/^(?:NEXT_PUBLIC_SUPABASE|SUPABASE|DATABASE_|DIRECT_URL$|PGHOST$|PGPASSWORD$|SCB|AWS_|CRON_SECRET$|P256|P_256)/.test(name))
+    await preflight()
+    oidcBuildProfile(env, readEvidenceFile(resolve(cwd, 'apps/web/vercel.json')).toString('utf8'))
+    const isolationPath = resolve(env.RUNNER_TEMP, 'harvey-oidc-secret/isolation.json')
+    requireOk(env.HARVEY_OIDC_ISOLATION_FILE === isolationPath)
+    const isolationBytes = readEvidenceFile(isolationPath, false, true), isolation = parse(isolationBytes.toString('utf8'))
+    const keys = ['schema','sourceSha','targetProject','team','target','issuedAt','expiresAt',
+      'environmentVariableNames','domains','gitConnected','deploymentCount','cronCount','productionAccessReviewedAbsent']
+    requireOk(canonicalJson(Object.keys(isolation).sort()) === canonicalJson(keys.sort()) &&
+      isolation.schema === 'omnira-oidc-isolation-review/v1' && isolation.sourceSha === trust.sha &&
+      isolation.targetProject === CI_POLICY.targetProject && isolation.team === CI_POLICY.team && isolation.target === 'preview' &&
+      Number.isSafeInteger(isolation.issuedAt) && Number.isSafeInteger(isolation.expiresAt) &&
+      isolation.issuedAt <= now() && isolation.expiresAt > now() && isolation.expiresAt > isolation.issuedAt &&
+      isolation.expiresAt - isolation.issuedAt <= 300 && now() - isolation.issuedAt <= 300 &&
+      Array.isArray(isolation.environmentVariableNames) && isolation.environmentVariableNames.length === 0 &&
+      Array.isArray(isolation.domains) && isolation.domains.length === 0 && isolation.gitConnected === false &&
+      isolation.deploymentCount === 0 && isolation.cronCount === 0 && isolation.productionAccessReviewedAbsent === true)
+    const privateDirectory = mkdtempSync(resolve(tmpdir(), 'harvey-oidc-handoff-'))
+    try {
+      const proof = resolve(privateDirectory, 'proof'); await downloadProof(proof)
+      const raw = readEvidenceFile(resolve(proof, 'receipt.json')), body = parse(raw.toString('utf8'))
+      const artifact = readEvidenceFile(resolve(proof, 'artifact.tar'))
+      const manifest = parse(readEvidenceFile(resolve(proof, 'manifest.json')).toString('utf8'))
+      const ctx = context(digest(artifact), manifest, body.runId)
+      requireOk(body.runId === env.PROOF_RUN_ID && manifest.sourceDigest === sourceDigest())
+      checkArtifact(artifact, manifest, ctx)
+      checkRun(api(`actions/runs/${body.runId}`), trust, body.runId, true)
+      for (const value of [env.GH_TOKEN, env.LEDGER_JSON, env.HARVEY_OIDC_LEDGER_EXPORT_JSON])
+        requireOk(!value || !artifact.includes(Buffer.from(value)))
+      requireOk(!/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/.test(artifact.toString('latin1')))
+      const binding = { kind: 'handoff', runId: env.GITHUB_RUN_ID, receiptRunId: body.runId, sourceSha: trust.sha,
+        subjectDigest: digest(raw), artifactDigest: ctx.artifactDigest, isolationDigest: digest(isolationBytes),
+        targetProject: CI_POLICY.targetProject, target: 'preview' }
+      const origin = await verifiedOrigin(raw, resolve(proof, 'receipt.sigstore.json'), body.runId, binding)
+      const trusted = { issuer: CI_POLICY.issuer, receiptWorkflow: origin.workflow,
+        receiptWorkflowSha: trust.workflowSha, receiptApprovalId: origin.approvalId }
+      await verifyPublicationReceipt({ raw: raw.toString('utf8'), proof: {}, trusted, verifyOrigin: async () => origin,
+        context: ctx, artifact, now: now() })
+      const summary = { schema: 'omnira-oidc-manual-handoff/v1', status: 'VERIFIED_HANDOFF_NOT_AUTHORIZED',
+        sourceSha: trust.sha, workflowSha: trust.workflowSha, runId: env.GITHUB_RUN_ID, receiptRunId: body.runId,
+        buildRunId: manifest.buildRunId, artifactDigest: ctx.artifactDigest, manifestDigest: digest(canonicalJson(manifest)),
+        receiptDigest: digest(raw), isolationDigest: digest(isolationBytes), targetProject: CI_POLICY.targetProject, target: 'preview',
+        issuedAt: now(), expiresAt: Math.min(body.expiresAt, isolation.expiresAt), cronDefinitions: 0,
+        isolationEvidence: 'owner-reviewed-metadata', requiredPublisherId: CI_POLICY.ownerId,
+        separatePublicationApprovalRequired: true, publicationAuthorized: false, deployed: false, reserved: false,
+        globallySingleUse: false, ciExclusivePublication: false }
+      requireOk(summary.expiresAt > now())
+      mkdirSync(output, { mode: 0o700 })
+      writeFileSync(resolve(output, 'handoff.json'), canonicalJson(summary), { flag: 'wx', mode: 0o600 })
+      return summary
+    } finally { rmSync(privateDirectory, { recursive: true, force: true }) }
+  }
   // Create-only GitHub ref: a successful claim is never removed, even if publication fails.
   async function verifyPublication({ directory, approvalRunId }) {
     await preflight(); requireOk(ID.test(approvalRunId ?? '') && approvalRunId === env.GITHUB_RUN_ID)
@@ -628,13 +688,13 @@ export function createAdapter({ env = process.env, cwd = process.cwd(), command 
     return { ...result, reserved: true, deployed: false, reservationRef: ref, expiresAt: body.expiresAt, receiptRunId: body.runId }
 
   }
-  return { build, prepare, guard, evidence, preflight, verifiedOrigin, verifyPublication, publish }
+  return { build, prepare, guard, evidence, preflight, verifiedOrigin, verifyPublication, publish, handoff }
 }
 
 export async function main(args = process.argv.slice(2)) {
   const [mode, option, output] = args
-  requireOk(args.length === 3 && ['build','prepare','guard','evidence','publish'].includes(mode) &&
-    option === (['build','prepare','publish'].includes(mode) ? '--output' : '--directory') && isAbsolute(output))
+  requireOk(args.length === 3 && ['build','prepare','guard','evidence','publish','handoff'].includes(mode) &&
+    option === (['build','prepare','publish','handoff'].includes(mode) ? '--output' : '--directory') && isAbsolute(output))
   return createAdapter()[mode](resolve(output))
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

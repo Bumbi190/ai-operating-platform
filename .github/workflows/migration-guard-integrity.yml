@@ -14,7 +14,7 @@ on:
     inputs:
       oidc_phase:
         type: choice
-        options: [integrity-only, build-artifact, attest-ledger, publish-preview]
+        options: [integrity-only, build-artifact, attest-ledger, publish-preview, handoff-preview]
         default: integrity-only
         description: Owner-only phases; publication requires separate live approval and configuration
       harvey_sha:
@@ -370,3 +370,66 @@ jobs:
           PROOF_ARTIFACT_ID: ${{ inputs.proof_artifact_id }}
           VERCEL_TOKEN: ${{ secrets.HARVEY_OIDC_PREVIEW_PUBLISH_TOKEN }}
         run: node apps/web/scripts/harvey-oidc-ci.mjs publish --output "$RUNNER_TEMP/harvey-oidc-publication"
+
+  # Explicit owner-supervised verification only. Never reserves or publishes.
+  # Empty runtime config is owner-attested metadata, not technical egress isolation.
+  oidc_handoff:
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.oidc_phase == 'handoff-preview' &&
+      github.actor_id == '158544361' && github.repository_id == '1244338545'
+    needs: integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: harvey-oidc-owner-once
+    env: *adapter_trust
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Fail closed before executing repository code
+        shell: bash
+        env: *oidc_trust
+        run: *oidc_preflight
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ vars.HARVEY_OIDC_APPROVED_SOURCE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 24
+      - name: Materialize protected isolation review without logging its contents
+        env:
+          OWNER_ISOLATION: ${{ secrets.HARVEY_OIDC_ISOLATION_REVIEW_JSON }}
+        run: |
+          node --input-type=module <<'NODE'
+          import {mkdirSync,writeFileSync} from 'node:fs'
+          import {resolve} from 'node:path'
+          const raw=process.env.OWNER_ISOLATION
+          if(!raw || Buffer.byteLength(raw)>4096)throw Error('Protected isolation review unavailable')
+          const dir=resolve(process.env.RUNNER_TEMP,'harvey-oidc-secret')
+          mkdirSync(dir,{mode:0o700})
+          writeFileSync(resolve(dir,'isolation.json'),raw,{flag:'wx',mode:0o600})
+          NODE
+      - name: Verify signed Guard receipt and artifact; stop before publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HARVEY_OIDC_HANDOFF_ENABLED: ${{ vars.HARVEY_OIDC_HANDOFF_ENABLED }}
+          HARVEY_OIDC_ISOLATION_FILE: ${{ runner.temp }}/harvey-oidc-secret/isolation.json
+          PROOF_RUN_ID: ${{ inputs.proof_run_id }}
+          PROOF_ARTIFACT_ID: ${{ inputs.proof_artifact_id }}
+        run: node apps/web/scripts/harvey-oidc-ci.mjs handoff --output "$RUNNER_TEMP/harvey-oidc-handoff"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: harvey-oidc-handoff-${{ github.sha }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/harvey-oidc-handoff/handoff.json
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 1
+      - name: Always remove private isolation metadata
+        if: always()
+        run: |
+          node --input-type=module <<'NODE'
+          import {rmSync} from 'node:fs'
+          import {resolve} from 'node:path'
+          rmSync(resolve(process.env.RUNNER_TEMP,'harvey-oidc-secret'),{recursive:true,force:true})
+          NODE

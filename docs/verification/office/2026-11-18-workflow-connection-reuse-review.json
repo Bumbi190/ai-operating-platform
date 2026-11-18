@@ -1,0 +1,18 @@
+{
+  "scope": "Office workflow connection continuation",
+  "decision": "reuse_existing",
+  "existing_branch": "feat/office-workflow-status-20261118",
+  "base_commit": "f62f9f28ad630620d61fa79bf29d0abb7200fe31",
+  "automated_result": "review_required",
+  "candidate_reviewed": {
+    "number": 581,
+    "title": "feat(Familje-Stunden): safe weekly AI drafts, owner consent and review notices",
+    "url": "https://github.com/Bumbi190/ai-operating-platform/pull/581",
+    "head": "feat/family-weekly-autoprep-20261028",
+    "sha": "f6c32ca6d1b59a3bef59014b47a27f1d1e61314f",
+    "base": "main",
+    "changed_file_count": 78,
+    "office_file_overlap": []
+  },
+  "reason": "PR 581 implements Familje-Stunden weekly draft preparation, enqueue and social review notices, not Office visit/workflow read transport. No Office files overlap. Continue the already-owned clean Office branch; no new branch/PR, merge, retarget or mutation to PR 581."
+}

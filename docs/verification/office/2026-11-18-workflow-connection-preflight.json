@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-11-18T10:18:00.543Z",
+  "repository": "Bumbi190/ai-operating-platform",
+  "project": "Omnira",
+  "task": "Continue Office workflow status browser consent companion visit transport and safe detach",
+  "workId": "OFFICE-WORKFLOW-STATUS-20261118",
+  "proposedBranch": "feat/office-workflow-status-20261118",
+  "mainSha": "8f73dfc21be4bb9e3656e3bf53b5c651a9ea66f4",
+  "openPrCount": 123,
+  "worktreeCount": 272,
+  "decision": "review_required",
+  "code": "matching_open_pr",
+  "candidates": [
+    {
+      "number": 581,
+      "title": "feat(Familje-Stunden): safe weekly AI drafts, owner consent and review notices",
+      "head": "feat/family-weekly-autoprep-20261028",
+      "url": "https://github.com/Bumbi190/ai-operating-platform/pull/581"
+    }
+  ],
+  "branchMatches": [],
+  "worktreeMatches": [
+    {
+      "branch": "feat/office-workflow-status-20261118",
+      "path": "D:/Projekt/Omnira/Worktrees/office-workflow-status-20261118",
+      "locked": false
+    }
+  ],
+  "reason": "Reuse this task clean existing worktree at f62f9f2; no new branch or PR.",
+  "limitations": "Metadata/local-name similarity is a hint; review actual file scope and agent ownership before new work.",
+  "sideEffects": "None. No branch, worktree, PR, commit, deployment or API mutation is performed."
+}

@@ -28,6 +28,8 @@ export function OfficeConnectionPanel({ projects, authenticated, sourceAvailable
   const [visitMode, setVisitMode] = useState(false)
   const [activityAvailable, setActivityAvailable] = useState(false)
   const [activityConsent, setActivityConsent] = useState(false)
+  const [workflowAvailable, setWorkflowAvailable] = useState(false)
+  const [workflowConsent, setWorkflowConsent] = useState(false)
   const [probing, setProbing] = useState(false)
   const [avatars, setAvatars] = useState<string[]>([])
   const [avatarId, setAvatarId] = useState('')
@@ -77,10 +79,12 @@ export function OfficeConnectionPanel({ projects, authenticated, sourceAvailable
     try {
       const capabilities = pair.current.protocol === 2
         ? await (await import('@/lib/atlas/office/visit-connection')).probeOfficeVisitCapabilities(pair.current, fetch, attempt.signal)
-        : { avatars: await probeOfficeRelay(pair.current, fetch, attempt.signal), activityAvailable: false }
+        : { avatars: await probeOfficeRelay(pair.current, fetch, attempt.signal), activityAvailable: false, workflowAvailable: false }
       if (mounted.current && probe.current === attempt && !attempt.signal.aborted) {
         setAvatars(capabilities.avatars)
         setActivityAvailable(capabilities.activityAvailable)
+        setWorkflowAvailable(capabilities.workflowAvailable === true)
+        setWorkflowConsent(false)
         setActivityConsent(false)
         setState({ phase: 'stopped', message: 'Datorn är ansluten · välj figur och agent' })
       }
@@ -88,6 +92,8 @@ export function OfficeConnectionPanel({ projects, authenticated, sourceAvailable
       if (mounted.current && probe.current === attempt && !attempt.signal.aborted) {
         setAvatars([])
         setActivityAvailable(false)
+        setWorkflowAvailable(false)
+        setWorkflowConsent(false)
         setActivityConsent(false)
         setState({ phase: 'unavailable', message: 'Datorn kunde inte anslutas. Öppna en ny Office-anslutning och försök igen.' })
       }
@@ -110,7 +116,7 @@ export function OfficeConnectionPanel({ projects, authenticated, sourceAvailable
         ? (await import('@/lib/atlas/office/visit-connection')).OfficeVisitConnection : OfficeConnection
       if (!mounted.current || document.hidden || attempt !== starts.current) { running.current = false; return }
       const controller = new Controller(pair.current, {
-        ...(activityConsent && activityAvailable ? { activity: true } : {}),
+        ...(workflowConsent && workflowAvailable ? { workflow: true } : activityConsent && activityAvailable ? { activity: true } : {}),
         onState: next => {
           if (mounted.current && connection.current === controller) {
             running.current = next.phase === 'connecting' || next.phase === 'fresh' || next.phase === 'detached'
@@ -133,7 +139,7 @@ export function OfficeConnectionPanel({ projects, authenticated, sourceAvailable
       <a href="/atlas/office" className="inline-flex min-h-11 items-center text-cyan-300 underline underline-offset-4">← Tillbaka till Office</a>
       <p className="mt-8 text-xs font-semibold uppercase tracking-widest text-cyan-300">Omnira Office</p>
       <h1 className="mt-3 text-3xl font-semibold sm:text-4xl">Koppla en agent till Pling</h1>
-      <p className="mt-4 leading-relaxed text-slate-300">Välj vilken registrerad projektagent figuren ska representera. Arbetsstatus visas som okänd tills en faktisk körning kan verifieras.</p>
+      <p className="mt-4 leading-relaxed text-slate-300">Välj vilken registrerad projektagent figuren ska representera. Arbetsstatus är okänd när anslutningen saknar verifierat underlag.</p>
 
       {!authenticated ? (
         <p className="mt-6 rounded-xl border border-slate-700 p-4">Logga in i en ny flik och öppna sedan en ny Office-anslutning. <a href="/login" target="_blank" rel="noopener noreferrer" className="text-cyan-300 underline">Logga in i Omnira</a></p>
@@ -167,17 +173,23 @@ export function OfficeConnectionPanel({ projects, authenticated, sourceAvailable
             {project?.agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
           </select>
         </div>
+        {visitMode && workflowAvailable ? <label className="flex items-start gap-3 text-sm leading-relaxed text-slate-300">
+          <input type="checkbox" checked={workflowConsent} disabled={active} onChange={event => { setWorkflowConsent(event.target.checked); if (event.target.checked) setActivityConsent(false) }} className="mt-1 h-5 w-5 shrink-0" />
+          <span>Låt Pling följa den valda agentens arbets- och fritidsstatus. Ett aktivt workflow håller Pling vid kontoret. Verifierad ledig status tillåter rast; okänd status håller kvar Pling. Detta startar inga uppdrag och bevisar inte pågående körning.</span>
+        </label> : null}
         {visitMode && activityAvailable ? <label className="flex items-start gap-3 text-sm leading-relaxed text-slate-300">
-          <input type="checkbox" checked={activityConsent} disabled={active} onChange={event => setActivityConsent(event.target.checked)} className="mt-1 h-5 w-5 shrink-0" />
+          <input type="checkbox" checked={activityConsent} disabled={active} onChange={event => { setActivityConsent(event.target.checked); if (event.target.checked) setWorkflowConsent(false) }} className="mt-1 h-5 w-5 shrink-0" />
           <span>Läs även registrerad stegaktivitet för den valda agenten under besöket. Endast tekniska aktivitetsuppgifter läses, utan promptar eller svarstexter. Detta startar inga uppdrag och bevisar inte att agenten arbetar just nu.</span>
         </label> : null}
         <div className="flex flex-wrap gap-3">
-          <button type="button" disabled={!authenticated || !sourceAvailable || active || probing || !avatars.includes(avatarId) || !projectId || !agentId} onClick={() => { void start() }} className={BUTTON_STYLE + ' bg-cyan-950'}>{visitMode ? (activityConsent ? 'Anslut med stegaktivitet' : 'Anslut för kontorsbesöket') : 'Koppla vald agent'}</button>
+          <button type="button" disabled={!authenticated || !sourceAvailable || active || probing || !avatars.includes(avatarId) || !projectId || !agentId} onClick={() => { void start() }} className={BUTTON_STYLE + ' bg-cyan-950'}>{visitMode ? (workflowConsent ? 'Anslut med arbets- och fritidsstatus' : activityConsent ? 'Anslut med stegaktivitet' : 'Anslut för kontorsbesöket') : 'Koppla vald agent'}</button>
           <button type="button" disabled={!active} onClick={() => { void connection.current?.stop() }} className={BUTTON_STYLE}>Koppla från</button>
         </div>
         <p role="status" aria-live="polite" className="border-t border-slate-700 pt-5 text-sm text-cyan-100">{state.message}</p>
         <p className="text-sm leading-relaxed text-slate-400">{visitMode
-          ? activityConsent
+          ? workflowConsent
+            ? 'Vald agents workflowstatus läses under besöket. Efter bekräftad anslutning kan sidan stängas. Anslutningen avslutas när Office stängs eller senast efter fyra timmar. Samtal och uppdrag aktiveras separat.'
+            : activityConsent
             ? 'Vald agents identitet och registrerade stegaktivitet läses. Efter bekräftad anslutning kan sidan stängas. Anslutningen avslutas när Office stängs eller senast efter fyra timmar. Indikeringen bevisar inte pågående körning; samtal och uppdrag aktiveras separat.'
             : 'Endast vald agents identitet läses. Efter bekräftad anslutning kan sidan stängas. Anslutningen avslutas när Office stängs eller senast efter fyra timmar. Arbetsstatus är okänd; samtal och uppdrag aktiveras separat.'
           : 'Uppgifterna hålls aktuella medan sidan är öppen och synlig. Samtal och uppdrag aktiveras separat.'}</p>

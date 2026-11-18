@@ -1,7 +1,8 @@
 """Focused local verification, capturing real exit codes without shell pipelines.
 Requires existing Node/TypeScript and cached postgres:16; never installs packages.
 Use --node-path to borrow existing dependencies and --receiver for the native pure
-receiver integration. Neither option edits those source/dependency directories.
+receiver integration. Neither option edits those source/dependency directories. Includes browser, relay,
+legacy/activity/workflow transport, SQL and scoped strict TypeScript regression.
 """
 import argparse
 from datetime import datetime, timezone
@@ -21,12 +22,17 @@ def main():
     p.add_argument('--output',type=Path,required=True)
     args=p.parse_args()
     env=os.environ.copy()
+    env['PYTHONPATH']=str(ROOT/'scripts/office-launcher')
     if args.node_path: env['NODE_PATH']=args.node_path
     if args.receiver: env['OFFICE_WORKFLOW_RECEIVER']=str(args.receiver.resolve())
     else: env.pop('OFFICE_WORKFLOW_RECEIVER',None)
     output=args.output.resolve();output.mkdir(parents=True,exist_ok=True)
     tests=sorted(str(f.relative_to(ROOT)) for f in (ROOT/'scripts/office-launcher').glob('test_office*.cjs'))
     commands=[('office_node',['node','--test',*tests]),
+              ('office_companion',[sys.executable,'-m','unittest','test_office_workflow_visit','test_office_workflow_native_guard','test_office_workflow_client','test_office_visit','test_office_visit_client','test_office_activity_relay','test_office_entry']),
+              ('office_workflow_transport',['node','scripts/office-launcher/test_office_workflow_transport.mjs']),
+              ('office_legacy_transport',['node','scripts/office-launcher/test_office_visit_transport.mjs']),
+              ('office_activity_transport',['node','scripts/office-launcher/test_office_activity_transport.mjs']),
               ('office_sql',[sys.executable,'-m','unittest','scripts/office-launcher/test_office_workflow_sql.py','scripts/office-launcher/test_office_activity_sql.py','scripts/office-launcher/test_office_visit_sql.py']),
               ('office_strict_types',['node','scripts/office-launcher/check_office_workflow_types.cjs'])]
     receipt={'checked_at':datetime.now(timezone.utc).isoformat(),'native_pure_receiver_requested':bool(args.receiver),'checks':[]}

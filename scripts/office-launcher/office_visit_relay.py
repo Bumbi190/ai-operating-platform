@@ -47,10 +47,12 @@ def new_visit_id():
 
 
 class OfficeVisitRelay(OfficeRelay):
-    def __init__(self,output_dir,process,client,*,activity=False):
+    def __init__(self,output_dir,process,client,*,activity=False,workflow=False):
         super().__init__(output_dir,avatars=(AVATAR,))
         self.process,self.client=process,client
         self._activity_capable=activity is True
+        self._workflow_capable=workflow is True
+        self.workflow=False
         self.activity=False
         self._secret=base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('ascii').rstrip('=')
         self.visit_id=new_visit_id();self._issued=time.monotonic();self._deadline=self._issued+14400
@@ -76,6 +78,13 @@ class OfficeVisitRelay(OfficeRelay):
                 if self._writer_lease is not None:self._clear()
             except OSError:pass  # The saved native consumer still enforces its own20s deadline.
 
+    def _clear(self):
+        if self.workflow and self._receiver is not None:
+            from office_workflow import WorkflowVisitPresenceReceiver
+            self._receiver=WorkflowVisitPresenceReceiver(self._receiver.binding,self.visit_id)
+            self._write()
+        else:super()._clear()
+
     def _release_writer(self):
         with self._lock:super()._release_writer()
 
@@ -90,9 +99,17 @@ class OfficeVisitRelay(OfficeRelay):
                 'presence':view,
                 'expiresAt':self._expires,'leaseUntil':self._lease,
                 **({'activityProtocol':1} if self._activity_capable else {}),
+                **({'workflowProtocol':1} if self._workflow_capable else {}),
+                **({'readScope':'workflow_state_v1'} if self.workflow else {}),
                 **({'readScope':'step_activity_v1'} if self.activity else {})}
 
     def _accept(self,data):
+        if self.workflow:
+            self._receiver.accept_authorized(data)
+            self._authority_deadline=self._receiver._native_deadline
+            self._write()
+            self._ack=True
+            return
         expected=self._selection
         if not isinstance(data,dict) or any(data.get(k)!=v for k,v in expected.items()):raise ValueError('Scope mismatch')
         now=time.time()
@@ -123,7 +140,7 @@ class OfficeVisitRelay(OfficeRelay):
             if not self._attached.wait(.25):continue
             if not self._permitted():self._invalidate();return
             try:
-                data=self.client.presence(self.visit_id,self._secret,self._permitted)
+                data=(self.client.workflow_presence if self.workflow else self.client.presence)(self.visit_id,self._secret,self._permitted)
                 with self._lock:
                     if not self._permitted():return
                     self._accept(data)
@@ -191,7 +208,8 @@ class OfficeVisitRelay(OfficeRelay):
                     data=json.loads(raw.decode('utf-8'),object_pairs_hook=_no_duplicate_keys,parse_constant=lambda _:(_ for _ in ()).throw(ValueError()))
                     keys=('protocol','stage','visitId','avatarId','projectId','agentId') if self.path=='/attach' else ('protocol','visitId')
                     has_activity=relay._activity_capable and self.path=='/attach' and _exact_object(data,keys+('readScope',)) and data.get('readScope')=='step_activity_v1'
-                    if not (_exact_object(data,keys) or has_activity) or type(data['protocol']) is not int or data['protocol']!=2:raise ValueError('Invalid protocol')
+                    has_workflow=relay._workflow_capable and self.path=='/attach' and _exact_object(data,keys+('readScope',)) and data.get('readScope')=='workflow_state_v1'
+                    if not (_exact_object(data,keys) or has_activity or has_workflow) or type(data['protocol']) is not int or data['protocol']!=2:raise ValueError('Invalid protocol')
                     with relay._lock:
                         if data['visitId']!=relay.visit_id:self.reply(409);return
                         if relay._halt.is_set() or relay._writer_lease is None:self.reply(409);return
@@ -200,14 +218,18 @@ class OfficeVisitRelay(OfficeRelay):
                         if not relay._permitted():self.reply(409);return
                         selection={k:v for k,v in data.items() if k not in ('protocol','stage','readScope')}
                         if data['stage']=='confirm':
-                            if has_activity!=relay.activity or selection!=relay._selection or not relay._ack or relay._receiver.view()['identity']!='verified':self.reply(409);return
-                            relay._committed.set();self.reply(200,{'protocol':2,'visitId':relay.visit_id,'committed':True});return
+                            if has_workflow!=relay.workflow or has_activity!=relay.activity or selection!=relay._selection or not relay._ack or relay._receiver.view()['identity']!='verified':self.reply(409);return
+                            relay._committed.set();self.reply(200,{'protocol':2,'visitId':relay.visit_id,'committed':True,**({'readScope':'workflow_state_v1','workflowProtocol':1} if relay.workflow else {})});return
                         if data['stage']!='prepare' or relay._selection is not None:self.reply(409);return
                         if data['avatarId']!=AVATAR:raise ValueError('Wrong avatar')
                         selected=AvatarBinding(data['avatarId'],data['projectId'],data['agentId'])
-                        relay.activity=has_activity
+                        relay.activity=has_activity;relay.workflow=has_workflow
                         relay._selection=selection;relay._pending_deadline=time.monotonic()+15
-                        relay._receiver=(ActivityVisitPresenceReceiver if relay.activity else VisitPresenceReceiver)(selected);relay._write();relay._attached.set()
+                        if relay.workflow:
+                            from office_workflow import WorkflowVisitPresenceReceiver
+                            relay._receiver=WorkflowVisitPresenceReceiver(selected,relay.visit_id)
+                        else:relay._receiver=(ActivityVisitPresenceReceiver if relay.activity else VisitPresenceReceiver)(selected)
+                        relay._write();relay._attached.set()
                         self.reply(202,{'protocol':2,'visitId':relay.visit_id,'acknowledged':False})
                 except (ValueError,TypeError,KeyError,UnicodeError,RecursionError):self.reply(400,{'error':'invalid_payload'})
                 except OSError:self.reply(503,{'error':'local_write_unavailable'})

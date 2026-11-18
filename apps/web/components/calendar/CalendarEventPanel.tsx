@@ -46,6 +46,12 @@ export function CalendarEventPanel({state:s,undated}:{state:CalendarWorkspaceSta
    {s.selected.pendingChange&&<p>Föreslagen tid: {s.selected.pendingChange.time.kind==='timed'?stockholmMinute(s.selected.pendingChange.time.startUtc).replace('T',' kl '):s.selected.pendingChange.time.startDate}</p>}
   </div>}
   {undated&&<p className={styles.help}>Datum saknas · ingen publiceringstid har antagits.</p>}
+  {s.selected?.source.kind==='buffer'&&s.selected.bufferDetail&&<section className={styles.contentDetail} aria-label="LinkedIn-inlägg från Buffer">
+   <p><strong>LinkedIn · Handlarbörsen</strong></p>
+   <p style={{whiteSpace:'pre-wrap'}}>{s.selected.bufferDetail.fullText}</p>
+   <p className={styles.help}>Senast synkat: {stockholmMinute(s.selected.bufferDetail.syncedAt).replace('T',' kl ')}. {s.selected.status==='buffer_published'?'Bekräftat som skickat av Buffer.':'Status från Buffers senaste synkronisering.'}</p>
+   {s.selected.bufferDetail.permalink&&<a href={s.selected.bufferDetail.permalink} target="_blank" rel="noopener noreferrer">Öppna publicerat LinkedIn-inlägg</a>}
+  </section>}
   {detailSource&&(detailSource.kind==='media'||detailSource.kind==='social')&&<CalendarContentDetail key={s.userId+':'+JSON.stringify(detailSource)} source={detailSource} userId={s.userId}/>}
   {s.selected?.source.kind==='social'&&s.selected.source.jobId===null&&<div className={styles.contentDetail}>
    <p className={styles.help}>Manuell publicering rapporteras av dig och är inte ett verifierat LinkedIn-kvitto.</p>

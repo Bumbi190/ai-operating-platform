@@ -21,7 +21,7 @@ function CalendarWorkspaceBody({initialWeek,userId}:{initialWeek:CalendarWeekMod
  const entries=s.model.entries.filter(entry=>s.filter==='all'||(s.filter==='private'?entry.source.kind==='manual'&&entry.manualEvent?.kind==='private':entry.projectId===s.filter));
  const format=(date:string)=>new Intl.DateTimeFormat('sv-SE',{day:'numeric',month:'long',timeZone:'UTC'}).format(new Date(date+'T12:00:00Z'));
  const weekNumber=(()=>{const d=new Date(s.week+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+3);const first=new Date(Date.UTC(d.getUTCFullYear(),0,4));return 1+Math.round(((d.getTime()-first.getTime())/86400000-3+(first.getUTCDay()+6)%7)/7);})();
- const sourceNames={manual:'den privata kalendern',social:'sociala publiceringar',workflows:'arbetsflöden',tasks:'uppgifter'};
+ const sourceNames={buffer:'Buffers LinkedIn-kalender',manual:'den privata kalendern',social:'sociala publiceringar',workflows:'arbetsflöden',tasks:'uppgifter'};
  const unavailable=Object.entries(s.model.availability).filter(([,ok])=>!ok).map(([key])=>sourceNames[key as keyof typeof sourceNames]);
  const truncated=Object.values(s.model.truncated).some(Boolean);
  // The existing week model contains only authorized projects; a project filter

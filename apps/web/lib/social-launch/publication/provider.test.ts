@@ -91,20 +91,33 @@ it('stops_waiting_after_thirty_seconds_without_retry',async()=>{
   expect(calls[0].signal!.aborted).toBe(true)
  } finally { vi.restoreAllMocks();vi.useRealTimers() }
 })
-it('retains_eight_seconds_for_instagram_and_reads',async()=>{
+it('allows_twenty_seconds_for_instagram_creation_without_retry',async()=>{
  useAbortClock()
  try {
-  for(const action of ['create','status'] as const) {
-   const {provider,calls}=timedProvider(null)
-   let settled=false
-   const outcome=(action==='create'?provider.createImage(instagram,media,'x'):provider.status(instagram,'111'))
-    .then(value=>({value}),error=>({error})).finally(()=>{settled=true})
-   await vi.advanceTimersByTimeAsync(7999)
-   expect(settled).toBe(false)
-   await vi.advanceTimersByTimeAsync(1)
-   expect(await outcome).toMatchObject({error:{code:'provider_unavailable',outcome:'unknown'}})
-   expect(calls).toHaveLength(1)
-  }
+  const {provider,calls}=timedProvider(null)
+  let settled=false
+  const outcome=provider.createImage(instagram,media,'x')
+   .then(value=>({value}),error=>({error})).finally(()=>{settled=true})
+  await vi.advanceTimersByTimeAsync(19999)
+  expect(settled).toBe(false)
+  await vi.advanceTimersByTimeAsync(1)
+  expect(await outcome).toMatchObject({error:{code:'provider_unavailable',outcome:'unknown'}})
+  expect(calls).toHaveLength(1)
+  expect(calls[0].signal!.aborted).toBe(true)
+ } finally { vi.restoreAllMocks();vi.useRealTimers() }
+})
+it('retains_eight_seconds_for_instagram_status_reads',async()=>{
+ useAbortClock()
+ try {
+  const {provider,calls}=timedProvider(null)
+  let settled=false
+  const outcome=provider.status(instagram,'111')
+   .then(value=>({value}),error=>({error})).finally(()=>{settled=true})
+  await vi.advanceTimersByTimeAsync(7999)
+  expect(settled).toBe(false)
+  await vi.advanceTimersByTimeAsync(1)
+  expect(await outcome).toMatchObject({error:{code:'provider_unavailable',outcome:'unknown'}})
+  expect(calls).toHaveLength(1)
  } finally { vi.restoreAllMocks();vi.useRealTimers() }
 })
 

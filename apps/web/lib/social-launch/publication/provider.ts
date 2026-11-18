@@ -38,7 +38,9 @@ export class MetaManualProvider{
  }
  async createImage(c:ManualCredential,url:string,caption:string):Promise<string>{
   if(c.channel!=='instagram')throw new ManualProviderError('invalid_response')
-  return this.id((await this.json(c,c.accountId+'/media',new URLSearchParams({image_url:this.imageUrl(url),caption}))).id)
+  // Meta may need time to fetch the reviewed image from our one-time URL.
+  // A timed-out POST remains uncertain; never retry it automatically.
+  return this.id((await this.json(c,c.accountId+'/media',new URLSearchParams({image_url:this.imageUrl(url),caption}),20000)).id)
  }
  async status(c:ManualCredential,id:string):Promise<'FINISHED'|'IN_PROGRESS'|'PUBLISHED'|'ERROR'|'EXPIRED'>{
   const value=(await this.json(c,this.id(id)+'?fields=status_code')).status_code

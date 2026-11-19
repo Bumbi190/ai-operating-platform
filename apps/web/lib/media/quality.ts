@@ -65,7 +65,7 @@ hallucination_risk (0–10) — factual safety (10 = safest):
 overall = average of the 5 engagement scores (NOT hallucination_risk).
 passed = overall ≥ 8.0 AND hallucination_risk ≥ 7.
 
-Return ONLY valid JSON:
+Return ONLY valid JSON. Limit verdict to 25 words and weak_spots to at most two short strings. No prose, markdown, explanations or extra keys.
 {
   "hook_strength": 8,
   "retention_score": 8,
@@ -92,7 +92,7 @@ export async function scoreScript(
 
   const res = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 800,
+    max_tokens: 1400,
     system: QUALITY_SYSTEM,
     messages: [{
       role: 'user',

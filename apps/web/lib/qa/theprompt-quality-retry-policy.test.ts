@@ -24,7 +24,7 @@ describe('The Prompt isolated editorial recovery', () => {
     expect(eligibleForTechnicalQualityRetry(row, projectId, now)).toBe(true)
     expect(eligibleForTechnicalQualityRetry({ ...row, version: 2 }, projectId, now)).toBe(true)
     for (const update of [
-      { version: 3 }, { status: 'approved' }, { published_at: '2026-11-19' },
+      { version: 3 }, { status: 'approved' }, { generated_at: null }, { published_at: '2026-11-19' },
       { audio_url: 'https://example.org' }, { video_status: 'rendering' },
       { voice_status: 'ready' }, { project_id: 'other-project' },
       { quality_score: { passed: false, verdict: 'Fabricated claim' } },

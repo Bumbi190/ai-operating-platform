@@ -3,7 +3,7 @@ export interface QualityRetryDraft {
   project_id: string | null
   status: string | null
   version: number | null
-  generated_at: string
+  generated_at: string | null
   published_at: string | null
   voice_status: string | null
   video_status: string | null
@@ -32,7 +32,7 @@ export function recoverableQualityFailure(score: unknown): boolean {
 export function eligibleForTechnicalQualityRetry(
   row: QualityRetryDraft, expectedProjectId: string, nowMs: number,
 ): boolean {
-  const createdMs = Date.parse(row.generated_at)
+  const createdMs = Date.parse(row.generated_at ?? '')
   return row.project_id === expectedProjectId
     && row.status === 'pending_review' && (row.version === 1 || row.version === 2)
     && row.published_at === null && row.audio_url === null && row.video_url === null

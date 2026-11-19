@@ -1,0 +1,9 @@
+{
+  "decision": "reuse_existing",
+  "machine_decision": "review_required",
+  "machine_code": "matching_local_branch",
+  "branch": "feat/office-workflow-status-20261118",
+  "parent": "83b094ec99081684a6cb51807397f8d0ce920aa0",
+  "work_id": "OFFICE-WORKFLOW-STATUS-20261118",
+  "review": "Exact known owned clean continuation; no PR candidates; no branch or PR creation."
+}

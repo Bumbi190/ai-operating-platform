@@ -1,0 +1,5 @@
+{
+  "exit": 0,
+  "seconds": 11.94,
+  "tail": "workflow_sql_fixture_and_http_scenarios=6; native_receiver=False\nactivity_sql_fixture_seconds=0.282\n...\n----------------------------------------------------------------------\nRan 3 tests in 11.751s\n\nOK\n"
+}

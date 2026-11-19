@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "phase": "complete",
+  "errors": [],
+  "native_prepared_ack": true,
+  "native_applied_ack": true,
+  "fractional_revision_rejected": true,
+  "primitive_coercion_rejected": true,
+  "safe_integer_max_revision_passed": true,
+  "higher_revision_recovers": true,
+  "wrong_scope_holds": true,
+  "closed_holds": true,
+  "same_process_rebind_refused": true
+}

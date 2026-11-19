@@ -1,0 +1,31 @@
+{
+  "environment": "synthetic invalid-domain only",
+  "borrowedDependencyTree": "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-office-entry-20261106\\node_modules",
+  "checks": [
+    {
+      "step": "vad",
+      "exit": 0,
+      "seconds": 0.08,
+      "tail": "Local speech detector assets ready.\n"
+    },
+    {
+      "step": "design",
+      "exit": 0,
+      "seconds": 0.16,
+      "tail": "{\"skills\":9,\"documents\":71,\"target\":\"D:\\\\Projekt\\\\Omnira\\\\Worktrees\\\\office-workflow-status-20261118\\\\apps\\\\web\\\\lib\\\\skills\\\\generated\\\\design-bundle.json\"}\n"
+    },
+    {
+      "step": "local_guard",
+      "exit": 0,
+      "seconds": 0.06,
+      "tail": "migration-guard: not on Vercel \u00e2\u20ac\u201d skipping (local build).\n"
+    },
+    {
+      "step": "next",
+      "exit": 1,
+      "seconds": 54.72,
+      "tail": "  \u00e2\u2013\u00b2 Next.js 14.2.29\n\n   Creating an optimized production build ...\nFailed to compile.\n\n./lib/media/lambda-render.ts\nModule not found: Can't resolve '@remotion/lambda/client'\n\nhttps://nextjs.org/docs/messages/module-not-found\n\nImport trace for requested module:\n./app/api/media/cron/autonomous/route.ts\n\n\n> Build failed because of webpack errors\n"
+    }
+  ],
+  "passed": false
+}

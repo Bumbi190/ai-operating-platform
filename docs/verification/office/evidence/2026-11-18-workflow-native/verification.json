@@ -1,0 +1,49 @@
+{
+  "checked_at": "2026-11-18T11:23:06.061083+00:00",
+  "native_pure_receiver_requested": true,
+  "checks": [
+    {
+      "check": "office_node",
+      "exit_code": 0,
+      "seconds": 3.703,
+      "log": "office_node.txt"
+    },
+    {
+      "check": "office_companion",
+      "exit_code": 0,
+      "seconds": 25.031,
+      "log": "office_companion.txt"
+    },
+    {
+      "check": "office_workflow_transport",
+      "exit_code": 0,
+      "seconds": 17.5,
+      "log": "office_workflow_transport.txt"
+    },
+    {
+      "check": "office_legacy_transport",
+      "exit_code": 0,
+      "seconds": 9.578,
+      "log": "office_legacy_transport.txt"
+    },
+    {
+      "check": "office_activity_transport",
+      "exit_code": 0,
+      "seconds": 17.61,
+      "log": "office_activity_transport.txt"
+    },
+    {
+      "check": "office_sql",
+      "exit_code": 0,
+      "seconds": 9.484,
+      "log": "office_sql.txt"
+    },
+    {
+      "check": "office_strict_types",
+      "exit_code": 0,
+      "seconds": 1.735,
+      "log": "office_strict_types.txt"
+    }
+  ],
+  "passed": true
+}

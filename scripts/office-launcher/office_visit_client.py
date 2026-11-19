@@ -58,5 +58,6 @@ def _run_bounded(worker,args,permitted):
 
 
 class OfficeVisitClient:
+    def workflow_presence(self,visit,secret,permitted):return _run_bounded(_worker,('workflow/presence',visit,secret),permitted)
     def presence(self,visit,secret,permitted):return _run_bounded(_worker,('presence',visit,secret),permitted)
     def revoke(self,visit,secret):return _run_bounded(_worker,('revoke',visit,secret),lambda:True)

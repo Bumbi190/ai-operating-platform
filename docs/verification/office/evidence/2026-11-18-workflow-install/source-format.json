@@ -1,0 +1,75 @@
+{
+  "note": "Only LF/EOF normalization after successful tests. Accepted immutable bundle retains its exact tested bytes. Committed source ASTs are unchanged; bundle modules equal checkout after LF/EOF normalization. Rendered bootstrap has its expected build-time hash substitution.",
+  "records": {
+    "install_office_workflow_native.py": {
+      "before": "b9dc669b39c762dc59793c9d40e11e19738f3d5b09449af732c38ba935841c62",
+      "after": "ee10473ee2a08d62230d762d50f9791a247c67dc1a4b0b1be63a4c9f35726874",
+      "ast_unchanged": true
+    },
+    "office_visit_process.py": {
+      "before": "df97ad71568423521d27ed3134043a1ac33bf2a2f98ed12fe4f562b59c860617",
+      "after": "7211aff0e1f18cd1e84dfe166e4a00410774e0a3658988ab46e3d71e4654d995",
+      "ast_unchanged": true
+    },
+    "office_workflow_bundle.py": {
+      "before": "3f492f28440aedc7fc870262d4e327875a3a4f5bf2711f1f4af0f6e20afa8a57",
+      "after": "3f492f28440aedc7fc870262d4e327875a3a4f5bf2711f1f4af0f6e20afa8a57",
+      "ast_unchanged": true
+    },
+    "office_workflow_entry.py": {
+      "before": "13e2297b65d801afc52444abbe7678085ce482ad6256509937be4afbc3117c46",
+      "after": "13e2297b65d801afc52444abbe7678085ce482ad6256509937be4afbc3117c46",
+      "ast_unchanged": true
+    },
+    "office_workflow_native_guard.py": {
+      "before": "63f668347080f6e822d48f2bdf1efb09b36400cc6239e61148bd7cd2a6db6f16",
+      "after": "8a5a3b3ba8280c18b1b159b8488610d74b01233604c4763c8176e5755b6a9937",
+      "ast_unchanged": true
+    },
+    "office_workflow_target.py": {
+      "before": "c82efe90ee87a311d8ff2ac046a32d69d955f8d6757ddf8fe4f35cae81a0699b",
+      "after": "c82efe90ee87a311d8ff2ac046a32d69d955f8d6757ddf8fe4f35cae81a0699b",
+      "ast_unchanged": true
+    },
+    "office_workflow_visit.py": {
+      "before": "707ed2d04b35082cffd899c68b502717e2cbbed5b9df1017f104a47ae9cc8b88",
+      "after": "33c70849b6c33f8af91928a358a6fab16de034159537c0be8321334907d3f356",
+      "ast_unchanged": true
+    },
+    "test_office_workflow_bundle.py": {
+      "before": "db7795905c44936434cb9842a0691521cb3151a503cc11898bcc4751d6abde97",
+      "after": "db7795905c44936434cb9842a0691521cb3151a503cc11898bcc4751d6abde97",
+      "ast_unchanged": true
+    },
+    "test_office_workflow_native_guard.py": {
+      "before": "edb48585f491be3149c5c83b8ca345603d51354abb6bdf63a7d230af95390be2",
+      "after": "f3bf2b42d909d50a1013e461d76f292ab6c1320b45f0d16ecbd538650683b866",
+      "ast_unchanged": true
+    },
+    "verify_office_workflow_fixed_game.py": {
+      "before": "dd8bfc4f96d37fa51f7ef1b73fe94e95635a6cbc4af819d13c4be66003b1a869",
+      "after": "d03b71d049363303ca2860ca19a97f842d02b8df5a0912d989082dcd6bcf9729",
+      "ast_unchanged": true
+    },
+    "verify_office_workflow_install_runtime.py": {
+      "before": "1e06e2dd6fb5e8d3775084e32e3a296945a333227e0c55ce0b09bcdbf395d6c4",
+      "after": "d68860db9c290a33aeab91e600289eb8fdf09e201ee1e341b6022572e40dc47e",
+      "ast_unchanged": true
+    },
+    "verify_office_workflow_native_runtime.py": {
+      "before": "31bee9288f8a95455787f3923936f1d1919b9640aa317f540e5a0a830c42676f",
+      "after": "070e6e928b3cfe89b81677817ef37529b17fc772187590887596faef68b6246a",
+      "ast_unchanged": true
+    },
+    "workflow_fixed_game_transport_fixture.mjs": {
+      "before": "fc04c8256bd2327817f0451918aa8cdee63d166c9f669b2080f87d1071aa9c3b",
+      "after": "fb5b6cbe23e766f7d61174d03041f1eb191a03cc6d37e5b164c75d884a6fd902",
+      "ast_unchanged": false
+    },
+    "workflow_missing_ack_transport_fixture.mjs": {
+      "before": "cd0aaad19c1597976920813a1eae3963e0c77c2ad00d2bc180a64ca41a17f1c7",
+      "after": "c4ddd61cd42e21225c2f314e40bef3b3f80b410cf6069749e96ecb63a7a40793",
+      "ast_unchanged": false
+    }
+  }
+}

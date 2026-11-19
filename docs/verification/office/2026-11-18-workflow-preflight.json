@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-11-18T09:23:39.044Z",
+  "repository": "Bumbi190/ai-operating-platform",
+  "project": "Omnira",
+  "task": "Omnira Office workflow busy idle server projection for bound Pling including authenticated visit scope",
+  "workId": "OFFICE-WORKFLOW-STATUS-20261118",
+  "proposedBranch": "feat/office-workflow-status-20261118",
+  "mainSha": "8f73dfc21be4bb9e3656e3bf53b5c651a9ea66f4",
+  "openPrCount": 123,
+  "worktreeCount": 271,
+  "decision": "new_branch_approved",
+  "code": "no_matching_work",
+  "candidates": [],
+  "branchMatches": [],
+  "worktreeMatches": [],
+  "reason": "Continue the tested native workflow bridge with isolated server implementation; original Office entry PR is merged and its old worktree contains an unrelated modified generated bundle.",
+  "limitations": "Metadata/local-name similarity is a hint; review actual file scope and agent ownership before new work.",
+  "sideEffects": "None. No branch, worktree, PR, commit, deployment or API mutation is performed."
+}

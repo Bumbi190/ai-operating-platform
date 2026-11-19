@@ -1,0 +1,7 @@
+{
+  "local_source_only": true,
+  "production_ledger_read": false,
+  "guard_policy_modified": false,
+  "blocked": true,
+  "reason": "canonical SQL count drifted: expected 177, got 178"
+}

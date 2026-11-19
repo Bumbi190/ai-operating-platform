@@ -1,0 +1,66 @@
+{
+  "localIntegrationPassed": true,
+  "mainMergedLocally": "8f73dfc21be4bb9e3656e3bf53b5c651a9ea66f4",
+  "migrationPolicy": {
+    "canonical": 179,
+    "enforced": 165,
+    "grandfathered": 14,
+    "legacy": 30
+  },
+  "actualProductionLedger": {
+    "count": 200,
+    "readOnly": true,
+    "acceptedByCandidate": false,
+    "missingExactly": [
+      "office_step_activity",
+      "office_workflow_state"
+    ]
+  },
+  "hypotheticalPostApplyLedger": {
+    "count": 202,
+    "accepted": true,
+    "notEvidenceOfApply": true
+  },
+  "checks": {
+    "guardRelease": {
+      "exit": 0,
+      "tests": 52
+    },
+    "officeNode": {
+      "tests": 75,
+      "exit": 0
+    },
+    "officeCompanion": {
+      "tests": 73,
+      "exit": 0
+    },
+    "transports": {
+      "suites": 3,
+      "exit": 0
+    },
+    "officeStrictTypes": {
+      "diagnostics": 0,
+      "exit": 0
+    },
+    "postgres17": {
+      "fixtures": 3,
+      "exit": 0,
+      "replacesInitialReadinessRace": true
+    },
+    "middlewareCalendar": {
+      "tests": 15,
+      "exit": 0
+    },
+    "nextLocalOptimized": {
+      "exit": 0,
+      "syntheticConfiguration": true,
+      "globalTypecheckAndLintNotClaimed": true
+    }
+  },
+  "productionMutationsPerformed": false,
+  "pushOrPullRequestCreated": false,
+  "workflowFlagEnabled": false,
+  "realOwnerTLSSessionAccepted": false,
+  "productionReady": false,
+  "newPaidServiceCostSEK": 0
+}

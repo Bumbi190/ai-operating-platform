@@ -1,0 +1,15 @@
+  â–² Next.js 14.2.29
+
+   Creating an optimized production build ...
+Failed to compile.
+
+./lib/media/lambda-render.ts
+Module not found: Can't resolve '@remotion/lambda/client'
+
+https://nextjs.org/docs/messages/module-not-found
+
+Import trace for requested module:
+./app/api/media/cron/autonomous/route.ts
+
+
+> Build failed because of webpack errors

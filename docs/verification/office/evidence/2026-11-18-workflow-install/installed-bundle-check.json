@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "scope": "installed_workflow_bundle_check_v1",
+  "bundle_id": "bb68099898a945429097abde08c113f21fdde168ef46687cea4a9bdffd2b10a7",
+  "projection_directory": "C:\\Users\\Andre\\Projects\\Omnira\\Design\\Agent-Campus-3D\\UnrealPilot\\Omnira_Office_CastQA_v83\\Saved\\OfficePresence",
+  "map_sha256": "a8d6b377107a6a062d862610090a2b9fc21283e835e90abb19fee91a9834816e",
+  "artifact_count": 77,
+  "dependency_packages": 56,
+  "protected_count": 266,
+  "finalizer_pid": 2920,
+  "uri_registration_unchanged": true,
+  "old_design_bundle_sha256": "f4a4c921a78d721e58f163438cfd69ce45a5546dbff3db0061ce1dc4f2c62c16"
+}

@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-11-18T20:24:22.825Z",
+  "repository": "Bumbi190/ai-operating-platform",
+  "project": "Omnira",
+  "task": "Office workflow frontend API migration release integration",
+  "workId": "OFFICE-WORKFLOW-STATUS-20261118",
+  "proposedBranch": "feat/office-workflow-status-20261118",
+  "mainSha": "8f73dfc21be4bb9e3656e3bf53b5c651a9ea66f4",
+  "openPrCount": 123,
+  "worktreeCount": 272,
+  "decision": "review_required",
+  "code": "matching_open_pr",
+  "candidates": [
+    {
+      "number": 496,
+      "title": "test(atlas): Reconcile creative integration with current main migration ledger (P26)",
+      "head": "feat/atlas-creative-p26-main-reconciliation",
+      "url": "https://github.com/Bumbi190/ai-operating-platform/pull/496"
+    }
+  ],
+  "branchMatches": [
+    "backup/omnira-phase9aa-migration-security-pre-integration-20260910",
+    "backup/omnira-phase9x2-chat-workflow-read-pre-integration-20260909"
+  ],
+  "worktreeMatches": [
+    {
+      "branch": "feat/office-workflow-status-20261118",
+      "path": "D:/Projekt/Omnira/Worktrees/office-workflow-status-20261118",
+      "locked": false
+    }
+  ],
+  "reason": "Continue owned workflow branch e8d5a65; inspect existing work before any release preparation",
+  "limitations": "Metadata/local-name similarity is a hint; review actual file scope and agent ownership before new work.",
+  "sideEffects": "None. No branch, worktree, PR, commit, deployment or API mutation is performed."
+}

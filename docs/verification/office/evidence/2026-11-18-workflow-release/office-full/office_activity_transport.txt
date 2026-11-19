@@ -1,0 +1,5 @@
+{"status":"synthetic_bundled_entry_activity_transport_verified","nativeReads":3,"browserDetached":true,"gameExitCleared":true,"realOwner":false,"realUnreal":false}
+(node:46652) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///D:/Projekt/Omnira/Worktrees/office-workflow-status-20261118/apps/web/lib/atlas/office/visits.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\apps\web\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)

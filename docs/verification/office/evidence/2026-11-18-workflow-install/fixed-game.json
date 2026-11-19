@@ -1,0 +1,29 @@
+{
+  "scope": "fixed_workflow_game_path_v1",
+  "passed": true,
+  "run_id": "680057c367b14df9baf2e8be1bdd08aa",
+  "real_owner": false,
+  "real_upstream_tls": false,
+  "real_game_process_lease": true,
+  "native_ack_fixture": false,
+  "errors": [],
+  "phase": "complete",
+  "game_pid": 36400,
+  "prepared_and_applied_native_ack": true,
+  "fixed_projection_directory": "C:\\Users\\Andre\\Projects\\Omnira\\Design\\Agent-Campus-3D\\UnrealPilot\\Omnira_Office_CastQA_v83\\Saved\\OfficePresence",
+  "busy_applied": true,
+  "idle_applied_again": true,
+  "kernel_handle_exit_closes_visit": true,
+  "transport": {
+    "scope": "isolated_native_workflow_transport_fixture_v1",
+    "connected": true,
+    "browserCount": 8,
+    "reads": 3,
+    "revoked": true,
+    "visitId": "01a1f03c-240e-7f7e-b09f-fe0c54198383",
+    "sourceState": "idle",
+    "sourceRevision": 3,
+    "finalized": true
+  },
+  "projection_restored": true
+}

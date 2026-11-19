@@ -76,6 +76,7 @@ class Client:
 lease=Lease()
 office_visit.default_target=lambda:None
 office_visit.check_native=lambda target:Path(sys.argv[1])
+office_visit.check_activity_native=lambda target:None
 office_visit.WindowsBackend=lambda:None
 office_visit.acquire_office_process=lambda target,backend:lease
 office_visit.OfficeVisitClient=Client

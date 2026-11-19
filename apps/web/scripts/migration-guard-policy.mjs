@@ -95,10 +95,12 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // 03dfd37e3749030523094dbdbca20b86a54b410b7be4acfa79f2ed6592b6014c
 // matching the CRLF-normalized applied statement. No SQL replay, history edit,
 // legacy allowlist expansion, emergency override, or frozen baseline adjustment.
-// Office visit sessions adds one enforced migration; pending reviewed apply.
+// Office visit sessions is applied as ledger 20261113122811; canonical filename unchanged.
+// Office step activity adds one enforced migration; local only until separately approved apply.
 // Reconciled with the already-applied Family social migration restored in PR #638.
-export const EXPECTED_CANONICAL_SQL_COUNT = 177
-export const EXPECTED_ENFORCED_COUNT = 163
+// Workflow reservation adds one further enforced, pending migration.
+export const EXPECTED_CANONICAL_SQL_COUNT = 179
+export const EXPECTED_ENFORCED_COUNT = 165
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

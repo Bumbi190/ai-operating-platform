@@ -66,7 +66,15 @@ class VisitTests(unittest.TestCase):
         end=time.monotonic()+3
         while not predicate() and time.monotonic()<end: time.sleep(.02)
         self.assertTrue(predicate())
-    def projection(self):return json.loads((Path(self.tmp.name)/(AV+'.json')).read_text('utf-8'))
+    def projection(self):
+        # Windows replacement/scanning can briefly deny opening an atomic file.
+        # Bound the fixture retry; malformed JSON and sustained I/O errors fail.
+        deadline=time.monotonic()+.5
+        while True:
+            try:return json.loads((Path(self.tmp.name)/(AV+'.json')).read_text('utf-8'))
+            except (PermissionError,FileNotFoundError):
+                if time.monotonic()>=deadline:raise
+                time.sleep(.01)
     def test_status_exposes_digest_but_never_native_secret(self):
         status,data=self.call();self.assertEqual(status,200);self.assertEqual(data['protocol'],2)
         self.assertRegex(data['secretDigest'],r'^[0-9a-f]{64}$')

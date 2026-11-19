@@ -1,0 +1,25 @@
+{
+  "checked_at": "2026-11-18T09:51:40.395447+00:00",
+  "native_pure_receiver_requested": true,
+  "checks": [
+    {
+      "check": "office_node",
+      "exit_code": 0,
+      "seconds": 1.937,
+      "log": "office_node.txt"
+    },
+    {
+      "check": "office_sql",
+      "exit_code": 0,
+      "seconds": 8.844,
+      "log": "office_sql.txt"
+    },
+    {
+      "check": "office_strict_types",
+      "exit_code": 0,
+      "seconds": 1.203,
+      "log": "office_strict_types.txt"
+    }
+  ],
+  "passed": true
+}

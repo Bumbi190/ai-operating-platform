@@ -1,0 +1,5 @@
+{"status":"synthetic_workflow_visit_transport_verified","nativeReads":3,"browserDetached":true,"busyThenIdle":true,"gameExitClearedToHold":true,"realOwner":false,"realTls":false,"realUnreal":false}
+(node:34744) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///D:/Projekt/Omnira/Worktrees/office-workflow-status-20261118/apps/web/lib/atlas/office/visit-connection.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\apps\web\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)

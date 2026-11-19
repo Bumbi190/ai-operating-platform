@@ -1,0 +1,1 @@
+{"skills":9,"documents":71,"target":"D:\\Projekt\\Omnira\\Worktrees\\office-workflow-status-20261118\\apps\\web\\lib\\skills\\generated\\design-bundle.json"}

@@ -1,0 +1,29 @@
+{"status": "restored_launch_only", "local_files_retained": true}
+........................................E.............................
+======================================================================
+ERROR: test_unconfirmed_attach_expires_without_renewable_polling (test_office_visit.VisitTests.test_unconfirmed_attach_expires_without_renewable_polling)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\scripts\office-launcher\test_office_visit.py", line 146, in test_unconfirmed_attach_expires_without_renewable_polling
+    self.wait_for(lambda:self.projection()['identity']=='unknown')
+  File "D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\scripts\office-launcher\test_office_visit.py", line 67, in wait_for
+    while not predicate() and time.monotonic()<end: time.sleep(.02)
+              ^^^^^^^^^^^
+  File "D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\scripts\office-launcher\test_office_visit.py", line 146, in <lambda>
+    self.wait_for(lambda:self.projection()['identity']=='unknown')
+                         ^^^^^^^^^^^^^^^^^
+  File "D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\scripts\office-launcher\test_office_visit.py", line 69, in projection
+    def projection(self):return json.loads((Path(self.tmp.name)/(AV+'.json')).read_text('utf-8'))
+                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python312\Lib\pathlib.py", line 1027, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python312\Lib\pathlib.py", line 1013, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 13] Permission denied: 'C:\\Users\\Andre\\AppData\\Local\\Temp\\tmp2d5wpmpk\\office-familje-pling.json'
+
+----------------------------------------------------------------------
+Ran 70 tests in 26.870s
+
+FAILED (errors=1)

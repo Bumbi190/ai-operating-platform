@@ -1,0 +1,20 @@
+F
+======================================================================
+FAIL: test_scopes_census_contract_and_revocation (scripts.office-launcher.test_office_workflow_sql.WorkflowSQL.test_scopes_census_contract_and_revocation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\scripts\office-launcher\test_office_workflow_sql.py", line 51, in test_scopes_census_contract_and_revocation
+    psql(BOOTSTRAP+visit+PRIOR+activity+workflow+checks)
+  File "D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\scripts\office-launcher\test_office_workflow_sql.py", line 31, in psql
+    self.assertEqual(r.returncode,0,r.stdout[-3000:]+r.stderr[-3000:])
+AssertionError: 3 != 0 : {"agentId": "33333333-3333-4333-8333-333333333333", "visitId": "01a1f06b-0656-7000-8000-000000000001", "avatarId": "office-familje-pling", "createdAt": "2026-11-18T20:48:28.248731+00:00", "expiresAt": "2026-11-19T00:48:28.248731+00:00", "projectId": "22222222-2222-4222-8222-222222222222", "leaseUntil": "2026-11-18T20:48:58.248731+00:00"}
+ERROR:  legacy failed workflow blocked idle
+CONTEXT:  PL/pgSQL function assert_ok(boolean,text) line 1 at RAISE
+SQL statement "SELECT public.assert_ok(j->'workflowFacts'='{"complete":true,"runs":[]}'::jsonb,'legacy failed workflow blocked idle')"
+PL/pgSQL function inline_code_block line 67 at PERFORM
+
+
+----------------------------------------------------------------------
+Ran 1 test in 2.171s
+
+FAILED (failures=1)

@@ -1,0 +1,8 @@
+native_receiver_sha256=357e20238a0ca21329b9c630b786dd71ed8e4d25f6c92e9c69d7b33ec1cbfe19
+workflow_sql_fixture_and_http_scenarios=6; native_receiver=True
+activity_sql_fixture_seconds=0.219
+...
+----------------------------------------------------------------------
+Ran 3 tests in 10.593s
+
+OK

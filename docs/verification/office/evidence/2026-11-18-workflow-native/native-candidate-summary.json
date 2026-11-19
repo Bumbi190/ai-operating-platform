@@ -1,0 +1,18 @@
+{
+  "scope": "isolated_saved_workflow_candidate_v1",
+  "installed": false,
+  "passed": true,
+  "asset": "/Game/OmniraGameplayV83/PrivateWorkflow/BP_OfficeWorkflowPresence",
+  "map": "/Game/OmniraRealismLab/Maps/Previews/Omnira_Office_WorkflowConsumer_Review_20261118",
+  "source_map": "/Game/OmniraRealismLab/Maps/Previews/Omnira_Office_WorkflowBridge_Review_20261118",
+  "errors": [],
+  "binding_policy": "one workflow binding per native game world; restart required for another visit",
+  "graph_nodes": 629,
+  "consumer": "BP_OfficeWorkflowPresence_C_0",
+  "target": "BP_Pling_FreeLife_C_0",
+  "actor_count": 1727,
+  "map_sha256": "34ae7f645f18adcd6763cb1d29171f6de936f521fac3ab2af52f6093e2464db7",
+  "asset_sha256": "19b1d37f3f5eb341feb5b5aba5735b9a832986d02971ac20d032730db35700f5",
+  "protected_count": 264,
+  "preserved_actor_count": 1726
+}

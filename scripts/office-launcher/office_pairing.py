@@ -34,6 +34,9 @@ def check_native(target: OfficeTarget) -> Path:
     """Check recorded local integrity. This is not backend authentication."""
     try:
         target.verify()
+        if (target.project.parent/'Saved/OfficeActivityInstall/installation.json').exists():
+            from office_activity import check_activity_native
+            return check_activity_native(target)
         project = target.project.parent
         evidence = project / 'Saved/OfficePresenceSetup'
         manifest = json.loads((evidence / 'installation.json').read_text(encoding='utf-8'))

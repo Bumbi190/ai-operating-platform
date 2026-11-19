@@ -1,0 +1,369 @@
+  ▲ Next.js 14.2.29
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+   Skipping validation of types
+   Skipping linting
+   Collecting page data ...
+   Generating static pages (0/70) ...
+   Generating static pages (17/70)
+   Generating static pages (34/70)
+   Generating static pages (52/70)
+ ✓ Generating static pages (70/70)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                                        Size     First Load JS
+┌ ○ /                                                              173 B          87.9 kB
+├ ○ /_not-found                                                    880 B          88.6 kB
+├ ƒ /action-center                                                 173 B          87.9 kB
+├ ƒ /agent-activity                                                1.04 kB         276 kB
+├ ƒ /analytics/posthog                                             1.46 kB        89.2 kB
+├ ƒ /analytics/posthog/traffic                                     587 B          88.3 kB
+├ ƒ /api/actions/resume-failed                                     0 B                0 B
+├ ƒ /api/analytics/posthog/authorization                           0 B                0 B
+├ ƒ /api/analytics/posthog/dashboards                              0 B                0 B
+├ ƒ /api/approvals                                                 0 B                0 B
+├ ƒ /api/approvals/[id]                                            0 B                0 B
+├ ƒ /api/article/generate                                          0 B                0 B
+├ ƒ /api/article/pipeline                                          0 B                0 B
+├ ƒ /api/atlas/campus/agents/[id]                                  0 B                0 B
+├ ƒ /api/atlas/campus/snapshot                                     0 B                0 B
+├ ƒ /api/atlas/code-brokers/[brokerId]/approve                     0 B                0 B
+├ ƒ /api/atlas/code-brokers/[brokerId]/lost                        0 B                0 B
+├ ƒ /api/atlas/code-brokers/[brokerId]/revoke                      0 B                0 B
+├ ƒ /api/atlas/code-brokers/enrollments                            0 B                0 B
+├ ƒ /api/atlas/code-work                                           0 B                0 B
+├ ƒ /api/atlas/code-work/[workId]                                  0 B                0 B
+├ ƒ /api/atlas/code-work/broker/claim                              0 B                0 B
+├ ƒ /api/atlas/code-work/broker/claim/recover                      0 B                0 B
+├ ƒ /api/atlas/code-work/broker/discover                           0 B                0 B
+├ ƒ /api/atlas/code-work/broker/enroll                             0 B                0 B
+├ ƒ /api/atlas/code-work/broker/heartbeat                          0 B                0 B
+├ ƒ /api/atlas/code-work/broker/identity                           0 B                0 B
+├ ƒ /api/atlas/executive/authorization                             0 B                0 B
+├ ƒ /api/atlas/executive/decision                                  0 B                0 B
+├ ƒ /api/atlas/executive/mission                                   0 B                0 B
+├ ƒ /api/atlas/handlarborsen/lead-finder                           0 B                0 B
+├ ƒ /api/atlas/handlarborsen/lead-finder/archive                   0 B                0 B
+├ ƒ /api/atlas/handlarborsen/lead-finder/import                    0 B                0 B
+├ ƒ /api/atlas/handlarborsen/lead-finder/research                  0 B                0 B
+├ ƒ /api/atlas/handlarborsen/test-data/[packageId]/review          0 B                0 B
+├ ƒ /api/atlas/intelligence/cron/brief                             0 B                0 B
+├ ƒ /api/atlas/office/visits                                       0 B                0 B
+├ ƒ /api/atlas/office/visits/activity                              0 B                0 B
+├ ƒ /api/atlas/office/visits/presence                              0 B                0 B
+├ ƒ /api/atlas/office/visits/revoke                                0 B                0 B
+├ ƒ /api/atlas/office/visits/workflow                              0 B                0 B
+├ ƒ /api/atlas/office/visits/workflow/presence                     0 B                0 B
+├ ƒ /api/atlas/source-inspection                                   0 B                0 B
+├ ƒ /api/atlas/voice-pilot/speech                                  0 B                0 B
+├ ƒ /api/atlas/voice-pilot/stream                                  0 B                0 B
+├ ƒ /api/briefing/cron                                             0 B                0 B
+├ ƒ /api/bugscanner/run                                            0 B                0 B
+├ ƒ /api/bugscanner/scan-all                                       0 B                0 B
+├ ƒ /api/business/campaigns                                        0 B                0 B
+├ ƒ /api/business/cron/stripe-snapshot                             0 B                0 B
+├ ƒ /api/business/leads                                            0 B                0 B
+├ ƒ /api/business/revenue                                          0 B                0 B
+├ ƒ /api/calendar                                                  0 B                0 B
+├ ƒ /api/calendar/decisions                                        0 B                0 B
+├ ƒ /api/calendar/detail                                           0 B                0 B
+├ ƒ /api/calendar/manual-publication                               0 B                0 B
+├ ƒ /api/calendar/production-preview                               0 B                0 B
+├ ƒ /api/calendar/production-start                                 0 B                0 B
+├ ƒ /api/chat                                                      0 B                0 B
+├ ƒ /api/chat/tts                                                  0 B                0 B
+├ ƒ /api/collectors/handlarborsen/marketplace                      0 B                0 B
+├ ƒ /api/collectors/social/account                                 0 B                0 B
+├ ƒ /api/collectors/stripe/revenue                                 0 B                0 B
+├ ƒ /api/content/articles/[id]/hero-image                          0 B                0 B
+├ ƒ /api/content/articles/[id]/review                              0 B                0 B
+├ ƒ /api/content/articles/[id]/sync                                0 B                0 B
+├ ƒ /api/content/articles/generate                                 0 B                0 B
+├ ƒ /api/content/articles/operator-generate                        0 B                0 B
+├ ƒ /api/conversations                                             0 B                0 B
+├ ƒ /api/conversations/[id]                                        0 B                0 B
+├ ƒ /api/evaluate                                                  0 B                0 B
+├ ƒ /api/fix-image-agent                                           0 B                0 B
+├ ƒ /api/intelligence/graph/operations                             0 B                0 B
+├ ƒ /api/intelligence/graph/system                                 0 B                0 B
+├ ƒ /api/leads                                                     0 B                0 B
+├ ƒ /api/local-text/admissions/[id]/cloud-budget                   0 B                0 B
+├ ƒ /api/local-text/devices                                        0 B                0 B
+├ ƒ /api/local-text/devices/[id]                                   0 B                0 B
+├ ƒ /api/local-text/devices/[id]/admissions                        0 B                0 B
+├ ƒ /api/local-text/jobs/[id]                                      0 B                0 B
+├ ƒ /api/local-text/pilot                                          0 B                0 B
+├ ƒ /api/local-text/projects/[id]/retention                        0 B                0 B
+├ ƒ /api/local-text/reconciliation-status                          0 B                0 B
+├ ƒ /api/local-text/worker/[operation]                             0 B                0 B
+├ ƒ /api/manager                                                   0 B                0 B
+├ ƒ /api/marketing/approvals                                       0 B                0 B
+├ ƒ /api/marketing/drafts                                          0 B                0 B
+├ ƒ /api/marketing/drafts/generate                                 0 B                0 B
+├ ƒ /api/marketing/drafts/return                                   0 B                0 B
+├ ƒ /api/marketing/guard                                           0 B                0 B
+├ ƒ /api/marketing/guard/validate                                  0 B                0 B
+├ ƒ /api/marketing/plans                                           0 B                0 B
+├ ƒ /api/marketing/plans/[id]/generate-drafts                      0 B                0 B
+├ ƒ /api/marketing/plans/generate                                  0 B                0 B
+├ ƒ /api/media/breaking                                            0 B                0 B
+├ ƒ /api/media/cron/account-snapshot                               0 B                0 B
+├ ƒ /api/media/cron/autonomous                                     0 B                0 B
+├ ƒ /api/media/cron/competitors                                    0 B                0 B
+├ ƒ /api/media/cron/dream                                          0 B                0 B
+├ ƒ /api/media/cron/heartbeat                                      0 B                0 B
+├ ƒ /api/media/cron/insights                                       0 B                0 B
+├ ƒ /api/media/cron/morning-briefing                               0 B                0 B
+├ ƒ /api/media/cron/pipeline-retry                                 0 B                0 B
+├ ƒ /api/media/cron/publish                                        0 B                0 B
+├ ƒ /api/media/cron/refresh-tokens                                 0 B                0 B
+├ ƒ /api/media/cron/reply-comments                                 0 B                0 B
+├ ƒ /api/media/cron/step1                                          0 B                0 B
+├ ƒ /api/media/cron/step2                                          0 B                0 B
+├ ƒ /api/media/cron/step3                                          0 B                0 B
+├ ƒ /api/media/cron/step4                                          0 B                0 B
+├ ƒ /api/media/cron/token-health                                   0 B                0 B
+├ ƒ /api/media/cron/warmup                                         0 B                0 B
+├ ƒ /api/media/cron/youtube                                        0 B                0 B
+├ ƒ /api/media/debug/subscribe-webhooks                            0 B                0 B
+├ ƒ /api/media/higgsfield/disconnect                               0 B                0 B
+├ ƒ /api/media/higgsfield/inspect                                  0 B                0 B
+├ ƒ /api/media/higgsfield/oauth/callback                           0 B                0 B
+├ ƒ /api/media/higgsfield/oauth/start                              0 B                0 B
+├ ƒ /api/media/higgsfield/status                                   0 B                0 B
+├ ƒ /api/media/images/generate                                     0 B                0 B
+├ ƒ /api/media/insights/check                                      0 B                0 B
+├ ƒ /api/media/music/generate                                      0 B                0 B
+├ ƒ /api/media/news                                                0 B                0 B
+├ ƒ /api/media/news/[id]                                           0 B                0 B
+├ ƒ /api/media/news/cron                                           0 B                0 B
+├ ƒ /api/media/news/from-run                                       0 B                0 B
+├ ƒ /api/media/news/hunt                                           0 B                0 B
+├ ƒ /api/media/pipeline/daily                                      0 B                0 B
+├ ƒ /api/media/pipeline/full                                       0 B                0 B
+├ ƒ /api/media/pipeline/intro                                      0 B                0 B
+├ ƒ /api/media/publish/instagram                                   0 B                0 B
+├ ƒ /api/media/render-input/[scriptId]                             0 B                0 B
+├ ƒ /api/media/render/complete                                     0 B                0 B
+├ ƒ /api/media/render/start                                        0 B                0 B
+├ ƒ /api/media/render/status/[renderId]                            0 B                0 B
+├ ƒ /api/media/research/query                                      0 B                0 B
+├ ƒ /api/media/research/scrape                                     0 B                0 B
+├ ƒ /api/media/scripts                                             0 B                0 B
+├ ƒ /api/media/scripts/[id]                                        0 B                0 B
+├ ƒ /api/media/scripts/[id]/regenerate                             0 B                0 B
+├ ƒ /api/media/scripts/from-run                                    0 B                0 B
+├ ƒ /api/media/social-accounts/verify                              0 B                0 B
+├ ƒ /api/media/token                                               0 B                0 B
+├ ƒ /api/media/voice                                               0 B                0 B
+├ ƒ /api/media/youtube/oauth/callback                              0 B                0 B
+├ ƒ /api/media/youtube/oauth/start                                 0 B                0 B
+├ ƒ /api/memory/patterns                                           0 B                0 B
+├ ƒ /api/organization/atlas                                        0 B                0 B
+├ ƒ /api/organization/invitations                                  0 B                0 B
+├ ƒ /api/organization/projects                                     0 B                0 B
+├ ƒ /api/organization/projects/[slug]/competitors/candidates       0 B                0 B
+├ ƒ /api/organization/projects/[slug]/competitors/history          0 B                0 B
+├ ƒ /api/organization/projects/[slug]/competitors/inbox            0 B                0 B
+├ ƒ /api/organization/projects/[slug]/competitors/reviews          0 B                0 B
+├ ƒ /api/organization/projects/[slug]/workflows                    0 B                0 B
+├ ƒ /api/organization/projects/[slug]/workflows/[id]               0 B                0 B
+├ ƒ /api/organization/proposals                                    0 B                0 B
+├ ƒ /api/organization/proposals/[id]                               0 B                0 B
+├ ƒ /api/outputs/[id]                                              0 B                0 B
+├ ƒ /api/projects                                                  0 B                0 B
+├ ƒ /api/projects/[slug]/agents                                    0 B                0 B
+├ ƒ /api/projects/[slug]/agents/[id]                               0 B                0 B
+├ ƒ /api/projects/[slug]/atlas/analysis-drafts                     0 B                0 B
+├ ƒ /api/projects/[slug]/atlas/analysis-drafts/[id]                0 B                0 B
+├ ƒ /api/projects/[slug]/competitors/candidates                    0 B                0 B
+├ ƒ /api/projects/[slug]/competitors/history                       0 B                0 B
+├ ƒ /api/projects/[slug]/competitors/inbox                         0 B                0 B
+├ ƒ /api/projects/[slug]/competitors/reviews                       0 B                0 B
+├ ƒ /api/projects/[slug]/dream                                     0 B                0 B
+├ ƒ /api/projects/[slug]/workflows                                 0 B                0 B
+├ ƒ /api/projects/[slug]/workflows/[id]                            0 B                0 B
+├ ƒ /api/projects/by-id/[projectId]/lifecycle                      0 B                0 B
+├ ƒ /api/projects/by-slug/[slug]                                   0 B                0 B
+├ ƒ /api/publishing/smoke                                          0 B                0 B
+├ ƒ /api/runs                                                      0 B                0 B
+├ ƒ /api/runs/[id]                                                 0 B                0 B
+├ ƒ /api/runs/[id]/cancel                                          0 B                0 B
+├ ƒ /api/runs/[id]/ebook                                           0 B                0 B
+├ ƒ /api/runs/[id]/monthly-pdf                                     0 B                0 B
+├ ƒ /api/runs/[id]/mp3-manus                                       0 B                0 B
+├ ƒ /api/runs/[id]/resume                                          0 B                0 B
+├ ƒ /api/runs/[id]/stream                                          0 B                0 B
+├ ƒ /api/runs/drain                                                0 B                0 B
+├ ƒ /api/runs/execute                                              0 B                0 B
+├ ƒ /api/social-campaign                                           0 B                0 B
+├ ƒ /api/social-connections                                        0 B                0 B
+├ ƒ /api/social-connections/[provider]/callback                    0 B                0 B
+├ ƒ /api/social-connections/[provider]/start                       0 B                0 B
+├ ƒ /api/social-content                                            0 B                0 B
+├ ƒ /api/social-content/media                                      0 B                0 B
+├ ƒ /api/social-launch                                             0 B                0 B
+├ ƒ /api/social-profile                                            0 B                0 B
+├ ƒ /api/social-publication-media                                  0 B                0 B
+├ ƒ /api/social-publication-reconciliation                         0 B                0 B
+├ ƒ /api/social-publications                                       0 B                0 B
+├ ƒ /api/social-schedule-tick                                      0 B                0 B
+├ ƒ /api/social-schedules                                          0 B                0 B
+├ ƒ /api/system/execution-safety                                   0 B                0 B
+├ ƒ /api/system/provider-check/anthropic                           0 B                0 B
+├ ƒ /api/system/provider-check/anthropic/smoke                     0 B                0 B
+├ ƒ /api/system/stop-authority                                     0 B                0 B
+├ ƒ /api/system/survival                                           0 B                0 B
+├ ƒ /api/webhooks/instagram                                        0 B                0 B
+├ ƒ /api/webhooks/stripe                                           0 B                0 B
+├ ƒ /api/website-build-plans                                       0 B                0 B
+├ ƒ /api/website-build-plans/[planId]                              0 B                0 B
+├ ƒ /api/website-build-plans/[planId]/approve                      0 B                0 B
+├ ƒ /api/website-build-plans/[planId]/mockups/[mockupId]           0 B                0 B
+├ ƒ /api/website-build-plans/[planId]/mockups/approve              0 B                0 B
+├ ƒ /api/website-build-plans/[planId]/start                        0 B                0 B
+├ ƒ /api/website-build-readiness                                   0 B                0 B
+├ ƒ /api/website-build-settings                                    0 B                0 B
+├ ƒ /api/website-build-settings/default-root                       0 B                0 B
+├ ƒ /api/website-build/studio                                      0 B                0 B
+├ ƒ /api/website-build/studio/budget                               0 B                0 B
+├ ƒ /api/website-build/studio/costs                                0 B                0 B
+├ ƒ /api/website-build/studio/workspace-request                    0 B                0 B
+├ ƒ /api/website-builds                                            0 B                0 B
+├ ƒ /api/website-builds/[sessionId]                                0 B                0 B
+├ ƒ /api/website-builds/[sessionId]/control                        0 B                0 B
+├ ƒ /api/website-builds/[sessionId]/feedback                       0 B                0 B
+├ ƒ /api/website-builds/[sessionId]/revisions/[revisionId]         0 B                0 B
+├ ƒ /api/website-builds/[sessionId]/revisions/[revisionId]/export  0 B                0 B
+├ ƒ /api/workflows/admin                                           0 B                0 B
+├ ƒ /api/workflows/bundle                                          0 B                0 B
+├ ƒ /api/workflows/evidence                                        0 B                0 B
+├ ƒ /api/workflows/gate                                            0 B                0 B
+├ ƒ /api/workflows/tick                                            0 B                0 B
+├ ƒ /approvals                                                     14.9 kB         296 kB
+├ ƒ /atlas                                                         3.1 kB          296 kB
+├ ƒ /atlas/actions                                                 173 B          87.9 kB
+├ ƒ /atlas/activity                                                173 B          87.9 kB
+├ ƒ /atlas/content                                                 2.77 kB         277 kB
+├ ƒ /atlas/content/[id]                                            2.61 kB         277 kB
+├ ƒ /atlas/marketing                                               7.67 kB         282 kB
+├ ƒ /atlas/office                                                  195 B          96.7 kB
+├ ƒ /atlas/office/connect                                          5.22 kB          93 kB
+├ ƒ /atlas/operations                                              504 B           275 kB
+├ ƒ /atlas/rost                                                    164 B           198 kB
+├ ƒ /atlas/rosttest                                                164 B           198 kB
+├ ƒ /auth/callback                                                 0 B                0 B
+├ ○ /auth/confirm                                                  1.28 kB         154 kB
+├ ƒ /build                                                         7.73 kB         266 kB
+├ ƒ /calendar                                                      17.4 kB         188 kB
+├ ƒ /chat                                                          5.73 kB         114 kB
+├ ƒ /chat/[id]                                                     217 B           258 kB
+├ ƒ /costs                                                         173 B          87.9 kB
+├ ƒ /dashboard                                                     711 B          97.2 kB
+├ ○ /forgot-password                                               1.27 kB         154 kB
+├ ○ /icon.svg                                                      0 B                0 B
+├ ƒ /intelligence/graph                                            70 kB           174 kB
+├ ○ /login                                                         5.43 kB         172 kB
+├ ƒ /manager                                                       8.63 kB         117 kB
+├ ƒ /memory                                                        5.48 kB         280 kB
+├ ƒ /organisation                                                  2.51 kB         277 kB
+├ ƒ /organization                                                  1.09 kB         111 kB
+├ ƒ /organization/atlas                                            265 B           293 kB
+├ ƒ /organization/calendar                                         3.58 kB         106 kB
+├ ƒ /organization/invite                                           870 B          97.4 kB
+├ ƒ /organization/office                                           195 B          96.7 kB
+├ ƒ /organization/projects/[slug]                                  2.63 kB         110 kB
+├ ƒ /organization/projects/[slug]/competitors                      143 B          92.8 kB
+├ ƒ /organization/reviews                                          2.03 kB        89.8 kB
+├ ƒ /planning                                                      4.11 kB         279 kB
+├ ○ /privacy                                                       195 B          96.7 kB
+├ ƒ /projects                                                      379 B           285 kB
+├ ƒ /projects/[slug]                                               2.38 kB         292 kB
+├ ƒ /projects/[slug]/agents                                        1.4 kB          287 kB
+├ ƒ /projects/[slug]/agents/[id]                                   4.34 kB         286 kB
+├ ƒ /projects/[slug]/agents/[id]/edit                              1.5 kB          283 kB
+├ ƒ /projects/[slug]/agents/new                                    937 B           282 kB
+├ ƒ /projects/[slug]/atlas/analysis-drafts                         1.63 kB        89.4 kB
+├ ƒ /projects/[slug]/atlas/analysis-drafts/[id]                    1.63 kB        89.4 kB
+├ ƒ /projects/[slug]/build                                         173 B          87.9 kB
+├ ƒ /projects/[slug]/build/[sessionId]                             173 B          87.9 kB
+├ ƒ /projects/[slug]/code-work/[workId]                            3.51 kB         100 kB
+├ ƒ /projects/[slug]/communications                                195 B          96.7 kB
+├ ƒ /projects/[slug]/competitors                                   143 B          92.8 kB
+├ ƒ /projects/[slug]/generate                                      4.22 kB         280 kB
+├ ƒ /projects/[slug]/lead-finder                                   15.9 kB         112 kB
+├ ƒ /projects/[slug]/marketplace                                   535 B            97 kB
+├ ƒ /projects/[slug]/media                                         4.32 kB         101 kB
+├ ƒ /projects/[slug]/news                                          4.93 kB         281 kB
+├ ƒ /projects/[slug]/outputs                                       4.64 kB         290 kB
+├ ƒ /projects/[slug]/runs                                          1.4 kB          287 kB
+├ ƒ /projects/[slug]/runs/[id]                                     1.39 kB         287 kB
+├ ƒ /projects/[slug]/scripts                                       7.37 kB         284 kB
+├ ƒ /projects/[slug]/social                                        22.1 kB         110 kB
+├ ƒ /projects/[slug]/social/campaigns/[campaignId]                 1.84 kB        98.3 kB
+├ ƒ /projects/[slug]/workflows                                     1.4 kB          287 kB
+├ ƒ /projects/[slug]/workflows/[id]                                3.3 kB          294 kB
+├ ƒ /projects/[slug]/workflows/[id]/edit                           2.4 kB          282 kB
+├ ƒ /projects/[slug]/workflows/[id]/run                            4.17 kB         280 kB
+├ ƒ /projects/[slug]/workflows/new                                 5.83 kB         282 kB
+├ ƒ /projects/new                                                  3.83 kB         280 kB
+├ ƒ /releases                                                      1.35 kB         276 kB
+├ ƒ /revenue                                                       1.13 kB         276 kB
+├ ƒ /settings                                                      11.5 kB         291 kB
+├ ƒ /settings/local-models                                         4.2 kB           92 kB
+├ ƒ /settings/website-build                                        178 B          91.4 kB
+├ ƒ /system                                                        3.54 kB         278 kB
+├ ○ /terms                                                         195 B          96.7 kB
+├ ƒ /trading                                                       30.5 kB         305 kB
+└ ○ /update-password                                               1.64 kB         155 kB
++ First Load JS shared by all                                      87.8 kB
+  ├ chunks/2117-add0eab54facc48a.js                                31.8 kB
+  ├ chunks/fd9d1056-0ffd695729c0f8f4.js                            53.6 kB
+  └ other shared chunks (total)                                    2.37 kB
+
+
+ƒ Middleware                                                       83.6 kB
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Can't resolve 'styled-jsx' in 'D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\apps\web\node_modules\next'
+<w> while resolving 'styled-jsx' in D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\apps\web\node_modules\next to a directory
+<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Can't resolve 'styled-jsx' in 'D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\apps\web\node_modules\next'
+<w> while resolving 'styled-jsx' in D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\apps\web\node_modules\next to a directory
+ ⚠ Compiled with warnings
+
+C:\Users\Andre\Projects\Omnira\.worktrees\atlas-office-entry-20261106\node_modules\@supabase\supabase-js\dist\index.mjs
+A Node.js API is used (process.version at line: 27) which is not supported in the Edge Runtime.
+Learn more: https://nextjs.org/docs/api-reference/edge-runtime
+
+Import trace for requested module:
+C:\Users\Andre\Projects\Omnira\.worktrees\atlas-office-entry-20261106\node_modules\@supabase\supabase-js\dist\index.mjs
+C:\Users\Andre\Projects\Omnira\.worktrees\atlas-office-entry-20261106\node_modules\@supabase\ssr\dist\module\createServerClient.js
+C:\Users\Andre\Projects\Omnira\.worktrees\atlas-office-entry-20261106\node_modules\@supabase\ssr\dist\module\index.js
+
+request to https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2JL7W0Q5n-wU.woff2 failed, reason:
+
+Retrying 1/3...
+request to https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa0ZL7W0Q5n-wU.woff2 failed, reason:
+
+Retrying 1/3...
+request to https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2ZL7W0Q5n-wU.woff2 failed, reason:
+
+Retrying 1/3...
+request to https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1pL7W0Q5n-wU.woff2 failed, reason:
+
+Retrying 1/3...
+request to https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2pL7W0Q5n-wU.woff2 failed, reason:
+
+Retrying 1/3...
+request to https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa25L7W0Q5n-wU.woff2 failed, reason:
+
+Retrying 1/3...
+request to https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2 failed, reason:
+
+Retrying 1/3...
+<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Can't resolve 'styled-jsx' in 'D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\apps\web\node_modules\next'
+<w> while resolving 'styled-jsx' in D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\apps\web\node_modules\next to a directory

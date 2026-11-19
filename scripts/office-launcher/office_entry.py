@@ -10,7 +10,10 @@ _MODULES = {
     'office_launcher.py', 'office_install_guard.py', 'office_pairing.py',
     'office_presence.py', 'office_relay.py', 'office_visit.py',
     'office_visit_client.py', 'office_visit_process.py', 'office_visit_relay.py',
+    'office_activity.py', 'office_activity_native.py',
     'install_unreal_presence.py', 'style_unreal_presence.py',
+    'office_activity_install.py', 'install_office_activity.py',
+    'verify_office_activity_install_runtime.py', 'office_activity_stage.py', 'office_activity_stage_guard.py',
 }
 
 

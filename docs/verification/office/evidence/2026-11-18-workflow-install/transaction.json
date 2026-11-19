@@ -1,0 +1,38 @@
+{
+  "schema": "omnira.office.native-install-transaction.v1",
+  "status": "committed",
+  "records": {
+    "c:\\users\\andre\\projects\\omnira\\design\\agent-campus-3d\\unrealpilot\\omnira_office_castqa_v83\\omnira_office_castqa_v83.uproject": {
+      "backup": "C:\\Users\\Andre\\Projects\\Omnira\\Design\\Agent-Campus-3D\\UnrealPilot\\Omnira_Office_CastQA_v83\\Saved\\OfficeWorkflowInstall\\original_project.uproject",
+      "before": "08ea8c64fe41486d3230d2aae75223478f9516cd6da3d3ee59e41e560abe9966",
+      "observed_after": "08ea8c64fe41486d3230d2aae75223478f9516cd6da3d3ee59e41e560abe9966"
+    },
+    "c:\\users\\andre\\projects\\omnira\\design\\agent-campus-3d\\unrealpilot\\omnira_office_castqa_v83\\content\\omniragameplayv83\\privateworkflow\\bp_officeworkflowpresence.uasset": {
+      "backup": "C:\\Users\\Andre\\Projects\\Omnira\\Design\\Agent-Campus-3D\\UnrealPilot\\Omnira_Office_CastQA_v83\\Saved\\OfficeWorkflowInstall\\original_consumer.uasset",
+      "before": "19b1d37f3f5eb341feb5b5aba5735b9a832986d02971ac20d032730db35700f5",
+      "observed_after": "19b1d37f3f5eb341feb5b5aba5735b9a832986d02971ac20d032730db35700f5"
+    },
+    "c:\\users\\andre\\projects\\omnira\\design\\agent-campus-3d\\unrealpilot\\omnira_office_castqa_v83\\content\\omnirarealismlab\\maps\\omnira_hq_office_workflow_visit.umap": {
+      "backup": null,
+      "before": null,
+      "observed_after": "a8d6b377107a6a062d862610090a2b9fc21283e835e90abb19fee91a9834816e"
+    },
+    "c:\\users\\andre\\projects\\omnira\\design\\agent-campus-3d\\unrealpilot\\omnira_office_castqa_v83\\saved\\officeworkflowinstall\\installation.json": {
+      "backup": null,
+      "before": null,
+      "observed_after": "1556d769db97aca507e76dd32b391068310b78cafe65013017162269dcb2f3f8"
+    }
+  },
+  "order": [
+    "c:\\users\\andre\\projects\\omnira\\design\\agent-campus-3d\\unrealpilot\\omnira_office_castqa_v83\\saved\\officeworkflowinstall\\installation.json",
+    "c:\\users\\andre\\projects\\omnira\\design\\agent-campus-3d\\unrealpilot\\omnira_office_castqa_v83\\content\\omnirarealismlab\\maps\\omnira_hq_office_workflow_visit.umap",
+    "c:\\users\\andre\\projects\\omnira\\design\\agent-campus-3d\\unrealpilot\\omnira_office_castqa_v83\\omnira_office_castqa_v83.uproject",
+    "c:\\users\\andre\\projects\\omnira\\design\\agent-campus-3d\\unrealpilot\\omnira_office_castqa_v83\\content\\omniragameplayv83\\privateworkflow\\bp_officeworkflowpresence.uasset"
+  ],
+  "steps": [
+    "save_owned_workflow_map",
+    "save_enabled_workflow_target",
+    "record_final_acceptance"
+  ],
+  "intent": null
+}

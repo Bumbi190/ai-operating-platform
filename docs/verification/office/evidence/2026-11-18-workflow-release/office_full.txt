@@ -1,0 +1,45 @@
+{"check": "office_node", "exit_code": 0, "seconds": 3.922, "log": "office_node.txt"}
+{"check": "office_companion", "exit_code": 0, "seconds": 26.5, "log": "office_companion.txt"}
+{"check": "office_workflow_transport", "exit_code": 0, "seconds": 17.531, "log": "office_workflow_transport.txt"}
+{"check": "office_legacy_transport", "exit_code": 0, "seconds": 9.719, "log": "office_legacy_transport.txt"}
+{"check": "office_activity_transport", "exit_code": 0, "seconds": 17.781, "log": "office_activity_transport.txt"}
+{"check": "office_sql", "exit_code": 1, "seconds": 6.672, "log": "office_sql.txt"}
+FFF
+======================================================================
+FAIL: test_scopes_census_contract_and_revocation (scripts.office-launcher.test_office_workflow_sql.WorkflowSQL.test_scopes_census_contract_and_revocation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\scripts\office-launcher\test_office_workflow_sql.py", line 51, in test_scopes_census_contract_and_revocation
+    psql(BOOTSTRAP+visit+PRIOR+activity+workflow+checks)
+  File "D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\scripts\office-launcher\test_office_workflow_sql.py", line 31, in psql
+    self.assertEqual(r.returncode,0,r.stdout[-3000:]+r.stderr[-3000:])
+AssertionError: 2 != 0 : psql: error: connection to server on socket "/var/run/postgresql/.s.PGSQL.5432" failed: No such file or directory
+	Is the server running locally and accepting connections on that socket?
+
+
+======================================================================
+FAIL: test_scopes_facts_and_privileges (scripts.office-launcher.test_office_activity_sql.ActivitySQL.test_scopes_facts_and_privileges)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\scripts\office-launcher\test_office_activity_sql.py", line 48, in test_scopes_facts_and_privileges
+    self.assertEqual(result.returncode, 0, result.stdout[-5000:]+result.stderr[-5000:])
+AssertionError: 2 != 0 : psql: error: connection to server on socket "/var/run/postgresql/.s.PGSQL.5432" failed: No such file or directory
+	Is the server running locally and accepting connections on that socket?
+
+
+======================================================================
+FAIL: test_atomic_authorization_and_catalog (scripts.office-launcher.test_office_visit_sql.VisitSQL.test_atomic_authorization_and_catalog)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\scripts\office-launcher\test_office_visit_sql.py", line 42, in test_atomic_authorization_and_catalog
+    self.assertEqual(result.returncode, 0, result.stdout[-3000:] + result.stderr[-3000:])
+AssertionError: 2 != 0 : psql: error: connection to server on socket "/var/run/postgresql/.s.PGSQL.5432" failed: No such file or directory
+	Is the server running locally and accepting connections on that socket?
+
+
+----------------------------------------------------------------------
+Ran 3 tests in 6.452s
+
+FAILED (failures=3)
+
+{"check": "office_strict_types", "exit_code": 0, "seconds": 2.312, "log": "office_strict_types.txt"}

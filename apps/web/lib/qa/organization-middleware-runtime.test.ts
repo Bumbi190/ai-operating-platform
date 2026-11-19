@@ -108,6 +108,16 @@ describe('collaborator middleware HTTP isolation', () => {
     expect((await middleware(req('/atlas'))).headers.get('location')).toBe('https://app.omniraos.se/organization')
     expect((await middleware(req('/api/chat'))).status).toBe(403)
   })
+  it('keeps owner workflow Office routes available while denying collaborator grants', async () => {
+    const connect = '/atlas/office/connect'
+    const create = '/api/atlas/office/visits/workflow'
+    expect((await middleware(req(connect))).status).toBe(403)
+    expect((await middleware(req(create, 'POST'))).status).toBe(403)
+    state.member = null
+    state.owns = true
+    expect((await middleware(req(connect))).status).toBe(200)
+    expect((await middleware(req(create, 'POST'))).status).toBe(200)
+  })
   it('keeps legacy project owners operating during migration', async () => {
     state.member = null
     state.owns = true

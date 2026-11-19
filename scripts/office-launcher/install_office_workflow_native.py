@@ -46,7 +46,12 @@ def check_candidate(candidate,bundle):
 def inspect(candidate):
     lvl,sub,ed=context();assert lvl.load_level(OFFICE_MAP)
     actors={a.get_name():a for a in sub.get_all_level_actors()};prior=json.loads((PRIOR/'native-candidate.json').read_text())
-    assert len(actors)==1727 and all(sig(actors[n])==v for n,v in prior['original_signatures'].items())
+    expected=dict(prior['original_signatures'])
+    actor_count=1727
+    if 'scene_update' in candidate:
+        from install_office_workflow_scene_update import scene_expectations
+        expected,actor_count=scene_expectations(candidate,prior)
+    assert len(actors)==actor_count and all(n in actors and sig(actors[n])==v for n,v in expected.items())
     c=actors[candidate['consumer']];target=actors[candidate['target']]
     assert c.get_editor_property('Enabled') and c.get_editor_property('Target')==target
     assert c.get_editor_property('FilePath')==str(ROOT/'Saved/OfficePresence/office-familje-pling.json')
@@ -101,7 +106,7 @@ def build(bundle):
 def audit():
     out=ROOT/FOLDER;candidate=json.loads((out/'candidate.json').read_text());assert os.getpid()!=candidate['build_pid']
     bundle=verify_bundle(candidate['bundle']);inspect(candidate);check_candidate(candidate,bundle)
-    proof={'scope':'canonical_saved_workflow_v1','run_id':candidate['run_id'],'pid':os.getpid(),'passed':True,'packages':candidate['packages'],'artifacts':candidate['artifacts'],'dependency_closure_verified':True,'enabled_saved_target':True,'preserved_actor_count':1726,'actor_count':1727}
+    proof={'scope':'canonical_saved_workflow_v1','run_id':candidate['run_id'],'pid':os.getpid(),'passed':True,'packages':candidate['packages'],'artifacts':candidate['artifacts'],'dependency_closure_verified':True,'enabled_saved_target':True,'preserved_actor_count':1726,'actor_count':len(u.get_editor_subsystem(u.EditorActorSubsystem).get_all_level_actors()),'scene_update':candidate.get('scene_update')}
     write(out/'audit.json',proof);print('WORKFLOW_SAVED_AUDIT_PASS '+str(os.getpid()))
 
 def finalize():

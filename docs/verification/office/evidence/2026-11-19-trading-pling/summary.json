@@ -1,0 +1,41 @@
+{
+  "passed": true,
+  "run_id": "58c3376ca8504715ad674d8de60596cd",
+  "canonical_map": "/Game/OmniraRealismLab/Maps/Omnira_HQ_Office_Workflow_Visit",
+  "canonical_map_sha256": "c10db7b05f1b537fa2d3cdf8673f3a0fcfd80edd274f6e644851700822068068",
+  "review_map_sha256": "e4ad30182c77364befb405986ad571536f64df452d754e04340609f312c5cff0",
+  "preview_map": "/Game/OmniraRealismLab/Maps/Previews/Omnira_Office_TradingResident_Review_20261119",
+  "preview_map_sha256": "ff6de09df5164592ad79ca8209bf3fa17221f785e239d6dc8e8b75419615791e",
+  "original_actors_preserved": 1727,
+  "actor_count": 1732,
+  "new_actor_count": 5,
+  "legacy": "SkeletalMeshActor_6",
+  "resident": "BP_Pling_FreeLife_C_3",
+  "props": {
+    "CupRoot": "StaticMeshActor_936",
+    "CupTop": "StaticMeshActor_937",
+    "PaddleRoot": "StaticMeshActor_938",
+    "PaddleHandle": "StaticMeshActor_939"
+  },
+  "paths": {
+    "CoffeePoint": 7141.479926899621,
+    "PingPoint": 4165.879879174299,
+    "FilmPoint": 3430.2561434430386,
+    "RoamA": 1817.3686526863185,
+    "RoamB": 2275.2930475258927
+  },
+  "canonical_displacement_cm": 1731.1328713034554,
+  "player_blocked": true,
+  "workflow_samples": 192,
+  "real_owner_verified": false,
+  "source_bundle_unchanged": "bb68099898a945429097abde08c113f21fdde168ef46687cea4a9bdffd2b10a7",
+  "fresh_pids": [
+    29904,
+    16092,
+    24936,
+    49936
+  ],
+  "preflight_branch_reused": true,
+  "preview_manifest_sha256": "74227c1d151534d24f03b6851d5e706be3fad3cf0733574fd5602fc9356b94b9",
+  "canonical_physical_sha256": "8441690a12a2563c444180a0a8fbd3bcc0e019c1439d74dd4b7922e774252f87"
+}

@@ -14,23 +14,29 @@ it('enforces the Office visit migration from the canonical build history, never 
   expect(readdirSync(canonical).filter(file => file.endsWith('_' + name + '.sql'))).toHaveLength(1)
   expect(readdirSync(legacy).filter(file => file.endsWith('_' + name + '.sql'))).toHaveLength(0)
   expect(state.enforcedNames).toContain(name)
-  expect(state.sqlFiles).toHaveLength(177)
-  expect(new Set(state.repositoryNames).size).toBe(177)
+  expect(state.sqlFiles).toHaveLength(179)
+  expect(new Set(state.repositoryNames).size).toBe(179)
   expect(state.enforcedNames).toContain(family)
 })
 
-it('blocks the historical ledger until both reviewed Office and Family additions are present', () => {
+it('blocks the historical ledger until all reviewed Office and Family additions are present', () => {
   expect(observation.databaseMutationsPerformed).toBe(false)
   expect(observation.migrationNames).not.toContain(name)
   expect(() => evaluateAppliedMigrationLedger(observation.migrationNames, state)).toThrow(/office_visit_sessions/)
   expect(observation.migrationNames).not.toContain(family)
   expect(() => evaluateAppliedMigrationLedger([...observation.migrationNames, name], state)).toThrow(/family_daily_social_capacity_20261114/)
   expect(() => evaluateAppliedMigrationLedger([...observation.migrationNames, family], state)).toThrow(/office_visit_sessions/)
-  const hypotheticalAfterApply = [...observation.migrationNames, name, family]
+  const officeNames = ['office_step_activity', 'office_workflow_state']
+  const beforeNewOffice = [...observation.migrationNames, name, family]
+  for (const office of officeNames) {
+    expect(() => evaluateAppliedMigrationLedger(beforeNewOffice, state)).toThrow(new RegExp(office))
+    expect(() => evaluateAppliedMigrationLedger([...beforeNewOffice, ...officeNames.filter(n => n !== office)], state)).toThrow(new RegExp(office))
+  }
+  const hypotheticalAfterApply = [...beforeNewOffice, ...officeNames]
   expect(evaluateAppliedMigrationLedger(hypotheticalAfterApply, state)).toMatchObject({
-    canonicalSqlCount: 177, enforcedCount: 163, appliedLedgerCount: 200,
+    canonicalSqlCount: 179, enforcedCount: 165, appliedLedgerCount: 202,
   })
-  for (const duplicate of [name, family]) {
+  for (const duplicate of [name, family, ...officeNames]) {
     expect(() => evaluateAppliedMigrationLedger([...hypotheticalAfterApply, duplicate], state)).toThrow(/duplicate migration name/)
   }
   expect(() => evaluateAppliedMigrationLedger([...hypotheticalAfterApply, 'unreviewed_migration'], state)).toThrow(/unknown migration name/)

@@ -65,7 +65,7 @@ describe('owner-attested ledger with external trust root', () => {
   it('passes a fresh, cryptographically authenticated synthetic ledger through actual Harvey Guard', async () => {
     const result = await verifyLedgerAttestation(input())
     expect(result.status).toBe('PASS')
-    expect(result.result).toMatchObject({ canonicalSqlCount: 177, referencedMigrationCount: 0, enforcedCount: 163 })
+    expect(result.result).toMatchObject({ canonicalSqlCount: 179, referencedMigrationCount: 0, enforcedCount: 165 })
   })
   it('runs without network, SCB, database clients or production credentials', async () => {
     const fetch = vi.fn(() => { throw Error('network forbidden') })
@@ -175,5 +175,15 @@ describe('receipt bound to reviewed code, CI run and exact artifact', () => {
     // Pure verification can repeat. A real publisher needs protected concurrency
     // and deployment-ID recording; Vercel permissions remain a separate boundary.
     expect((await verifyPublicationReceipt(r)).status).toBe('PASS')
+  })
+})
+
+
+describe('Office applied-ledger version pins', () => {
+  it.each(REFERENCED_LEDGER_MIGRATIONS.filter(reference => ['office_step_activity', 'office_workflow_state'].includes(reference.name)))('rejects the Git filename timestamp as applied version for $name', async reference => {
+    const b = body()
+    b.rows.find(row => row.name === reference.name)!.version = reference.sourcePath.split('/').pop()!.split('_')[0]
+    b.contentDigest = digest(canonicalJson(b.rows))
+    await expect(verifyLedgerAttestation(input(b))).rejects.toThrow(deny)
   })
 })

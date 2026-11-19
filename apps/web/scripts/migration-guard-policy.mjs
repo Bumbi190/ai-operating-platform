@@ -95,12 +95,14 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // 03dfd37e3749030523094dbdbca20b86a54b410b7be4acfa79f2ed6592b6014c
 // matching the CRLF-normalized applied statement. No SQL replay, history edit,
 // legacy allowlist expansion, emergency override, or frozen baseline adjustment.
-// Office visit sessions adds one enforced migration; pending reviewed apply.
+// Office visit sessions retains its verified applied ledger-version/hash pin.
+// Office PR #644 adds two byteidentical canonical sources, already applied at
+// 20261119061352 / 20261119061409; source filename timestamps are not ledger versions.
 // Reconciled with the already-applied Family social migration restored in PR #638.
-export const EXPECTED_CANONICAL_SQL_COUNT = 177
-export const EXPECTED_ENFORCED_COUNT = 163
+export const EXPECTED_CANONICAL_SQL_COUNT = 179
+export const EXPECTED_ENFORCED_COUNT = 165
 
-// Both former external references now exist in the canonical 177-file corpus.
+// Both former external references now exist in the canonical 179-file corpus.
 // Keep exact ledger-version and SQL-hash pins for attestation verification; never count them twice.
 export const REFERENCED_LEDGER_MIGRATIONS = Object.freeze(
   [
@@ -119,11 +121,27 @@ export const REFERENCED_LEDGER_MIGRATIONS = Object.freeze(
     "sourcePath": "apps/web/supabase/migrations/20261114104408_family_daily_social_capacity_20261114.sql",
     "sourceBlob": "b3697b7962f704b3d3cc65ba5d9e0251224fff2b",
     "sqlSha256": "9dbef873ee5604c1b37f875acdf5ad4907f8ba7a2fda7111f87f5a6513bd7431"
+  },
+  {
+    "name": "office_step_activity",
+    "ledgerVersion": "20261119061352",
+    "sourceCommit": "3999724fdff36ad5a239e6455fa06b86c4c60cc3",
+    "sourcePath": "apps/web/supabase/migrations/20261113144053_office_step_activity.sql",
+    "sourceBlob": "9c656a1310440f1ee4bfb9c854eca329df6b83b5",
+    "sqlSha256": "5674b6ded86f3840a0b677d119464de3d272b54c85c54f44ac3ab582fc4d47a5"
+  },
+  {
+    "name": "office_workflow_state",
+    "ledgerVersion": "20261119061409",
+    "sourceCommit": "3999724fdff36ad5a239e6455fa06b86c4c60cc3",
+    "sourcePath": "apps/web/supabase/migrations/20261118093000_office_workflow_state.sql",
+    "sourceBlob": "72f16b543e793564a6a4febe4e45544b30f8c0d8",
+    "sqlSha256": "499d4286b71955c5611b2411cdbea7f029413fd82b7632bb3cb0fcec133e73f3"
   }
 ].map(reference => Object.freeze(reference)),
 )
 export const EXPECTED_REFERENCED_LEDGER_COUNT = 0
-const EXPECTED_PINNED_LEDGER_METADATA_COUNT = 2
+const EXPECTED_PINNED_LEDGER_METADATA_COUNT = 4
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

@@ -103,6 +103,39 @@ export async function GET(request: Request) {
   results.voiceOrphanCandidates = 0
   const { data: voiceProject, error: voiceProjectError } = await db.from('projects')
     .select('id').eq('slug', PROMPT_SLUG).maybeSingle()
+
+  // A technically failed editorial gate must never silently kill both daily
+  // publications. Recheck ONE recent draft in a separate budgeted request.
+  // The recheck route uses a single versioned CAS claim and never bypasses QA.
+  results.qualityRechecked = []
+  results.qualityRecoveryVoice = []
+  if (!voiceProjectError && voiceProject?.id) {
+    const { data: qualityDue, error: qualityFindError } = await db.from('media_scripts')
+      .select('id')
+      .eq('project_id', voiceProject.id)
+      .eq('status', 'pending_review').in('version', [1, 2])
+      .gte('generated_at', sixHoursAgo).lt('generated_at', tenMinAgo)
+      .order('generated_at', { ascending: false }).limit(1)
+    if (!qualityFindError) {
+      for (const script of qualityDue ?? []) {
+        const result = await callStep('/api/media/cron/quality-recheck', script.id)
+        ;(results.qualityRechecked as unknown[]).push(result)
+        if (result.ok) {
+          const { data: rechecked } = await db.from('media_scripts')
+            .select('status').eq('id', script.id)
+            .eq('project_id', voiceProject.id).maybeSingle()
+          if (rechecked?.status === 'approved') {
+            // The original step2 slot may already have passed. Its CAS claim
+            // prevents double audio/image spending against a concurrent cron.
+            ;(results.qualityRecoveryVoice as unknown[]).push(
+              await callStep('/api/media/cron/step2', script.id),
+            )
+          }
+        }
+      }
+    }
+  }
+
   if (!voiceProjectError && voiceProject?.id) {
     let voiceQuery = db.from('media_scripts')
       .select('id')

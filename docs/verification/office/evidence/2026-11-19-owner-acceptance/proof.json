@@ -1,0 +1,56 @@
+{
+  "checked_at": "2026-11-19T08:51:27.952500+00:00",
+  "scope": "real_owner_workflow_visit_v1",
+  "real_owner": true,
+  "real_production_https": true,
+  "native_ack_fixture": false,
+  "browser_status": "Office är anslutet – du kan stänga sidan. Pling följer vald agents workflowstatus.",
+  "project": "Familje-Stunden",
+  "agent": "Aktivitets-skapare",
+  "initial_live_observation": {
+    "revision": 3,
+    "state": "idle",
+    "known": true,
+    "busy": false,
+    "age_seconds": 3.516519546508789,
+    "read_native_ack_exact_match": true,
+    "active_database_visits": 1
+  },
+  "last_native_ack": {
+    "schema": "omnira.office.workflow-native-ack.v1",
+    "scope": "workflow_state_v1",
+    "phase": "applied",
+    "revision": 18,
+    "observed_at_unix": 1795078016.41,
+    "expires_at_unix": 1795078036.41,
+    "workflow_state": "idle",
+    "workflow_state_known": true,
+    "workflow_busy": false,
+    "execution": "not_verified"
+  },
+  "closed_binding_matches_last_ack": true,
+  "closed_projection": {
+    "schema": "omnira.office.workflow-presence.v1",
+    "scope": "workflow_state_v1",
+    "visit_state": "closed",
+    "workflow_state": "unknown",
+    "workflow_state_known": false,
+    "workflow_busy": true,
+    "revision": 0
+  },
+  "database": {
+    "created_at": "2026-11-19T08:44:19.281040Z",
+    "revoked_at": "2026-11-19T08:47:00.708223Z",
+    "workflow_revision": 18,
+    "active_workflow_visits_after_close": 0
+  },
+  "game": {
+    "pid": 22492,
+    "exit_reason": "UGameEngine::Tick.ViewportClosed",
+    "exit_status": 0,
+    "exit_utc": "2026-11-19T08:46:58.156Z"
+  },
+  "real_worker_execution_verified": false,
+  "real_visit_movement_visually_verified": false,
+  "native_install_run_id": "58c3376ca8504715ad674d8de60596cd"
+}

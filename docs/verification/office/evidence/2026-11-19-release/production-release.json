@@ -1,0 +1,54 @@
+{
+  "ownerAuthorization": "User accepted the reviewed two Office migrations, controlled Familje-Pling release and owner connection proof by continuing on 2026-11-19.",
+  "firstProductionRelease": {
+    "pullRequest": 644,
+    "sourceCommit": "9e97d4e5cfe2e69b6d7c91dd190a6271b340461a",
+    "mergeCommit": "3999724fdff36ad5a239e6455fa06b86c4c60cc3",
+    "deployment": "dpl_2mo3N3wzBxQ2dzPkRwyt9hzmvyGz",
+    "status": "READY",
+    "domains": [
+      "omniraos.se",
+      "app.omniraos.se"
+    ],
+    "guard": {
+      "enforced": 165,
+      "ledgerNames": 202
+    },
+    "priorProductionRollback": "dpl_DjynN7rCt8jUpAD8juRykHx7NPqB"
+  },
+  "flag": {
+    "key": "OMNIRA_OFFICE_WORKFLOW_STATUS_ENABLED",
+    "value": "true",
+    "target": [
+      "production"
+    ],
+    "id": "fPuEePfN84ZjYA2m"
+  },
+  "previewCaveat": {
+    "id": "dpl_6Ymiaje7P9SC4Rh4e3UA46uUeu8P",
+    "state": "CANCELED",
+    "reason": "ignored-build-step; GitHub green Vercel context was not build proof"
+  },
+  "acceptance": {
+    "realOwnerPageLoaded": true,
+    "projectRegistryLoaded": true,
+    "localCompanionRunning": true,
+    "realWorkflowGameRunning": true,
+    "corsPreflight": 204,
+    "firstProbeSucceeded": false,
+    "workflowVisitCreated": false,
+    "nativeWorkflowAcknowledgement": false,
+    "liveWorkflowIdleProven": false,
+    "knownLocalPermissionState": "not observed yet"
+  },
+  "safety": {
+    "noRunHistoryMutations": true,
+    "noPaidModelOrVoiceRuns": true,
+    "noNewCredential": true,
+    "noNativeAssetOrBundleMutation": true
+  },
+  "research": [
+    "https://developer.chrome.com/docs/modern-web-guidance/guides/security/local-network-access",
+    "https://developer.chrome.com/release-notes/142"
+  ]
+}

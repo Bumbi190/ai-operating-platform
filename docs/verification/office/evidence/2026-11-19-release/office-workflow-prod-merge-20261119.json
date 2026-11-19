@@ -1,0 +1,120 @@
+{
+  "mergeOutput": "",
+  "pullRequest": {
+    "headRefOid": "9e97d4e5cfe2e69b6d7c91dd190a6271b340461a",
+    "mergeCommit": {
+      "oid": "3999724fdff36ad5a239e6455fa06b86c4c60cc3"
+    },
+    "mergedAt": "2026-11-19T06:19:56Z",
+    "state": "MERGED",
+    "url": "https://github.com/Bumbi190/ai-operating-platform/pull/644"
+  },
+  "preMergeChecks": {
+    "baseRefName": "main",
+    "headRefOid": "9e97d4e5cfe2e69b6d7c91dd190a6271b340461a",
+    "isDraft": false,
+    "mergeStateStatus": "CLEAN",
+    "state": "OPEN",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-19T06:17:55Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Bumbi190/ai-operating-platform/actions/runs/44470855951/job/135379675914",
+        "name": "Atlas Dream Reconciliation Boundary",
+        "startedAt": "2026-11-19T06:15:38Z",
+        "status": "COMPLETED",
+        "workflowName": "Atlas Dream Reconciliation Boundary"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-19T06:18:03Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Bumbi190/ai-operating-platform/actions/runs/44470856067/job/135379676618",
+        "name": "Atlas project isolation suites",
+        "startedAt": "2026-11-19T06:15:38Z",
+        "status": "COMPLETED",
+        "workflowName": "Atlas Project Isolation"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-19T06:17:58Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Bumbi190/ai-operating-platform/actions/runs/44470855959/job/135379675938",
+        "name": "Memory M4 boundary suites",
+        "startedAt": "2026-11-19T06:15:38Z",
+        "status": "COMPLETED",
+        "workflowName": "Memory M4 Boundary"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-19T06:17:27Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Bumbi190/ai-operating-platform/actions/runs/44470855556/job/135379674104",
+        "name": "Migration Guard Integrity",
+        "startedAt": "2026-11-19T06:15:38Z",
+        "status": "COMPLETED",
+        "workflowName": "Migration Guard Integrity"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-19T06:17:59Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Bumbi190/ai-operating-platform/actions/runs/44470856272/job/135379677190",
+        "name": "Nova campaign contracts and native PostgreSQL",
+        "startedAt": "2026-11-19T06:15:39Z",
+        "status": "COMPLETED",
+        "workflowName": "Nova Social Campaign Boundary"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-19T06:17:21Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Bumbi190/ai-operating-platform/actions/runs/44470855751/job/135379674815",
+        "name": "SDF-1B Control Plane Boundary",
+        "startedAt": "2026-11-19T06:15:38Z",
+        "status": "COMPLETED",
+        "workflowName": "SDF-1B Control Plane Boundary"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-19T06:18:41Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Bumbi190/ai-operating-platform/actions/runs/44470855466/job/135379674025",
+        "name": "SDF-1C Trusted Broker Boundary",
+        "startedAt": "2026-11-19T06:15:38Z",
+        "status": "COMPLETED",
+        "workflowName": "SDF-1C Trusted Broker Boundary"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-19T06:15:52Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Bumbi190/ai-operating-platform/actions/runs/44470855897/job/135379675171",
+        "name": "Trading canon integrity",
+        "startedAt": "2026-11-19T06:15:38Z",
+        "status": "COMPLETED",
+        "workflowName": "Trading Canon Integrity"
+      },
+      {
+        "__typename": "StatusContext",
+        "context": "Vercel",
+        "startedAt": "2026-11-19T06:15:43Z",
+        "state": "SUCCESS",
+        "targetUrl": "https://vercel.com/bumbi190s-projects/ai-operating-platform-web/6Ymiaje7P9SC4Rh4e3UA46uUeu8P"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-19T06:15:43Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://vercel.com/github",
+        "name": "Vercel Preview Comments",
+        "startedAt": "2026-11-19T06:15:43Z",
+        "status": "COMPLETED",
+        "workflowName": ""
+      }
+    ]
+  },
+  "adminBypassUsed": false,
+  "forcePushUsed": false
+}

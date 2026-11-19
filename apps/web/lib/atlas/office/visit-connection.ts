@@ -4,11 +4,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 type Fetcher = typeof fetch
 type Data = Record<string, unknown>
 
-async function request(fetcher: Fetcher, url: string, options: RequestInit, signal?: AbortSignal): Promise<Data> {
+async function request(fetcher: Fetcher, url: string, options: RequestInit, signal?: AbortSignal, timeoutMs = 5000): Promise<Data> {
   const controller = new AbortController(), abort = () => controller.abort()
   if (signal?.aborted) abort()
   signal?.addEventListener('abort', abort, { once: true })
-  const timer = setTimeout(abort, 5000)
+  const timer = setTimeout(abort, timeoutMs)
   try {
     const response = await fetcher(url, { ...options, signal: controller.signal, cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer' })
     if (!response.ok) throw new Error('Office visit unavailable')
@@ -20,12 +20,14 @@ async function request(fetcher: Fetcher, url: string, options: RequestInit, sign
   } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort) }
 }
 
-function local(fetcher: Fetcher, pair: OfficePairing, path: string, data?: unknown, signal?: AbortSignal) {
-  return request(fetcher, `http://127.0.0.1:${pair.port}${path}`, {
+function local(fetcher: Fetcher, pair: OfficePairing, path: string, data?: unknown, signal?: AbortSignal, timeoutMs = 5000) {
+  const options: RequestInit & { targetAddressSpace: 'loopback' } = {
     method: data === undefined ? 'GET' : 'POST', credentials: 'omit', keepalive: data !== undefined,
+    targetAddressSpace: 'loopback',
     headers: { Authorization: 'Bearer ' + pair.key, 'Content-Type': 'application/json' },
     ...(data === undefined ? {} : { body: JSON.stringify(data) }),
-  }, signal)
+  }
+  return request(fetcher, `http://127.0.0.1:${pair.port}${path}`, options, signal, timeoutMs)
 }
 
 function status(data: Data) {
@@ -38,7 +40,8 @@ function status(data: Data) {
 }
 
 export async function probeOfficeVisitCapabilities(pair: OfficePairing, fetcher: Fetcher = fetch, signal?: AbortSignal) {
-  const data = status(await local(fetcher, pair, '/status', undefined, signal))
+  // A first browser permission prompt needs time; grant/ack deadlines stay unchanged.
+  const data = status(await local(fetcher, pair, '/status', undefined, signal, 30_000))
   return { avatars: data.avatars, activityAvailable: data.activityAvailable, ...(data.workflowAvailable ? { workflowAvailable: true } : {}) }
 }
 export async function probeOfficeVisit(pair: OfficePairing, fetcher: Fetcher = fetch, signal?: AbortSignal): Promise<string[]> {

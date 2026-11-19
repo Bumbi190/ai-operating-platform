@@ -1,0 +1,42 @@
+[
+  {
+    "name": "activity-transport.txt",
+    "originalSha256": "13476ae2412bef35fdfa6ae9fc34d8ddf3b73876620c15a3dda94711a5a1b12e",
+    "gitSha256": "164b0ced6e8a1cfae3ea2423f4b1b79ac600a89ff862c732266ed8d930752eb7"
+  },
+  {
+    "name": "loopback-next-build.txt",
+    "originalSha256": "73c79ba01b3af5e123e92f710fefcff509796abc43fefd4e090fca324e9f26ee",
+    "gitSha256": "c967ac3e9b93ae3c6e1772a1a5842c281de3590429b9b9fca836ef2a94fe0ca7"
+  },
+  {
+    "name": "loopback-red.txt",
+    "originalSha256": "f857588d51d86d5ccca65c5b8172b8045698bfcf32c86b675e4c975026618e3f",
+    "gitSha256": "0d19c201cc0b2d41529719f5523f7d7aea2ba33566add6864c1538b8924f5bd9"
+  },
+  {
+    "name": "office-node-final.txt",
+    "originalSha256": "b59ddbcf11876e4da05343e174c4000ac0fa9792fd1b713cf2d55e6f2aee80cb",
+    "gitSha256": "09d257d3963e11e4b619f598e2bc7f33d10aac94505019df935d571844ef7c5a"
+  },
+  {
+    "name": "office-node.txt",
+    "originalSha256": "47405d7be9ef9a5b9615721aa2f62551846767f56e54dc106eeba73ae55bfa79",
+    "gitSha256": "ec2cfb7f5877db3e412d5ad14e302a1402a66bdc4b57d564796cd999b8985c57"
+  },
+  {
+    "name": "office-strict.txt",
+    "originalSha256": "98ebbee0310d32943b4a8677fe022907d6bfa33167f18d7d2a7a06281379792f",
+    "gitSha256": "cb7bfb89edecc6a0fbc651518baf7cfa554595522ff084cc98101c666a645bb9"
+  },
+  {
+    "name": "visit-transport.txt",
+    "originalSha256": "2f489e759bf96f09ce76e74c91b0b7ea8ae9d45d040975fe052b10554ebf99a4",
+    "gitSha256": "59c31f8ca8fe4bae10b83051f51de75d5c1c3e8dcf4708f9bde9a48765f9eef9"
+  },
+  {
+    "name": "workflow-transport.txt",
+    "originalSha256": "e85dc82928de5c1dd85f124b9f52baa9a0694b0ea1c4b5715ef60f62d7c08425",
+    "gitSha256": "68977ea5d944d72b6119710ae55750cdc1add32845b2298c58178b1757f58510"
+  }
+]

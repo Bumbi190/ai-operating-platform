@@ -16,6 +16,16 @@ interface Props { projects: OfficeProjectChoice[]; authenticated: boolean; sourc
 const SELECT_STYLE = 'mt-2 min-h-12 w-full rounded-xl border border-slate-600 bg-slate-950 px-3 text-slate-100 disabled:opacity-50'
 const BUTTON_STYLE = 'min-h-12 rounded-xl border border-cyan-700 px-5 py-3 font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300'
 
+async function officeLoopbackPermission(): Promise<PermissionState | 'unknown'> {
+  // This reads only this origin's permission; it changes no browser setting.
+  // Never query the obsolete combined name: older Chromium versions can crash.
+  try {
+    if (typeof navigator === 'undefined' || !navigator.permissions?.query) return 'unknown'
+    const descriptor = { name: 'loopback-network' } as unknown as PermissionDescriptor
+    return (await navigator.permissions.query(descriptor)).state
+  } catch { return 'unknown' }
+}
+
 export function OfficeConnectionPanel({ projects, authenticated, sourceAvailable }: Props) {
   const pair = useRef<OfficePairing | null>(null)
   const consumed = useRef(false)
@@ -77,6 +87,15 @@ export function OfficeConnectionPanel({ projects, authenticated, sourceAvailable
     probe.current = attempt
     setProbing(true)
     try {
+      const permission = await officeLoopbackPermission()
+      if (!mounted.current || probe.current !== attempt || attempt.signal.aborted) return
+      if (permission === 'denied') {
+        setAvatars([])
+        setActivityAvailable(false); setWorkflowAvailable(false)
+        setActivityConsent(false); setWorkflowConsent(false)
+        setState({ phase: 'unavailable', message: 'Webbläsaren blockerar anslutningen till den här datorn. Tillåt lokala anslutningar för Omnira via ikonen bredvid webbadressen och öppna sedan en ny Office-anslutning.' })
+        return
+      }
       const capabilities = pair.current.protocol === 2
         ? await (await import('@/lib/atlas/office/visit-connection')).probeOfficeVisitCapabilities(pair.current, fetch, attempt.signal)
         : { avatars: await probeOfficeRelay(pair.current, fetch, attempt.signal), activityAvailable: false, workflowAvailable: false }
@@ -95,7 +114,7 @@ export function OfficeConnectionPanel({ projects, authenticated, sourceAvailable
         setWorkflowAvailable(false)
         setWorkflowConsent(false)
         setActivityConsent(false)
-        setState({ phase: 'unavailable', message: 'Datorn kunde inte anslutas. Öppna en ny Office-anslutning och försök igen.' })
+        setState({ phase: 'unavailable', message: 'Datorn kunde inte anslutas. Kontrollera att Office är öppet och att webbläsaren tillåter lokala anslutningar för Omnira. Öppna sedan en ny Office-anslutning.' })
       }
     } finally {
       if (probe.current === attempt) {

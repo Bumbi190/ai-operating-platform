@@ -55,9 +55,9 @@ async function request(
   }
 }
 
-function localRequest(pair: OfficePairing, method: 'GET' | 'POST', data?: unknown): RequestInit {
+function localRequest(pair: OfficePairing, method: 'GET' | 'POST', data?: unknown): RequestInit & { targetAddressSpace: 'loopback' } {
   return {
-    method, credentials: 'omit', headers: { Authorization: 'Bearer ' + pair.key, 'Content-Type': 'application/json' },
+    method, credentials: 'omit', targetAddressSpace: 'loopback', headers: { Authorization: 'Bearer ' + pair.key, 'Content-Type': 'application/json' },
     ...(data === undefined ? {} : { body: JSON.stringify(data) }),
   }
 }

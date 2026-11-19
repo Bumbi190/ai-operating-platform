@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-11-19T06:12:13.706Z",
+  "repository": "Bumbi190/ai-operating-platform",
+  "project": "Omnira",
+  "task": "Office workflow status controlled production release and owner pilot",
+  "workId": "OFFICE-WORKFLOW-STATUS-20261118",
+  "proposedBranch": "feat/office-workflow-status-20261118",
+  "mainSha": "8f73dfc21be4bb9e3656e3bf53b5c651a9ea66f4",
+  "openPrCount": 123,
+  "worktreeCount": 273,
+  "decision": "review_required",
+  "code": "matching_local_branch",
+  "candidates": [],
+  "branchMatches": [],
+  "worktreeMatches": [
+    {
+      "branch": "feat/office-workflow-status-20261118",
+      "path": "D:/Projekt/Omnira/Worktrees/office-workflow-status-20261118",
+      "locked": false
+    }
+  ],
+  "reason": "Reuse the existing verified owned workflow branch; owner approved two Office migrations and controlled release",
+  "limitations": "Metadata/local-name similarity is a hint; review actual file scope and agent ownership before new work.",
+  "sideEffects": "None. No branch, worktree, PR, commit, deployment or API mutation is performed."
+}

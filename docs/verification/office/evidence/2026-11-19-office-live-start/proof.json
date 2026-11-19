@@ -1,0 +1,30 @@
+{
+  "observed_at": "2026-11-19T09:22:18.798946+00:00",
+  "real_owner": true,
+  "last_native_ack": {
+    "schema": "omnira.office.workflow-native-ack.v1",
+    "scope": "workflow_state_v1",
+    "phase": "applied",
+    "revision": 39,
+    "observed_at_unix": 1795079900.396,
+    "workflow_state": "idle",
+    "workflow_state_known": true,
+    "workflow_busy": false,
+    "execution": "not_verified"
+  },
+  "closed_projection": {
+    "visit_state": "closed",
+    "workflow_state": "unknown",
+    "workflow_state_known": false,
+    "workflow_busy": true
+  },
+  "active_workflow_visits_after_close": 0,
+  "separate_familje_visual_movement_verified": false,
+  "game_pid": 35904,
+  "game_exit_utc": "2026-11-19T09:18:21.672Z",
+  "game_exit_reason": "UGameEngine::Tick.ViewportClosed",
+  "shortcut_properties_verified": true,
+  "shortcut_launched_in_separate_new_visit": false,
+  "keyboard_layout_restored": true,
+  "source_bundle_verified_unchanged": true
+}

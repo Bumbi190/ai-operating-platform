@@ -1,0 +1,12 @@
+﻿{
+    "created":  true,
+    "verified":  true,
+    "path":  "C:\\Users\\Andre\\OneDrive\\Skrivbord\\Omnira Office - Levande Pling.lnk",
+    "target":  "C:\\Python312\\pythonw.exe",
+    "arguments":  "-I -B \"C:\\Users\\Andre\\AppData\\Local\\Omnira\\OfficeLauncher\\workflow\\bb68099898a945429097abde08c113f21fdde168ef46687cea4a9bdffd2b10a7\\office_workflow_entry.py\" --workflow-visit",
+    "working_directory":  "C:\\Users\\Andre\\Projects\\Omnira\\Design\\Agent-Campus-3D\\UnrealPilot\\Omnira_Office_CastQA_v83",
+    "icon":  "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Binaries\\Win64\\UnrealEditor.exe,0",
+    "source_bundle_unchanged":  true,
+    "same_fixed_action_as_tested":  true,
+    "relaunched_existing_game":  false
+}

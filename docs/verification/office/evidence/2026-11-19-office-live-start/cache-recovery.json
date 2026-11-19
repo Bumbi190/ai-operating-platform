@@ -1,0 +1,10 @@
+{
+  "entry_verified": true,
+  "source_files_unchanged": true,
+  "quarantined_cache": "C:\\Users\\Andre\\Projects\\Omnira\\Temp\\office-read-probe-cache-quarantine-29b7f78bb6df416f8c26846c0b0104e0",
+  "cache_hashes": {
+    "office_presence.cpython-312.pyc": "097479f68eda3494b51739421dc5bb1629a9ca9a7552a5728812510d8b893fe9",
+    "office_relay.cpython-312.pyc": "f57966732e57655e631cfc39dcd26cc278d8ccac5b58506ffeb89e60c9b0bf43",
+    "office_workflow_ack.cpython-312.pyc": "2c19cbb542c88330dddf66abf6eba89608afbb2dd7b05458e5e835bf1ef6e4b3"
+  }
+}

@@ -55,7 +55,7 @@ test('probe and bind cannot overlap; late probe never hides a running connection
 test('hiding the page aborts a pending probe and ignores its eventual callback',async()=>{
  const h=harness();await h.prepare()
  try{
-  h.render().buttons[0].onClick();h.hidden()
+  h.render().buttons[0].onClick();await tick();h.hidden()
   assert.equal(h.aborted,true)
   h.finish();await tick()
   assert(!h.render().status.includes('Datorn är ansluten'))

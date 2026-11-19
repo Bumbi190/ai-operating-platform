@@ -1,0 +1,8 @@
+{
+  "baseRefName": "codex/calendar-workflow-version-atomic-probe-20261020",
+  "headRefName": "codex/calendar-workflow-real-writer-candidate-20261020",
+  "number": 449,
+  "title": "test(calendar): trigger f\u00e5ngar \u00e4ndrade workflow-v\u00e4ckningar i k\u00e4llversion",
+  "changedFileCount": 2,
+  "officePaths": []
+}

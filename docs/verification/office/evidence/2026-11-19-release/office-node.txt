@@ -1,0 +1,522 @@
+TAP version 13
+# Subtest: projects a minimal fresh request with exact agent and lease; never execution evidence
+ok 1 - projects a minimal fresh request with exact agent and lease; never execution evidence
+  ---
+  duration_ms: 373.4435
+  type: 'test'
+  ...
+# Subtest: later assistant response and ambiguous equal timestamps suppress indication
+ok 2 - later assistant response and ambiguous equal timestamps suppress indication
+  ---
+  duration_ms: 479.3314
+  type: 'test'
+  ...
+# Subtest: wrong project, agent, stale request and expired lease never produce activity
+ok 3 - wrong project, agent, stale request and expired lease never produce activity
+  ---
+  duration_ms: 710.8742
+  type: 'test'
+  ...
+# Subtest: all malformed or truncated metadata fails closed including hidden malformed reply
+ok 4 - all malformed or truncated metadata fails closed including hidden malformed reply
+  ---
+  duration_ms: 438.6761
+  type: 'test'
+  ...
+# Subtest: two outstanding runs for same selected agent are unknown
+ok 5 - two outstanding runs for same selected agent are unknown
+  ---
+  duration_ms: 155.4932
+  type: 'test'
+  ...
+# Subtest: empty complete read is available without asserting idle or success
+ok 6 - empty complete read is available without asserting idle or success
+  ---
+  duration_ms: 285.4898
+  type: 'test'
+  ...
+# (node:48256) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///D:/Projekt/Omnira/Worktrees/office-workflow-status-20261118/apps/web/lib/atlas/office/visit-connection.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to D:\\Projekt\\Omnira\\Worktrees\\office-workflow-status-20261118\\apps\\web\\package.json.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: activity requires explicit option, capability, exact grant scope and v2 native ack
+ok 7 - activity requires explicit option, capability, exact grant scope and v2 native ack
+  ---
+  duration_ms: 141.4413
+  type: 'test'
+  ...
+# Subtest: default connection never requests activity even from a capable companion
+ok 8 - default connection never requests activity even from a capable companion
+  ---
+  duration_ms: 9.72
+  type: 'test'
+  ...
+# Subtest: incompatible native or wrong grant cannot obtain a confirmed activity visit
+ok 9 - incompatible native or wrong grant cannot obtain a confirmed activity visit
+  ---
+  duration_ms: 10.0114
+  type: 'test'
+  ...
+# Subtest: capability probe does not grant authority
+ok 10 - capability probe does not grant authority
+  ---
+  duration_ms: 1.9566
+  type: 'test'
+  ...
+# Subtest: hide while commit response is held revokes the pending visit rather than detaching
+ok 11 - hide while commit response is held revokes the pending visit rather than detaching
+  ---
+  duration_ms: 27.6116
+  type: 'test'
+  ...
+# Subtest: lost or rejected commit receipt revokes instead of claiming an autonomous visit
+ok 12 - lost or rejected commit receipt revokes instead of claiming an autonomous visit
+  ---
+  duration_ms: 4.0592
+  type: 'test'
+  ...
+# Subtest: new activity create requires verified owner, exact declared scope and native protocol
+ok 13 - new activity create requires verified owner, exact declared scope and native protocol
+  ---
+  duration_ms: 67.5237
+  type: 'test'
+  ...
+# Subtest: legacy create rejects an unexpected expanded grant instead of silently accepting it
+ok 14 - legacy create rejects an unexpected expanded grant instead of silently accepting it
+  ---
+  duration_ms: 5.6146
+  type: 'test'
+  ...
+# Subtest: activity presence returns only classified evidence and never raw metadata or content
+ok 15 - activity presence returns only classified evidence and never raw metadata or content
+  ---
+  duration_ms: 12.2113
+  type: 'test'
+  ...
+# Subtest: old identity grant never invokes the activity reader even if raw extra facts arrive
+ok 16 - old identity grant never invokes the activity reader even if raw extra facts arrive
+  ---
+  duration_ms: 22.8636
+  type: 'test'
+  ...
+# Subtest: unsupported scope and missing classifier fail closed
+ok 17 - unsupported scope and missing classifier fail closed
+  ---
+  duration_ms: 8.6371
+  type: 'test'
+  ...
+# PASS: connection page authenticates scoped source, strips private agent fields, renders explicit accessible selectors and truthful status.
+# Subtest: scripts\\office-launcher\\test_office_connect_page.cjs
+ok 4 - scripts\\office-launcher\\test_office_connect_page.cjs
+  ---
+  duration_ms: 3380.557
+  type: 'test'
+  ...
+# (node:9276) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///D:/Projekt/Omnira/Worktrees/office-workflow-status-20261118/apps/web/lib/atlas/office/connection.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to D:\\Projekt\\Omnira\\Worktrees\\office-workflow-status-20261118\\apps\\web\\package.json.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: pairing fragment is scrubbed before validation; secrets never remain in history
+ok 19 - pairing fragment is scrubbed before validation; secrets never remain in history
+  ---
+  duration_ms: 7.9115
+  type: 'test'
+  ...
+# Subtest: connection is opt-in, uses one bounded API pair, and never claims execution
+ok 20 - connection is opt-in, uses one bounded API pair, and never claims execution
+  ---
+  duration_ms: 127.3474
+  type: 'test'
+  ...
+# Subtest: expired authentication clears connection and never forwards source DTOs
+ok 21 - expired authentication clears connection and never forwards source DTOs
+  ---
+  duration_ms: 7.9201
+  type: 'test'
+  ...
+# Subtest: stop aborts in-flight source requests; a late refresh cannot revive identity
+ok 22 - stop aborts in-flight source requests; a late refresh cannot revive identity
+  ---
+  duration_ms: 18.207
+  type: 'test'
+  ...
+# Subtest: invalid selections never leave the browser
+ok 23 - invalid selections never leave the browser
+  ---
+  duration_ms: 1.3835
+  type: 'test'
+  ...
+# Subtest: source expiry clears the browser status even before the next refresh
+ok 24 - source expiry clears the browser status even before the next refresh
+  ---
+  duration_ms: 165.9036
+  type: 'test'
+  ...
+# Subtest: only selected identity fields cross the local transport boundary
+ok 25 - only selected identity fields cross the local transport boundary
+  ---
+  duration_ms: 14.7604
+  type: 'test'
+  ...
+# Subtest: duplicate selected project identities fail closed before forwarding
+ok 26 - duplicate selected project identities fail closed before forwarding
+  ---
+  duration_ms: 14.1062
+  type: 'test'
+  ...
+# Subtest: a cancelled computer probe aborts its pending request
+ok 27 - a cancelled computer probe aborts its pending request
+  ---
+  duration_ms: 53.5829
+  type: 'test'
+  ...
+# Subtest: anonymous pairing page never redirects its fragment to login or recovery handlers
+ok 28 - anonymous pairing page never redirects its fragment to login or recovery handlers
+  ---
+  duration_ms: 42.4125
+  type: 'test'
+  ...
+# Subtest: collaborator and unknown ownership are denied in-place before the private owner page
+ok 29 - collaborator and unknown ownership are denied in-place before the private owner page
+  ---
+  duration_ms: 58.6516
+  type: 'test'
+  ...
+# Subtest: existing owner route and existing collaborator API containment stay intact
+ok 30 - existing owner route and existing collaborator API containment stay intact
+  ---
+  duration_ms: 26.3516
+  type: 'test'
+  ...
+# PASS: actual Office TSX renders with one native launch link, classic HQ and Atlas return.
+# Subtest: scripts\\office-launcher\\test_office_page.cjs
+ok 7 - scripts\\office-launcher\\test_office_page.cjs
+  ---
+  duration_ms: 4026.4579
+  type: 'test'
+  ...
+# Subtest: probe and bind cannot overlap; late probe never hides a running connection
+ok 32 - probe and bind cannot overlap; late probe never hides a running connection
+  ---
+  duration_ms: 864.7966
+  type: 'test'
+  ...
+# Subtest: hiding the page aborts a pending probe and ignores its eventual callback
+not ok 33 - hiding the page aborts a pending probe and ignores its eventual callback
+  ---
+  duration_ms: 398.6351
+  type: 'test'
+  location: 'D:\\Projekt\\Omnira\\Worktrees\\office-workflow-status-20261118\\scripts\\office-launcher\\test_office_panel.cjs:55:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    false !== true
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\scripts\office-launcher\test_office_panel.cjs:59:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# (node:30164) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///D:/Projekt/Omnira/Worktrees/office-workflow-status-20261118/apps/web/lib/atlas/office/visit-connection.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to D:\\Projekt\\Omnira\\Worktrees\\office-workflow-status-20261118\\apps\\web\\package.json.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: visit confirmation needs a native acknowledgement; browser never publishes frames
+ok 34 - visit confirmation needs a native acknowledgement; browser never publishes frames
+  ---
+  duration_ms: 137.5732
+  type: 'test'
+  ...
+# Subtest: closing confirmed browser detaches; explicit disconnect still revokes afterwards
+ok 35 - closing confirmed browser detaches; explicit disconnect still revokes afterwards
+  ---
+  duration_ms: 22.7139
+  type: 'test'
+  ...
+# Subtest: pending browser close prevents late attach and revokes a late grant
+ok 36 - pending browser close prevents late attach and revokes a late grant
+  ---
+  duration_ms: 8.1299
+  type: 'test'
+  ...
+# Subtest: confirmed browser observation failure detaches without revoking native authority
+ok 37 - confirmed browser observation failure detaches without revoking native authority
+  ---
+  duration_ms: 6.0718
+  type: 'test'
+  ...
+# Subtest: visit panel permits closing only after native acknowledgement and keeps explicit disconnect
+ok 38 - visit panel permits closing only after native acknowledgement and keeps explicit disconnect
+  ---
+  duration_ms: 1173.9351
+  type: 'test'
+  ...
+# Subtest: visit panel hidden during pending approval cannot attach when response arrives later
+ok 39 - visit panel hidden during pending approval cannot attach when response arrives later
+  ---
+  duration_ms: 538.229
+  type: 'test'
+  ...
+# Subtest: failed visit module download leaves a recoverable disconnected panel
+ok 40 - failed visit module download leaves a recoverable disconnected panel
+  ---
+  duration_ms: 259.5993
+  type: 'test'
+  ...
+# Subtest: activity checkbox starts unchecked and only explicit consent creates activity scope
+ok 41 - activity checkbox starts unchecked and only explicit consent creates activity scope
+  ---
+  duration_ms: 157.9538
+  type: 'test'
+  ...
+# Subtest: capable companion without checkbox consent retains identity-only grant
+ok 42 - capable companion without checkbox consent retains identity-only grant
+  ---
+  duration_ms: 162.9655
+  type: 'test'
+  ...
+# Subtest: verified claims must match verified user and contain a session; rejected users never reach admin RPC
+ok 43 - verified claims must match verified user and contain a session; rejected users never reach admin RPC
+  ---
+  duration_ms: 2462.4457
+  type: 'test'
+  ...
+# (node:21796) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///D:/Projekt/Omnira/Worktrees/office-workflow-status-20261118/apps/web/lib/atlas/office/visits.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to D:\\Projekt\\Omnira\\Worktrees\\office-workflow-status-20261118\\apps\\web\\package.json.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: only verified cookie owner creates selected scoped metadata
+ok 44 - only verified cookie owner creates selected scoped metadata
+  ---
+  duration_ms: 227.6572
+  type: 'test'
+  ...
+# Subtest: create rejects unauthenticated user and CSRF before writes
+ok 45 - create rejects unauthenticated user and CSRF before writes
+  ---
+  duration_ms: 4.7303
+  type: 'test'
+  ...
+# Subtest: strict bounded JSON rejects duplicate keys, owner injection, nested and streamed overflow
+ok 46 - strict bounded JSON rejects duplicate keys, owner injection, nested and streamed overflow
+  ---
+  duration_ms: 8.4811
+  type: 'test'
+  ...
+# Subtest: dedicated secret is hashed and accepted only by presence/revoke, not cookie fallback
+ok 47 - dedicated secret is hashed and accepted only by presence/revoke, not cookie fallback
+  ---
+  duration_ms: 17.9229
+  type: 'test'
+  ...
+# Subtest: DB denial and exceptions stay closed with no sensitive errors
+ok 48 - DB denial and exceptions stay closed with no sensitive errors
+  ---
+  duration_ms: 4.3171
+  type: 'test'
+  ...
+# Subtest: owner revoke needs exact origin and authenticated session; native needs secret alone
+ok 49 - owner revoke needs exact origin and authenticated session; native needs secret alone
+  ---
+  duration_ms: 2.1084
+  type: 'test'
+  ...
+# Subtest: chunked oversized body is bounded even without Content-Length
+ok 50 - chunked oversized body is bounded even without Content-Length
+  ---
+  duration_ms: 2.4836
+  type: 'test'
+  ...
+# Subtest: JSON whitespace accepts space tab CR LF and rejects JavaScript-only Unicode whitespace
+ok 51 - JSON whitespace accepts space tab CR LF and rejects JavaScript-only Unicode whitespace
+  ---
+  duration_ms: 8.9141
+  type: 'test'
+  ...
+# Subtest: complete empty census alone permits bounded idle; pending/running/approval reserve selected agent
+ok 52 - complete empty census alone permits bounded idle; pending/running/approval reserve selected agent
+  ---
+  duration_ms: 7.922
+  type: 'test'
+  ...
+# Subtest: incomplete/capped/malformed census never claims idle
+ok 53 - incomplete/capped/malformed census never claims idle
+  ---
+  duration_ms: 9.3185
+  type: 'test'
+  ...
+# Subtest: stale/missing/contradictory claims and terminal anomalies remain unknown
+ok 54 - stale/missing/contradictory claims and terminal anomalies remain unknown
+  ---
+  duration_ms: 1.1898
+  type: 'test'
+  ...
+# Subtest: workflow endpoints are off by default without touching owner or database
+ok 55 - workflow endpoints are off by default without touching owner or database
+  ---
+  duration_ms: 116.0008
+  type: 'test'
+  ...
+# Subtest: owner makes a new exact workflow grant, with no secret/session echo
+ok 56 - owner makes a new exact workflow grant, with no secret/session echo
+  ---
+  duration_ms: 9.6618
+  type: 'test'
+  ...
+# Subtest: new scope requires explicit exact consent/protocol and same origin before writes
+ok 57 - new scope requires explicit exact consent/protocol and same origin before writes
+  ---
+  duration_ms: 17.4112
+  type: 'test'
+  ...
+# Subtest: native workflow read uses dedicated secret boundary and minimal DTO
+ok 58 - native workflow read uses dedicated secret boundary and minimal DTO
+  ---
+  duration_ms: 5.2253
+  type: 'test'
+  ...
+# Subtest: a running claim shortens busy; failed census is unknown, never idle
+ok 59 - a running claim shortens busy; failed census is unknown, never idle
+  ---
+  duration_ms: 11.6652
+  type: 'test'
+  ...
+# Subtest: legacy scope, malformed revision, stale/future RPC metadata fail closed
+ok 60 - legacy scope, malformed revision, stale/future RPC metadata fail closed
+  ---
+  duration_ms: 54.9318
+  type: 'test'
+  ...
+# Subtest: strict JSON rejects duplicate keys and extra inputs; errors are redacted
+ok 61 - strict JSON rejects duplicate keys and extra inputs; errors are redacted
+  ---
+  duration_ms: 13.6608
+  type: 'test'
+  ...
+# Subtest: old endpoints never gain a workflow grant through the new metadata parser
+ok 62 - old endpoints never gain a workflow grant through the new metadata parser
+  ---
+  duration_ms: 14.1926
+  type: 'test'
+  ...
+# (node:51316) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///D:/Projekt/Omnira/Worktrees/office-workflow-status-20261118/apps/web/lib/atlas/office/visit-connection.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to D:\\Projekt\\Omnira\\Worktrees\\office-workflow-status-20261118\\apps\\web\\package.json.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: workflow capability alone never upgrades default identity scope
+ok 63 - workflow capability alone never upgrades default identity scope
+  ---
+  duration_ms: 106.8402
+  type: 'test'
+  ...
+# Subtest: explicit workflow consent requires dedicated grant, matching native acknowledgement and scoped confirmation
+ok 64 - explicit workflow consent requires dedicated grant, matching native acknowledgement and scoped confirmation
+  ---
+  duration_ms: 43.2596
+  type: 'test'
+  ...
+# Subtest: unsupported receiver or downgraded grant cannot confirm workflow scope
+ok 65 - unsupported receiver or downgraded grant cannot confirm workflow scope
+  ---
+  duration_ms: 17.1138
+  type: 'test'
+  ...
+# Subtest: one explicit read scope is selected per visit
+ok 66 - one explicit read scope is selected per visit
+  ---
+  duration_ms: 0.7808
+  type: 'test'
+  ...
+# Subtest: capability probe is read only and distinguishes workflow from step activity
+ok 67 - capability probe is read only and distinguishes workflow from step activity
+  ---
+  duration_ms: 14.0775
+  type: 'test'
+  ...
+# Subtest: hide while workflow confirmation is pending revokes; lost receipt cannot detach
+ok 68 - hide while workflow confirmation is pending revokes; lost receipt cannot detach
+  ---
+  duration_ms: 62.8025
+  type: 'test'
+  ...
+# Subtest: acknowledgement rejects foreign binding, false idle, stale data and missing workflow booleans
+ok 69 - acknowledgement rejects foreign binding, false idle, stale data and missing workflow booleans
+  ---
+  duration_ms: 2795.0295
+  type: 'test'
+  ...
+# Subtest: loopback address space is explicit and never carried into authenticated upstream calls
+ok 70 - loopback address space is explicit and never carried into authenticated upstream calls
+  ---
+  duration_ms: 2.056
+  type: 'test'
+  ...
+# Subtest: workflow checkbox is offered only by a capable receiver and starts unchecked
+ok 71 - workflow checkbox is offered only by a capable receiver and starts unchecked
+  ---
+  duration_ms: 693.0562
+  type: 'test'
+  ...
+# Subtest: explicit workflow checkbox reaches real controller and safe browser detach
+ok 72 - explicit workflow checkbox reaches real controller and safe browser detach
+  ---
+  duration_ms: 342.5092
+  type: 'test'
+  ...
+# Subtest: choosing step activity clears workflow consent and vice versa
+ok 73 - choosing step activity clears workflow consent and vice versa
+  ---
+  duration_ms: 117.9453
+  type: 'test'
+  ...
+# Subtest: denied loopback permission explains the actual blocker without source reads or authority
+ok 74 - denied loopback permission explains the actual blocker without source reads or authority
+  ---
+  duration_ms: 62.6032
+  type: 'test'
+  ...
+# Subtest: unsupported granular permission falls back to explicit connection without legacy permission queries
+ok 75 - unsupported granular permission falls back to explicit connection without legacy permission queries
+  ---
+  duration_ms: 130.9979
+  type: 'test'
+  ...
+# Subtest: hiding during an asynchronous permission check prevents a late local request
+ok 76 - hiding during an asynchronous permission check prevents a late local request
+  ---
+  duration_ms: 51.7884
+  type: 'test'
+  ...
+# Subtest: real routes default off; only exact true enables; gate prevents auth/admin calls
+ok 77 - real routes default off; only exact true enables; gate prevents auth/admin calls
+  ---
+  duration_ms: 1518.5633
+  type: 'test'
+  ...
+# Subtest: real owner adapter rejects mismatched, absent, failed and non-owner session claims
+ok 78 - real owner adapter rejects mismatched, absent, failed and non-owner session claims
+  ---
+  duration_ms: 990.3771
+  type: 'test'
+  ...
+# Subtest: real routes use dedicated RPCs; native route does not read browser credentials
+ok 79 - real routes use dedicated RPCs; native route does not read browser credentials
+  ---
+  duration_ms: 133.238
+  type: 'test'
+  ...
+1..79
+# tests 79
+# suites 0
+# pass 78
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5640.9925

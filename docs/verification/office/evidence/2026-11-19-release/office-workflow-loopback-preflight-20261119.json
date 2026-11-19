@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-11-19T06:31:48.608Z",
+  "repository": "Bumbi190/ai-operating-platform",
+  "project": "Omnira",
+  "task": "Fix real browser loopback connection diagnostics for the released Office workflow pilot",
+  "workId": "OFFICE-WORKFLOW-STATUS-20261118",
+  "proposedBranch": "feat/office-workflow-status-20261118",
+  "mainSha": "3999724fdff36ad5a239e6455fa06b86c4c60cc3",
+  "openPrCount": 123,
+  "worktreeCount": 272,
+  "decision": "review_required",
+  "code": "matching_open_pr",
+  "candidates": [
+    {
+      "number": 449,
+      "title": "test(calendar): trigger fångar ändrade workflow-väckningar i källversion",
+      "head": "codex/calendar-workflow-real-writer-candidate-20261020",
+      "url": "https://github.com/Bumbi190/ai-operating-platform/pull/449"
+    },
+    {
+      "number": 445,
+      "title": "docs(calendar): kartlägg sociala och workflow-skrivvägar för revisionslås",
+      "head": "codex/calendar-real-writer-inventory-20261020",
+      "url": "https://github.com/Bumbi190/ai-operating-platform/pull/445"
+    }
+  ],
+  "branchMatches": [
+    "codex/calendar-workflow-real-writer-candidate-20261020"
+  ],
+  "worktreeMatches": [
+    {
+      "branch": "feat/office-workflow-status-20261118",
+      "path": "D:/Projekt/Omnira/Worktrees/office-workflow-status-20261118",
+      "locked": false
+    }
+  ],
+  "reason": "Continue exact owned branch after PR644 merged; fix observed live acceptance failure, no new branch",
+  "limitations": "Metadata/local-name similarity is a hint; review actual file scope and agent ownership before new work.",
+  "sideEffects": "None. No branch, worktree, PR, commit, deployment or API mutation is performed."
+}

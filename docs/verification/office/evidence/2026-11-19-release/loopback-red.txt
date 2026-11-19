@@ -1,0 +1,160 @@
+TAP version 13
+# (node:10388) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///D:/Projekt/Omnira/Worktrees/office-workflow-status-20261118/apps/web/lib/atlas/office/visit-connection.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to D:\\Projekt\\Omnira\\Worktrees\\office-workflow-status-20261118\\apps\\web\\package.json.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: workflow capability alone never upgrades default identity scope
+ok 1 - workflow capability alone never upgrades default identity scope
+  ---
+  duration_ms: 59.3843
+  type: 'test'
+  ...
+# Subtest: explicit workflow consent requires dedicated grant, matching native acknowledgement and scoped confirmation
+ok 2 - explicit workflow consent requires dedicated grant, matching native acknowledgement and scoped confirmation
+  ---
+  duration_ms: 6.0317
+  type: 'test'
+  ...
+# Subtest: unsupported receiver or downgraded grant cannot confirm workflow scope
+ok 3 - unsupported receiver or downgraded grant cannot confirm workflow scope
+  ---
+  duration_ms: 2.2271
+  type: 'test'
+  ...
+# Subtest: one explicit read scope is selected per visit
+ok 4 - one explicit read scope is selected per visit
+  ---
+  duration_ms: 0.7472
+  type: 'test'
+  ...
+# Subtest: capability probe is read only and distinguishes workflow from step activity
+ok 5 - capability probe is read only and distinguishes workflow from step activity
+  ---
+  duration_ms: 1.245
+  type: 'test'
+  ...
+# Subtest: hide while workflow confirmation is pending revokes; lost receipt cannot detach
+ok 6 - hide while workflow confirmation is pending revokes; lost receipt cannot detach
+  ---
+  duration_ms: 26.4397
+  type: 'test'
+  ...
+# Subtest: acknowledgement rejects foreign binding, false idle, stale data and missing workflow booleans
+ok 7 - acknowledgement rejects foreign binding, false idle, stale data and missing workflow booleans
+  ---
+  duration_ms: 2618.2996
+  type: 'test'
+  ...
+# Subtest: loopback address space is explicit and never carried into authenticated upstream calls
+not ok 8 - loopback address space is explicit and never carried into authenticated upstream calls
+  ---
+  duration_ms: 3.6842
+  type: 'test'
+  location: 'D:\\Projekt\\Omnira\\Worktrees\\office-workflow-status-20261118\\scripts\\office-launcher\\test_office_workflow_connection.cjs:13:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+
+    + undefined
+    - 'loopback'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'loopback'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\scripts\office-launcher\test_office_workflow_connection.cjs:13:339)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: workflow checkbox is offered only by a capable receiver and starts unchecked
+ok 9 - workflow checkbox is offered only by a capable receiver and starts unchecked
+  ---
+  duration_ms: 471.27
+  type: 'test'
+  ...
+# Subtest: explicit workflow checkbox reaches real controller and safe browser detach
+ok 10 - explicit workflow checkbox reaches real controller and safe browser detach
+  ---
+  duration_ms: 129.7679
+  type: 'test'
+  ...
+# Subtest: choosing step activity clears workflow consent and vice versa
+ok 11 - choosing step activity clears workflow consent and vice versa
+  ---
+  duration_ms: 131.8748
+  type: 'test'
+  ...
+# Subtest: denied loopback permission explains the actual blocker without source reads or authority
+not ok 12 - denied loopback permission explains the actual blocker without source reads or authority
+  ---
+  duration_ms: 78.2939
+  type: 'test'
+  location: 'D:\\Projekt\\Omnira\\Worktrees\\office-workflow-status-20261118\\scripts\\office-launcher\\test_office_workflow_panel.cjs:52:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /Webbläsaren blockerar/. Input:
+
+    'Datorn är ansluten · välj figur och agent'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: 'Datorn är ansluten · välj figur och agent'
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\scripts\office-launcher\test_office_workflow_panel.cjs:55:69)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: unsupported granular permission falls back to explicit connection without legacy permission queries
+not ok 13 - unsupported granular permission falls back to explicit connection without legacy permission queries
+  ---
+  duration_ms: 66.5934
+  type: 'test'
+  location: 'D:\\Projekt\\Omnira\\Worktrees\\office-workflow-status-20261118\\scripts\\office-launcher\\test_office_workflow_panel.cjs:58:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\scripts\office-launcher\test_office_workflow_panel.cjs:62:31)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: hiding during an asynchronous permission check prevents a late local request
+not ok 14 - hiding during an asynchronous permission check prevents a late local request
+  ---
+  duration_ms: 66.1441
+  type: 'test'
+  location: 'D:\\Projekt\\Omnira\\Worktrees\\office-workflow-status-20261118\\scripts\\office-launcher\\test_office_workflow_panel.cjs:65:1'
+  failureType: 'testCodeFailure'
+  error: 'resolve is not a function'
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    TestContext.<anonymous> (D:\Projekt\Omnira\Worktrees\office-workflow-status-20261118\scripts\office-launcher\test_office_workflow_panel.cjs:68:58)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+1..14
+# tests 14
+# suites 0
+# pass 10
+# fail 4
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2984.0886

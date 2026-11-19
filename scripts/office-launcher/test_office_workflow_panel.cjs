@@ -43,3 +43,28 @@ test('explicit workflow checkbox reaches real controller and safe browser detach
 test('choosing step activity clears workflow consent and vice versa',async()=>{
  const h=harness(false,true,true);try{await h.prepare();h.render().checkboxes[0].onChange({target:{checked:true}});assert.equal(h.render().checkboxes[1].checked,false);h.render().checkboxes[1].onChange({target:{checked:true}});assert.equal(h.render().checkboxes[0].checked,false);assert.equal(h.render().checkboxes[1].checked,true)}finally{h.cleanup()}
 })
+
+function permissionFixture(query){
+ const previous=Object.getOwnPropertyDescriptor(globalThis,'navigator')
+ Object.defineProperty(globalThis,'navigator',{configurable:true,value:{permissions:{query}}})
+ return()=>{if(previous)Object.defineProperty(globalThis,'navigator',previous);else delete globalThis.navigator}
+}
+test('denied loopback permission explains the actual blocker without source reads or authority',async()=>{
+ const restore=permissionFixture(async descriptor=>{assert.deepEqual(descriptor,{name:'loopback-network'});return{state:'denied'}})
+ const h=harness(false,false,true)
+ try{h.render();h.render().buttons[0].onClick();await tick();assert.match(h.render().status,/Webbläsaren blockerar/);assert.match(h.render().status,/ikonen bredvid webbadressen/);assert.equal(h.calls.length,0);assert.equal(h.render().buttons[1].disabled,true)}
+ finally{h.cleanup();restore()}
+})
+test('unsupported granular permission falls back to explicit connection without legacy permission queries',async()=>{
+ let queries=0
+ const restore=permissionFixture(async descriptor=>{queries++;assert.equal(descriptor.name,'loopback-network');throw new TypeError('unsupported')})
+ const h=harness(false,false,true)
+ try{await h.prepare();assert.equal(queries,1);assert.equal(h.render().checkboxes.length,1);assert.equal(h.render().checkboxes[0].checked,false);assert(h.calls.every(url=>url.endsWith('/status')))}
+ finally{h.cleanup();restore()}
+})
+test('hiding during an asynchronous permission check prevents a late local request',async()=>{
+ let resolve;const restore=permissionFixture(()=>new Promise(r=>resolve=r))
+ const h=harness(false,false,true)
+ try{h.render();h.render().buttons[0].onClick();h.hide();resolve({state:'granted'});await tick();assert.equal(h.calls.length,0);assert.doesNotMatch(h.render().status,/Datorn är ansluten/)}
+ finally{h.cleanup();restore()}
+})

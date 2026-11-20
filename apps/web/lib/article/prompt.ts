@@ -56,6 +56,26 @@ FACTUALITY & ANTI-HALLUCINATION:
 - If the source is too thin to support the requested length, write a shorter, fully-supported piece
   rather than padding from memory. Strong analysis is allowed on thin facts; invented facts are not.
 
+SOURCE CLAIMS, BENCHMARKS & PRODUCT TIERS:
+- For ANY company-owned benchmark, model ranking, percentage, cost-per-task figure or
+  security evaluation, explicitly attribute the claim nearby: "Google reports...",
+  "According to DeepMind's release...", or "the company says...". The company
+  publishing a result is NOT the same as independent replication.
+- Preserve the exact thinking level (high / xhigh / default), benchmark name,
+  evaluation population, baseline comparison and availability tier wherever a
+  result depends on those qualifiers. If source details are incomplete, omit the
+  number rather than smoothing it into a broader claim.
+- Do not invent/upgrade a company announcement into an independently verified
+  industry consensus. Treat source quotes/testimonials as company-selected
+  testimonials, not proof of broader adoption or performance.
+- A result about tokens per megawatt / cost per task / a specific benchmark does
+  NOT imply per-user latency, universal performance, or a generally available
+  feature. Keep claims scoped to the exact metric and context.
+- Section headings and list items in SOURCE MATERIAL supply context. Never
+  separate a metric from the qualification in its heading or adjacent paragraph.
+- The analysis may draw an inference, but label it clearly as an interpretation
+  and name what independent evidence would falsify or confirm it.
+
 ATTRIBUTION:
 - Reference the source in prose at least once (e.g., "According to {source}…").
 - Credit third-party reporting to them, not to The Prompt. Do not imply independent verification.

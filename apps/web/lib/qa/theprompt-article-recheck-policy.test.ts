@@ -66,6 +66,35 @@ describe('single recent The Prompt article QA recheck', () => {
     }
   })
 
+  it('permits exactly one explicit schema-recovery only after the diagnosed technical defect', () => {
+    const qa = row.qa as Record<string, unknown>
+    const schemaFailed: ArticleRecheckCandidate = {
+      ...row,
+      version: 3,
+      qa: {
+        ...qa,
+        independent_fact_review: {
+          ...BLOCKED_FACT_REVIEW,
+          verdict: 'Independent factual review invalid_tool_schema; requires human editorial review.',
+        },
+      },
+    }
+    expect(eligibleForSingleArticleRecheck(schemaFailed, projectId, now)).toBe(false)
+    expect(eligibleForSingleArticleRecheck(schemaFailed, projectId, now, true)).toBe(true)
+    expect(eligibleForSingleArticleRecheck({ ...schemaFailed, version: 5 }, projectId, now, true)).toBe(false)
+    expect(eligibleForSingleArticleRecheck({
+      ...schemaFailed,
+      qa: {
+        ...qa,
+        independent_fact_review: {
+          ...BLOCKED_FACT_REVIEW,
+          verdict: 'Evidence does not support the benchmark claims.',
+        },
+      },
+    }, projectId, now, true)).toBe(false)
+    expect(eligibleForSingleArticleRecheck({ ...schemaFailed, project_id: 'foreign' }, projectId, now, true)).toBe(false)
+  })
+
   it('remains fail-closed on malformed model data, preserves valid veto details', () => {
     const bad = { passed: true, claims_checked: 5 }
     expect(parseIndependentFactReview(bad)).toEqual(BLOCKED_FACT_REVIEW)

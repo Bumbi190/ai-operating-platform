@@ -9,6 +9,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:local-text-offline": "vitest run --config vitest.local-text-offline.config.ts --maxWorkers=2 --minWorkers=1",
     "knowledge:build": "../../node_modules/.bin/tsx scripts/build-architecture-knowledge.ts",
     "knowledge:verify": "../../node_modules/.bin/tsx scripts/verify-architecture-knowledge.ts",
     "knowledge:shadow": "../../node_modules/.bin/tsx scripts/knowledge-shadow.ts",

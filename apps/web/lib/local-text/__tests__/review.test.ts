@@ -29,3 +29,14 @@ it('no_budget_queues_human',async()=>{for(const r of [{...readiness,budgetReserv
 it('authority_refresh_cannot_finalize',async()=>{f.reply.authorityRefreshRequired=true;f.afterCallAllowed=false;const out=await api.reviewResult({task,result,binding:binding()},reviewer());expect(out.status).toBe('unknown');expect(out.reasonCodes).toContain('AUTHORITY_UNAVAILABLE')})
 it('only one actual governed invocation supplies the approved receipt and source-bound identity',async()=>{const provider=reviewer(),b=binding();const first=await api.reviewResult({task,result,binding:b},provider);expect(first).toMatchObject({status:'approved',inputHash:b.inputHash,resultHash:b.resultHash,reviewRunId:b.reviewRunId,reviewAttemptId:b.reviewAttemptId,reviewerDeployment:b.reviewerDeployment});expect((await api.reviewResult({task,result,binding:b},provider)).status).toBe('unknown');expect(f.calls).toHaveLength(1)})
 it('missing qualified provider envelope evidence makes zero physical calls',async()=>{const out=await api.reviewResult({task,result,binding:binding()},reviewer(binding(),{...readiness,textEnvelopeEvidence:undefined}));expect(out.status).toBe('unknown');expect(f.calls).toHaveLength(0)})
+it.each([{verdict:['approved']},{verdict:['rejected']},{verdict:[['approved']]},{verdict:[['rejected']]}])('rejects non-string provider verdict %j without another invocation',async({verdict})=>{
+ f.reply.content=JSON.stringify({verdict,reasonCodes:['UNSAFE_TRANSFORM']})
+ const out=await api.reviewResult({task,result,binding:binding()},reviewer())
+ expect(out.status).toBe('unknown');expect(out.reasonCodes).toContain('REVIEW_UNAVAILABLE');expect(f.calls).toHaveLength(1)
+})
+it('preserves primitive rejection and its review binding',async()=>{
+ f.reply.content=JSON.stringify({verdict:'rejected',reasonCodes:['UNSAFE_TRANSFORM']})
+ const b=binding(),out=await api.reviewResult({task,result,binding:b},reviewer(b))
+ const {projectId:_scopeOnly,...receiptBinding}=b
+ expect(out).toMatchObject({...receiptBinding,status:'rejected',reasonCodes:['UNSAFE_TRANSFORM']});expect(f.calls).toHaveLength(1)
+})

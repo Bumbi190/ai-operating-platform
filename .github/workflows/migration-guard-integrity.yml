@@ -211,16 +211,17 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-      - name: Build reviewed source without publishing credentials
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - &install_verified_gh
+        name: Install verified GitHub CLI 2.104.0
         shell: bash
         run: |
           set -euo pipefail
           # Official v2.104.0 checksum reviewed separately; never trust a downloaded sidecar at runtime.
           test "$RUNNER_OS:$RUNNER_ARCH" = 'Linux:X64'
           test "$HARVEY_OIDC_GH_VERSION" = '2.104.0'
-          [[ "$RUNNER_TEMP" = /* ]]
+          [[ "$RUNNER_TEMP" = /* && "$RUNNER_TEMP" != *$'\n'* && "$RUNNER_TEMP" != *$'\r'* ]]
+          test -f "$GITHUB_PATH"
+          test -f "$GITHUB_ENV"
           umask 077
           gh_install_dir="$(mktemp -d "$RUNNER_TEMP/harvey-oidc-gh-2.104.0.XXXXXX")"
           trap 'rm -rf -- "$gh_install_dir"' EXIT
@@ -248,6 +249,17 @@ jobs:
           test "$gh_name:$gh_label:$gh_version" = 'gh:version:2.104.0'
           test "$gh_version" = "$HARVEY_OIDC_GH_VERSION"
           printf 'Verified GitHub CLI binary: %s\n%s\n' "$gh_binary" "$gh_version_output"
+          # Export only after verification. The hosted runner discards this job's temp directory.
+          rm -- "$gh_archive"
+          printf '%s\n' "$gh_bin_dir" >> "$GITHUB_PATH"
+          printf 'HARVEY_OIDC_VERIFIED_GH=%s\n' "$gh_binary" >> "$GITHUB_ENV"
+          trap - EXIT
+      - name: Build reviewed source without publishing credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          test "$(command -v gh)" = "${HARVEY_OIDC_VERIFIED_GH:?}"
           node apps/web/scripts/harvey-oidc-ci.mjs build --output "$RUNNER_TEMP/harvey-oidc-build"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -288,6 +300,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
+      - *install_verified_gh
       - name: Materialize protected export without echoing its contents
         env:
           OWNER_LEDGER: ${{ secrets.HARVEY_OIDC_LEDGER_EXPORT_JSON }}
@@ -308,7 +321,10 @@ jobs:
           BUILD_RUN_ID: ${{ inputs.build_run_id }}
           BUILD_ARTIFACT_ID: ${{ inputs.build_artifact_id }}
           ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
-        run: node apps/web/scripts/harvey-oidc-ci.mjs prepare --output "$RUNNER_TEMP/harvey-oidc-proof"
+        shell: bash
+        run: |
+          test "$(command -v gh)" = "${HARVEY_OIDC_VERIFIED_GH:?}"
+          node apps/web/scripts/harvey-oidc-ci.mjs prepare --output "$RUNNER_TEMP/harvey-oidc-proof"
       - name: Attest exact owner-approved export bytes
         id: ledger
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
@@ -321,7 +337,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           LEDGER_BUNDLE: ${{ steps.ledger.outputs.bundle-path }}
-        run: node apps/web/scripts/harvey-oidc-ci.mjs guard --directory "$RUNNER_TEMP/harvey-oidc-proof"
+        shell: bash
+        run: |
+          test "$(command -v gh)" = "${HARVEY_OIDC_VERIFIED_GH:?}"
+          node apps/web/scripts/harvey-oidc-ci.mjs guard --directory "$RUNNER_TEMP/harvey-oidc-proof"
       - name: Attest exact Guard receipt bytes
         id: receipt
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
@@ -335,7 +354,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RECEIPT_BUNDLE: ${{ steps.receipt.outputs.bundle-path }}
           LEDGER_EXPORT_FILE: ${{ runner.temp }}/harvey-oidc-secret/ledger.json
-        run: node apps/web/scripts/harvey-oidc-ci.mjs evidence --directory "$RUNNER_TEMP/harvey-oidc-proof"
+        shell: bash
+        run: |
+          test "$(command -v gh)" = "${HARVEY_OIDC_VERIFIED_GH:?}"
+          node apps/web/scripts/harvey-oidc-ci.mjs evidence --directory "$RUNNER_TEMP/harvey-oidc-proof"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: harvey-oidc-proof-${{ github.sha }}-${{ github.run_id }}
@@ -431,6 +453,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 24
+      - *install_verified_gh
       - name: Materialize protected isolation review without logging its contents
         env:
           OWNER_ISOLATION: ${{ secrets.HARVEY_OIDC_ISOLATION_REVIEW_JSON }}
@@ -451,7 +474,10 @@ jobs:
           HARVEY_OIDC_ISOLATION_FILE: ${{ runner.temp }}/harvey-oidc-secret/isolation.json
           PROOF_RUN_ID: ${{ inputs.proof_run_id }}
           PROOF_ARTIFACT_ID: ${{ inputs.proof_artifact_id }}
-        run: node apps/web/scripts/harvey-oidc-ci.mjs handoff --output "$RUNNER_TEMP/harvey-oidc-handoff"
+        shell: bash
+        run: |
+          test "$(command -v gh)" = "${HARVEY_OIDC_VERIFIED_GH:?}"
+          node apps/web/scripts/harvey-oidc-ci.mjs handoff --output "$RUNNER_TEMP/harvey-oidc-handoff"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: harvey-oidc-handoff-${{ github.sha }}-${{ github.run_id }}

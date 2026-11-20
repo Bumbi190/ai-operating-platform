@@ -949,19 +949,41 @@ describe('explicit owner-supervised verification-only handoff', () => {
   })
 })
 
-describe('verified GitHub CLI provisioning in the existing build step', () => {
+describe('verified GitHub CLI provisioning for build, attest and handoff', () => {
   const packageHash = '98cb101ad87dbbd3f6b2f2bfcbd43197ccd07643140121d8a9cfaa91eadbc24e'
   const packageUrl = 'https://github.com/cli/cli/releases/download/v2.104.0/gh_2.104.0_linux_amd64.tar.gz'
-  function provisioningScript() {
-    const workflow = readFileSync(resolve(__dirname, '../../../../.github/workflows/migration-guard-integrity.yml'), 'utf8')
-    const start = workflow.indexOf('      - name: Build reviewed source without publishing credentials\n')
-    const end = workflow.indexOf('\n      - uses: actions/upload-artifact@', start)
-    if (start < 0 || end < start) throw new Error('Reviewed build step is missing')
-    const step = workflow.slice(start, end)
-    const body = step.indexOf('        run: |\n')
-    if (body < 0) throw new Error('Reviewed provisioning script is missing')
-    return step.slice(body + '        run: |\n'.length).replace(/^ {10}/gm, '')
+  const jobs = ['oidc_build', 'oidc_attest', 'oidc_handoff'] as const
+  const modes = ['build', 'prepare', 'guard', 'evidence', 'handoff'] as const
+  const workflow = readFileSync(resolve(__dirname, '../../../../.github/workflows/migration-guard-integrity.yml'), 'utf8')
+  function jobBody(name: string) {
+    const start = workflow.indexOf(`\n  ${name}:\n`)
+    if (start < 0) throw new Error(`Missing job ${name}`)
+    return workflow.slice(start + 1).split(/\n  \w+:\n/, 1)[0]
   }
+  function provisioningScript() {
+    const body = jobBody('oidc_build').match(/- &install_verified_gh\n[^]*?        run: \|\n((?: {10}[^\n]*\n)+)/)?.[1]
+    if (!body) throw new Error('Verified install step is missing')
+    return body.replace(/^ {10}/gm, '')
+  }
+  function consumerScript(mode: typeof modes[number]) {
+    const job = mode === 'build' ? 'oidc_build' : mode === 'handoff' ? 'oidc_handoff' : 'oidc_attest'
+    const lines = jobBody(job).split('\n')
+    const index = lines.findIndex(line => line.startsWith(`          node apps/web/scripts/harvey-oidc-ci.mjs ${mode} `))
+    if (index < 1) throw new Error(`Missing adapter step ${mode}`)
+    return lines.slice(index - 1, index + 1).map(line => line.trimStart()).join('\n')
+  }
+  it('installs the shared step before each protected adapter and leaves publication separate', () => {
+    for (const job of jobs) {
+      const body = jobBody(job)
+      const installer = job === 'oidc_build' ? '- &install_verified_gh' : '- *install_verified_gh'
+      expect(body.indexOf(installer)).toBeGreaterThan(body.indexOf('Fail closed before executing repository code'))
+      expect(body.indexOf(installer)).toBeLessThan(body.indexOf('node apps/web/scripts/harvey-oidc-ci.mjs'))
+    }
+    for (const mode of modes) {
+      expect(consumerScript(mode).split('\n')[0]).toBe('test "$(command -v gh)" = "${HARVEY_OIDC_VERIFIED_GH:?}"')
+    }
+    expect(jobBody('oidc_publish')).not.toContain('install_verified_gh')
+  })
   it('pins the separately reviewed official package and retains the exact adapter check', () => {
     const script = provisioningScript()
     expect(script).toContain(packageUrl)
@@ -973,7 +995,8 @@ describe('verified GitHub CLI provisioning in the existing build step', () => {
     expect(script).not.toMatch(/curl[^\n]*\|\s*(?:ba)?sh|\/latest\/|apt(?:-get)?\s+upgrade/)
     expect(script).not.toMatch(/GH_TOKEN|SUPABASE|SCB_|AWS_|LEDGER_/)
     expect(script.indexOf('sha256sum --check')).toBeLessThan(script.indexOf('tar --extract'))
-    expect(script.indexOf('test "$gh_version"')).toBeLessThan(script.indexOf('node apps/web/scripts/harvey-oidc-ci.mjs build'))
+    expect(script.indexOf('test "$gh_version"')).toBeLessThan(script.indexOf('>> "$GITHUB_PATH"'))
+    expect(script.indexOf('test "$gh_version"')).toBeLessThan(script.indexOf('>> "$GITHUB_ENV"'))
     const adapter = readFileSync(resolve(__dirname, '../../scripts/harvey-oidc-ci.mjs'), 'utf8')
     expect(adapter).toContain('requireOk(version === trust.ghVersion)')
   })
@@ -985,6 +1008,7 @@ describe('verified GitHub CLI provisioning in the existing build step', () => {
       host?: string, installed?: string, wrongHash?: boolean,
       download?: 'missing' | 'tampered' | 'empty', shadowPath?: boolean,
       symlink?: boolean, notExecutable?: boolean, invalidArchive?: boolean, wrongPin?: boolean, wrongArch?: boolean,
+      missingPathFile?: boolean, discardPath?: boolean,
     }
     function probe(options: Options = {}) {
       const directory = temp(), fakebin = resolve(directory, 'host-bin'), payload = resolve(directory, 'payload')
@@ -1015,9 +1039,13 @@ if [[ "\${SYNTHETIC_DOWNLOAD:-}" = tampered ]]; then printf 'tampered' >> "$targ
 gh --version >> "$SYNTHETIC_NODE_CALLED"
 printf '%s\\n' "$@" >> "$SYNTHETIC_NODE_CALLED"
 `)
+      const githubPath = resolve(directory, 'github-path'), githubEnv = resolve(directory, 'github-env')
+      if (!options.missingPathFile) writeFileSync(githubPath, '')
+      writeFileSync(githubEnv, '')
       const script = provisioningScript().replace(packageHash, options.wrongHash ? '0'.repeat(64) : fixtureHash)
       const environment: NodeJS.ProcessEnv = {
         NODE_ENV: 'test', PATH: `${fakebin}:/usr/bin:/bin`, RUNNER_TEMP: runner, RUNNER_OS: 'Linux', RUNNER_ARCH: options.wrongArch ? 'ARM64' : 'X64',
+        GITHUB_PATH: githubPath, GITHUB_ENV: githubEnv,
         HARVEY_OIDC_GH_VERSION: options.wrongPin ? '2.103.3' : '2.104.0',
         SYNTHETIC_PACKAGE: archive, SYNTHETIC_NODE_CALLED: called, SYNTHETIC_HOST_CALLED: hostCalled,
         SYNTHETIC_CURL_TRACE: curlTrace, SYNTHETIC_DOWNLOAD: options.download ?? '',
@@ -1030,23 +1058,52 @@ printf '%s\\n' "$@" >> "$SYNTHETIC_NODE_CALLED"
       // Inject a pre-existing shell function before the unchanged workflow body.
       const command = options.shadowPath ? 'source "$SYNTHETIC_BASH_INIT"\n' + script : script
       const result = spawnSync('/bin/bash', ['-c', command], { cwd: directory, env: environment, encoding: 'utf8', timeout: 10000 })
-      return { result, called: existsSync(called) ? readFileSync(called, 'utf8') : '', hostCalled: existsSync(hostCalled),
+      const pathEntry = existsSync(githubPath) ? readFileSync(githubPath, 'utf8').trim() : ''
+      const envEntry = readFileSync(githubEnv, 'utf8').trim()
+      const consumers = result.status === 0 ? modes.map(mode => {
+        rmSync(called, { force: true })
+        // Model the runner loading its environment files before a fresh Bash step.
+        const consumer = spawnSync('/bin/bash', ['-eo', 'pipefail', '-c', consumerScript(mode)], {
+          cwd: directory,
+          env: { ...environment, PATH: options.discardPath ? environment.PATH : `${pathEntry}:${environment.PATH}`,
+            HARVEY_OIDC_VERIFIED_GH: envEntry.slice('HARVEY_OIDC_VERIFIED_GH='.length) },
+          encoding: 'utf8', timeout: 10000,
+        })
+        return { mode, status: consumer.status, called: existsSync(called) ? readFileSync(called, 'utf8') : '' }
+      }) : []
+      return { result, consumers, pathEntry, envEntry, hostCalled: existsSync(hostCalled),
         trace: existsSync(curlTrace) ? readFileSync(curlTrace, 'utf8') : '', runner, fakebin,
         installedLeftovers: readdirSync(runner) }
     }
     it.each(['2.103.3', '2.104.0'])('uses the verified package instead of runner CLI %s', host => {
       const p = probe({ host })
       expect(p.result.status, p.result.stderr).toBe(0)
-      expect(p.called.split('\n')[0].startsWith(p.runner + '/harvey-oidc-gh-2.104.0.')).toBe(true)
-      expect(p.called.split('\n')[0].endsWith('/gh_2.104.0_linux_amd64/bin/gh')).toBe(true)
-      expect(p.called).toContain('gh version 2.104.0 (package fixture)')
-      expect(p.called).not.toContain(p.fakebin)
-      expect(p.called).toContain('apps/web/scripts/harvey-oidc-ci.mjs\nbuild\n--output\n')
+      expect(p.pathEntry.startsWith(p.runner + '/harvey-oidc-gh-2.104.0.')).toBe(true)
+      const binary = p.pathEntry + '/gh'
+      expect(p.envEntry).toBe(`HARVEY_OIDC_VERIFIED_GH=${binary}`)
+      expect(p.consumers).toHaveLength(5)
+      for (const { mode, status, called } of p.consumers) {
+        expect(status).toBe(0)
+        expect(called.split('\n')[0]).toBe(binary)
+        expect(called).toContain('gh version 2.104.0 (package fixture)')
+        expect(called).not.toContain(p.fakebin)
+        expect(called).toContain(`apps/web/scripts/harvey-oidc-ci.mjs\n${mode}\n`)
+      }
       expect(p.hostCalled).toBe(false)
       expect(p.trace).toContain(packageUrl)
       expect(p.trace).toContain('--proto\n=https\n--proto-redir\n=https')
       expect(p.trace).not.toMatch(/--header|--user|--netrc/)
-      expect(p.installedLeftovers).toEqual([])
+      expect(readdirSync(dirname(dirname(p.pathEntry)))).not.toContain('gh.tar.gz')
+    })
+    it('refuses every adapter step if the runner loses the verified PATH entry', () => {
+      const p = probe({ host: '2.104.0', discardPath: true })
+      expect(p.result.status).toBe(0)
+      expect(p.consumers).toHaveLength(5)
+      for (const consumer of p.consumers) {
+        expect(consumer.status).not.toBe(0)
+        expect(consumer.called).toBe('')
+      }
+      expect(p.hostCalled).toBe(false)
     })
     it.each([
       ['wrong checksum', { wrongHash: true }],
@@ -1060,10 +1117,13 @@ printf '%s\\n' "$@" >> "$SYNTHETIC_NODE_CALLED"
       ['invalid archive', { invalidArchive: true }],
       ['wrong external version pin', { wrongPin: true }],
       ['wrong runner architecture', { wrongArch: true }],
+      ['missing runner PATH file', { missingPathFile: true }],
     ] as [string, Options][])('fails closed before the adapter for %s', (_name, options) => {
       const p = probe(options)
       expect(p.result.status, JSON.stringify({ stdout: p.result.stdout, stderr: p.result.stderr })).not.toBe(0)
-      expect(p.called).toBe('')
+      expect(p.consumers).toEqual([])
+      expect(p.pathEntry).toBe('')
+      expect(p.envEntry).toBe('')
       expect(p.hostCalled).toBe(false)
       expect(p.installedLeftovers).toEqual([])
     })

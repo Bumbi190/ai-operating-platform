@@ -34,7 +34,7 @@ describe('bounded primary-source HTML parser', () => {
     expect(result).not.toBeNull()
     expect(result).toContain('## Results at xhigh thinking level')
     expect(result).toContain('Cost per task is reported at xhigh')
-    expect(result).toContain('\\n\\n')
+    expect(result).toContain('\n\n')
   })
 
   it('rejects mismatched titles and navigation-only pages', () => {

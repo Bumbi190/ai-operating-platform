@@ -62,9 +62,11 @@ export async function GET(request: Request) {
 
   // Use original source headline rather than the rewritten article headline
   // when checking the actual document, to prevent source redirection.
+  const sourceId = row.news_item_id
+  if (typeof sourceId !== 'string') return reply('original_news_not_found', {}, 422)
   const { data: news, error: newsError } = await db.from('media_news_items')
     .select('id,project_id,title,url')
-    .eq('id', row.news_item_id).eq('project_id', project.id).maybeSingle()
+    .eq('id', sourceId).eq('project_id', project.id).maybeSingle()
   if (newsError || !news || typeof news.title !== 'string') {
     return reply('original_news_not_found', {}, 422)
   }

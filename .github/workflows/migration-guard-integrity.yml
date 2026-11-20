@@ -214,7 +214,41 @@ jobs:
       - name: Build reviewed source without publishing credentials
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node apps/web/scripts/harvey-oidc-ci.mjs build --output "$RUNNER_TEMP/harvey-oidc-build"
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Official v2.104.0 checksum reviewed separately; never trust a downloaded sidecar at runtime.
+          test "$RUNNER_OS:$RUNNER_ARCH" = 'Linux:X64'
+          test "$HARVEY_OIDC_GH_VERSION" = '2.104.0'
+          [[ "$RUNNER_TEMP" = /* ]]
+          umask 077
+          gh_install_dir="$(mktemp -d "$RUNNER_TEMP/harvey-oidc-gh-2.104.0.XXXXXX")"
+          trap 'rm -rf -- "$gh_install_dir"' EXIT
+          gh_archive="$gh_install_dir/gh.tar.gz"
+          curl --fail --silent --show-error --location \
+            --proto '=https' --proto-redir '=https' --tlsv1.2 \
+            --connect-timeout 15 --max-time 120 --max-redirs 3 \
+            --output "$gh_archive" \
+            'https://github.com/cli/cli/releases/download/v2.104.0/gh_2.104.0_linux_amd64.tar.gz'
+          printf '%s  %s\n' '98cb101ad87dbbd3f6b2f2bfcbd43197ccd07643140121d8a9cfaa91eadbc24e' "$gh_archive" | sha256sum --check --strict -
+          tar --extract --gzip --file "$gh_archive" --directory "$gh_install_dir" \
+            --no-same-owner --no-same-permissions 'gh_2.104.0_linux_amd64/bin/gh'
+          gh_bin_dir="$gh_install_dir/gh_2.104.0_linux_amd64/bin"
+          gh_binary="$gh_bin_dir/gh"
+          test -f "$gh_binary"
+          test -x "$gh_binary"
+          test ! -L "$gh_binary"
+          test "$(realpath -- "$gh_binary")" = "$gh_binary"
+          export PATH="$gh_bin_dir:$PATH"
+          hash -r
+          test "$(type -t gh)" = 'file'
+          test "$(command -v gh)" = "$gh_binary"
+          gh_version_output="$(gh --version)"
+          read -r gh_name gh_label gh_version _ <<< "$gh_version_output"
+          test "$gh_name:$gh_label:$gh_version" = 'gh:version:2.104.0'
+          test "$gh_version" = "$HARVEY_OIDC_GH_VERSION"
+          printf 'Verified GitHub CLI binary: %s\n%s\n' "$gh_binary" "$gh_version_output"
+          node apps/web/scripts/harvey-oidc-ci.mjs build --output "$RUNNER_TEMP/harvey-oidc-build"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: harvey-oidc-build-${{ github.sha }}-${{ github.run_id }}

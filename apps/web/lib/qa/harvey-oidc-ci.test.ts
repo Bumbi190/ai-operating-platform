@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, existsSync, fstatSync, readSync, writeSync, symlinkSync, linkSync, renameSync, chmodSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { execFileSync, spawn } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { resolve, dirname } from 'node:path'
 import { generateKeyPairSync, sign, verify } from 'node:crypto'
 import {
@@ -946,5 +946,126 @@ describe('explicit owner-supervised verification-only handoff', () => {
     expect(job).toContain("inputs.oidc_phase == 'handoff-preview'");expect(job).toContain('environment: harvey-oidc-owner-once')
     expect(job).toContain('contents: read');expect(job).toContain('actions: read');expect(job).not.toContain('contents: write')
     expect(job).not.toContain('VERCEL_TOKEN');expect(job).not.toContain('deploy --prebuilt');expect(job).toContain('handoff/handoff.json');expect(job).toContain('if: always()')
+  })
+})
+
+describe('verified GitHub CLI provisioning in the existing build step', () => {
+  const packageHash = '98cb101ad87dbbd3f6b2f2bfcbd43197ccd07643140121d8a9cfaa91eadbc24e'
+  const packageUrl = 'https://github.com/cli/cli/releases/download/v2.104.0/gh_2.104.0_linux_amd64.tar.gz'
+  function provisioningScript() {
+    const workflow = readFileSync(resolve(__dirname, '../../../../.github/workflows/migration-guard-integrity.yml'), 'utf8')
+    const start = workflow.indexOf('      - name: Build reviewed source without publishing credentials\n')
+    const end = workflow.indexOf('\n      - uses: actions/upload-artifact@', start)
+    if (start < 0 || end < start) throw new Error('Reviewed build step is missing')
+    const step = workflow.slice(start, end)
+    const body = step.indexOf('        run: |\n')
+    if (body < 0) throw new Error('Reviewed provisioning script is missing')
+    return step.slice(body + '        run: |\n'.length).replace(/^ {10}/gm, '')
+  }
+  it('pins the separately reviewed official package and retains the exact adapter check', () => {
+    const script = provisioningScript()
+    expect(script).toContain(packageUrl)
+    expect(script).toContain(packageHash)
+    expect(script).toContain('sha256sum --check --strict -')
+    expect(script).toContain("test \"$HARVEY_OIDC_GH_VERSION\" = '2.104.0'")
+    expect(script).toContain('test "$(command -v gh)" = "$gh_binary"')
+    expect(script).toContain('test "$gh_version" = "$HARVEY_OIDC_GH_VERSION"')
+    expect(script).not.toMatch(/curl[^\n]*\|\s*(?:ba)?sh|\/latest\/|apt(?:-get)?\s+upgrade/)
+    expect(script).not.toMatch(/GH_TOKEN|SUPABASE|SCB_|AWS_|LEDGER_/)
+    expect(script.indexOf('sha256sum --check')).toBeLessThan(script.indexOf('tar --extract'))
+    expect(script.indexOf('test "$gh_version"')).toBeLessThan(script.indexOf('node apps/web/scripts/harvey-oidc-ci.mjs build'))
+    const adapter = readFileSync(resolve(__dirname, '../../scripts/harvey-oidc-ci.mjs'), 'utf8')
+    expect(adapter).toContain('requireOk(version === trust.ghVersion)')
+  })
+
+  // Executes the actual workflow Bash with a local package/download double.
+  // The production checksum above is replaced only in memory for these synthetic archives.
+  describe.skipIf(process.platform !== 'linux')('Linux provisioning boundaries', () => {
+    type Options = {
+      host?: string, installed?: string, wrongHash?: boolean,
+      download?: 'missing' | 'tampered' | 'empty', shadowPath?: boolean,
+      symlink?: boolean, notExecutable?: boolean, invalidArchive?: boolean, wrongPin?: boolean, wrongArch?: boolean,
+    }
+    function probe(options: Options = {}) {
+      const directory = temp(), fakebin = resolve(directory, 'host-bin'), payload = resolve(directory, 'payload')
+      const runner = resolve(directory, 'runner'), packageBin = resolve(payload, 'gh_2.104.0_linux_amd64/bin')
+      for (const path of [fakebin, runner, packageBin]) mkdirSync(path, { recursive: true })
+      const executable = (path: string, text: string) => { writeFileSync(path, '#!/bin/bash\nset -euo pipefail\n' + text); chmodSync(path, 0o755) }
+      const called = resolve(directory, 'node-called'), hostCalled = resolve(directory, 'host-called')
+      const curlTrace = resolve(directory, 'curl-args'), archive = resolve(directory, 'fixture.tar.gz')
+      executable(resolve(fakebin, 'gh'), `printf 'host called\\n' > "$SYNTHETIC_HOST_CALLED"\nprintf 'gh version ${options.host ?? '2.103.3'} (host fixture)\\n'\n`)
+      if (options.symlink) symlinkSync('/bin/true', resolve(packageBin, 'gh'))
+      else executable(resolve(packageBin, 'gh'), `printf 'gh version ${options.installed ?? '2.104.0'} (package fixture)\\n'\n`)
+      if (options.notExecutable) chmodSync(resolve(packageBin, 'gh'), 0o644)
+      execFileSync('/usr/bin/tar', ['-czf', archive, '-C', payload, 'gh_2.104.0_linux_amd64/bin/gh'])
+      if (options.invalidArchive) writeFileSync(archive, 'invalid archive fixture')
+      const fixtureHash = digest(readFileSync(archive))
+      executable(resolve(fakebin, 'curl'), `printf '%s\\n' "$@" > "$SYNTHETIC_CURL_TRACE"
+if [[ "\${SYNTHETIC_DOWNLOAD:-}" = missing ]]; then exit 22; fi
+target=''
+while (( $# )); do
+  if [[ "$1" = --output ]]; then target="$2"; shift 2; else shift; fi
+done
+test -n "$target"
+if [[ "\${SYNTHETIC_DOWNLOAD:-}" = empty ]]; then : > "$target"; exit 0; fi
+cp -- "$SYNTHETIC_PACKAGE" "$target"
+if [[ "\${SYNTHETIC_DOWNLOAD:-}" = tampered ]]; then printf 'tampered' >> "$target"; fi
+`)
+      executable(resolve(fakebin, 'node'), `printf '%s\\n' "$(command -v gh)" > "$SYNTHETIC_NODE_CALLED"
+gh --version >> "$SYNTHETIC_NODE_CALLED"
+printf '%s\\n' "$@" >> "$SYNTHETIC_NODE_CALLED"
+`)
+      const script = provisioningScript().replace(packageHash, options.wrongHash ? '0'.repeat(64) : fixtureHash)
+      const environment: NodeJS.ProcessEnv = {
+        NODE_ENV: 'test', PATH: `${fakebin}:/usr/bin:/bin`, RUNNER_TEMP: runner, RUNNER_OS: 'Linux', RUNNER_ARCH: options.wrongArch ? 'ARM64' : 'X64',
+        HARVEY_OIDC_GH_VERSION: options.wrongPin ? '2.103.3' : '2.104.0',
+        SYNTHETIC_PACKAGE: archive, SYNTHETIC_NODE_CALLED: called, SYNTHETIC_HOST_CALLED: hostCalled,
+        SYNTHETIC_CURL_TRACE: curlTrace, SYNTHETIC_DOWNLOAD: options.download ?? '',
+      }
+      if (options.shadowPath) {
+        const init = resolve(directory, 'bash-init')
+        writeFileSync(init, "gh() { printf 'gh version 2.104.0 (shadow function)\\n'; }\n")
+        environment.SYNTHETIC_BASH_INIT = init
+      }
+      // Inject a pre-existing shell function before the unchanged workflow body.
+      const command = options.shadowPath ? 'source "$SYNTHETIC_BASH_INIT"\n' + script : script
+      const result = spawnSync('/bin/bash', ['-c', command], { cwd: directory, env: environment, encoding: 'utf8', timeout: 10000 })
+      return { result, called: existsSync(called) ? readFileSync(called, 'utf8') : '', hostCalled: existsSync(hostCalled),
+        trace: existsSync(curlTrace) ? readFileSync(curlTrace, 'utf8') : '', runner, fakebin,
+        installedLeftovers: readdirSync(runner) }
+    }
+    it.each(['2.103.3', '2.104.0'])('uses the verified package instead of runner CLI %s', host => {
+      const p = probe({ host })
+      expect(p.result.status, p.result.stderr).toBe(0)
+      expect(p.called.split('\n')[0].startsWith(p.runner + '/harvey-oidc-gh-2.104.0.')).toBe(true)
+      expect(p.called.split('\n')[0].endsWith('/gh_2.104.0_linux_amd64/bin/gh')).toBe(true)
+      expect(p.called).toContain('gh version 2.104.0 (package fixture)')
+      expect(p.called).not.toContain(p.fakebin)
+      expect(p.called).toContain('apps/web/scripts/harvey-oidc-ci.mjs\nbuild\n--output\n')
+      expect(p.hostCalled).toBe(false)
+      expect(p.trace).toContain(packageUrl)
+      expect(p.trace).toContain('--proto\n=https\n--proto-redir\n=https')
+      expect(p.trace).not.toMatch(/--header|--user|--netrc/)
+      expect(p.installedLeftovers).toEqual([])
+    })
+    it.each([
+      ['wrong checksum', { wrongHash: true }],
+      ['wrong CLI version', { installed: '2.104.1' }],
+      ['failed download', { download: 'missing' }],
+      ['empty download', { download: 'empty' }],
+      ['manipulated package', { download: 'tampered' }],
+      ['wrong PATH priority', { shadowPath: true }],
+      ['symlink binary', { symlink: true }],
+      ['non-executable binary', { notExecutable: true }],
+      ['invalid archive', { invalidArchive: true }],
+      ['wrong external version pin', { wrongPin: true }],
+      ['wrong runner architecture', { wrongArch: true }],
+    ] as [string, Options][])('fails closed before the adapter for %s', (_name, options) => {
+      const p = probe(options)
+      expect(p.result.status, JSON.stringify({ stdout: p.result.stdout, stderr: p.result.stderr })).not.toBe(0)
+      expect(p.called).toBe('')
+      expect(p.hostCalled).toBe(false)
+      expect(p.installedLeftovers).toEqual([])
+    })
   })
 })

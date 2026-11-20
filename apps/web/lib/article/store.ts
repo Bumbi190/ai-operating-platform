@@ -35,7 +35,33 @@ export interface SaveGeneratedArticleArgs {
   contentType?: WebsiteContentType
   sourceKind?: 'news_item' | 'manual' | 'agent'
   generatedBy?: string
+  /** Merged over the draft's meta (e.g. the fact-check report). */
+  extraMeta?: Record<string, unknown>
+  /**
+   * 'upsert' (default, existing behaviour): re-generation overwrites the row.
+   * 'reviewable_only': never touch a row that has left pending_review — an
+   * approved, published, rejected or failed article is the operator's, and an
+   * automated re-run must not pull it back into the queue. Enforced in the
+   * UPDATE's WHERE clause, so an approval racing this write wins.
+   */
+  writeMode?: 'upsert' | 'reviewable_only'
+  /**
+   * Article jobs only: proof of the job's lease. When given, the write goes through
+   * `website_article_job_save_content`, which checks the lease and writes the row in
+   * ONE transaction under the job row's lock. A worker whose lease expired or was
+   * taken over writes nothing and gets skippedReason 'lease_lost'.
+   */
+  leaseFence?: LeaseFence
 }
+
+/** The job id and lease token a fenced save must still hold at commit time. */
+export interface LeaseFence {
+  jobId: string
+  leaseToken: string
+}
+
+/** skippedReason of a fenced save whose lease was no longer valid. */
+export const LEASE_LOST = 'lease_lost'
 
 export interface SaveGeneratedArticleResult {
   id: string
@@ -43,13 +69,24 @@ export interface SaveGeneratedArticleResult {
   status: 'pending_review'
 }
 
+export type SaveReviewableResult =
+  | (SaveGeneratedArticleResult & { skippedReason?: undefined })
+  | { id: string | null; externalId: string; status: null; skippedReason: string }
+
 /**
  * Persist a generated article as a pending-review row in website_content.
  * Idempotent on external_id (re-generation upserts the same logical item).
  */
 export async function saveGeneratedArticle(
+  args: SaveGeneratedArticleArgs & { writeMode?: 'upsert'; leaseFence?: undefined },
+): Promise<SaveGeneratedArticleResult>
+export async function saveGeneratedArticle(
+  args: SaveGeneratedArticleArgs & { writeMode: 'reviewable_only' },
+): Promise<SaveReviewableResult>
+export async function saveGeneratedArticle(
   args: SaveGeneratedArticleArgs,
-): Promise<SaveGeneratedArticleResult> {
+): Promise<SaveGeneratedArticleResult | SaveReviewableResult> {
+  if (args.leaseFence) return saveLeaseFenced(args, args.leaseFence)
   const db = createAdminClient()
   const { draft, qa, payload } = args.generated
 
@@ -81,11 +118,13 @@ export async function saveGeneratedArticle(
   // external_id (gated by cron + manual trigger). Race acceptable for MVP.
   const existingHeroQuery = await db
     .from('website_content')
-    .select('hero_image_url, hero_image_prompt, hero_image_status, hero_image_qa')
+    .select('id, status, hero_image_url, hero_image_prompt, hero_image_status, hero_image_qa')
     .eq('external_id', payload.external_id)
     .maybeSingle()
   const existingHero = existingHeroQuery.data as
     | {
+        id: string
+        status: string
         hero_image_url: string | null
         hero_image_prompt: string | null
         hero_image_status: string | null
@@ -131,7 +170,7 @@ export async function saveGeneratedArticle(
     summary:       draft.summary || null,
     payload: toJson(payload),                  // jsonb — full publish-contract payload (incl. body)
     qa: toJson(qa),                            // jsonb
-    meta: toJson(meta),                        // jsonb
+    meta: toJson(args.extraMeta ? { ...meta, ...args.extraMeta } : meta), // jsonb
     model:         meta?.model ?? null,        // denormalized for Atlas reporting
     cost_usd:      meta?.estCostUsd ?? null,   // denormalized for Atlas reporting
     generated_by:  args.generatedBy ?? 'omnira-article-pipeline',
@@ -139,6 +178,32 @@ export async function saveGeneratedArticle(
     status_reason: 'Generated; awaiting Atlas review',
     updated_at:    new Date().toISOString(),
     ...heroFields,
+  }
+
+  if (args.writeMode === 'reviewable_only') {
+    if (existingHero && existingHero.status !== 'pending_review') {
+      return { id: existingHero.id, externalId: payload.external_id, status: null,
+        skippedReason: `existing_row_${existingHero.status}` }
+    }
+    const write = existingHero
+      ? db.from('website_content').update(row)
+          .eq('external_id', payload.external_id).eq('status', 'pending_review')
+          .select('id, external_id').maybeSingle()
+      : db.from('website_content').insert(row).select('id, external_id').maybeSingle()
+    const { data: written, error: writeErr } = await write
+    if (writeErr) {
+      // 23505: a concurrent writer created the row between our read and insert.
+      if ((writeErr as { code?: string }).code === '23505') {
+        return { id: null, externalId: payload.external_id, status: null, skippedReason: 'concurrent_insert' }
+      }
+      throw new Error(`[website_content] persist failed: ${writeErr.message}`)
+    }
+    if (!written) {
+      return { id: existingHero?.id ?? null, externalId: payload.external_id, status: null,
+        skippedReason: 'left_pending_review_concurrently' }
+    }
+    const w = written as { id: string; external_id: string }
+    return { id: w.id, externalId: w.external_id, status: 'pending_review' }
   }
 
   const { data, error } = await db
@@ -151,4 +216,47 @@ export async function saveGeneratedArticle(
 
   const saved = data as { id: string; external_id: string }
   return { id: saved.id, externalId: saved.external_id, status: 'pending_review' }
+}
+
+/**
+ * The article job's write: lease check + reviewable_only write, atomically in the
+ * database. Nothing is read or written here before the database has proven the
+ * lease, so there is no check-then-write window on the client side.
+ */
+async function saveLeaseFenced(args: SaveGeneratedArticleArgs, fence: LeaseFence): Promise<SaveReviewableResult> {
+  const db = createAdminClient()
+  const { draft, qa, payload } = args.generated
+  const meta = draft._meta
+  const row = {
+    content_type:      args.contentType ?? 'article',
+    source_kind:       args.sourceKind ?? (args.newsItemId ? 'news_item' : 'manual'),
+    title:             draft.title,
+    slug:              payload.slug ?? null,
+    summary:           draft.summary || null,
+    payload:           toJson(payload),
+    qa:                toJson(qa),
+    meta:              toJson(args.extraMeta ? { ...meta, ...args.extraMeta } : meta),
+    model:             meta?.model ?? null,
+    cost_usd:          meta?.estCostUsd ?? null,
+    generated_by:      args.generatedBy ?? 'omnira-article-pipeline',
+    status_reason:     'Generated; awaiting Atlas review',
+    hero_image_prompt: typeof draft.hero_image_prompt === 'string' && draft.hero_image_prompt.trim()
+      ? draft.hero_image_prompt : null,
+  }
+  // The function is part of the proposed article-jobs migration and not in database.types yet.
+  const rpc = (db as unknown as {
+    rpc(fn: string, a: Record<string, unknown>): Promise<{ data: unknown; error: { message: string } | null }>
+  }).rpc.bind(db)
+  const { data, error } = await rpc('website_article_job_save_content', {
+    p_job_id: fence.jobId, p_lease_token: fence.leaseToken, p_row: row,
+  })
+  if (error) throw new Error(`[website_content] fenced persist failed: ${error.message}`)
+  const r = (data ?? {}) as { ok?: boolean; reason?: string; id?: string | null; skipped?: string }
+  if (r.ok !== true) {
+    return { id: null, externalId: payload.external_id, status: null, skippedReason: r.reason ?? LEASE_LOST }
+  }
+  if (r.skipped || !r.id) {
+    return { id: r.id ?? null, externalId: payload.external_id, status: null, skippedReason: r.skipped ?? 'save_skipped' }
+  }
+  return { id: r.id, externalId: payload.external_id, status: 'pending_review' }
 }

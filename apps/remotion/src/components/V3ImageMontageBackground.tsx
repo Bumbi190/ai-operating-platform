@@ -4,12 +4,15 @@
  * provider, Storage write, cron, or public publishing hooks.
  */
 import React from 'react'
-import {AbsoluteFill,Img,interpolate,Sequence,useCurrentFrame} from 'remotion'
+import {AbsoluteFill,Img,OffthreadVideo,interpolate,Sequence,useCurrentFrame} from 'remotion'
+import type {AdmittedReelClip,PlannedReelClip} from '../lib/hybrid-scenes'
+import {planPrivateV3HybridShots} from '../lib/v3-hybrid-scenes'
 import type {V3StoryboardPlan,V3MontageShot} from '../lib/types'
 
-function MovingEditorialShot({image,shot}:{
+function MovingEditorialShot({image,shot,clip}:{
   image:string
   shot:V3MontageShot
+  clip:PlannedReelClip|null
 }) {
   const frame=useCurrentFrame()
   const before=shot.transitionInFrames
@@ -34,15 +37,31 @@ function MovingEditorialShot({image,shot}:{
         transform:`translate(${panX}px,${panY}px) scale(${zoom})`,
         transformOrigin:'center center',
       }}/>
+      {clip&&(
+        <OffthreadVideo
+          src={clip.src}
+          muted
+          volume={0}
+          playbackRate={clip.playbackRate}
+          style={{
+            position:'absolute',inset:0,
+            width:'100%',height:'100%',objectFit:'cover',objectPosition:'center',
+            transform:`translate(${panX}px,${panY}px) scale(${zoom})`,
+            transformOrigin:'center center',
+          }}
+        />
+      )}
     </AbsoluteFill>
   )
 }
 
 export function V3ImageMontageBackground({
-  images,plan,
+  images,plan,sceneVideos,
 }:{
   images:string[]
   plan:V3StoryboardPlan
+  /** Previously admitted clips aligned to the original image slot, PRIVATE only. */
+  sceneVideos?:ReadonlyArray<AdmittedReelClip|null>
 }){
   if(images.length<1||images.length>5||
      plan.schema!=='theprompt.v3.private-storyboard.v1'||
@@ -51,14 +70,19 @@ export function V3ImageMontageBackground({
     // Deliberately fail visually, rather than selecting an unrelated asset.
     return <AbsoluteFill style={{backgroundColor:'#07080f'}}/>
   }
+  // Deterministic non-billable shot choices. A repeated image uses the MP4
+  // only on its FIRST V3 occurrence; every later shot keeps its original still.
+  const videoShots=planPrivateV3HybridShots({
+    plan,imageCount:images.length,sceneVideos,
+  })
   return (
     <AbsoluteFill style={{backgroundColor:'#07080f'}}>
-      {plan.shots.map((shot)=>{
+      {plan.shots.map((shot,index)=>{
         const begin=shot.startFrame-shot.transitionInFrames
         const length=shot.durationFrames+shot.transitionInFrames
         return (
           <Sequence key={shot.index} from={begin} durationInFrames={length} layout="none">
-            <MovingEditorialShot image={images[shot.imageIndex]} shot={shot}/>
+            <MovingEditorialShot image={images[shot.imageIndex]} shot={shot} clip={videoShots[index]}/>
           </Sequence>
         )
       })}

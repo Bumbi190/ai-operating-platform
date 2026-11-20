@@ -37,7 +37,7 @@ export async function independentlyReviewPromptArticle(
   execution: ExecutionContract,
 ): Promise<IndependentFactVerdict> {
   // No model spend if the prerequisite source cannot sustain factual checking.
-  if (grounding.mode !== 'strong' || grounding.source !== 'hermes' ||
+  if (grounding.mode !== 'strong' || (grounding.source !== 'hermes' && grounding.source !== 'primary_fetch') ||
       grounding.wordCount < 150 || draft.source_url !== sourceUrl ||
       draft.body.trim().length < 400) return BLOCKED_FACT_REVIEW
 

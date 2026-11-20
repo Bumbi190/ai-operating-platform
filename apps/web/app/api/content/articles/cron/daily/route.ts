@@ -14,6 +14,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildGroundingFromSource } from '@/lib/article/ground'
+import { readDirectOfficialArticle } from '@/lib/article/primary-source-reader'
 import { writeArticle } from '@/lib/article/writer'
 import { reviewArticle } from '@/lib/article/qa'
 import { toPublishPayload, externalIdForNewsItem } from '@/lib/article/to-contract'
@@ -82,8 +83,10 @@ export async function GET(request: Request) {
   // entire daily website lane indefinitely; check at most three distinct
   // official sources for full grounding without paying a model to guess.
   const dryRun = new URL(request.url).searchParams.get('dry_run') === '1'
+  const sourceProbe = new URL(request.url).searchParams.get('source_probe') === '1'
   let selected: DailyNewsCandidate | null = null
   let grounding: Awaited<ReturnType<typeof buildGroundingFromSource>> | null = null
+  let verifiedUrl: string | null = null
   let sourcesChecked = 0
   let alreadyUsed = 0
   for (const candidate of candidates) {
@@ -100,27 +103,38 @@ export async function GET(request: Request) {
 
     if (sourcesChecked >= 3) break
     sourcesChecked++
-    const source = await buildGroundingFromSource({
+    // Prefer bounded first-party HTTP reading (some Hermes DOM visits time out).
+    // All URLs and redirects are restricted to the official HTTPS allowlist.
+    const direct = await readDirectOfficialArticle(candidate.url, candidate.title)
+    const source = direct?.grounding ?? await buildGroundingFromSource({
       id: candidate.id, title: candidate.title, summary: candidate.summary,
       key_insight: candidate.key_insight, url: candidate.url,
       source_name: candidate.source_name, content_angle: candidate.content_angle,
     })
-    if (source.mode === 'strong' && source.source === 'hermes' &&
+    if (source.mode === 'strong' &&
+        (source.source === 'hermes' || source.source === 'primary_fetch') &&
         source.wordCount >= 150) {
       selected = candidate
       grounding = source
+      verifiedUrl = direct?.canonicalUrl ?? candidate.url
       break
     }
   }
-  if (!selected || !selected.url || !grounding) {
+  if (!selected || !selected.url || !grounding || !verifiedUrl) {
     return response(alreadyUsed === candidates.length ? 'all_official_sources_already_used'
       : 'source_not_verifiable', { sourcesChecked, alreadyUsed })
   }
+  // Probe makes one bounded source request but NEVER triggers model spend,
+  // article creation or public publishing.
+  if (sourceProbe) return response('verified_primary_source_available', {
+    sourceId: selected.id, canonicalHost: new URL(verifiedUrl).hostname,
+    wordCount: grounding.wordCount, groundingSource: grounding.source,
+  })
 
   const externalId = externalIdForNewsItem(selected.id)
   const item = {
     id: selected.id, title: selected.title, summary: selected.summary,
-    key_insight: selected.key_insight, url: selected.url,
+    key_insight: selected.key_insight, url: verifiedUrl,
     source_name: selected.source_name, content_angle: selected.content_angle,
   }
 

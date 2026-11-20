@@ -74,33 +74,55 @@ export async function GET(request: Request) {
     .gte('fetched_at', new Date(nowMs - 36 * 60 * 60 * 1000).toISOString())
     .order('fetched_at', { ascending: false }).limit(30)
   if (newsErr) return response('news_lookup_unavailable', {}, 503)
-  const selected = selectFreshDailyOfficialNews(
-    (news ?? []) as DailyNewsCandidate[], project.id, nowMs)
-  if (!selected || !selected.url) return response('no_fresh_official_source')
+  const candidates = ((news ?? []) as DailyNewsCandidate[])
+    .filter(row => selectFreshDailyOfficialNews([row], project.id, nowMs) !== null)
+  if (candidates.length === 0) return response('no_fresh_official_source')
+
+  // Skip sources with a prior article. A broken/404 source must NOT starve the
+  // entire daily website lane indefinitely; check at most three distinct
+  // official sources for full grounding without paying a model to guess.
+  const dryRun = new URL(request.url).searchParams.get('dry_run') === '1'
+  let selected: DailyNewsCandidate | null = null
+  let grounding: Awaited<ReturnType<typeof buildGroundingFromSource>> | null = null
+  let sourcesChecked = 0
+  let alreadyUsed = 0
+  for (const candidate of candidates) {
+    if (!candidate.url) continue
+    const { data: prior, error: priorErr } = await db.from('website_content')
+      .select('id,status').eq('external_id', externalIdForNewsItem(candidate.id)).maybeSingle()
+    if (priorErr) return response('duplicate_lookup_unavailable', {}, 503)
+    if (prior) { alreadyUsed++; continue }
+
+    if (dryRun) return response('candidate_preflight_only_source_not_yet_verified', {
+      sourceId: candidate.id, sourceHost: new URL(candidate.url).hostname,
+      autoPublishEnabled: process.env.THE_PROMPT_ARTICLE_AUTOPUBLISH_ENABLED === 'true',
+    })
+
+    if (sourcesChecked >= 3) break
+    sourcesChecked++
+    const source = await buildGroundingFromSource({
+      id: candidate.id, title: candidate.title, summary: candidate.summary,
+      key_insight: candidate.key_insight, url: candidate.url,
+      source_name: candidate.source_name, content_angle: candidate.content_angle,
+    })
+    if (source.mode === 'strong' && source.source === 'hermes' &&
+        source.wordCount >= 150) {
+      selected = candidate
+      grounding = source
+      break
+    }
+  }
+  if (!selected || !selected.url || !grounding) {
+    return response(alreadyUsed === candidates.length ? 'all_official_sources_already_used'
+      : 'source_not_verifiable', { sourcesChecked, alreadyUsed })
+  }
 
   const externalId = externalIdForNewsItem(selected.id)
-  const { data: prior, error: priorErr } = await db.from('website_content')
-    .select('id,status').eq('external_id', externalId).maybeSingle()
-  if (priorErr) return response('duplicate_lookup_unavailable', {}, 503)
-  if (prior) return response('source_already_used', { sourceId: selected.id, priorStatus: prior.status })
-
-  // Zero-spend readiness check. Not an article generation or publication.
-  const dryRun = new URL(request.url).searchParams.get('dry_run') === '1'
-  if (dryRun) return response('eligible_for_editorial_attempt', {
-    sourceId: selected.id, sourceHost: new URL(selected.url).hostname,
-    autoPublishEnabled: process.env.THE_PROMPT_ARTICLE_AUTOPUBLISH_ENABLED === 'true',
-  })
-
-  // Full-text grounding is a hard requirement. Never pay Sonnet for a summary
-  // that may contain invented claims or for an unavailable source URL.
   const item = {
     id: selected.id, title: selected.title, summary: selected.summary,
     key_insight: selected.key_insight, url: selected.url,
     source_name: selected.source_name, content_angle: selected.content_angle,
   }
-  const grounding = await buildGroundingFromSource(item)
-  if (grounding.mode !== 'strong' || grounding.source !== 'hermes' ||
-      grounding.wordCount < 150) return response('source_not_verifiable', { sourceId: selected.id })
 
   // Unique external_id is the durable one-shot CAS lock. Insert BEFORE paid
   // article/QA calls. Status FAILED keeps this placeholder OUT of an editor's

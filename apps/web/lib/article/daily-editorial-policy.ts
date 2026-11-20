@@ -112,7 +112,7 @@ export function eligibleForWebsiteAutopublish(
 ): boolean {
   return enabled
     && officialPrimarySourceUrl(news.url)
-    && grounding.mode === 'strong' && grounding.source === 'hermes'
+    && grounding.mode === 'strong' && (grounding.source === 'hermes' || grounding.source === 'primary_fetch')
     && grounding.wordCount >= 150
     && qa.pass === true && qa.confidence === 'high'
     && factual.passed === true && factual.source_supported === true

@@ -57,7 +57,7 @@ export interface GroundingResult {
   mode: GroundingMode
   wordCount: number
   /** Where the grounding text came from. */
-  source: 'hermes' | 'news_item'
+  source: 'hermes' | 'primary_fetch' | 'news_item'
 }
 
 /** A generated article, before contract mapping. */

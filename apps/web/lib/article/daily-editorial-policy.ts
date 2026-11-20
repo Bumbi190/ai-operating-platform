@@ -57,8 +57,8 @@ export function selectFreshDailyOfficialNews(
   return candidates.find(news => {
     const sourceMs = Date.parse(news.fetched_at)
     return news.project_id === projectId
-      && /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(news.id)
-      && (news.status === 'new' || news.status === 'approved')
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(news.id)
+      && (news.status === 'new' || news.status === 'approved' || news.status === 'scripted')
       && typeof news.title === 'string' && news.title.length >= 20 && news.title.length <= 160
       && officialPrimarySourceUrl(news.url)
       && Number.isFinite(sourceMs) && sourceMs <= nowMs

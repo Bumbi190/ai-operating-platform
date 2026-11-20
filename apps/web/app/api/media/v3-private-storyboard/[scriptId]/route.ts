@@ -10,7 +10,12 @@ import {resolvePlatformOperator} from '@/lib/auth/platform-operator'
 import {resolveProjectAccess,assertProjectAllowed} from '@/lib/auth/project-access'
 import {createAdminClient} from '@/lib/supabase/admin'
 import {jsonStringArray} from '@/lib/supabase/json'
-import {isTrustedPreviewSourceUrl,validatePreviewScriptId} from '@/lib/media/hybrid-preview-request'
+import {
+  isTrustedPreviewSourceUrl,validatePreviewScriptId,
+  parseHybridPreviewSelection,HybridPreviewRefusal,
+} from '@/lib/media/hybrid-preview-request'
+import {readProjectOwnedReelVideoInputs} from '@/lib/media/project-video-slots-server'
+import {VideoSlotRefusal} from '@/lib/media/project-video-slots'
 import {buildVideoInputProps,type WordTiming} from '@/lib/media/video-props'
 import {
   planThePromptV3PrivateStoryboard,
@@ -74,7 +79,11 @@ export async function GET(
   let id:string
   try{id=validatePreviewScriptId((await params).scriptId)}
   catch{return response({ok:false,error:'invalid_request'},400)}
-  if([...new URL(request.url).searchParams.keys()].length>0)
+  const searchParams=new URL(request.url).searchParams
+  // No arbitrary URLs, scripts, publish flags or unreviewed parameters.
+  // An explicit sequence of canonical asset UUIDs (or '-' for original still)
+  // may be supplied for PRIVATE visual QA. No selection means image-only V3.
+  if([...searchParams.keys()].some(key=>key!=='video_asset_id'))
     return response({ok:false,error:'invalid_request'},400)
 
   const db=createAdminClient()
@@ -97,6 +106,17 @@ export async function GET(
     images.some(img=>!isExactProjectMediaUrl(img,'images',id)))
     return response({ok:false,error:'source_not_ready'},409)
 
+  let selectedVideoAssetIds:(string|null)[]|undefined
+  if(searchParams.has('video_asset_id')){
+    try{
+      selectedVideoAssetIds=parseHybridPreviewSelection(searchParams,images.length)
+    }catch(e){
+      return response({
+        ok:false,error:e instanceof HybridPreviewRefusal?e.code:'invalid_request',
+      },400)
+    }
+  }
+
   // Freeze validated source URLs before awaits so the type stays narrow.
   const audioUrl=script.audio_url
   const timingUrl=script.timing_url
@@ -118,12 +138,26 @@ export async function GET(
       qualityVerdict:verdict,
       sourceFactStatus,
     })
+    // Source, word timing, project ownership and editorial HOLD were all
+    // checked before signing a private asset link. Matching an old clip to
+    // this new story is an EDITORIAL decision, not implied by asset ownership.
+    const sceneVideos=selectedVideoAssetIds
+      ?await readProjectOwnedReelVideoInputs({
+        projectId:script.project_id,
+        imageCount:images.length,
+        videoAssetIds:selectedVideoAssetIds,
+      })
+      :undefined
+    if(sceneVideos?.some(Boolean)){
+      storyboard.editorialHold.reasons.push('video_sources_not_checked_against_current_script')
+    }
     const renderInput=await buildVideoInputProps({
       hook:script.hook??'',
       audioUrl,
       timingUrl,
       durationMs:script.duration_ms,
       images,
+      ...(sceneVideos?{sceneVideos}:{}),
       v3Storyboard:storyboard,
       wordTimings:words,
     })
@@ -134,12 +168,21 @@ export async function GET(
       scriptId:script.id,
       projectId:script.project_id,
       sourceNotPublished:true,
+      videoCount:sceneVideos?.filter(Boolean).length??0,
+      visualSourcesFactMatched:false,
       editorialHold:storyboard.editorialHold,
       canGenerate:false,canPublish:false,canSchedule:false,
       noPaidCalls:true,
       renderInput,
     })
   }catch(e){
+    if(e instanceof VideoSlotRefusal){
+      // No underlying provider/storage errors or signed URLs in responses.
+      const code=e.code==='invalid_slots'?'invalid_selection':
+        e.code==='asset_unavailable'||e.code==='project_mismatch'?'asset_unavailable':
+        'asset_invalid'
+      return response({ok:false,error:code},code==='invalid_selection'?400:404)
+    }
     const reason=e instanceof V3StoryboardRefusal?e.code:'preview_unavailable'
     return response({ok:false,error:reason},409)
   }

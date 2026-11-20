@@ -23,6 +23,7 @@ export interface ArticleRecheckCandidate {
 export function eligibleForSingleArticleRecheck(
   row: ArticleRecheckCandidate | null,
   projectId: string, nowMs: number,
+  allowSchemaRecovery = false,
 ): boolean {
   if (!row || !row.qa || typeof row.qa !== 'object' || Array.isArray(row.qa)) return false
   const qa = row.qa as Record<string, unknown>
@@ -30,14 +31,19 @@ export function eligibleForSingleArticleRecheck(
   if (!fact || typeof fact !== 'object' || Array.isArray(fact)) return false
   const f = fact as Record<string, unknown>
   const created = Date.parse(row.created_at)
+  const firstTechnicalFallback = row.version === 1 && f.passed === false
+    && f.verdict === BLOCKED_FACT_REVIEW.verdict
+  const secondExplicitSchemaFix = allowSchemaRecovery && row.version === 3
+    && f.passed === false
+    && f.verdict === 'Independent factual review invalid_tool_schema; requires human editorial review.'
   return row.project_id === projectId && row.status === 'pending_review'
-    && row.version === 1 && row.generated_by === 'theprompt-website-daily-v1'
+    && (firstTechnicalFallback || secondExplicitSchemaFix)
+    && row.generated_by === 'theprompt-website-daily-v1'
     && row.source_kind === 'news_item'
     && row.reviewed_at === null && row.published_at === null && row.destination_url === null
     && typeof row.news_item_id === 'string' && row.news_item_id.length > 0
     && row.external_id === 'omnira_' + row.news_item_id
     && qa.pass === true && qa.confidence === 'high'
-    && f.passed === false && f.verdict === BLOCKED_FACT_REVIEW.verdict
     && Number.isFinite(created) && created <= nowMs
     && nowMs - created <= 48 * 60 * 60 * 1000
 }

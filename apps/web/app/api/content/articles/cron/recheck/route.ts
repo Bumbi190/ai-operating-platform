@@ -36,6 +36,9 @@ export async function GET(request: Request) {
   const articleId = url.searchParams.get('articleId')
   if (!articleId || !UUID.test(articleId)) return reply('exact_article_id_required', {}, 400)
   const execute = url.searchParams.get('execute') === '1'
+  // Requires a separate deliberate operator invocation after the first
+  // attempt confirmed a strictly technical schema-format failure.
+  const schemaRecovery = url.searchParams.get('schema_recovery') === '1'
 
   const db = createAdminClient()
   const { data: project, error: projectError } = await db.from('projects')
@@ -47,7 +50,7 @@ export async function GET(request: Request) {
     .select('id,project_id,news_item_id,external_id,source_kind,generated_by,status,version,qa,payload,created_at,reviewed_at,published_at,destination_url')
     .eq('id', articleId).eq('project_id', project.id).maybeSingle()
   if (readError) return reply('article_lookup_failed', {}, 503)
-  if (!row || !eligibleForSingleArticleRecheck(row, project.id, Date.now())) {
+  if (!row || !eligibleForSingleArticleRecheck(row, project.id, Date.now(), schemaRecovery)) {
     return reply('article_not_eligible')
   }
 

@@ -36,6 +36,8 @@ const SYSTEM = [
   "Do not confuse throughput with speed, simulations with real events, or planned",
   "with completed releases. Reject incomplete, contradictory or outdated evidence.",
   "Make at least three substantive checks. No safety override. Only use the tool.",
+  "Supply every required field, integer claims_checked (0..100), brief verdict",
+  "(max 200 characters) and short unsupported_claims (max 180 characters each).",
 ].join('\n')
 
 export async function independentlyReviewPromptArticle(
@@ -74,20 +76,28 @@ export async function independentlyReviewPromptArticle(
     tools: [{
       name: REVIEW_TOOL,
       description: 'Record the fact-check decision, checked claims and unsupported claims.',
+      // The repo's pinned Anthropic SDK predates the strict property in its TS
+      // types. The current Messages API accepts it, and the governing proxy
+      // passes custom tool objects through unchanged. Keep the spread to avoid
+      // a repo-wide SDK upgrade during a production incident.
+      ...({ strict: true } as Record<string, unknown>),
       input_schema: {
         type: 'object',
         properties: {
           passed: {type:'boolean'},
           source_supported: {type:'boolean'},
           attributions_correct: {type:'boolean'},
-          claims_checked: {type:'integer',minimum:0,maximum:100},
-          unsupported_claims: {type:'array',items:{type:'string'},maxItems:12},
-          verdict: {type:'string',maxLength:500},
+          // Strict JSON grammar supports integer/string/array types, but not
+          // min/max/length constraints. Runtime parsing still enforces those.
+          claims_checked: {type:'integer',description:'Integer count from 0 to 100'},
+          unsupported_claims: {type:'array',items:{type:'string'},description:'At most twelve brief unsupported statements'},
+          verdict: {type:'string',description:'One short verdict, at most 200 characters'},
         },
         required: [
           'passed','source_supported','attributions_correct','claims_checked',
           'unsupported_claims','verdict',
         ],
+        additionalProperties: false,
       },
     }],
     tool_choice: { type: 'tool', name: REVIEW_TOOL },

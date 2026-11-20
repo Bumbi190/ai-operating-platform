@@ -79,10 +79,16 @@ export function extractOfficialArticleText(
   const seen = new Set<string>()
   function visit(n: HtmlNode) {
     if (SKIP_ELEMENTS.has(n.tagName ?? '')) return
-    if (['p', 'h2', 'h3'].includes(n.tagName ?? '')) {
+    const tag = n.tagName ?? ''
+    if (['p', 'h2', 'h3', 'li'].includes(tag)) {
       const t = textOf(n)
-      if (t.length >= 50 && !seen.has(t)) {
-        seen.add(t); segments.push(t)
+      // Section headings and benchmark list items often carry the qualifiers
+      // (thinking tier, evaluation cohort, source attribution) that an AI
+      // fact-checker MUST see to avoid misreading isolated statistics.
+      const minimum = tag === 'p' ? 45 : tag === 'li' ? 25 : 8
+      if (t.length >= minimum && !seen.has(t)) {
+        seen.add(t)
+        segments.push(tag === 'h2' ? '## ' + t : tag === 'h3' ? '### ' + t : t)
       }
       return
     }
@@ -91,7 +97,19 @@ export function extractOfficialArticleText(
   visit(article)
   const text = segments.join('\n\n')
   const wordCount = text.trim().split(/\s+/).filter(Boolean).length
-  return wordCount >= 150 ? text.split(/\s+/).slice(0, MAX_WORDS).join(' ') : null
+  if (wordCount < 150) return null
+  // Keep paragraph and heading boundaries when clipping. Flattening the
+  // whole source into a single line previously stripped benchmark context.
+  let remaining = MAX_WORDS
+  const retained: string[] = []
+  for (const segment of segments) {
+    if (remaining <= 0) break
+    const words = segment.split(/\s+/).filter(Boolean)
+    const chunk = words.slice(0, remaining)
+    if (chunk.length > 0) retained.push(chunk.join(' '))
+    remaining -= chunk.length
+  }
+  return retained.join('\n\n')
 }
 
 /**

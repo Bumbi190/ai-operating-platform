@@ -24,6 +24,19 @@ describe('bounded primary-source HTML parser', () => {
     expect(text).toContain('limitations')
   })
 
+  it('preserves benchmark headings, list qualifiers and paragraph boundaries', () => {
+    const html = '<main><article><h1>Introducing Gemini 4 Neon</h1>'
+      +'<h2>Results at xhigh thinking level</h2>'
+      +'<ul><li>Cost per task is reported at xhigh on a named evaluation with a company baseline.</li></ul>'
+      +Array.from({length:7},(_,i) => '<p>'+paragraph+' Context '+i+'.</p>').join('')
+      +'</article></main>'
+    const result = extractOfficialArticleText(html, 'Introducing Gemini 4 Neon')
+    expect(result).not.toBeNull()
+    expect(result).toContain('## Results at xhigh thinking level')
+    expect(result).toContain('Cost per task is reported at xhigh')
+    expect(result).toContain('\n\n')
+  })
+
   it('rejects mismatched titles and navigation-only pages', () => {
     expect(extractOfficialArticleText(article, 'OpenAI Launches Another Model')).toBeNull()
     const nav = '<nav>'+paragraph.repeat(4)+'</nav><h1>Introducing Gemini 4 Neon</h1>'

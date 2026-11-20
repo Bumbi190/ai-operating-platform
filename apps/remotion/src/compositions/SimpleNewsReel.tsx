@@ -273,7 +273,7 @@ export function SimpleNewsReel({
       {/* ── Layer 1: Multi-scene background with cross-dissolve + Ken Burns ── */}
       {v3Storyboard ? (
         <Sequence from={0} durationInFrames={v3Storyboard.contentFrames} layout="none">
-          <V3ImageMontageBackground images={images ?? []} plan={v3Storyboard}/>
+          <V3ImageMontageBackground images={images ?? []} plan={v3Storyboard} sceneVideos={sceneVideos}/>
         </Sequence>
       ) : (
         <MultiSceneBackground

@@ -23,6 +23,16 @@ const deny = () => { throw Error('harvey-oidc-ci: verification failed (fail-clos
 const requireOk = value => { if (!value) deny() }
 const parse = raw => { const obj = JSON.parse(raw); requireOk(canonicalJson(obj) === raw); return obj }
 const workflowURI = () => `https://github.com/${CI_POLICY.repo}/${CI_POLICY.workflow}@${CI_POLICY.ref}`
+const ownerApproval = (r, trust) => r.state === 'approved' && r.user?.type === 'User' &&
+  String(r.user?.id) === CI_POLICY.ownerId && r.user?.login === 'Bumbi190' &&
+  r.environments?.some(e => String(e.id) === trust.environmentId && e.name === CI_POLICY.environment)
+
+function registeredBinding(reviews, trust) {
+  requireOk(Array.isArray(reviews))
+  const approvals = reviews.filter(r => ownerApproval(r, trust))
+  requireOk(approvals.length === 1 && typeof approvals[0].comment === 'string')
+  return parse(approvals[0].comment)
+}
 
 export function readTrust(env) {
   const sha = env.HARVEY_OIDC_APPROVED_SOURCE_SHA
@@ -72,10 +82,7 @@ export function checkRun(run, trust, runId, completed = false) {
 export function ownerReview(reviews, binding, trust) {
   requireOk(Array.isArray(reviews))
   const expected = canonicalJson({ schema: 'omnira-oidc-owner-approval/v1', ...binding })
-  const matches = reviews.filter(r => r.state === 'approved' && r.user?.type === 'User' &&
-    String(r.user?.id) === CI_POLICY.ownerId && r.user?.login === 'Bumbi190' &&
-    r.environments?.some(e => String(e.id) === trust.environmentId && e.name === CI_POLICY.environment) &&
-    r.comment === expected)
+  const matches = reviews.filter(r => ownerApproval(r, trust) && r.comment === expected)
   requireOk(matches.length === 1 && !reviews.some(r => r.state === 'rejected'))
   return `github-review:${binding.runId}:${digest(expected)}`
 }
@@ -395,6 +402,15 @@ export function createAdapter({ env = process.env, cwd = process.cwd(), command 
     checkRun(api(`actions/runs/${env.GITHUB_RUN_ID}`), trust, env.GITHUB_RUN_ID)
   }
   const reviews = runId => api(`actions/runs/${runId}/approvals`)
+  function runJobs(runId) {
+    const result = api(`actions/runs/${runId}/jobs?filter=all&per_page=100`)
+    requireOk(result.total_count <= 100 && Array.isArray(result.jobs) && result.jobs.length === result.total_count)
+    return result.jobs.filter(job => job.run_attempt === 1)
+  }
+  function requireGuardBefore(jobs, issuedAt) {
+    const guards = jobs.filter(job => job.name === 'Migration Guard Integrity' && job.conclusion === 'success')
+    requireOk(guards.length === 1 && Date.parse(guards[0].completed_at) / 1000 <= issuedAt)
+  }
   const context = (artifactDigest, manifest, runId = env.GITHUB_RUN_ID) => ({
     sourceSha: trust.sha, checkoutSha: trust.sha, sourceDigest: manifest.sourceDigest,
     policyDigest: policyDigest(), artifactDigest, runId, runAttempt: 1,
@@ -489,6 +505,18 @@ export function createAdapter({ env = process.env, cwd = process.cwd(), command 
       ledger.expiresAt > now() && ledger.expiresAt - ledger.issuedAt <= 300 && now() - ledger.issuedAt <= 300)
     const binding = { kind: 'export', runId: env.GITHUB_RUN_ID, sourceSha: trust.sha,
       subjectDigest: digest(raw), buildRunId, artifactId, artifactDigest: ctx.artifactDigest }
+    const handoffRunId = env.HANDOFF_RUN_ID
+    if (handoffRunId) {
+      requireOk(ID.test(handoffRunId) && handoffRunId !== binding.runId)
+      const handoffRun = api(`actions/runs/${handoffRunId}`)
+      checkRun(handoffRun, trust, handoffRunId)
+      const handoffJobs = runJobs(handoffRunId)
+      requireOk(handoffRun.status === 'waiting' &&
+        handoffJobs.some(job => job.name === 'oidc_handoff_prepared' && job.status === 'waiting'))
+      requireGuardBefore(handoffJobs, ledger.issuedAt)
+      requireGuardBefore(runJobs(binding.runId), ledger.issuedAt)
+      binding.handoffRunId = handoffRunId
+    }
     ownerReview(reviews(env.GITHUB_RUN_ID), binding, trust)
     for (const [name, data] of Object.entries({ 'ledger.json': raw, 'artifact.tar': artifact,
       'manifest.json': rawManifest, 'binding.json': canonicalJson(binding) })) writeFileSync(resolve(output, name), data, { flag: 'wx', mode: 0o600 })
@@ -530,9 +558,8 @@ export function createAdapter({ env = process.env, cwd = process.cwd(), command 
     purgeLedger(directory)
     return summary
   }
-  async function downloadProof(output) {
+  async function downloadProof(output, runId = env.PROOF_RUN_ID, id = env.PROOF_ARTIFACT_ID) {
     await preflight()
-    const id = env.PROOF_ARTIFACT_ID, runId = env.PROOF_RUN_ID
     requireOk(ID.test(id ?? '') && ID.test(runId ?? ''))
     checkRun(api(`actions/runs/${runId}`), trust, runId, true)
     const jobs = api(`actions/runs/${runId}/jobs?filter=all&per_page=100`)
@@ -618,12 +645,24 @@ export function createAdapter({ env = process.env, cwd = process.cwd(), command 
       isolation.deploymentCount === 0 && isolation.cronCount === 0 && isolation.productionAccessReviewedAbsent === true)
     const privateDirectory = mkdtempSync(resolve(tmpdir(), 'harvey-oidc-handoff-'))
     try {
-      const proof = resolve(privateDirectory, 'proof'); await downloadProof(proof)
+      const prepared = env.HARVEY_OIDC_PREPARED_HANDOFF === 'true'
+      const handoffReviews = prepared ? reviews(env.GITHUB_RUN_ID) : null
+      const selection = prepared ? registeredBinding(handoffReviews, trust) : null
+      if (prepared) requireOk(!env.PROOF_RUN_ID && !env.PROOF_ARTIFACT_ID &&
+        selection?.kind === 'handoff' && selection.runId === env.GITHUB_RUN_ID &&
+        selection.sourceSha === trust.sha && typeof selection.receiptRunId === 'string' &&
+        ID.test(selection.receiptRunId) && selection.receiptRunId !== env.GITHUB_RUN_ID &&
+        typeof selection.proofArtifactId === 'string' && ID.test(selection.proofArtifactId) &&
+        typeof selection.buildArtifactId === 'string' && ID.test(selection.buildArtifactId))
+      const proofRunId = prepared ? selection.receiptRunId : env.PROOF_RUN_ID
+      const proofArtifactId = prepared ? selection.proofArtifactId : env.PROOF_ARTIFACT_ID
+      const proof = resolve(privateDirectory, 'proof')
+      await downloadProof(proof, proofRunId, proofArtifactId)
       const raw = readEvidenceFile(resolve(proof, 'receipt.json')), body = parse(raw.toString('utf8'))
       const artifact = readEvidenceFile(resolve(proof, 'artifact.tar'))
       const manifest = parse(readEvidenceFile(resolve(proof, 'manifest.json')).toString('utf8'))
       const ctx = context(digest(artifact), manifest, body.runId)
-      requireOk(body.runId === env.PROOF_RUN_ID && manifest.sourceDigest === sourceDigest())
+      requireOk(body.runId === proofRunId && manifest.sourceDigest === sourceDigest())
       checkArtifact(artifact, manifest, ctx)
       checkRun(api(`actions/runs/${body.runId}`), trust, body.runId, true)
       for (const value of [env.GH_TOKEN, env.LEDGER_JSON, env.HARVEY_OIDC_LEDGER_EXPORT_JSON])
@@ -632,6 +671,18 @@ export function createAdapter({ env = process.env, cwd = process.cwd(), command 
       const binding = { kind: 'handoff', runId: env.GITHUB_RUN_ID, receiptRunId: body.runId, sourceSha: trust.sha,
         subjectDigest: digest(raw), artifactDigest: ctx.artifactDigest, isolationDigest: digest(isolationBytes),
         targetProject: CI_POLICY.targetProject, target: 'preview' }
+      const exportReviews = reviews(proofRunId)
+      const exportSelection = registeredBinding(exportReviews, trust)
+      requireOk(typeof exportSelection?.artifactId === 'string' && ID.test(exportSelection.artifactId))
+      const exportBinding = { kind: 'export', runId: proofRunId, sourceSha: trust.sha, subjectDigest: body.exportDigest,
+        buildRunId: manifest.buildRunId, artifactId: exportSelection.artifactId, artifactDigest: ctx.artifactDigest }
+      if (prepared) {
+        requireGuardBefore(runJobs(binding.runId), body.issuedAt)
+        exportBinding.handoffRunId = binding.runId
+        Object.assign(binding, { proofArtifactId, buildRunId: manifest.buildRunId, buildArtifactId: exportBinding.artifactId })
+        ownerReview(handoffReviews, binding, trust)
+      }
+      ownerReview(exportReviews, exportBinding, trust)
       const origin = await verifiedOrigin(raw, resolve(proof, 'receipt.sigstore.json'), body.runId, binding)
       const trusted = { issuer: CI_POLICY.issuer, receiptWorkflow: origin.workflow,
         receiptWorkflowSha: trust.workflowSha, receiptApprovalId: origin.approvalId }
@@ -645,6 +696,7 @@ export function createAdapter({ env = process.env, cwd = process.cwd(), command 
         isolationEvidence: 'owner-reviewed-metadata', requiredPublisherId: CI_POLICY.ownerId,
         separatePublicationApprovalRequired: true, publicationAuthorized: false, deployed: false, reserved: false,
         globallySingleUse: false, ciExclusivePublication: false }
+      if (prepared) summary.proofArtifactId = proofArtifactId
       requireOk(summary.expiresAt > now())
       mkdirSync(output, { mode: 0o700 })
       writeFileSync(resolve(output, 'handoff.json'), canonicalJson(summary), { flag: 'wx', mode: 0o600 })

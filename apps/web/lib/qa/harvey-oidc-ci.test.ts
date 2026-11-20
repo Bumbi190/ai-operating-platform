@@ -845,18 +845,39 @@ describe.runIf(process.platform === 'linux')('GNU tar output packing (real local
 
 // Synthetic GitHub boundaries; owner metadata is not technical egress isolation.
 describe('explicit owner-supervised verification-only handoff', () => {
-  async function ready() {
-    const f=fixture();await f.chain();f.publication()
+  const handoffId = '902', proofArtifactId = '701'
+  function paired() {
+    const f = fixture()
+    f.e.HANDOFF_RUN_ID = handoffId
+    f.reviews[runId] = [review({ ...f.binding(), handoffRunId: handoffId })]
+    f.facts[`actions/runs/${handoffId}`] = { ...run(handoffId), status: 'waiting', conclusion: null }
+    const guard = { name: 'Migration Guard Integrity', conclusion: 'success', run_attempt: 1,
+      completed_at: new Date((now - 12) * 1000).toISOString() }
+    f.facts[`actions/runs/${handoffId}/jobs?filter=all&per_page=100`] = { total_count: 2, jobs: [
+      guard, { name: 'oidc_handoff_prepared', status: 'waiting', run_attempt: 1 },
+    ] }
+    f.facts[`actions/runs/${runId}/jobs?filter=all&per_page=100`] = { total_count: 1, jobs: [guard] }
+    return f
+  }
+  async function ready(prepared = false) {
+    const f = prepared ? paired() : fixture()
+    await f.chain();f.publication()
     delete f.e.VERCEL_TOKEN;delete f.e.HARVEY_OIDC_PUBLICATION_ENABLED
-    f.e.HARVEY_OIDC_HANDOFF_ENABLED='true';f.e.GITHUB_RUN_ID='902';f.facts['actions/runs/902']=run('902')
+    f.e.HARVEY_OIDC_HANDOFF_ENABLED='true';f.e.GITHUB_RUN_ID=handoffId;f.facts[`actions/runs/${handoffId}`]=run(handoffId)
+    if (prepared) {
+      f.e.HARVEY_OIDC_PREPARED_HANDOFF = 'true'
+      delete f.e.PROOF_RUN_ID
+      delete f.e.PROOF_ARTIFACT_ID
+    }
     const isolation={schema:'omnira-oidc-isolation-review/v1',sourceSha:sha,targetProject:CI_POLICY.targetProject,
       team:CI_POLICY.team,target:'preview',issuedAt:now-1,expiresAt:now+290,environmentVariableNames:[],domains:[],
       gitConnected:false,deploymentCount:0,cronCount:0,productionAccessReviewedAbsent:true}
     f.e.HARVEY_OIDC_ISOLATION_FILE=resolve(f.cwd,'harvey-oidc-secret/isolation.json')
     const save=()=>{const raw=canonicalJson(isolation);writeFileSync(f.e.HARVEY_OIDC_ISOLATION_FILE,raw,{mode:0o600})
-      f.reviews['902']=[review({kind:'handoff',runId:'902',receiptRunId:runId,sourceSha:sha,
+      f.reviews[handoffId]=[review({kind:'handoff',runId:handoffId,receiptRunId:runId,sourceSha:sha,
         subjectDigest:digest(readFileSync(resolve(f.output,'receipt.json'))),artifactDigest:digest(f.artifact),
-        isolationDigest:digest(raw),targetProject:CI_POLICY.targetProject,target:'preview'})]}
+        isolationDigest:digest(raw),targetProject:CI_POLICY.targetProject,target:'preview',
+        ...(prepared ? {proofArtifactId, buildRunId, buildArtifactId:artifactId} : {})})]}
     save();return {...f,isolation,save,handoffOutput:resolve(f.cwd,'handoff')}
   }
   it('verifies exact signed evidence and emits only a non-authorizing summary, never a deployment',async()=>{
@@ -869,6 +890,67 @@ describe('explicit owner-supervised verification-only handoff', () => {
     for(const secret of [f.ledgerInput.value,f.e.GH_TOKEN,canonicalJson(f.isolation),'synthetic-publish-token'])expect(raw).not.toContain(secret)
     expect(f.command.mock.calls.some(c=>c[0]==='vercel'||c[0]==='npm'||c[1].includes('POST'))).toBe(false)
     expect(f.server.refs.size).toBe(0);expect(f.server.publications).toBe(0)
+  })
+  it('verifies a prepared handoff with two reviews and the proof ID supplied after dispatch', async () => {
+    const f = await ready(true)
+    const result = await f.adapter().handoff(f.handoffOutput)
+    expect(result).toMatchObject({ status: 'VERIFIED_HANDOFF_NOT_AUTHORIZED', runId: handoffId, receiptRunId: runId,
+      proofArtifactId, buildRunId, expiresAt: f.ledger.expiresAt, publicationAuthorized: false, deployed: false, reserved: false })
+    expect(f.command.mock.calls.filter(([file, args]) => file === 'gh' && args.includes('attestation')).length).toBeGreaterThan(2)
+    expect(f.command.mock.calls.some(([file, args]) => file === 'vercel' || args.includes('POST'))).toBe(false)
+    expect(f.server.refs.size).toBe(0)
+  })
+  it.each(['handoff', 'attest'])('requires %s Guard to be successful before the paired ledger was issued', async phase => {
+    const f = paired(), id = phase === 'handoff' ? handoffId : runId
+    const jobs = f.facts[`actions/runs/${id}/jobs?filter=all&per_page=100`].jobs
+    jobs[0] = { ...jobs[0], completed_at: new Date((f.ledger.issuedAt + 1) * 1000).toISOString() }
+    await expect(f.adapter().prepare(f.output)).rejects.toThrow(deny)
+    expect(existsSync(resolve(f.output, 'binding.json'))).toBe(false)
+  })
+  it.each(['wrong-run', 'wrong-job', 'early-approval', 'unpinned-sha', 'missing-review-binding'])('denies paired attest with %s', async kind => {
+    const f = paired(), key = `actions/runs/${handoffId}`
+    if (kind === 'wrong-run') f.e.HANDOFF_RUN_ID = runId
+    if (kind === 'wrong-job') f.facts[`${key}/jobs?filter=all&per_page=100`].jobs[1].name = 'oidc_handoff'
+    if (kind === 'early-approval') f.facts[key].status = 'in_progress'
+    if (kind === 'unpinned-sha') f.facts[key].head_sha = 'b'.repeat(40)
+    if (kind === 'missing-review-binding') f.reviews[runId] = [review(f.binding())]
+    await expect(f.adapter().prepare(f.output)).rejects.toThrow(deny)
+  })
+  it.each(['proofArtifactId', 'receiptRunId', 'sourceSha', 'subjectDigest', 'artifactDigest', 'buildRunId', 'buildArtifactId'])
+    ('denies a wrong %s from the handoff owner review', async field => {
+      const f = await ready(true), approval = f.reviews[handoffId][0]
+      approval.comment = canonicalJson({ ...JSON.parse(approval.comment), [field]:
+        ['proofArtifactId', 'receiptRunId', 'buildRunId', 'buildArtifactId'].includes(field) ? '999' : 'b'.repeat(field === 'sourceSha' ? 40 : 64) })
+      await expect(f.adapter().handoff(f.handoffOutput)).rejects.toThrow()
+      expect(existsSync(f.handoffOutput)).toBe(false)
+    })
+  it.each(['empty-comment', 'duplicate-review', 'unavailable-proof', 'dispatch-proof', 'replayed-comment',
+    'other-handoff', 'legacy-handoff', 'expired'])('denies %s before producing a prepared handoff', async kind => {
+    const f = await ready(true), approval = f.reviews[handoffId][0]
+    if (kind === 'empty-comment') approval.comment = ''
+    if (kind === 'duplicate-review') f.reviews[handoffId].push(approval)
+    if (kind === 'unavailable-proof') delete f.facts[`actions/artifacts/${proofArtifactId}`]
+    if (kind === 'dispatch-proof') f.e.PROOF_ARTIFACT_ID = proofArtifactId
+    if (kind === 'replayed-comment' || kind === 'other-handoff') {
+      f.e.GITHUB_RUN_ID = '903'
+      f.facts['actions/runs/903'] = run('903')
+      f.facts['actions/runs/903/jobs?filter=all&per_page=100'] = f.facts[`actions/runs/${handoffId}/jobs?filter=all&per_page=100`]
+      f.reviews['903'] = [kind === 'replayed-comment' ? approval :
+        { ...approval, comment: canonicalJson({ ...JSON.parse(approval.comment), runId: '903' }) }]
+    }
+    if (kind === 'legacy-handoff') {
+      delete f.e.HARVEY_OIDC_PREPARED_HANDOFF
+      f.e.PROOF_RUN_ID = runId; f.e.PROOF_ARTIFACT_ID = proofArtifactId
+      const { proofArtifactId: id, buildRunId: build, buildArtifactId: artifact, ...legacy } = JSON.parse(approval.comment)
+      approval.comment = canonicalJson(legacy)
+    }
+    if (kind === 'expired') {
+      f.advance(f.ledger.expiresAt)
+      f.isolation.issuedAt = f.ledger.expiresAt - 1; f.isolation.expiresAt = f.ledger.expiresAt + 30; f.save()
+    }
+    await expect(f.adapter().handoff(f.handoffOutput)).rejects.toThrow()
+    expect(existsSync(f.handoffOutput)).toBe(false)
+    expect(f.server.publications).toBe(0)
   })
   it.each(['HARVEY_OIDC_HANDOFF_ENABLED','HARVEY_OIDC_ISOLATION_FILE'])('denies missing explicit input %s',async key=>{
     const f=await ready();delete f.e[key];await expect(f.adapter().handoff(f.handoffOutput)).rejects.toThrow();expect(existsSync(f.handoffOutput)).toBe(false)
@@ -946,6 +1028,19 @@ describe('explicit owner-supervised verification-only handoff', () => {
     expect(job).toContain("inputs.oidc_phase == 'handoff-preview'");expect(job).toContain('environment: harvey-oidc-owner-once')
     expect(job).toContain('contents: read');expect(job).toContain('actions: read');expect(job).not.toContain('contents: write')
     expect(job).not.toContain('VERCEL_TOKEN');expect(job).not.toContain('deploy --prebuilt');expect(job).toContain('handoff/handoff.json');expect(job).toContain('if: always()')
+  })
+  it('uses a protected queue for each phase and retains both original Guard dependencies', () => {
+    const yaml = readFileSync(resolve(__dirname, '../../../../.github/workflows/migration-guard-integrity.yml'), 'utf8')
+    const queue = yaml.slice(yaml.indexOf('\nconcurrency:'), yaml.indexOf('\njobs:'))
+    expect(queue).toContain('queue: max')
+    expect(queue).not.toContain('cancel-in-progress:')
+    expect(queue.replace(/\s+/g, ' ')).toMatch(/'handoff-prepared'.*'harvey-oidc-prepared-handoff'.*'harvey-oidc-owner-once'/)
+    for (const job of ['oidc_attest', 'oidc_handoff']) {
+      const section = yaml.split(`\n  ${job}:\n`)[1].split(/\n  oidc_\w+:\n/)[0]
+      expect(section).toContain('needs: integrity')
+      expect(section).toContain('environment: harvey-oidc-owner-once')
+    }
+    expect(yaml).toContain("inputs.proof_run_id == '' && inputs.proof_artifact_id == ''")
   })
 })
 

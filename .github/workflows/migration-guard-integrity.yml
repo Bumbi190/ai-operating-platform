@@ -14,7 +14,7 @@ on:
     inputs:
       oidc_phase:
         type: choice
-        options: [integrity-only, build-artifact, attest-ledger, publish-preview, handoff-preview]
+        options: [integrity-only, build-artifact, attest-ledger, publish-preview, handoff-preview, handoff-prepared]
         default: integrity-only
         description: Owner-only phases; publication requires separate live approval and configuration
       harvey_sha:
@@ -32,6 +32,9 @@ on:
       proof_run_id:
         type: string
         description: Completed owner-approved attest-ledger run
+      handoff_run_id:
+        type: string
+        description: Waiting handoff-prepared run paired with this attest-ledger run
       proof_artifact_id:
         type: string
         description: Immutable sanitized proof artifact ID
@@ -40,12 +43,24 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.event_name == 'workflow_dispatch' && inputs.oidc_phase != 'integrity-only' && 'harvey-oidc-owner-once' || format('migration-guard-integrity-{0}', github.ref) }}
-  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' || inputs.oidc_phase == 'integrity-only' }}
+  # Queue protected runs without replacing an already queued owner operation.
+  group: >-
+    ${{ github.event_name == 'workflow_dispatch' && inputs.oidc_phase == 'handoff-prepared' &&
+      github.actor_id == '158544361' && github.repository_id == '1244338545' &&
+      github.ref == 'refs/heads/codex/atlas-harvey-sales-20261017' && 'harvey-oidc-prepared-handoff' ||
+      github.event_name == 'workflow_dispatch' && inputs.oidc_phase != 'integrity-only' &&
+      github.actor_id == '158544361' && github.repository_id == '1244338545' &&
+      github.ref == 'refs/heads/codex/atlas-harvey-sales-20261017' && 'harvey-oidc-owner-once' ||
+      format('migration-guard-dispatch-{0}', github.run_id) }}
+  queue: max
 
 jobs:
   integrity:
     name: Migration Guard Integrity
+    # Preserve per-ref cancellation for ordinary CI independently of the owner queues.
+    concurrency:
+      group: ${{ github.event_name == 'workflow_dispatch' && inputs.oidc_phase != 'integrity-only' && format('migration-guard-owner-job-{0}', github.run_id) || format('migration-guard-integrity-{0}', github.ref) }}
+      cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' || inputs.oidc_phase == 'integrity-only' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -321,6 +336,7 @@ jobs:
           BUILD_RUN_ID: ${{ inputs.build_run_id }}
           BUILD_ARTIFACT_ID: ${{ inputs.build_artifact_id }}
           ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          HANDOFF_RUN_ID: ${{ inputs.handoff_run_id }}
         shell: bash
         run: |
           test "$(command -v gh)" = "${HARVEY_OIDC_VERIFIED_GH:?}"
@@ -430,8 +446,12 @@ jobs:
   # Explicit owner-supervised verification only. Never reserves or publishes.
   # Empty runtime config is owner-attested metadata, not technical egress isolation.
   oidc_handoff:
+    name: ${{ inputs.oidc_phase == 'handoff-prepared' && 'oidc_handoff_prepared' || 'oidc_handoff' }}
     if: >-
-      github.event_name == 'workflow_dispatch' && inputs.oidc_phase == 'handoff-preview' &&
+      github.event_name == 'workflow_dispatch' &&
+      (inputs.oidc_phase == 'handoff-preview' ||
+        (inputs.oidc_phase == 'handoff-prepared' && github.ref == 'refs/heads/codex/atlas-harvey-sales-20261017' &&
+          inputs.proof_run_id == '' && inputs.proof_artifact_id == '')) &&
       github.actor_id == '158544361' && github.repository_id == '1244338545'
     needs: integrity
     runs-on: ubuntu-latest
@@ -471,6 +491,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           HARVEY_OIDC_HANDOFF_ENABLED: ${{ vars.HARVEY_OIDC_HANDOFF_ENABLED }}
+          HARVEY_OIDC_PUBLICATION_ENABLED: ${{ vars.HARVEY_OIDC_PUBLICATION_ENABLED }}
+          HARVEY_OIDC_PREPARED_HANDOFF: ${{ inputs.oidc_phase == 'handoff-prepared' }}
           HARVEY_OIDC_ISOLATION_FILE: ${{ runner.temp }}/harvey-oidc-secret/isolation.json
           PROOF_RUN_ID: ${{ inputs.proof_run_id }}
           PROOF_ARTIFACT_ID: ${{ inputs.proof_artifact_id }}

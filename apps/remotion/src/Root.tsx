@@ -9,13 +9,12 @@ import type { VideoInputProps } from './lib/types'
 // Default props for Remotion Studio preview
 const defaultProps: VideoInputProps = {
   hook: "This AI just changed everything.",
-  script: "Anthropic just released Claude 4 — and it can reason like a senior engineer.",
-  caption: "AI updates weekly 🤖",
-  audioUrl: "https://example.com/audio.mp3",  // replace with real URL in Studio
+  audioUrl: "https://example.com/audio.mp3", // Replace with an authorized source for preview.
   durationMs: 45000,
   words: [],
+  captions: [],
+  images: [],
   accentColor: '#6366f1',
-  theme: 'dark',
 }
 
 export function RemotionRoot() {
@@ -82,7 +81,10 @@ export function RemotionRoot() {
         height={1920}
         defaultProps={defaultProps}
         calculateMetadata={async ({ props }) => {
-          const durationInFrames = Math.ceil((props.durationMs / 1000) * 30) + 30
+          // V3 private review has a verified 75-frame outro. The old image
+          // and hybrid-MP4 rendering modes keep their original timing.
+          const durationInFrames=props.v3Storyboard?.totalFrames ??
+            (Math.ceil((props.durationMs / 1000) * 30) + 30)
           return { durationInFrames, props }
         }}
       />

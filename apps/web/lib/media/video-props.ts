@@ -8,6 +8,8 @@
  * Keeps caption grouping, hook detection, and scene timing in one place.
  */
 
+import type {V3PrivateStoryboard} from './theprompt-v3-storyboard'
+
 const FPS = 30
 
 // ─── Types (mirrored from apps/remotion/src/lib/types.ts) ────────────────────
@@ -32,6 +34,9 @@ export interface VideoInputProps {
   captions: CaptionGroup[]
   hookDurationFrames: number
   images: string[]
+  /** Server-resolved, admitted MP4 clips only; index-aligned to image fallbacks. */
+  sceneVideos?: Array<{src: string; durationFrames: number} | null>
+  v3Storyboard?: V3PrivateStoryboard
   sceneStartFrames?: number[]
   accentColor?: string
   backgroundMusicUrl?: string
@@ -131,14 +136,18 @@ export async function buildVideoInputProps(params: {
   timingUrl: string
   durationMs: number
   images: string[]
+  sceneVideos?: Array<{src: string; durationFrames: number} | null>
+  v3Storyboard?: V3PrivateStoryboard
+  /** Authenticated callers may supply already fetched & verified word timing. */
+  wordTimings?: WordTiming[]
   accentColor?: string
   backgroundMusicUrl?: string
 }): Promise<VideoInputProps> {
-  const { hook, audioUrl, timingUrl, durationMs, images, accentColor, backgroundMusicUrl } = params
+  const { hook, audioUrl, timingUrl, durationMs, images, sceneVideos, v3Storyboard, wordTimings, accentColor, backgroundMusicUrl } = params
 
   // Fetch word timing
-  let words: WordTiming[] = []
-  if (timingUrl) {
+  let words: WordTiming[] = wordTimings ?? []
+  if (wordTimings === undefined && timingUrl) {
     const res = await fetch(timingUrl)
     const data = await res.json() as { words: WordTiming[] }
     words = data.words ?? []
@@ -159,6 +168,8 @@ export async function buildVideoInputProps(params: {
     captions,
     hookDurationFrames,
     images,
+    ...(sceneVideos ? {sceneVideos} : {}),
+    ...(v3Storyboard ? {v3Storyboard} : {}),
     sceneStartFrames: sceneStartFrames.length > 0 ? sceneStartFrames : undefined,
     accentColor: accentColor ?? '#6366f1',
     backgroundMusicUrl,

@@ -71,7 +71,7 @@ export async function GET(request: Request) {
   const { data: news, error: newsErr } = await db.from('media_news_items')
     .select('id,project_id,title,summary,key_insight,url,source_name,content_angle,status,fetched_at')
     .eq('project_id', project.id)
-    .in('status', ['new', 'approved'])
+    .in('status', ['new', 'approved', 'scripted'])
     .gte('fetched_at', new Date(nowMs - 36 * 60 * 60 * 1000).toISOString())
     .order('fetched_at', { ascending: false }).limit(30)
   if (newsErr) return response('news_lookup_unavailable', {}, 503)

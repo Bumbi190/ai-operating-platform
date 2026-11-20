@@ -6,6 +6,8 @@ import { getAnthropic } from '@/lib/ai/anthropic'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 import type { ExecutionContract } from '@/lib/governance/execution-stop'
 import type { ArticleDraft, GroundingResult } from './types'
+
+type ReviewableDraft = Pick<ArticleDraft, 'title' | 'summary' | 'body' | 'source_url'>
 import {
   BLOCKED_FACT_REVIEW,
   parseIndependentFactReview,
@@ -13,6 +15,12 @@ import {
 } from './daily-editorial-policy'
 
 const MODEL = 'claude-haiku-4-5-20251001'
+
+function blocked(reason: string): IndependentFactVerdict {
+  return { ...BLOCKED_FACT_REVIEW,
+    verdict: `Independent factual review ${reason}; requires human editorial review.` }
+}
+
 const REVIEW_TOOL = 'submit_fact_review'
 const SYSTEM = [
   "You are The Prompt's independent editorial fact reviewer.",
@@ -31,7 +39,7 @@ const SYSTEM = [
 ].join('\n')
 
 export async function independentlyReviewPromptArticle(
-  draft: ArticleDraft,
+  draft: ReviewableDraft,
   grounding: GroundingResult,
   sourceUrl: string,
   execution: ExecutionContract,
@@ -39,7 +47,7 @@ export async function independentlyReviewPromptArticle(
   // No model spend if the prerequisite source cannot sustain factual checking.
   if (grounding.mode !== 'strong' || (grounding.source !== 'hermes' && grounding.source !== 'primary_fetch') ||
       grounding.wordCount < 150 || draft.source_url !== sourceUrl ||
-      draft.body.trim().length < 400) return BLOCKED_FACT_REVIEW
+      draft.body.trim().length < 400) return blocked('blocked_by_source_or_draft_prerequisites')
 
   const client = getAnthropic({
     project: MEDIA_PIPELINE_PROJECT,
@@ -49,7 +57,7 @@ export async function independentlyReviewPromptArticle(
   })
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 1100,
+    max_tokens: 1800,
     system: SYSTEM,
     messages: [{
       role: 'user',
@@ -84,9 +92,35 @@ export async function independentlyReviewPromptArticle(
     }],
     tool_choice: { type: 'tool', name: REVIEW_TOOL },
   })
-  if (response.stop_reason === 'max_tokens') return BLOCKED_FACT_REVIEW
+  // Record only response metadata (not article content, prompts or model output).
+  // The previous generic BLOCKED response masked the difference between a
+  // malformed tool input, a missing tool, truncation and an actual factual veto.
+  if (response.stop_reason === 'max_tokens') {
+    console.warn('[article/fact-review] incomplete', {
+      reason: 'truncated', outputTokens: response.usage?.output_tokens ?? null,
+    })
+    return blocked('truncated')
+  }
   const tool = response.content.find(block =>
     block.type === 'tool_use' && block.name === REVIEW_TOOL)
-  if (!tool || tool.type !== 'tool_use') return BLOCKED_FACT_REVIEW
-  return parseIndependentFactReview(tool.input)
+  if (!tool || tool.type !== 'tool_use') {
+    console.warn('[article/fact-review] incomplete', {
+      reason: 'required_tool_missing', stopReason: response.stop_reason,
+      contentTypes: response.content.map(block => block.type),
+    })
+    return blocked('required_tool_missing')
+  }
+  const result = parseIndependentFactReview(tool.input)
+  if (result === BLOCKED_FACT_REVIEW) {
+    const input = tool.input && typeof tool.input === 'object' && !Array.isArray(tool.input)
+      ? tool.input as Record<string, unknown> : {}
+    console.warn('[article/fact-review] incomplete', {
+      reason: 'invalid_tool_schema', stopReason: response.stop_reason,
+      fieldTypes: Object.fromEntries(Object.entries(input).map(([key, value]) =>
+        [key, Array.isArray(value) ? 'array' : typeof value])),
+      outputTokens: response.usage?.output_tokens ?? null,
+    })
+    return blocked('invalid_tool_schema')
+  }
+  return result
 }

@@ -59,12 +59,13 @@ describe('The Prompt website daily editorial gate', () => {
     ]) expect(officialPrimarySourceUrl(url)).toBe(false)
   })
 
-  it('refuses cross-project, old, future, unsourced and already scripted news', () => {
+  it('refuses cross-project, old, future, unsourced and rejected news', () => {
     expect(selectFreshDailyOfficialNews([candidate], projectId, now)?.id).toBe(candidate.id)
     expect(selectFreshDailyOfficialNews([{ ...candidate, project_id: 'different' }], projectId, now)).toBeNull()
     expect(selectFreshDailyOfficialNews([{ ...candidate, fetched_at: '2026-11-18T00:00:00Z' }], projectId, now)).toBeNull()
     expect(selectFreshDailyOfficialNews([{ ...candidate, fetched_at: '2026-11-21T00:00:00Z' }], projectId, now)).toBeNull()
-    expect(selectFreshDailyOfficialNews([{ ...candidate, status: 'scripted' }], projectId, now)).toBeNull()
+    expect(selectFreshDailyOfficialNews([{ ...candidate, status: 'scripted' }], projectId, now)?.id).toBe(candidate.id)
+    expect(selectFreshDailyOfficialNews([{ ...candidate, status: 'rejected' }], projectId, now)).toBeNull()
     expect(selectFreshDailyOfficialNews([{ ...candidate, url: 'https://wired.com/story/unsupported' }], projectId, now)).toBeNull()
     expect(selectFreshDailyOfficialNews([], projectId, now)).toBeNull()
   })

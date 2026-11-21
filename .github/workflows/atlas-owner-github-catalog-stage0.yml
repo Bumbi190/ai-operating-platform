@@ -1,0 +1,48 @@
+# Inert Atlas owner repository catalog: no app secrets, SQL, provider calls or models.
+name: Atlas Owner GitHub Catalog Boundary
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/atlas-owner-github-catalog-stage0.yml'
+      - 'apps/web/lib/atlas/project-connections/**'
+      - 'apps/web/lib/qa/atlas-owner-github-*.test.mjs'
+      - 'docs/architecture/proposed-sql/atlas_owner_github_bindings_stage1_PROPOSAL.sql'
+      - 'docs/architecture/proposed-sql/atlas_owner_github_lifecycle_OPTION_NOT_MIGRATION.sql'
+      - 'apps/web/lib/qa/fixtures/atlas-owner-github-rls/**'
+      - 'scripts/atlas/verify-owner-github-pg17-rls.ps1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: atlas-owner-repository-catalog-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  owner-catalog-offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run all offline catalogue, store and SQL-proposal tests (zero skips)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types --test \
+            apps/web/lib/qa/atlas-owner-github-catalog.test.mjs \
+            apps/web/lib/qa/atlas-owner-github-store.test.mjs \
+            apps/web/lib/qa/atlas-owner-github-schema-contract.test.mjs \
+            apps/web/lib/qa/atlas-owner-github-lifecycle.test.mjs \
+            apps/web/lib/qa/atlas-owner-github-operations.test.mjs \
+            | tee "$RUNNER_TEMP/owner-catalog-tests.txt"
+          grep -qx '# tests 69' "$RUNNER_TEMP/owner-catalog-tests.txt"
+          grep -qx '# pass 69' "$RUNNER_TEMP/owner-catalog-tests.txt"
+          grep -qx '# fail 0' "$RUNNER_TEMP/owner-catalog-tests.txt"
+          grep -qx '# skipped 0' "$RUNNER_TEMP/owner-catalog-tests.txt"

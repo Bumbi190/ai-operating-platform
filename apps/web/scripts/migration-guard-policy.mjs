@@ -99,8 +99,14 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Office step activity adds one enforced migration; local only until separately approved apply.
 // Reconciled with the already-applied Family social migration restored in PR #638.
 // Workflow reservation adds one further enforced, pending migration.
-export const EXPECTED_CANONICAL_SQL_COUNT = 179
-export const EXPECTED_ENFORCED_COUNT = 165
+// 2026-11-21 source-only reconciliation: atlas_bedrock_pooled_gross_cap_20261121
+// is ALREADY applied in production as ledger version 20261121090418.
+// The exact 12617-byte applied SQL was restored as canonical source with
+// SHA-256 6b2c7486824c757ee60629a55b658385478e5b066d3084ac4f30c4738a813204.
+// 179/165 -> 180/166. NO SQL replay, no legacy/grandfathered expansion,
+// no bypass, no migration ledger mutation, no data changes.
+export const EXPECTED_CANONICAL_SQL_COUNT = 180
+export const EXPECTED_ENFORCED_COUNT = 166
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

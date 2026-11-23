@@ -15,6 +15,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { runNewsHunter, type HunterCandidate, type HunterResult } from '@/lib/media/news-hunter'
 import { scoreScript, shouldRegenerate, failedQualityScore } from '@/lib/media/quality'
 import { articleReadTimeoutMs } from '@/lib/media/article-read-policy'
+import { officialArticleFallbackBudgetMs } from '@/lib/media/official-source-fallback-policy'
+import { readDirectOfficialArticle } from '@/lib/article/primary-source-reader'
 import { sendPipelineAlert } from '@/lib/media/alert'
 import { callHermesScrape, callHermesRead, callHermesCompetitors, isHermesConfigured } from '@/lib/media/hermes'
 import { Anthropic } from '@anthropic-ai/sdk'
@@ -357,6 +359,29 @@ export async function GET(request: Request) {
     }
   } else if (articleUrl && isHermesConfigured()) {
     console.log('[cron/step1] Skipping optional full article read (URL or QA time reserve)')
+  }
+
+  // When Hermes fails or is not configured, reuse our existing bounded
+  // primary-source reader for EXACTLY recognized first-party article URLs.
+  // Do not use a generic fetch or a model-generated URL as factual authority.
+  // The same 28s enrichment deadline applies; no paid API calls or bypass
+  // of editorial QA can occur here.
+  const officialBudgetMs = officialArticleFallbackBudgetMs(
+    articleUrl,Date.now()-t0,!!fullArticleText)
+  if (officialBudgetMs > 0 && articleUrl) {
+    try {
+      const direct = await withTimeout(
+        readDirectOfficialArticle(articleUrl,news.title),officialBudgetMs,null)
+      if (direct?.grounding.mode === 'strong' && direct.grounding.wordCount >= 150) {
+        fullArticleText = direct.grounding.text
+        console.log('[cron/step1] First-party article text verified by existing bounded official reader')
+      }
+    } catch {
+      // Untrusted source HTML or transient network failure is NOT a
+      // factual approval. Fall back to the documented summary and let
+      // the independent quality gate veto unsupported claims.
+      console.warn('[cron/step1] Optional first-party read unavailable; QA still required')
+    }
   }
 
   // Build the script-writing context — prefer full article, fall back to summary

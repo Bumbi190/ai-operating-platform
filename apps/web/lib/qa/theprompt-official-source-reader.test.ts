@@ -54,6 +54,7 @@ describe('bounded primary-source HTML parser', () => {
 
   it('recognizes only title-correlated first-party Google index URLs', () => {
     const html = '<main><h3>Introducing Gemini 4 Neon</h3>'
+      +'<p>Google DeepMind shares official research updates and links to its own published articles, including technical context, release details and primary sources.</p>'
       +'<a href="https://blog.google/innovation-and-ai/models-and-research/gemini-models/introducing-gemini-4-neon/?utm_source=deepmind.google">Learn more</a>'
       +'<a href="https://evil.google.evil.example/introducing-gemini-4-neon/">Evil mirror</a></main>'
     expect(matchOfficialDeepMindIndexLink(html, 'Introducing Gemini 4 Neon')).toBe(

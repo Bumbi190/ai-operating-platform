@@ -70,3 +70,22 @@ changes from being built in preview.
 4. Release the independent The Prompt QA hotfix PR #652 separately,
    then solve Remotion IAM/cost/rights gates and verify a NEW
    video and provider receipts without bypassing fact-checking.
+
+## PR-preview deployment observation (2026-11-23)
+
+- The branch was pushed to GitHub as SHA `602d40b` **before**
+  the corresponding draft PR #654 existed. Vercel generated
+  `dpl_5sEQ46DZArfpFbTau9xrcUjcPHdJ` and marked it CANCELED,
+  because the project's existing Ignored Build Step returned 0
+  when `VERCEL_GIT_PULL_REQUEST_ID` was empty.
+- This is expected for an initial branch deployment created before
+  opening its GitHub PR. The existing gate intentionally allows PR
+  previews and prevents unreviewed branch builds.
+- The owner expressly approved the single-scope GitHub/Vercel review
+  build including potential CI usage. After creating PR #654, one
+  documentation-only follow-up push is used to trigger the normal
+  **PR-aware preview**, with the current gate intact. No project
+  ignored-build setting or Vercel production alias may be changed.
+- A preview must still pass the Migration Guard, complete build and
+  review checks. A GitHub status of "Vercel success" associated with
+  a CANCELED ignored build is not proof of a successful preview.

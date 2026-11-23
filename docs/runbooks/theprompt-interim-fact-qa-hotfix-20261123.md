@@ -30,3 +30,58 @@ This hotfix aims at factual quality but **does not fix AWS**, produce a new voic
 4. Use only a **new, source-reviewed, not-previously-published current script**; no Muse, Osmo, archived videos or synthetic V4.04 technical previews. Validate the final MP4 and publish once through canonical idempotent routes only.
 
 **No Git push/PR, deployment, AWS render, provider call, database write, social publication, new automation or provider-credential access was performed here.**
+
+## Further evidence: likely Vercel ↔ Remotion AWS credential collision
+
+Remotion's official troubleshooting page for `UnrecognizedClientException`:
+https://remotion.dev/docs/lambda/troubleshooting/unrecognizedclientexception
+explicitly calls out serverless environments where the generic AWS names
+are injected or used for other purposes. It recommends dedicated
+`REMOTION_AWS_ACCESS_KEY_ID` and `REMOTION_AWS_SECRET_ACCESS_KEY`,
+which take priority in Remotion Lambda's credential selection.
+
+Read-only Vercel Production environment metadata for the shared
+`ai-operating-platform-web` app (23 Nov 2026):
+- **Present:** generic `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
+  `AWS_REGION`, `REMOTION_LAMBDA_FUNCTION_NAME`,
+  `REMOTION_SERVE_URL`.
+- **Not present among inspected keys:** `REMOTION_AWS_ACCESS_KEY_ID`,
+  `REMOTION_AWS_SECRET_ACCESS_KEY`,
+  `REMOTION_AWS_EXPECTED_ACCOUNT_ID`.
+- Values and AWS account identifiers were **not** read or decrypted.
+- On 21 Nov the Osmo row has `UnrecognizedClientException`,
+  `render_attempts=3`, no `render_id`, no `render_bucket`
+  and no MP4. An older, already published Muse video also has that
+  failure recorded, but must **not** be retried or republished.
+
+**Safe operator restoration, restricted to The Prompt's renderer:**
+1. In the intended **Remotion AWS account** find the actual
+   function/bucket/region, a dedicated least-privilege Remotion IAM
+   principal and its *active matched* key/secret (or an approved
+   role-based alternative). Confirm which principal Remotion should
+   use. Do not assume the existing generic Vercel AWS keys belong
+   to the correct account or are still valid.
+2. In **Vercel → ai-operating-platform-web → Settings →
+   Environment Variables**, provision the independent Remotion-prefixed
+   pair as **Production-only** secrets using Vercel's secret-entry UI.
+   Do **not** paste keys in ChatGPT, source files, logs, email or the
+   user's Git repository. Do **not** delete or repurpose generic AWS
+   variables that other Omnira/Bedrock workloads may depend upon.
+3. Set a separate **non-secret** trusted expected Remotion account
+   ID in secure application configuration only after the account
+   owner verifies it. A read-only `sts:GetCallerIdentity` canary must
+   establish that the *same prefixed* principal belongs to the right
+   AWS account, plus read-only checks for region and function.
+   The earlier local preflight implementation is staging-only and not
+   a production bypass or authorization token.
+4. Deploy any reviewed configuration change under the owner's normal
+   Vercel approval process. The changed runtime environment must be
+   instantiated/redeployed for env updates to apply.
+5. Before one small, spending-limited private Lambda test, verify
+   global/project STOP, exact account, dedicated IAM rights, one-time
+   render claim, provider status reconciliation and the user's approved
+   interim-format budget. If any check fails, stay on QUALITY_HOLD.
+
+This is a probable collision **not proof of the AWS account or IAM state**.
+No credentials were decrypted, rotated, copied or updated; no
+external STS call, Lambda render, deployment or post was initiated.

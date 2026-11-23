@@ -16,7 +16,7 @@ import { runNewsHunter, type HunterCandidate, type HunterResult } from '@/lib/me
 import { scoreScript, shouldRegenerate, failedQualityScore } from '@/lib/media/quality'
 import { articleReadTimeoutMs } from '@/lib/media/article-read-policy'
 import { officialArticleFallbackBudgetMs } from '@/lib/media/official-source-fallback-policy'
-import { sourceCandidateMayBeEvaluated,hasEnoughSourceToWrite } from '@/lib/media/source-evidence-readiness'
+import { sourceCandidateMayBeEvaluated,hasEnoughSourceToWrite,composeSourceBackedEditorialContexts } from '@/lib/media/source-evidence-readiness'
 import { readDirectOfficialArticle } from '@/lib/article/primary-source-reader'
 import { sendPipelineAlert } from '@/lib/media/alert'
 import { callHermesScrape, callHermesRead, callHermesCompetitors, isHermesConfigured } from '@/lib/media/hermes'
@@ -250,6 +250,8 @@ export async function GET(request: Request) {
   // Only feed/Hermes source data counts; NEVER an AI-rewritten summary
   // of a bare headline as a substitute for source evidence.
   let originalSourceSummary: string | null = null
+  let originalSourceTitle: string | null = null
+  let originalSourceUrl: string | null = null
   let duplicateCount = 0
 
   if (shouldUseHermes) {
@@ -296,6 +298,8 @@ export async function GET(request: Request) {
         }
         newsItemId = hermesSave.id
         originalSourceSummary = hermesResult.summary ?? null
+        originalSourceTitle = hermesResult.title
+        originalSourceUrl = hermesResult.url ?? null
       } else if (hermesSave.status === 'duplicate') {
         duplicateCount += 1
         console.log(`[cron/step1] Hermes returned duplicate news URL: ${hermesResult.url}`)
@@ -321,6 +325,8 @@ export async function GET(request: Request) {
 
       const top = candidateSave.candidate
       originalSourceSummary = top.story.summary ?? null
+      originalSourceTitle = top.story.title
+      originalSourceUrl = top.story.url
       const articleText = [top.story.title, top.story.summary ?? '', top.editorialNote ? `Key insight: ${top.editorialNote}` : '', `Source: ${top.story.sourceLabel}`].filter(Boolean).join('\n\n')
       const newsRes   = await withRetry(() => newsHunter.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 800, system: NEWS_SYSTEM, messages: [{ role: 'user', content: `Analyze this article for short-form video:\n\n${articleText}` }] }))
       news            = JSON.parse((newsRes.content[0].type === 'text' ? newsRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as NewsHunterOutput
@@ -343,6 +349,8 @@ export async function GET(request: Request) {
 
     const top = candidateSave.candidate
     originalSourceSummary = top.story.summary ?? null
+    originalSourceTitle = top.story.title
+    originalSourceUrl = top.story.url
     const articleText = [top.story.title, top.story.summary ?? '', top.editorialNote ? `Key insight: ${top.editorialNote}` : '', `Source: ${top.story.sourceLabel}`].filter(Boolean).join('\n\n')
     // Analyze article
     const newsRes = await withRetry(() => newsHunter.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 800, system: NEWS_SYSTEM, messages: [{ role: 'user', content: `Analyze this article for short-form video:\n\n${articleText}` }] }))
@@ -360,7 +368,9 @@ export async function GET(request: Request) {
   // This gives Claude real quotes, exact numbers and concrete details —
   // far better than RSS summaries for writing punchy scripts.
   let fullArticleText = ''
-  const articleUrl = news.source_url ?? null
+  // Always read the URL selected from the original news candidate, not a
+  // URL generated/rephrased by the analyst model.
+  const articleUrl = originalSourceUrl
   // Never attempt to scrape publisher homepages or use the editorial QA reserve
   // on optional enrichment. The original news summary is the safe fallback.
   const articleTimeoutMs = articleReadTimeoutMs(articleUrl, Date.now() - t0)
@@ -385,7 +395,7 @@ export async function GET(request: Request) {
   if (officialBudgetMs > 0 && articleUrl) {
     try {
       const direct = await withTimeout(
-        readDirectOfficialArticle(articleUrl,news.title),officialBudgetMs,null)
+        readDirectOfficialArticle(articleUrl,originalSourceTitle ?? news.title),officialBudgetMs,null)
       if (direct?.grounding.mode === 'strong' && direct.grounding.wordCount >= 150) {
         fullArticleText = direct.grounding.text
         console.log('[cron/step1] First-party article text verified by existing bounded official reader')
@@ -409,10 +419,15 @@ export async function GET(request: Request) {
     }, {status:422})
   }
 
-  // Build the script-writing context — prefer full article, fall back to summary
-  const scriptContext = fullArticleText
-    ? `Title: ${news.title}\nFull article text:\n${fullArticleText}\n\nKey insight: ${news.key_insight}\nVirality: ${news.virality_score}/100\nAudience: ${news.target_audience}\nAngle: ${news.content_angle}`
-    : `Title: ${news.title}\nSummary: ${news.summary}\nKey insight: ${news.key_insight}\nVirality: ${news.virality_score}/100\nAudience: ${news.target_audience}\nAngle: ${news.content_angle}`
+  // Keep the independent fact-review basis and writer's evidence identical.
+  // The analyst model can suggest an angle, but its transformed title, summary
+  // and key insight are NEVER treated as publisher/source evidence.
+  const {scriptContext,sourceContext} = composeSourceBackedEditorialContexts({
+    originalTitle:originalSourceTitle,
+    originalSummary:originalSourceSummary,
+    fullArticleText,
+    suggestedAngle:news.content_angle,
+  })
   // ── End article read ──────────────────────────────────────────────────────
 
   // Write the script only while there is time for QA and persistence.
@@ -441,7 +456,6 @@ export async function GET(request: Request) {
 
   // Quality gate. Invalid or timed-out QA must NEVER approve content.
   // Reserve time for persistence inside Vercel's 60-second cron window.
-  const sourceContext = fullArticleText || `${news.title}\n${news.summary}\n${news.key_insight}`
   const qaBudgetMs = Math.max(0, 52_000 - (Date.now() - t0))
   let qualityScore = qaBudgetMs >= 1_500
     ? await withTimeout(

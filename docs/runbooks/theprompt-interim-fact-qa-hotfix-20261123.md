@@ -161,3 +161,41 @@ Live read-only Supabase inspection around 17:45 Stockholm shows:
   `atlas_bedrock_pooled_gross_cap_20261121`; never disable
   migration guard or add fake migration content. That is
   separate from The Prompt's legitimate source improvements.
+
+## Pre-release source-provenance review (23 Nov evening)
+
+During PR #652 audit we found a subtle remaining gap: the earlier patch
+stored the **original feed/Hermes summary** and checked its length, but the
+writer still received `news.summary` and the Quality Gate fell back to
+`news.summary`/`news.key_insight`, **which the analyst model had
+rewritten**. This could launder an unsupported claim back into the prompt
+as if it were publisher evidence.
+
+The follow-up local patch makes the writer and independent QA read the
+**same evidence** using `composeSourceBackedEditorialContexts`:
+- Original selected title and original feed/Hermes summary are captured
+  before the analyst model. A genuine full article (100+ words) takes
+  precedence when available.
+- `scriptContext` labels its evidence as untrusted published source
+  data; editorial angle is STYLE ONLY, not a fact.
+- `sourceContext` excludes model-generated titles, summaries, insight
+  claims, virality scores and speculative user outcomes.
+- Article retrieval always uses the **original candidate's URL**, not
+  an analyst-synthesized or rephrased URL. Official article title
+  matching uses the original source title.
+- Missing original evidence or title fails closed.
+- +3 source-provenance tests cover genuine feed text, article precedence
+  and refusal of blank/AI-synthesized source.
+- **47/47 targeted tests PASS**, full TypeScript PASS.
+- No SQL, provider API call, paid rendering, voice synthesis or
+  production changes.
+
+Important: Hermes summaries are still only as trustworthy as Hermes'
+underlying crawl. A true independent fact reviewer must continue to
+check article provenance and claims; this code does **not** create an
+editorial approval or a source authenticity certificate.
+
+Dependency: the separately reviewed shared migration PR #654 must be
+reconciled and released before this PR's Vercel full preview will pass
+the production Migration Guard. Do not run an unnecessary preview build
+of PR #652 until the baseline is ready.

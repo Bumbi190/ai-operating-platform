@@ -16,6 +16,7 @@ import { runNewsHunter, type HunterCandidate, type HunterResult } from '@/lib/me
 import { scoreScript, shouldRegenerate, failedQualityScore } from '@/lib/media/quality'
 import { articleReadTimeoutMs } from '@/lib/media/article-read-policy'
 import { officialArticleFallbackBudgetMs } from '@/lib/media/official-source-fallback-policy'
+import { sourceCandidateMayBeEvaluated,hasEnoughSourceToWrite } from '@/lib/media/source-evidence-readiness'
 import { readDirectOfficialArticle } from '@/lib/article/primary-source-reader'
 import { sendPipelineAlert } from '@/lib/media/alert'
 import { callHermesScrape, callHermesRead, callHermesCompetitors, isHermesConfigured } from '@/lib/media/hermes'
@@ -101,6 +102,13 @@ async function saveFirstHunterCandidate(
 
   for (const candidate of candidates) {
     const top = candidate
+    // Do not spend downstream model calls on a link title + AI-generated
+    // editorial note with no substantive feed summary or readable official source.
+    // Skip this candidate and continue to the next one instead.
+    if (!sourceCandidateMayBeEvaluated(top.story)) {
+      console.warn('[cron/step1] Skipping headline-only candidate without verifiable source text')
+      continue
+    }
     const save = await saveNewsItem(db, {
       project_id: projectId,
       title: top.story.title,
@@ -239,6 +247,9 @@ export async function GET(request: Request) {
   // newsItemId is captured directly from each insert — avoids the race condition
   // of querying "most recent row" which could grab a concurrent insert's ID.
   let newsItemId: string | null = null
+  // Only feed/Hermes source data counts; NEVER an AI-rewritten summary
+  // of a bare headline as a substitute for source evidence.
+  let originalSourceSummary: string | null = null
   let duplicateCount = 0
 
   if (shouldUseHermes) {
@@ -284,6 +295,7 @@ export async function GET(request: Request) {
           source_name:     hermesResult.source_name,
         }
         newsItemId = hermesSave.id
+        originalSourceSummary = hermesResult.summary ?? null
       } else if (hermesSave.status === 'duplicate') {
         duplicateCount += 1
         console.log(`[cron/step1] Hermes returned duplicate news URL: ${hermesResult.url}`)
@@ -308,6 +320,7 @@ export async function GET(request: Request) {
       }
 
       const top = candidateSave.candidate
+      originalSourceSummary = top.story.summary ?? null
       const articleText = [top.story.title, top.story.summary ?? '', top.editorialNote ? `Key insight: ${top.editorialNote}` : '', `Source: ${top.story.sourceLabel}`].filter(Boolean).join('\n\n')
       const newsRes   = await withRetry(() => newsHunter.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 800, system: NEWS_SYSTEM, messages: [{ role: 'user', content: `Analyze this article for short-form video:\n\n${articleText}` }] }))
       news            = JSON.parse((newsRes.content[0].type === 'text' ? newsRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as NewsHunterOutput
@@ -329,6 +342,7 @@ export async function GET(request: Request) {
     }
 
     const top = candidateSave.candidate
+    originalSourceSummary = top.story.summary ?? null
     const articleText = [top.story.title, top.story.summary ?? '', top.editorialNote ? `Key insight: ${top.editorialNote}` : '', `Source: ${top.story.sourceLabel}`].filter(Boolean).join('\n\n')
     // Analyze article
     const newsRes = await withRetry(() => newsHunter.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 800, system: NEWS_SYSTEM, messages: [{ role: 'user', content: `Analyze this article for short-form video:\n\n${articleText}` }] }))
@@ -382,6 +396,17 @@ export async function GET(request: Request) {
       // the independent quality gate veto unsupported claims.
       console.warn('[cron/step1] Optional first-party read unavailable; QA still required')
     }
+  }
+
+  // Preserve editorial integrity: a contentless HN/press headline is NOT
+  // evidence for an autonomous AI news video, even if the analyst model
+  // generated a confident paragraph from it. No voice/render/paid writer.
+  if (!hasEnoughSourceToWrite(fullArticleText, originalSourceSummary)) {
+    console.warn('[cron/step1] Insufficient original article or feed summary; refusing to write an unsupported script')
+    return NextResponse.json({
+      status:'insufficient_source_evidence',
+      reason:'A substantive source article or original feed summary is required.',
+    }, {status:422})
   }
 
   // Build the script-writing context — prefer full article, fall back to summary

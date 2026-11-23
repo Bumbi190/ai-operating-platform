@@ -119,3 +119,45 @@ call, no production write/deploy, no status override. Existing
 technical quality-recheck route is authenticated and one-shot but
 NOT scheduled to salvage the missed evening slot; it was not
 dispatched because that would spend and mutate a real script.
+
+## 23 Nov evening: original Hunter source missing, technical retry consumed
+
+Live read-only Supabase inspection around 17:45 Stockholm shows:
+- Evening script `7242cc9d-04ea-4323-8462-6c9c43d0eab0`
+  generated 17:20, `status=pending_review`, `version=3`.
+  Its initial independent QA timed out, and the subsequent one-shot
+  quality recheck ended **`Independent quality recheck blocked:
+  source context insufficient`**. No voice, MP4, publish receipts.
+- Its stored `media_news_items` candidate:
+  The Verge URL chosen via `Hacker News`, **original summary length 0**,
+  `key_insight` 52 characters. The model had no substantive article body.
+- A headline-only candidate must never be allowed to yield an
+  auto-approved script. The existing recheck correctly held it,
+  but it discovered the empty source **after** an earlier draft
+  and consumed a one-shot attempt (without performing fact QA).
+- We did NOT retry version 3, forge a source summary or modify the
+  existing production item. The article's historical "2015" title
+  is not by itself proof of a current 2026 development.
+
+### Additional pre-writer fix (same isolated PR)
+- `source-evidence-readiness.ts` now accepts a candidate for
+  further evaluation only if it has an original substantive
+  summary (>=80 chars) or a recognized official first-party
+  URL eligible for safe article retrieval. Unknown/non-HTTPS
+  links are denied. Weak Hacker News titles are skipped so
+  the hunter may select another candidate.
+- `cron/step1/route.ts` preserves the ORIGINAL feed/Hermes
+  summary separately from the AI-generated rewrite. It denies
+  the scriptwriter when neither a verified-length article body
+  (>=100 words) nor an original substantive feed summary
+  exists. Model-generated summaries of bare headlines never
+  count as source evidence.
+- No quality score floor was lowered; absence of evidence
+  leads to `insufficient_source_evidence`, not `approved`.
+- **44/44** local targeted Vitest tests passed across 8 suites;
+  full `tsc --noEmit` exited 0.
+- Vercel preview still blocked by missing main-branch registration
+  of already-recorded Bedrock migration
+  `atlas_bedrock_pooled_gross_cap_20261121`; never disable
+  migration guard or add fake migration content. That is
+  separate from The Prompt's legitimate source improvements.

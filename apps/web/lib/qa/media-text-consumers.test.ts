@@ -37,6 +37,7 @@ describe('The Prompt media consumers with exhausted Anthropic credits', () => {
     expect(result.candidates[0].story.url).toBe(story.url)
     expect(result.candidates[0].editorialNote).toBe('A reported event')
     expect(mocks.openai.mock.calls[0][0]).toMatchObject({ execution, agent: 'News Hunter' })
+    expect(mocks.openai.mock.calls[0][1]).not.toHaveProperty('response_format')
   })
 
   it('keeps a failing factual-safety verdict as a required rewrite', async () => {
@@ -49,6 +50,7 @@ describe('The Prompt media consumers with exhausted Anthropic credits', () => {
     expect(quality.hallucination_risk).toBe(4)
     expect(quality.passed).toBe(false)
     expect(shouldRegenerate(quality)).toBe(true)
+    expect(mocks.openai.mock.calls[0][1]).toMatchObject({response_format:{type:'json_object'}})
   })
 
   it('accepts the scene array and renders each planned scene through the existing image client', async () => {

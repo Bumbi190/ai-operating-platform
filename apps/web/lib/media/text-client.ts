@@ -53,9 +53,19 @@ async function secondaryText(
   }
   // Never log credentials, provider response body, request content or account ids.
   console.warn(`[media/text] governed model reserve selected: ${reason}`)
+  // The Prompt's *editorial Quality Gate only*: JSON mode prevents a
+  // fallback model from wrapping a score in commentary/markdown. This is
+  // output syntax, NOT factual verification; parseQualityScore still checks
+  // every field, threshold, refusal and incomplete response fail-closed.
+  // Do not change News Hunter, Dream, CFO or other Omnira model behavior.
+  const requireThePromptQaJson = ctx.agent === 'Quality Gate'
+    && ctx.operation === 'Score Content'
+    && 'projectSlug' in ctx.project
+    && ctx.project.projectSlug === 'ai-media-automation'
   // The existing cost boundary checks project ownership, stops and budget before
   // an OpenAI API request. SDK retries are disabled there.
   const response = await openAIChatCompletion(ctx, {
+    ...(requireThePromptQaJson ? {response_format:{type:'json_object' as const}} : {}),
     model: 'gpt-5.4-mini',
     ...openAITextOptions('gpt-5.4-mini', input.max_tokens, 0.7),
     messages: [

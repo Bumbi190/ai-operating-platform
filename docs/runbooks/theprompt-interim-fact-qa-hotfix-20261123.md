@@ -85,3 +85,37 @@ Read-only Vercel Production environment metadata for the shared
 This is a probable collision **not proof of the AWS account or IAM state**.
 No credentials were decrypted, rotated, copied or updated; no
 external STS call, Lambda render, deployment or post was initiated.
+
+## 23 Nov: The Prompt Quality Gate reserve output JSON mode (local-only)
+
+The evening cron (17:20 Europe/Stockholm) saved a fresh draft as
+`pending_review` with the explicit verdict
+`Quality check timed out — manual editorial review required.`.
+Vercel logs also show a later completed model answer of 2497 text
+characters rejected by the strict JSON parser. These two signals
+indicate independent timing and response-format problems; **do not**
+pretend fixing JSON syntax fixes the 8-second watchdog deadline.
+
+A narrowly scoped guard was added to
+`apps/web/lib/media/text-client.ts`:
+- Only when `ctx.agent === 'Quality Gate'`,
+  `ctx.operation === 'Score Content'`, and
+  `ctx.project.projectSlug === 'ai-media-automation'`, pass
+  `response_format: { type: 'json_object' }` to the existing
+  **governed OpenAI fallback**. It does not change the Anthropic
+  primary request, budget gating, model, STOP or retry count.
+- JSON mode ensures syntax when the chosen provider supports it,
+  but **does not verify the factual content or schema**.
+  `parseQualityScore` and the prior minimum-score veto still apply;
+  refusals, malformed schemas and timeouts remain QUALITY_HOLD.
+- Other media tasks (e.g., News Hunter) do not receive JSON mode,
+  as asserted by regression tests.
+- OpenAI documentation:
+  https://developers.openai.com/api/docs/guides/structured-outputs
+  (see JSON mode vs Structured Outputs).
+
+**Targeted tests: 38/38 PASS, TypeScript: PASS.** No paid API
+call, no production write/deploy, no status override. Existing
+technical quality-recheck route is authenticated and one-shot but
+NOT scheduled to salvage the missed evening slot; it was not
+dispatched because that would spend and mutate a real script.

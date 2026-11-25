@@ -5,12 +5,12 @@
  * Handles: start render, poll progress, extract output URL.
  *
  * Required env vars:
- *   AWS_ACCESS_KEY_ID
- *   AWS_SECRET_ACCESS_KEY
- *   AWS_REGION                        (e.g. eu-north-1)
- *   REMOTION_LAMBDA_FUNCTION_NAME     (set after: npx remotion lambda functions deploy)
- *   REMOTION_SERVE_URL                (set after: npx remotion lambda sites create)
- *   REMOTION_S3_BUCKET                (the bucket created by Remotion Lambda)
+ *   REMOTION_AWS_ACCESS_KEY_ID       (production credentials, isolated from Bedrock)
+ *   REMOTION_AWS_SECRET_ACCESS_KEY
+ *   REMOTION_AWS_REGION              (falls back to AWS_REGION for legacy environments)
+ *   REMOTION_LAMBDA_FUNCTION_NAME    (set after: npx remotion lambda functions deploy)
+ *   REMOTION_SERVE_URL_PRODUCTION    (preferred in production; falls back to REMOTION_SERVE_URL)
+ *   REMOTION_SERVE_URL               (legacy and preview site URL)
  */
 
 import type { VideoInputProps } from './video-props'
@@ -33,6 +33,14 @@ function requireEnv(key: string): string {
   return val
 }
 
+function remotionRegion(): string {
+  return process.env.REMOTION_AWS_REGION?.trim() || requireEnv('AWS_REGION')
+}
+
+function remotionServeUrl(): string {
+  return process.env.REMOTION_SERVE_URL_PRODUCTION?.trim() || requireEnv('REMOTION_SERVE_URL')
+}
+
 // ─── Start a Lambda render ────────────────────────────────────────────────────
 
 export async function startLambdaRender(
@@ -42,9 +50,9 @@ export async function startLambdaRender(
 ): Promise<{ renderId: string; bucketName: string }> {
   const { renderMediaOnLambda } = await getLambdaClient()
 
-  const region     = requireEnv('AWS_REGION')
+  const region     = remotionRegion()
   const fnName     = requireEnv('REMOTION_LAMBDA_FUNCTION_NAME')
-  const serveUrl   = requireEnv('REMOTION_SERVE_URL')
+  const serveUrl   = remotionServeUrl()
 
   const result = await renderMediaOnLambda({
     region:          region as Parameters<typeof renderMediaOnLambda>[0]['region'],
@@ -80,7 +88,7 @@ export async function getLambdaRenderProgress(
 ): Promise<RenderProgress> {
   const { getRenderProgress } = await getLambdaClient()
 
-  const region = requireEnv('AWS_REGION')
+  const region = remotionRegion()
   const fnName = requireEnv('REMOTION_LAMBDA_FUNCTION_NAME')
 
   const prog = await getRenderProgress({

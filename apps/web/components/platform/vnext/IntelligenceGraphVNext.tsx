@@ -74,6 +74,7 @@ import { IntelligenceGraphControls } from './IntelligenceGraphControls'
 import { GraphLegend, GraphPlace, SnapshotSummary } from './IntelligenceGraphHud'
 import { IntelligenceGraphInspector } from './IntelligenceGraphInspector'
 import { IntelligenceGraphList, type IntelligenceGraphListHandle } from './IntelligenceGraphList'
+import { ModelActivityPanel } from './ModelActivityPanel'
 import styles from './IntelligenceGraphVNext.module.css'
 
 /** Line style carries how certain a relation is; colour and width stay the relation's own. */
@@ -629,6 +630,15 @@ export function IntelligenceGraphVNext() {
         />
 
         {/* ── Canvas + inspector ── */}
+        {canvasMode === 'operations' && payloadIsCurrent && !loading && !error && !unavailable && (
+          <ModelActivityPanel
+            activity={data?.modelActivity}
+            projects={data?.projects ?? []}
+            runningRunIds={new Set(nodes.filter(node => node.kind === 'run' && node.status === 'running').map(node => node.id.slice(4)))}
+            onFocusProject={setProjectFilter}
+          />
+        )}
+
         <div
           ref={stageRef}
           className={styles.stage}

@@ -27,8 +27,10 @@ class StubQuery {
   select() { return this }
   eq(column: string, value: unknown) { this.rows = this.rows.filter(r => r[column] === value); return this }
   gte(column: string, value: string) { this.rows = this.rows.filter(r => String(r[column]) >= value); return this }
+  lte(column: string, value: string) { this.rows = this.rows.filter(r => String(r[column]) <= value); return this }
   order() { return this }
   limit(n: number) { this.rows = this.rows.slice(0, n); return this }
+  range(from: number, to: number) { this.rows = this.rows.slice(from, to + 1); return this }
   in(column: string, values: string[]) {
     this.inCalls.push({ column, values })
     this.rows = this.rows.filter(r => values.includes(r[column]))
@@ -74,6 +76,12 @@ const DATA: StubData = {
   ],
   manager_tasks: [
     { id: 'task-1', title: 'Följ upp', status: 'open', priority: 'high', run_id: 'run-1', workflow_id: null, project_id: null, created_at: NOW },
+  ],
+  cost_events: [
+    { project_id: 'p-mine', run_id: 'run-1', provider: 'aws-bedrock', model: 'claude-sonnet-4-6', cost_sek: '1.50', created_at: NOW },
+    { project_id: 'p-mine', run_id: 'run-1', provider: 'aws-bedrock', model: 'claude-sonnet-4-6', cost_sek: '0.75', created_at: NOW },
+    { project_id: 'p-other', run_id: 'run-2', provider: 'private', model: 'secret', cost_sek: 100, created_at: NOW },
+    { project_id: 'p-mine', run_id: 'run-2', provider: 'aws-bedrock', model: 'no-proof', cost_sek: '0.25', created_at: NOW },
   ],
 }
 
@@ -127,6 +135,24 @@ describe('buildOperationsGraph — project isolation (fail closed)', () => {
     const deleg = graph.edges.find(e => e.relation === 'DELEGATED_TO')!
     expect(deleg.source).toBe('workflow:wf-1')
     expect(deleg.target).toBe('agent:ag-1')
+  })
+
+  it('reports model use per verified run without leaking other tenants', async () => {
+    const db = stubDb(DATA)
+    const { graph, modelActivity } = await buildOperationsGraph(db as any, 'user-1')
+    expect(modelActivity.state).toBe('complete')
+    expect(modelActivity.recordedCalls).toBe(3)
+    expect(modelActivity.observedCostSek).toBe(2.5)
+    expect(modelActivity.unlinkedCalls).toBe(1)
+    expect(modelActivity.byRun).toHaveLength(1)
+    const run = graph.nodes.find(n => n.id === 'run:run-1')!
+    expect(run.metadata.recordedModels).toEqual([
+      expect.objectContaining({ model: 'claude-sonnet-4-6', calls: 2, costSek: 2.25 }),
+    ])
+    expect(JSON.stringify({ graph, modelActivity })).not.toContain('secret')
+    expect(JSON.stringify(modelActivity.byRun)).not.toContain('no-proof')
+    expect(db.log.flatMap(q => q.inCalls).filter(c => c.column === 'project_id')
+      .every(c => !c.values.includes('p-other'))).toBe(true)
   })
 
   it('ignores a caller-supplied project outside the allow-list', async () => {

@@ -41,11 +41,11 @@ export async function GET(req: NextRequest) {
 
   try {
     const db = createAdminClient()
-    const { graph, projects } = await buildOperationsGraph(db, user.id, {
+    const { graph, projects, modelActivity } = await buildOperationsGraph(db, user.id, {
       projectId,
       window: { hours, maxRuns: DEFAULT_WINDOW.maxRuns },
     })
-    return NextResponse.json({ available: true, projects, ...graph })
+    return NextResponse.json({ available: true, projects, modelActivity, ...graph })
   } catch {
     // Fail closed: no partial data on error.
     return NextResponse.json({ error: 'operations graph unavailable' }, { status: 500 })

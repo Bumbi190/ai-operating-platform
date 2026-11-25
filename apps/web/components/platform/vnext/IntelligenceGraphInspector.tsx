@@ -356,7 +356,17 @@ function inspectorFacts(node: IntelligenceGraphNode, edges: readonly Intelligenc
   push('Position', node.sourceLocation ?? null, true)
   if (typeof metadata.size === 'number') push('Noder i subsystemet', String(metadata.size))
   if (node.source === 'graphify' && typeof node.degree === 'number') push('Kopplingar i kodkartan', String(node.degree))
-  push('Modell', text('model'), true)
+  push('Konfigurerad modell', node.kind === 'agent' ? text('model') : null, true)
+  if (node.kind === 'run') {
+    const details = Array.isArray(metadata.recordedModels) ? metadata.recordedModels : null
+    const rows = (details ?? []).filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null)
+    const named = rows.map(x => typeof x.model === 'string' && x.model ? x.model : 'Modell ej angiven')
+    const cost = rows.reduce((total, x) => total + (typeof x.costSek === 'number' && Number.isFinite(x.costSek) ? x.costSek : 0), 0)
+    const state = text('modelActivityState')
+    push('Modellanvändning i denna körning', details === null ? 'Underlag otillgängligt' : named.length ? named.join(' / ') : 'Ingen registrerad koppling')
+    if (rows.length) push('Registrerad modellkostnad', new Intl.NumberFormat('sv-SE', { style: 'currency', currency: 'SEK', maximumFractionDigits: 2 }).format(cost))
+    if (state === 'partial') push('Modellunderlag', 'Ofullständigt - summorna avser hämtade poster')
+  }
   push('Trigger', text('trigger'))
   push('Projekt', text('projectName'))
   push('Prioritet', text('priority'))

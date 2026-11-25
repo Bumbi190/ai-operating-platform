@@ -18,6 +18,7 @@
 
 import { getAllowedProjectIds, scopeToProjects } from '@/lib/atlas/isolation'
 import { parseWorkflowSteps } from '@/lib/supabase/json'
+import { readModelActivity, type ModelActivitySnapshot } from './model-activity'
 import type {
   IntelligenceGraph,
   IntelligenceGraphEdge,
@@ -39,6 +40,8 @@ export interface OperationsGraphResult {
   graph: IntelligenceGraph
   /** Projects visible to this caller (id, name, slug) for the project filter. */
   projects: Array<{ id: string; name: string; slug: string; color: string }>
+  /** Recorded, scoped API calls: never inferred from agent configuration. */
+  modelActivity: ModelActivitySnapshot
 }
 
 export async function buildOperationsGraph(
@@ -73,6 +76,14 @@ export async function buildOperationsGraph(
   const agents: any[] = agentsRes.data ?? []
   const workflows: any[] = workflowsRes.data ?? []
   const runs: any[] = runsRes.data ?? []
+
+  const modelActivity = await readModelActivity(db, scope, runs, window.hours)
+  const modelsByRun = new Map<string, ModelActivitySnapshot['byRun']>()
+  for (const usage of modelActivity.byRun) {
+    const list = modelsByRun.get(usage.runId) ?? []
+    list.push(usage)
+    modelsByRun.set(usage.runId, list)
+  }
 
   const runIds = runs.map(r => r.id)
 
@@ -141,6 +152,8 @@ export async function buildOperationsGraph(
         error: r.error ? String(r.error).slice(0, 300) : null,
         attempts: r.attempts, kind: r.kind,
         projectName: projectName.get(r.project_id) ?? null,
+        modelActivityState: modelActivity.state,
+        recordedModels: modelActivity.state === 'unavailable' ? null : modelsByRun.get(r.id) ?? [],
       },
     })
   }
@@ -250,5 +263,5 @@ export async function buildOperationsGraph(
     edges,
   }
 
-  return { graph, projects: projects.filter(p => scopeSet.has(p.id)) }
+  return { graph, modelActivity, projects: projects.filter(p => scopeSet.has(p.id)) }
 }

@@ -22,6 +22,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ModelActivitySnapshot } from '@/lib/intelligence/model-activity'
 import type {
   IntelligenceGraphEdge,
   IntelligenceGraphMeta,
@@ -55,6 +56,7 @@ export interface GraphPayload {
   nodes?: IntelligenceGraphNode[]
   edges?: IntelligenceGraphEdge[]
   projects?: Array<{ id: string; name: string; slug: string; color: string }>
+  modelActivity?: ModelActivitySnapshot
 }
 
 export interface SearchHit {

@@ -66,6 +66,12 @@ export function OverviewDashboard({
               </Link>
             ))}
           </nav>
+          <Link
+            href={'/atlas/control-center?period=' + model.period}
+            className="inline-flex items-center gap-2 rounded-lg border border-teal-300/30 bg-teal-300/10 px-3 py-2 text-[12px] font-semibold text-teal-100 transition hover:border-teal-300/60 hover:bg-teal-300/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-300"
+          >
+            Atlas Control Center <span aria-hidden="true">↗</span>
+          </Link>
           <Link className={styles.atlasLink} href="/atlas">
             Öppna Atlas <span aria-hidden="true">↗</span>
           </Link>

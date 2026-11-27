@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22.22.3'
       - name: Run screenshot routing regression without dependencies
         shell: bash
         run: |

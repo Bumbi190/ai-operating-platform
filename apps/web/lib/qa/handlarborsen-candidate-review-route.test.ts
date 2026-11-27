@@ -17,7 +17,7 @@ const headers = { origin: 'https://omniraos.se', host: 'omniraos.se', 'content-t
 const invoke = (payload: unknown = data, urlValue = url, h: Record<string,string> = headers, slug = 'handlarborsen') =>
   POST(new Request(urlValue, {
     method: 'POST', headers: h, body: JSON.stringify(payload),
-  }), { params: { slug } })
+  }), { params: Promise.resolve({ slug }) })
 
 beforeEach(() => {
   mocked.enabled.mockReset().mockReturnValue(false)

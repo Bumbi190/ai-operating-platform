@@ -764,10 +764,10 @@ describe('settings · generation', () => {
 
   it('hands the YouTube connection’s closed answer to the surface — and ignores anything that is not one', async () => {
     const { default: Page } = await import('@/app/(platform)/settings/page')
-    const known = await Page({ searchParams: { youtube: 'migrated' } }) as React.ReactElement
+    const known = await Page({ searchParams: Promise.resolve({ youtube: 'migrated' }) }) as React.ReactElement
     expect(((known.props as { children: React.ReactElement }).children.props as { youtubeOutcome: unknown }).youtubeOutcome)
       .toMatchObject({ code: 'migrated', kind: 'connected' })
-    const odd = await Page({ searchParams: { youtube: 'access_token=abc' } }) as React.ReactElement
+    const odd = await Page({ searchParams: Promise.resolve({ youtube: 'access_token=abc' }) }) as React.ReactElement
     expect(((odd.props as { children: React.ReactElement }).children.props as { youtubeOutcome: unknown }).youtubeOutcome).toBeNull()
   })
 

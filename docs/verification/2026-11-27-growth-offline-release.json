@@ -1,0 +1,136 @@
+{
+  "date": "2026-11-27T21:22:29.426Z",
+  "branch": "codex/omnira-growth-release-20261125",
+  "base": "da8db1a5e51c75dfcb7b80b1e310501f897904e2",
+  "status": "local offline source candidate; not pushed, merged, deployed or activated",
+  "lock": "d40384cc1e6602657437e32d392f305d2ee2f9e2623924cbfdb16bf131358e4c",
+  "npmAudit": {
+    "info": 0,
+    "low": 8,
+    "moderate": 7,
+    "high": 0,
+    "critical": 0,
+    "total": 15
+  },
+  "proof": {
+    "cleanOfflineLinuxBuild": {
+      "pass": true,
+      "phases": 13,
+      "node": "v22.23.3",
+      "npm": "11.21.3",
+      "sourceFiles": 4879,
+      "sourceManifestSha": "57cf5faa229180f5bb8047f7a583a6e521bd466d0c0bbb2ed2b0929547fbb60f",
+      "syntheticConfiguration": true,
+      "deployable": false
+    },
+    "strictFinalWindowsTypecheck": {
+      "scope": "Actual final current G source including static-source cache test fix; strict TypeScript, no emit/incremental",
+      "exit": 0,
+      "error": null,
+      "pass": true
+    },
+    "changedRegressionFiles": {
+      "files": 44,
+      "passed": 845,
+      "failed": 0,
+      "pending": 0,
+      "todo": 0
+    },
+    "automaticAtlasSelection": {
+      "files": 52,
+      "passed": 1383,
+      "failed": 0,
+      "pending": 0,
+      "todo": 0
+    },
+    "nativeGrowth": {
+      "files": 6,
+      "passed": 73,
+      "failed": 0,
+      "skipped": 0
+    },
+    "migrationGuards": {
+      "files": 2,
+      "passed": 212,
+      "failed": 0,
+      "pending": 0,
+      "todo": 0
+    },
+    "calendar": {
+      "files": 46,
+      "passed": 240,
+      "failed": 0,
+      "pending": 0,
+      "todo": 0,
+      "success": true
+    },
+    "sourceIndexGit": {
+      "files": 4,
+      "passed": 63,
+      "failed": 0,
+      "pending": 0,
+      "todo": 0
+    },
+    "guardedVideo": {
+      "renderPass": true,
+      "wsChecks": 18,
+      "decodedFrames": 12,
+      "pixelChecks": 26
+    },
+    "sdkContracts": {
+      "passed": 18,
+      "failed": 0,
+      "pending": 0,
+      "todo": 0
+    },
+    "leafApiChecks": 54,
+    "zodCompatibilityChecks": 52,
+    "ciFailureNegativeControl": true
+  },
+  "buildSourceReconciliation": {
+    "applicationAndDependencySourceUnchanged": true,
+    "explicitLaterNonApplicationChanges": [
+      ".github/workflows/atlas-project-isolation.yml",
+      "apps/web/lib/qa/atlas-memory-emit-durability.test.ts",
+      "apps/web/lib/qa/chat-conversation-ownership.test.ts",
+      "apps/web/lib/qa/media-token-authority.test.ts",
+      "apps/web/lib/qa/platform-credential-events.test.ts",
+      "apps/web/lib/qa/social-credentials.test.ts",
+      "apps/web/lib/qa/youtube-project-oauth.test.ts",
+      "docs/release-candidates/GROWTH-FOUNDATION-PENDING.md"
+    ],
+    "finalTypesAndFocusedOrAtlasTestsCoverTheseChanges": true,
+    "additionalPilotAndVerificationDocumentsAreNotBuildInputs": true
+  },
+  "review": {
+    "independentStaticReview": "PASS within offline source/test/CI scope; reviewer did not run tests and did not approve production",
+    "sourceManifestRecordsBeforeEvidence": 197,
+    "protectedOwnerFilesUnchanged": true
+  },
+  "boundaries": {
+    "captureFactoryDisabled": true,
+    "admissionProjection": null,
+    "liveDashboardMounted": false,
+    "canonicalGrowthMigrationAbsent": true,
+    "preservedSqlOutsideMigrationRoots": "docs/release-candidates/20261127105221_growth_machine_foundation_inert.sql",
+    "canonicalSqlCount": 180,
+    "enforcedCount": 166,
+    "pilotActivated": false
+  },
+  "remaining": [
+    "Owner-authorized push/review PR and exact-commit hosted CI/review; no merge or deployment authority in this record.",
+    "Full repository-wide Web Vitest run has not been completed successfully; historical broad baseline runs timed out and had fixture/platform failures. Local Atlas52 is a scoped gate, not the whole web suite.",
+    "7 moderate and8 low npm advisories remain; vendored Next/Vercel components and broader CodeQL/security backlog require their own disposition.",
+    "Live Growth dashboard mounting, trusted post-evidence reader, real data validation, approved storage/budget and14-day pilot are future work.",
+    "Existing lint skip and Supabase Edge process.version warning remain. Local migration guard skips outside Vercel; no target-schema or production-auth proof."
+  ],
+  "earlierFailedReceiptsRetained": [
+    "build-proof/packed-container-receipt.json",
+    "offline-build/packed-container-receipt.json",
+    "current-video/receipt.json",
+    "current-regressions/receipt.json",
+    "final-regressions/receipt.json",
+    "atlas-ci-local/receipt.json",
+    "fresh-audit/audit-receipt.json"
+  ]
+}

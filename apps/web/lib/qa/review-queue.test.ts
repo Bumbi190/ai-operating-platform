@@ -399,7 +399,7 @@ describe('phase 11 · generation', () => {
     [undefined, null],
   ])('passes the ?project= filter (%s) straight through to the loader', async (raw, expected) => {
     const { default: Page } = await import('@/app/(platform)/approvals/page')
-    const element = await Page({ searchParams: { project: raw as string | string[] | undefined } }) as React.ReactElement
+    const element = await Page({ searchParams: Promise.resolve({ project: raw as string | string[] | undefined }) }) as React.ReactElement
     const inner = (element.props as { children: React.ReactElement }).children
     await (inner.type as (props: unknown) => Promise<unknown>)(inner.props)
     expect(loadSpy).toHaveBeenCalledWith({ projectSlug: expected })

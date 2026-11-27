@@ -739,9 +739,14 @@ describe('youtube connection · the codebase, read', () => {
     }
     return out
   }
-  const FILES = () => ['app', 'components', 'lib'].flatMap((d) => sourceFiles(resolve(APP, d)))
-  const rel = (f: string) => relative(APP, f)
-  const code = (f: string) => readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/[^\n]*/g, '$1')
+  // Snapshot the complete original inventory once; every assertion scans it.
+  const SOURCE_FILES = ['app', 'components', 'lib'].flatMap((d) => sourceFiles(resolve(APP, d)))
+  const FILES = () => SOURCE_FILES
+  const SOURCE_TEXT = new Map(SOURCE_FILES.map(file => [file, readFileSync(file, 'utf8')]))
+  const rel = (f: string) => relative(APP, f).replaceAll('\\', '/')
+  const readCode = (f: string) => readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/[^\n]*/g, '$1')
+  const SOURCE_CODE = new Map(SOURCE_FILES.map(file => [file, readCode(file)]))
+  const code = (f: string) => SOURCE_CODE.get(f) ?? readCode(f)
   const callers = (name: string, definedIn: string) => FILES()
     .filter((f) => rel(f) !== definedIn && new RegExp(`\\b${name}\\s*\\(`).test(code(f)))
     .map(rel)

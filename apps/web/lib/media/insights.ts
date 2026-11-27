@@ -35,6 +35,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { listActiveBindings } from './social-bindings'
 import { createCredentialResolver, type CredentialRefusal } from './social-credentials'
 import { fetchVideoRetention } from './youtube'
+import { openInstagramEvidenceSession } from '@/lib/content-growth/instagram-evidence-hooks'
 
 /** Posts refreshed per platform per project (YouTube: across projects), newest first. */
 export const INSIGHTS_LIMIT = 80
@@ -84,15 +85,20 @@ export interface InsightFetchResult {
   error?: string
   /** Rått API-svar — används vid felsökning/probning av nya plattformar (t.ex. FB). */
   raw?: unknown
+  /** Local acquisition interval, not provider-side measurement time. */
+  localEvidenceWindow?: { startMs: number; endMs: number }
 }
 
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` })
 
 /** Hämtar insights för ett enskilt IG-media. Returnerar ok:false vid fel (t.ex. saknad behörighet). */
-export async function fetchMediaInsights(mediaId: string, token: string): Promise<InsightFetchResult> {
+export async function fetchMediaInsights(mediaId: string, token: string, captureLocalEvidence = false): Promise<InsightFetchResult> {
+  let attempt = 0
   let lastError = 'okänt fel'
   for (const host of hostsForToken(token)) {
+    attempt++
     try {
+      const startMs = captureLocalEvidence && attempt === 1 ? Date.now() : undefined
       const res = await fetch(
         `${host}/${mediaId}/insights?metric=${METRICS}`,
         { headers: bearer(token), signal: AbortSignal.timeout(INSIGHTS_REQUEST_TIMEOUT_MS) },
@@ -104,6 +110,7 @@ export async function fetchMediaInsights(mediaId: string, token: string): Promis
         continue   // testa nästa värd
       }
 
+      const localEvidenceWindow = startMs === undefined ? undefined : { startMs, endMs: Date.now() }
       const metrics: MediaInsight = {}
       for (const m of json.data ?? []) {
         // Instagram Login / Graph versions may return total_value.value
@@ -115,7 +122,7 @@ export async function fetchMediaInsights(mediaId: string, token: string): Promis
           metrics[metricKeyMap[m.name]] = value
         }
       }
-      return { ok: true, metrics }
+      return { ok: true, metrics, ...(localEvidenceWindow ? { localEvidenceWindow } : {}) }
     } catch (e) {
       lastError = e instanceof Error ? e.message : 'okänt fel'
     }
@@ -338,6 +345,7 @@ export async function refreshAllInsights(options: RefreshOptions = {}): Promise<
   const concurrency = Math.max(1, options.concurrency ?? INSIGHTS_CONCURRENCY)
   const now = options.now ?? Date.now
   const expired = () => options.deadlineAt !== undefined && now() >= options.deadlineAt
+  const evidence = openInstagramEvidenceSession()
 
   const db = createAdminClient()
   const byPlatform: Record<string, { updated: number; failed: number }> = {}
@@ -397,7 +405,15 @@ export async function refreshAllInsights(options: RefreshOptions = {}): Promise<
         else {
           const run = await eachBounded(scripts as any[], concurrency, expired, async (s) => {
             try {
-              const result = await fetchMediaInsights(s.instagram_media_id, token)
+              // No additional lookup or provider call on the disabled path.
+              const evidenceScope = evidence ? {
+                platform: ig.credential.platform, projectId: ig.credential.projectId,
+                bindingId: ig.credential.bindingId, accountId: ig.credential.accountId,
+              } : undefined
+              const capture = evidenceScope && evidence?.matches(evidenceScope) && s.project_id === projectId
+              const result = capture
+                ? await fetchMediaInsights(s.instagram_media_id, token, true)
+                : await fetchMediaInsights(s.instagram_media_id, token)
               if (!result.ok || !result.metrics) return bump('instagram', false, result.error)
               const m = result.metrics
               const { error } = await (db.from('media_insights') as any).upsert({
@@ -415,6 +431,9 @@ export async function refreshAllInsights(options: RefreshOptions = {}): Promise<
                 published_at: s.published_at,
                 fetched_at: new Date().toISOString(),
               }, { onConflict: 'script_id,platform' })
+              if (!error && capture && evidenceScope && result.localEvidenceWindow && !expired()) {
+                try { evidence?.measurement(evidenceScope, s.id, s.instagram_media_id, result.localEvidenceWindow, { ok: true, metrics: m }) } catch { /* missing evidence */ }
+              }
               return bump('instagram', !error, error?.message)
             } catch (e) {
               return bump('instagram', false, e instanceof Error ? e.message : 'okänt fel')

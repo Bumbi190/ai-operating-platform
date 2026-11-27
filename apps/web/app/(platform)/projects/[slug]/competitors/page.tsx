@@ -13,13 +13,15 @@ import { competitorInboxEnabled, loadCompetitorInbox } from '@/lib/atlas/project
 export const dynamic = 'force-dynamic'
 
 /** RLS resolution precedes the exact identity guard and all public-source I/O. */
-export default async function CompetitorsPage({ params, searchParams }: {
-  params: { slug: string }
-  searchParams?: Record<string, string | string[] | undefined>
+export default async function CompetitorsPage({ params: paramsPromise, searchParams: searchParamsPromise }: {
+  params: Promise<{ slug: string }>
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
 }) {
+  const params = await paramsPromise
   const project = await getProjectBySlug(params.slug)
   if (!project || !isHandlarborsenProject(project)) notFound()
   const historyEnabled = competitorHistoryEnabled()
+  const searchParams = await searchParamsPromise
   const [scan, landscape] = searchParams?.scan === '1'
     ? await Promise.all([scanPublicSources(), scanCompetitorLandscape()])
     : [null, null]

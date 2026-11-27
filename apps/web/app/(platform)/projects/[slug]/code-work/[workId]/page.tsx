@@ -6,10 +6,11 @@ import { CodeWorkDetail } from '@/components/platform/vnext/CodeWorkDetail'
 export const dynamic = 'force-dynamic'
 
 export default async function CodeWorkDetailPage({
-  params,
+  params: paramsPromise,
 }: {
-  params: { slug: string; workId: string }
+  params: Promise<{ slug: string; workId: string }>
 }) {
+  const params = await paramsPromise
   const project = await getProjectBySlug(params.slug)
   if (!project) notFound()
   const result = await readOperatorCodeWorkDetail({

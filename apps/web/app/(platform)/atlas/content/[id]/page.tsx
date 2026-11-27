@@ -26,7 +26,7 @@ function fmtDate(iso: string | null): string {
   return iso ? new Date(iso).toLocaleString('sv-SE') : '—'
 }
 
-export default async function ContentDetail({ params }: { params: { id: string } }) {
+export default async function ContentDetail({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -44,6 +44,7 @@ export default async function ContentDetail({ params }: { params: { id: string }
   // `website_content.project_id` is NOT NULL, so the scope is exact. An empty
   // allow-list becomes an impossible project id — zero rows, never every row.
   const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+  const params = await paramsPromise
   const { data: row } = await db
     .from('website_content')
     .select('*')

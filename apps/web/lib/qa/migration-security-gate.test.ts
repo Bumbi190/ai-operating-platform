@@ -795,3 +795,114 @@ describe('Office visit private schema — exact reviewed boundary', () => {
     expect(probe('create table office_private_shadow.visits(id uuid);').blocking).toContain('UNKNOWN_SCHEMA')
   })
 })
+
+
+// Growth Engine inactive release: this suite is already mandatory in the
+// DB-free Atlas CI job. The exact reviewed SQL fixture is retained for
+// identity comparison and adversarial replay. The future SQL proposal is kept
+// outside canonical migration roots; no production DDL belongs to this offline release.
+describe('Growth inert foundation - exact source and private boundary', () => {
+  const SQL = readFileSync(join(REPO, 'apps/web/tests/isolation/fixtures/growth-machine-foundation.inert.sql'), 'utf8')
+  const CLASSES = JSON.parse(readFileSync(join(REPO, 'apps/web/tests/isolation/fixtures/growth-inert-schemas.json'), 'utf8')) as Allowlist['internal_schemas']
+  const base = CORPUS.filter(f => !/^\d{14}_growth_machine_foundation_inert\.sql$/.test(f.name))
+  const baseAllow: Allowlist = { ...ALLOWLIST, internal_schemas: ALLOWLIST.internal_schemas.filter(s => !CLASSES.some(c => c.schema === s.schema)) }
+  const approved: Allowlist = { ...baseAllow, internal_schemas: [...baseAllow.internal_schemas, ...CLASSES] }
+  const mk = (sql: string, name = '29990101000000_growth_machine_foundation_inert.sql', root: Root = 'apps/web'): MigrationFile => ({
+    root, name, relPath: MIGRATION_ROOTS.find(r => r.root === root)!.dir + '/' + name, version: name.slice(0, 14), sql,
+  })
+  const install = mk(SQL)
+  const checked = (files: MigrationFile[], al = approved, bootstrapSql = BOOTSTRAP) =>
+    analyze({ files: [...base, ...files], registry: REGISTRY, allowlist: al, bootstrapSql })
+  const drift = (a: ReturnType<typeof analyze>) => a.findings.filter(f => f.rule === 'GROWTH_INERT_BOUNDARY_DRIFT')
+  const unexcused = (a: ReturnType<typeof analyze>, al = approved) => gate(a.findings, al).unexcused
+
+  it('keeps future Growth SQL and classifications outside the offline release', () => {
+    const actual = CORPUS.filter(f => /^\d{14}_growth_machine_foundation_inert\.sql$/.test(f.name))
+    expect(actual).toHaveLength(0)
+    expect(ALLOWLIST.internal_schemas.filter(s => CLASSES.some(c => c.schema === s.schema))).toEqual([])
+    expect(drift(FULL)).toEqual([])
+    expect(gate(FULL.findings, ALLOWLIST).unexcused).toEqual([])
+  })
+
+  it('does not require an unapplied foundation when there are no references or classifications', () => {
+    expect(drift(checked([], baseAllow))).toEqual([])
+  })
+  it('accepts the exact reviewed fixture plus five qualified classifications through the real gate', () => {
+    const a = checked([install])
+    expect(drift(a)).toEqual([])
+    expect(unexcused(a)).toEqual([])
+    expect(allowlistProblems(approved, a, REGISTRY, REPO)).toEqual([])
+  })
+  it('accepts only CRLF normalization of the pinned SQL source', () => {
+    expect(drift(checked([mk(SQL.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n'))]))).toEqual([])
+    expect(drift(checked([mk(SQL + '\n-- changed after review')])).some(f => f.detail.includes('exact reviewed'))).toBe(true)
+  })
+  it('rejects an otherwise exact source in the legacy migration root', () => {
+    expect(drift(checked([mk(SQL, install.name, 'repo-root')])).some(f => f.detail.includes('canonical apps/web'))).toBe(true)
+  })
+  it('rejects a copied exact source under an unapproved migration name', () => {
+    expect(drift(checked([mk(SQL, '29990101000000_unreviewed.sql')])).length).toBeGreaterThan(0)
+  })
+  it('rejects duplicate foundation migrations', () => {
+    expect(drift(checked([install, mk(SQL, '29990101000001_growth_machine_foundation_inert.sql')])).some(f => f.detail.includes('exactly one'))).toBe(true)
+  })
+  it('rejects a classification without the reviewed migration', () => {
+    expect(drift(checked([])).some(f => f.detail.includes('exactly one'))).toBe(true)
+  })
+  it('rejects a missing, duplicate, or exposed internal schema entry', () => {
+    for (const entries of [CLASSES.slice(1), [...CLASSES, CLASSES[0]], CLASSES.map((s, i) => i === 0 ? { ...s, exposed_via_data_api: true } : s)]) {
+      const al = { ...baseAllow, internal_schemas: [...baseAllow.internal_schemas, ...entries] }
+      expect(drift(checked([install], al)).some(f => f.detail.includes('five unique'))).toBe(true)
+    }
+  })
+  it.each([
+    ['RLS disabled', 'ALTER TABLE ge_outbox.jobs DISABLE ROW LEVEL SECURITY;'],
+    ['direct service role table grant', 'GRANT SELECT ON ge_capture.batches TO service_role;'],
+    ['unexpected private table', 'CREATE TABLE ge_capture.unreviewed(id int);'],
+    ['client policy', 'CREATE POLICY bad ON ge_capture.batches TO anon USING(true);'],
+    ['column grant', 'GRANT SELECT(id) ON ge_capture.batches TO service_role;'],
+    ['function execute grant', 'GRANT EXECUTE ON FUNCTION ge_stage_api.claim(text,text) TO PUBLIC;'],
+    ['role membership', 'GRANT ge_capture_exec TO authenticator;'],
+    ['inert insert barrier removed', 'ALTER TABLE ge_capture.batches DROP CONSTRAINT growth_release_inert;'],
+    ['generation trigger disabled', 'ALTER TABLE public.projects DISABLE TRIGGER growth_owner_generation_assert;'],
+  ])('blocks later direct boundary changes: %s', (_name, sql) => {
+    const later = mk(sql, '29990101000001_probe_growth_change.sql')
+    expect(drift(checked([install, later])).some(f => f.migration === later.relPath)).toBe(true)
+  })
+  it.each([
+    ['ge_authority_exec', 'CREATE ROLE ge_authority_exec NOLOGIN;'],
+    ['ge_authority_anon', 'CREATE ROLE ge_authority_anon NOLOGIN;'],
+    ['ge_authority_api', 'CREATE SCHEMA ge_authority_api;'],
+  ])('rejects reserved collision identifier before and after introduction: %s', (_name, sql) => {
+    const earlier = mk(sql, '29990100999999_probe_reserved_before.sql')
+    const later = mk(sql, '29990101000001_probe_reserved_after.sql')
+    expect(drift(checked([earlier, install])).some(f => f.migration === earlier.relPath)).toBe(true)
+    expect(drift(checked([install, later])).some(f => f.migration === later.relPath)).toBe(true)
+    expect(drift(checked([earlier], baseAllow)).some(f => f.migration === earlier.relPath)).toBe(true)
+  })
+  it('does not classify the reserved legacy authority API schema', () => {
+    const al: Allowlist = { ...approved, internal_schemas: [...approved.internal_schemas, {
+      schema: 'ge_authority_api', exposed_via_data_api: false,
+      verified: 'synthetic probe only', justification: 'Reserved collision name must not be admitted as a sixth schema.',
+    }] }
+    expect(drift(checked([install], al)).some(f => f.detail.includes('five unique'))).toBe(true)
+    expect(drift(checked([], { ...baseAllow, internal_schemas: [...baseAllow.internal_schemas, al.internal_schemas[al.internal_schemas.length - 1]] })).length).toBeGreaterThan(0)
+  })
+  it('blocks direct Growth references in the bootstrap', () => {
+    expect(drift(checked([install], approved, BOOTSTRAP + '\n-- ge_capture')).some(f => f.root === 'bootstrap')).toBe(true)
+  })
+  it('does not block an unrelated later migration', () => {
+    expect(drift(checked([install, mk('SELECT 1;', '29990101000001_unrelated.sql')]))).toEqual([])
+  })
+  it('cannot waive this tripwire with a statement exception', () => {
+    const a = checked([mk(SQL + '\n-- drift')])
+    const f = drift(a)[0]
+    expect(f).toBeDefined()
+    const al: Allowlist = { ...approved, exceptions: [...approved.exceptions, {
+      migration: f.migration, table: f.object, policy: f.policy, rule: f.rule,
+      fingerprint: f.fingerprint, status: 'CURRENT_INTENTIONAL', justification: 'Attempted exception to a non-waivable inert Growth boundary drift finding; must be rejected.',
+    }] }
+    expect(unexcused(a, al)).toContainEqual(f)
+    expect(allowlistProblems(al, a, REGISTRY, REPO).some(p => p.includes('cannot be waived'))).toBe(true)
+  })
+})

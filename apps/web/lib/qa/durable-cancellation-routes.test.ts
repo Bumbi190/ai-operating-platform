@@ -115,7 +115,7 @@ describe('G3C-3B · the cancel route reports the mutation, not a pre-read', () =
   const cancel = async () => {
     const { POST } = await import('@/app/api/runs/[id]/cancel/route')
     const res = await POST(post(`http://t/api/runs/${RUN}/cancel`, { reason: 'op' }) as never,
-      { params: { id: RUN } })
+      { params: Promise.resolve({ id: RUN }) })
     return { res, body: await res.json() as Row }
   }
 
@@ -177,7 +177,7 @@ describe('G3C-3B · an approval operation that LOST causes no side effects', () 
     const { PATCH } = await import('@/app/api/approvals/[id]/route')
     const req = new Request(`http://t/api/approvals/${APPR}`, {
       method: 'PATCH', body: JSON.stringify({ action, reviewer_notes: 'n' }) })
-    const res = await PATCH(req as never, { params: { id: APPR } })
+    const res = await PATCH(req as never, { params: Promise.resolve({ id: APPR }) })
     return { res, body: await res.json() as Row }
   }
 

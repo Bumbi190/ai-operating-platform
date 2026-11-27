@@ -27,7 +27,7 @@ import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-export async function POST(_request: Request, { params }: { params: { id: string } }) {
+export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -43,7 +43,7 @@ export async function POST(_request: Request, { params }: { params: { id: string
   const { data: row } = await db
     .from('website_content')
     .select('id, project_id')
-    .eq('id', params.id)
+    .eq('id', (await params).id)
     .maybeSingle()
 
   // 404 for both "no such article" and "not yours": the two must be
@@ -55,7 +55,7 @@ export async function POST(_request: Request, { params }: { params: { id: string
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  const result = await generateHeroImage('OPERATOR_EXECUTION', params.id)
+  const result = await generateHeroImage('OPERATOR_EXECUTION', (await params).id)
 
   if (result.ok) {
     return NextResponse.json({ ok: true, status: result.status, url: result.url })

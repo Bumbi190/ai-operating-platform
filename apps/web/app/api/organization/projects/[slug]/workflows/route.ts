@@ -13,23 +13,23 @@ const headers = { 'Cache-Control': 'private, no-store' }
 const fail = (status: number) => NextResponse.json({ error: status === 401 ? 'Unauthenticated' : 'Forbidden' }, { status, headers })
 
 /** Scoped, deliberately non-executable workflow directory for organization members. */
-export async function GET(_request: Request, { params }: { params: { slug: string } }) {
+export async function GET(_request: Request, { params }: { params: Promise<{ slug: string }> }) {
   const session = await createClient()
   const { data: { user }, error: authError } = await session.auth.getUser()
   if (authError || !user) return fail(401)
-  if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(params.slug)) return fail(403)
+  if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test((await params).slug)) return fail(403)
   const admin = createAdminClient()
   const scope = await resolveOrganizationReadScope(session, admin, user.id)
   if (!scope.role.active || scope.projectIds.length === 0) return fail(403)
 
   const { data: project, error: projectError } = await admin.from('projects')
-    .select('id').eq('slug', params.slug).in('id', [...scope.projectIds]).maybeSingle()
+    .select('id').eq('slug', (await params).slug).in('id', [...scope.projectIds]).maybeSingle()
   if (projectError || !project) return fail(403)
   // Owner Command Center intentionally scrubs workflow descriptions from
   // observer models. The metadata editor needs descriptions only on the
   // uniquely delegated Handlarbörsen project.
   const showDescription = project.id === HANDLARBORSEN_PROJECT_ID
-    && params.slug === HANDLARBORSEN_PROJECT_SLUG
+    && (await params).slug === HANDLARBORSEN_PROJECT_SLUG
 
   const { data, error } = await admin.from('workflows')
     .select('id, name, description, trigger, active, created_at')
@@ -45,9 +45,9 @@ export async function GET(_request: Request, { params }: { params: { slug: strin
 
 
 /** Only an INACTIVE manual workflow shell; never deploys or executes code. */
-export async function POST(request: Request, { params }: { params: { slug: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   if (!isSameOriginJson(request)) return organizationWriteError(403)
-  const grant = await authorizeHandlarborsenWorkflowWrite(params.slug)
+  const grant = await authorizeHandlarborsenWorkflowWrite((await params).slug)
   if (!grant.ok) return grant.response
 
   let payload: unknown

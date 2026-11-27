@@ -284,7 +284,7 @@ function approvalRequest(action: string, notes?: string): NextRequest {
   })
 }
 const decideApproval = (action = 'approved', notes?: string) =>
-  approvalsPatch(approvalRequest(action, notes), { params: { id: APPROVAL_ID } })
+  approvalsPatch(approvalRequest(action, notes), { params: Promise.resolve({ id: APPROVAL_ID }) })
 
 function reviewRequest(action: 'approve' | 'reject', notes?: string): Request {
   return new Request('http://localhost/api/content/articles/x/review', {
@@ -293,7 +293,7 @@ function reviewRequest(action: 'approve' | 'reject', notes?: string): Request {
   })
 }
 const review = (action: 'approve' | 'reject', notes?: string) =>
-  reviewPost(reviewRequest(action, notes), { params: { id: ARTICLE_ID } })
+  reviewPost(reviewRequest(action, notes), { params: Promise.resolve({ id: ARTICLE_ID }) })
 
 const drain = (query = '') =>
   drainGet(new Request(`http://localhost/api/runs/drain${query}`, { headers: { authorization: `Bearer ${CRON}` } }))
@@ -365,7 +365,10 @@ function productionFiles(dir: string): string[] {
 }
 
 const PRODUCTION = [...productionFiles(path.join(WEB_ROOT, 'app')), ...productionFiles(path.join(WEB_ROOT, 'lib'))]
-const rel = (f: string) => path.relative(WEB_ROOT, f)
+// Reuse the same complete source snapshot across emitter-name scans.
+// Re-reading and stripping thousands of files per name adds no coverage.
+const PRODUCTION_CODE = new Map(PRODUCTION.map(file => [file, codeOnly(fs.readFileSync(file, 'utf8'))]))
+const rel = (f: string) => path.relative(WEB_ROOT, f).split(path.sep).join('/')
 const DEFINITION = 'lib/atlas/memory/record-event.ts'
 
 /** Every call of `name(` in production code, with whether it is directly awaited. */
@@ -373,7 +376,7 @@ function callSites(name: string) {
   const sites: { file: string; awaited: boolean; snippet: string }[] = []
   const call = new RegExp(`(^|[^\\w$.])${name}\\(`, 'g')
   for (const file of PRODUCTION) {
-    const code = codeOnly(fs.readFileSync(file, 'utf8'))
+    const code = PRODUCTION_CODE.get(file)!
     for (const m of code.matchAll(call)) {
       const at = (m.index ?? 0) + m[1].length
       const before = code.slice(Math.max(0, at - 40), at)

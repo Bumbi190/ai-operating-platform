@@ -35,9 +35,11 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '22.22.3'
           cache: npm
 
+      - name: Use pinned npm 11.21.3
+        run: npm install --global npm@11.21.3 --ignore-scripts --no-audit --no-fund
       - name: Install locked dependencies
         run: npm ci
 
@@ -56,7 +58,7 @@ jobs:
       - name: Run focused Nova security and existing broker regressions
         working-directory: apps/web
         run: |
-          npx --no vitest run --maxWorkers=2 --minWorkers=1 \
+          npx --no vitest run --maxWorkers=2  \
             lib/qa/nova-source-inspection.test.ts \
             lib/qa/nova-source-inspection-route.test.ts \
             lib/qa/nova-source-atlas-tool.test.ts \

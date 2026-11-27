@@ -228,7 +228,7 @@ describe('project page', () => {
   async function loaded(project: typeof HB): Promise<ReactElement<{ overview?: unknown; briefing?: ReactElement; model: unknown }>> {
     getProjectBySlug.mockResolvedValue(project)
     const { default: Page } = await import('@/app/(platform)/projects/[slug]/page')
-    const suspense = await Page({ params: { slug: project.slug } }) as ReactElement<{ children: ReactElement }>
+    const suspense = await Page({ params: Promise.resolve({ slug: project.slug }) }) as ReactElement<{ children: ReactElement }>
     const child = suspense.props.children as ReactElement<{ project: unknown }>
     const typeFn = child.type as (p: unknown) => Promise<ReactElement<{ overview?: unknown; briefing?: ReactElement; model: unknown }>>
     const workspace = await typeFn(child.props)
@@ -289,7 +289,7 @@ describe('project page', () => {
     loadReport.mockReturnValue(new Promise((resolve) => { resolveReport = resolve }))
     getProjectBySlug.mockResolvedValue(HB)
     const { default: Page } = await import('@/app/(platform)/projects/[slug]/page')
-    const page = await Page({ params: { slug: HB.slug } }) as ReactElement<{ children: ReactElement }>
+    const page = await Page({ params: Promise.resolve({ slug: HB.slug }) }) as ReactElement<{ children: ReactElement }>
     const workspaceLoader = page.props.children
     const boundary = await (workspaceLoader.type as (p: unknown) => Promise<ReactElement>)(workspaceLoader.props)
     expect(boundary.type).toBe(Suspense)
@@ -340,7 +340,7 @@ describe('project page', () => {
   it('an inaccessible project stops at the page auth gate before any report or provider read', async () => {
     getProjectBySlug.mockResolvedValue(null)
     const { default: Page } = await import('@/app/(platform)/projects/[slug]/page')
-    await expect(Page({ params: { slug: HB.slug } })).rejects.toThrow('NEXT_NOT_FOUND')
+    await expect(Page({ params: Promise.resolve({ slug: HB.slug }) })).rejects.toThrow('NEXT_NOT_FOUND')
     expect(loadReport).not.toHaveBeenCalled()
     expect(loadTraffic).not.toHaveBeenCalled()
     expect(loadCommandCenter).not.toHaveBeenCalled()

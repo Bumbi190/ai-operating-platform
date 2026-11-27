@@ -45,7 +45,7 @@ afterEach(() => {
 })
 
 function stubFetch(impl: (url: string, init: RequestInit) => Promise<Response> | Response) {
-  const spy = vi.fn(impl as never)
+  const spy = vi.fn(impl)
   vi.stubGlobal('fetch', spy)
   return spy
 }

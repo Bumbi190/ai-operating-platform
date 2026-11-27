@@ -15,7 +15,8 @@ export const dynamic = 'force-dynamic'
  * not the verified Handlarbörsen identity. The snapshots table is service-role only;
  * this page never reads it directly and the browser never reaches it.
  */
-export default async function MarketplaceReportPage({ params }: { params: { slug: string } }) {
+export default async function MarketplaceReportPage({ params: paramsPromise }: { params: Promise<{ slug: string }> }) {
+  const params = await paramsPromise
   const project = await getProjectBySlug(params.slug)
   if (!project) notFound()
 

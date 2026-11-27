@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22.22.3'
       - name: Run exact synthetic reviewer safety tests (no packages or secrets)
         shell: bash
         run: |

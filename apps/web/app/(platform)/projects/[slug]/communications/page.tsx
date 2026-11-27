@@ -16,7 +16,8 @@ export const dynamic = 'force-dynamic'
  * job ID is loaded. Reuse the verified aggregate and lifecycle readers, and
  * keep their independent observation times visible (non-atomic reads).
  */
-export default async function CommunicationsPage({ params }: { params: { slug: string } }) {
+export default async function CommunicationsPage({ params: paramsPromise }: { params: Promise<{ slug: string }> }) {
+  const params = await paramsPromise
   const project = await getProjectBySlug(params.slug)
   if (!project || !isHandlarborsenProject(project)) notFound()
 

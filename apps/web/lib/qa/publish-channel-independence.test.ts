@@ -14,7 +14,7 @@
  *
  * Alla externa publiceringsanrop är mockade. Ingenting publiceras live.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest'
 import { MetaApiError } from '@/lib/media/meta-errors'
 
 // ─── Supabase-mock ────────────────────────────────────────────────────────────
@@ -185,7 +185,7 @@ const credentialState = {
 vi.mock('@/lib/media/social-credentials', () => {
   const RETRYABLE = new Set(['binding_unreadable', 'credential_unreadable', 'provider_unavailable'])
   const verified = (platform: 'instagram' | 'facebook', projectId: unknown) => platform === 'instagram'
-    ? { platform, projectId, bindingId: 'binding-ig', accountId: '17841400000000001', username: 'the.project',
+    ? { platform, projectId, bindingId: '00000000-0000-4000-8000-000000000010', accountId: '17841400000000001', username: 'the.project',
         token: 'IG-VERIFIED-CREDENTIAL', apiBase: 'https://graph.instagram.com/v21.0', isIgLogin: true, expiresAt: null }
     : { platform, projectId, bindingId: 'binding-fb', pageId: '1000000000000001', pageName: 'The Page',
         pageToken: 'FB-VERIFIED-PAGE-CREDENTIAL', expiresAt: null }
@@ -212,6 +212,14 @@ vi.mock('@/lib/media/alert', () => ({
   sendRunReport:     (...a: unknown[]) => sendRunReport(...a),
 }))
 vi.mock('@/lib/media/run-log', () => ({ logRun: vi.fn().mockResolvedValue(null) }))
+
+
+const evidenceFactory = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/content-growth/instagram-evidence-hooks', async (original) => ({
+  ...(await original<typeof import('@/lib/content-growth/instagram-evidence-hooks')>()),
+  openInstagramEvidenceSession: evidenceFactory,
+}))
+import { createLocalInstagramEvidenceSession } from '@/lib/content-growth/instagram-evidence-hooks'
 
 import { GET } from '@/app/api/media/cron/publish/route'
 
@@ -262,12 +270,13 @@ const call = async (qs = '') => {
 
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString()
 
-let logSpy:  ReturnType<typeof vi.spyOn>
-let warnSpy: ReturnType<typeof vi.spyOn>
-let errSpy:  ReturnType<typeof vi.spyOn>
+let logSpy:  MockInstance<typeof console.log>
+let warnSpy: MockInstance<typeof console.warn>
+let errSpy:  MockInstance<typeof console.error>
 
 beforeEach(() => {
   vi.clearAllMocks()
+  evidenceFactory.mockReset()
   vi.useFakeTimers()
   dbState.script = null
   dbState.updates = []
@@ -1032,5 +1041,52 @@ describe("project-scoped social credentials · every channel uses the script pro
     ])
     expect(dispatched).not.toContain(ENV_SENTINEL)
     expect(dispatched).not.toContain('ENV-PAGE-MUST-NEVER-BE-USED')
+  })
+})
+
+
+describe('local evidence hook in actual cron publish route (all external operations mocked)', () => {
+  const scope={projectId:PROJECT_ID,bindingId:'00000000-0000-4000-8000-000000000010',accountId:'17841400000000001',platform:'instagram' as const}
+  function session() {
+    const now=Date.now()
+    const s=createLocalInstagramEvidenceSession({enabled:true,projectSlug:'ai-media-automation',scope,enrollment:{startMs:now-1000,endMs:now+3600000}})
+    evidenceFactory.mockReturnValue(s)
+    return s
+  }
+  function setup() {
+    dbState.script=script()
+    createReelContainer.mockResolvedValue('C1')
+    publishContainer.mockReset().mockImplementation(async()=>({mediaId:'IG1',permalink:null,localEvidenceWindow:{startMs:Date.now(),endMs:Date.now()}}))
+    postReelToFacebook.mockResolvedValue({postId:'FB1',url:null})
+  }
+  it('records only after existing persistence; no evidence in response or channel state',async()=>{
+    const s=session();setup()
+    const response=await call()
+    expect(response.status).toBe(200)
+    expect(publishContainer).toHaveBeenCalledTimes(1)
+    expect(publishContainer).toHaveBeenCalledWith(IG_CREDENTIAL,'C1',true)
+    expect(dbState.updates.some(u=>u.instagram_media_id==='IG1')).toBe(true)
+    expect(s.snapshot().publications).toHaveLength(1)
+    expect(s.snapshot().publications[0].mediaId).toBe('IG1')
+    expect(JSON.stringify(dbState.updates)).not.toContain('localEvidenceWindow')
+    expect(await response.text()).not.toContain('localEvidenceWindow')
+  })
+  it('retry success and already-published skip do not yield new evidence',async()=>{
+    const s=session();setup()
+    publishContainer.mockRejectedValueOnce(new MetaApiError({message:'temporary',httpStatus:500,endpoint:'media_publish'}))
+    expect((await call()).status).toBe(200)
+    expect(publishContainer).toHaveBeenCalledTimes(2)
+    expect(publishContainer.mock.calls[1]).toHaveLength(2)
+    expect(s.snapshot().publications).toHaveLength(0)
+    dbState.script=script({instagram_media_id:'old'})
+    await call()
+    expect(s.snapshot().publications).toHaveLength(0)
+  })
+  it('capture failure never changes successful publish or Facebook path',async()=>{
+    const s=session();setup()
+    evidenceFactory.mockReturnValue({...s,publication:()=>{throw Error('synthetic failure')}})
+    expect((await call()).status).toBe(200)
+    expect(postReelToFacebook).toHaveBeenCalledTimes(1)
+    expect(dbState.updates.some(u=>u.instagram_media_id==='IG1')).toBe(true)
   })
 })

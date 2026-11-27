@@ -4,6 +4,8 @@ export interface ProjectPresentation {
   heroPosition?: string
   /** Square identity artwork is shown whole instead of being cropped as a banner. */
   heroFit?: 'cover' | 'contain'
+  /** Optional visual decoration only; never grants a capability or determines a route. */
+  commandCenter?: { coverImage: string; logoImage: string; description: string }
 }
 
 /**
@@ -31,6 +33,11 @@ const PROJECT_PRESENTATION: Readonly<Record<string, ProjectPresentation>> = {
     heroImage: '/project-rail/handlarborsen.png',
     heroPosition: '50% 50%',
     heroFit: 'contain',
+    commandCenter: {
+      coverImage: '/project-covers/handlarborsen-showroom-v1.png',
+      logoImage: '/project-rail/handlarborsen.png',
+      description: 'AI-operativ överblick över företag, fordon, handel och observerad trafik.',
+    },
   },
   studieos: {
     shortLabel: 'StudieOS',

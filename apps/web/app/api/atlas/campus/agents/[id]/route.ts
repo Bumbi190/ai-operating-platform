@@ -23,7 +23,7 @@ const PRIVATE_HEADERS = {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params: paramsPromise }: { params: Promise<{ id: string }> }) {
   try {
     // Verify AUTH FIRST via the same loader used for Agent Office v0.31.
     const model = await loadOrganisationModel()
@@ -41,8 +41,13 @@ export async function GET(request: Request, { params }: { params: { id: string }
     const keys = [...url.searchParams.keys()]
     const ids = url.searchParams.getAll('projectId')
     if (keys.length !== 1 || keys[0] !== 'projectId' ||
-        ids.length !== 1 || !UUID.test(ids[0]!) ||
-        typeof params.id !== 'string' || !UUID.test(params.id)) {
+        ids.length !== 1 || !UUID.test(ids[0]!)) {
+      return NextResponse.json({ error: 'Invalid agent selection' }, {
+        status: 400, headers: PRIVATE_HEADERS,
+      })
+    }
+    const params = await paramsPromise
+    if (typeof params.id !== 'string' || !UUID.test(params.id)) {
       return NextResponse.json({ error: 'Invalid agent selection' }, {
         status: 400, headers: PRIVATE_HEADERS,
       })

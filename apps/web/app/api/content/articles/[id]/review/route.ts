@@ -25,7 +25,7 @@ import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolatio
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -45,7 +45,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   const { data: row, error: loadErr } = await db
     .from('website_content')
     .select('id, status, destination_key, payload, hero_image_url, project_id')
-    .eq('id', params.id)
+    .eq('id', (await params).id)
     .maybeSingle()
   if (loadErr) return NextResponse.json({ error: loadErr.message }, { status: 500 })
   if (!row) return NextResponse.json({ error: 'content not found' }, { status: 404 })
@@ -94,14 +94,14 @@ export async function POST(request: Request, { params }: { params: { id: string 
       entityId:   'article',
       dedupeKey:  'feedback:article',
       source:     'approval',
-      sourceId:   params.id,
+      sourceId:   (await params).id,
       subject:    'Content review: article',
       content:    `rejected: article output${body.notes ? ` — ${body.notes.slice(0, 200)}` : ''}`,
       confidence: 0.80,
       structured: {
         producer:    'article_review',
         action:      'reject',
-        contentId:   params.id,
+        contentId:   (await params).id,
         destination: row.destination_key,
         hasNotes:    !!body.notes,
       },
@@ -166,14 +166,14 @@ export async function POST(request: Request, { params }: { params: { id: string 
     entityId:   'article',
     dedupeKey:  'feedback:article',
     source:     'approval',
-    sourceId:   params.id,
+    sourceId:   (await params).id,
     subject:    'Content review: article',
     content:    'approved: article output',
     confidence: 0.70,
     structured: {
       producer:     'article_review',
       action:       'approve',
-      contentId:    params.id,
+      contentId:    (await params).id,
       destination:  row.destination_key,
       publishedUrl: result.published_url,
       hasNotes:     false,

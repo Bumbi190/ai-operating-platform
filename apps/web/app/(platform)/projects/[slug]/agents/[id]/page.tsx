@@ -24,10 +24,11 @@ import EditAgentClient from './EditAgentClient'
  * the functionality it had; the detail shell is a vNext surface.
  */
 export default async function AgentDetailPage({
-  params,
+  params: paramsPromise,
 }: {
-  params: { slug: string; id: string }
+  params: Promise<{ slug: string; id: string }>
 }) {
+  const params = await paramsPromise
   const project = await getProjectBySlug(params.slug)
   if (!project) notFound()
 

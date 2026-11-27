@@ -40,7 +40,7 @@ describe('project-authorized manual competitors page', () => {
   it.each([null, { ...authorized, id: 'foreign' }, { ...authorized, slug: 'other' }, { ...authorized, name: 'Lookalike' }])(
     '404s unauthorized identities before any network I/O', async project => {
       resolveProject.mockResolvedValue(project)
-      await expect(Page({ params: { slug: 'handlarborsen' }, searchParams: { scan: '1' } })).rejects.toThrow('404')
+      await expect(Page({ params: Promise.resolve({ slug: 'handlarborsen' }), searchParams: Promise.resolve({ scan: '1' }) })).rejects.toThrow('404')
       expect(fetcher).not.toHaveBeenCalled()
       expect(readiness).not.toHaveBeenCalled()
       expect(denyAdmin).not.toHaveBeenCalled()
@@ -49,7 +49,7 @@ describe('project-authorized manual competitors page', () => {
   )
   it.each([undefined, {}, { scan: '0' }, { scan: ['1', '1'] }, { scan: 'true' }])(
     'renders the dossier without scanning unless scan is exactly 1', async searchParams => {
-      const element = await Page({ params: { slug: 'handlarborsen' }, searchParams })
+      const element = await Page({ params: Promise.resolve({ slug: 'handlarborsen' }), searchParams: searchParams === undefined ? undefined : Promise.resolve(searchParams) })
       const html = renderToStaticMarkup(element)
       expect(resolveProject).toHaveBeenCalledWith('handlarborsen')
       expect(readiness).toHaveBeenCalledWith('owner')
@@ -65,7 +65,7 @@ describe('project-authorized manual competitors page', () => {
     },
   )
   it('scans once after RLS resolution and renders statuses, dated source links and no writes', async () => {
-    const element = await Page({ params: { slug: 'handlarborsen' }, searchParams: { scan: '1', url: 'https://evil.example' } })
+    const element = await Page({ params: Promise.resolve({ slug: 'handlarborsen' }), searchParams: Promise.resolve({ scan: '1', url: 'https://evil.example' }) })
     const html = renderToStaticMarkup(element)
     expect(fetcher).toHaveBeenCalledTimes(10) // 4 historical dossier + 3 robots + 3 official sites
     expect(fetcher.mock.calls.some(([url]) => String(url).includes('evil.example'))).toBe(false)

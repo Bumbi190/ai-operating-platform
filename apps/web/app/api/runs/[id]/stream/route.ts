@@ -21,7 +21,7 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(
   _request: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   // Auth check on connect
   const supabase = await createClient()
@@ -30,7 +30,7 @@ export async function GET(
   } = await supabase.auth.getUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
 
-  const runId = params.id
+  const runId = (await params).id
 
   // ISOLATION. This lookup already went through the RLS client, so a foreign
   // run was refused by the database — but that protection was implicit: it

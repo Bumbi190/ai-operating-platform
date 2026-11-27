@@ -5,8 +5,8 @@ import { saveAnalysisDraft, listAnalysisDrafts } from '@/lib/atlas/project-analy
 import { readAnalysisSelectorBody, analysisResponse } from '@/lib/atlas/project-analytics/analysis-draft-http'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
-export async function POST(request: Request, { params }: { params: { slug: string } }) {
-  if (!analysisDraftsEnabled()) return analysisResponse({ status: 'conflict' }, params.slug, true)
+export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }) {
+  if (!analysisDraftsEnabled()) return analysisResponse({ status: 'conflict' }, (await params).slug, true)
   const refused = assertSameOrigin(request)
   if (refused) return refused
   let selector
@@ -18,11 +18,11 @@ export async function POST(request: Request, { params }: { params: { slug: strin
       { status: 400, headers: { 'Cache-Control': 'private, no-store' } },
     )
   }
-  return analysisResponse(await saveAnalysisDraft(params.slug, selector), params.slug, true)
+  return analysisResponse(await saveAnalysisDraft((await params).slug, selector), (await params).slug, true)
 }
-export async function GET(request: Request, { params }: { params: { slug: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   const url = new URL(request.url)
   if ([...url.searchParams.keys()].some((k) => k !== 'cursor') || url.searchParams.getAll('cursor').length > 1)
-    return analysisResponse({ status: 'not_found' }, params.slug)
-  return analysisResponse(await listAnalysisDrafts(params.slug, url.searchParams.get('cursor')), params.slug)
+    return analysisResponse({ status: 'not_found' }, (await params).slug)
+  return analysisResponse(await listAnalysisDrafts((await params).slug, url.searchParams.get('cursor')), (await params).slug)
 }

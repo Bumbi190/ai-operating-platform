@@ -186,7 +186,8 @@ function StatCard({
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-export default async function MediaDashboardPage({ params }: { params: { slug: string } }) {
+export default async function MediaDashboardPage({ params: paramsPromise }: { params: Promise<{ slug: string }> }) {
+  const params = await paramsPromise
   const project = await getProjectBySlug(params.slug)
   if (!project) notFound()
 

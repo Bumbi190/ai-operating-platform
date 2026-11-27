@@ -2,7 +2,8 @@ import { notFound, redirect } from 'next/navigation'
 import { getAnalysisDraft } from '@/lib/atlas/project-analytics/analysis-draft-service'
 import { AnalysisDraftHistory } from '@/components/platform/vnext/AnalysisDraftHistory'
 export const dynamic = 'force-dynamic'
-export default async function Page({ params }: { params: { slug: string; id: string } }) {
+export default async function Page({ params: paramsPromise }: { params: Promise<{ slug: string; id: string }> }) {
+  const params = await paramsPromise
   const result = await getAnalysisDraft(params.slug, params.id)
   const root = '/projects/' + encodeURIComponent(params.slug) + '/atlas/analysis-drafts'
   if ('status' in result) {

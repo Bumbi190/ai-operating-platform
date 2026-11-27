@@ -17,6 +17,13 @@ import {
 const CANONICAL_DIR = resolve(__dirname, '../../supabase/migrations')
 const canonicalFiles = readdirSync(CANONICAL_DIR)
 const repositoryState = inspectCanonicalMigrationFiles(canonicalFiles)
+const GROWTH_INERT_MIGRATION = 'growth_machine_foundation_inert'
+const preGrowthRepositoryState = {
+  ...repositoryState,
+  sqlFiles: repositoryState.sqlFiles.filter(file => !file.endsWith('_' + GROWTH_INERT_MIGRATION + '.sql')),
+  repositoryNames: repositoryState.repositoryNames.filter(name => name !== GROWTH_INERT_MIGRATION),
+  enforcedNames: repositoryState.enforcedNames.filter(name => name !== GROWTH_INERT_MIGRATION),
+}
 
 const GRANDFATHERED_PRESENT_IN_VERIFIED_LEDGER = [
   'atlas_bi_foundation',
@@ -122,12 +129,12 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
 
   it('proves the Higgsfield code and database change require one coordinated release', () => {
     const migration = 'higgsfield_mcp_readonly'
-    expect(repositoryState.enforcedNames).toContain(migration)
+    expect(preGrowthRepositoryState.enforcedNames).toContain(migration)
     const previous = {
-      ...repositoryState,
-      sqlFiles: repositoryState.sqlFiles.filter(file => !file.endsWith('_' + migration + '.sql')),
-      repositoryNames: repositoryState.repositoryNames.filter(name => name !== migration),
-      enforcedNames: repositoryState.enforcedNames.filter(name => name !== migration),
+      ...preGrowthRepositoryState,
+      sqlFiles: preGrowthRepositoryState.sqlFiles.filter(file => !file.endsWith('_' + migration + '.sql')),
+      repositoryNames: preGrowthRepositoryState.repositoryNames.filter(name => name !== migration),
+      enforcedNames: preGrowthRepositoryState.enforcedNames.filter(name => name !== migration),
     }
     expect(previous.sqlFiles).toHaveLength(179)
     expect(previous.enforcedNames).toHaveLength(165)
@@ -136,9 +143,29 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
     expect(beforeApply).toHaveLength(202)
     expect(afterApply).toHaveLength(203)
     expect(() => evaluateAppliedMigrationLedger(beforeApply, previous)).not.toThrow()
-    expect(() => evaluateAppliedMigrationLedger(beforeApply, repositoryState)).toThrow(/higgsfield_mcp_readonly/)
+    expect(() => evaluateAppliedMigrationLedger(beforeApply, preGrowthRepositoryState)).toThrow(/higgsfield_mcp_readonly/)
     expect(() => evaluateAppliedMigrationLedger(afterApply, previous)).toThrow(/unknown migration name/)
-    expect(() => evaluateAppliedMigrationLedger(afterApply, repositoryState)).not.toThrow()
+    expect(() => evaluateAppliedMigrationLedger(afterApply, preGrowthRepositoryState)).not.toThrow()
+  })
+
+  it('fails closed across a future virtual Growth migration release boundary', () => {
+    expect(repositoryState.enforcedNames).not.toContain(GROWTH_INERT_MIGRATION)
+    expect(repositoryState.sqlFiles).toHaveLength(180)
+    expect(repositoryState.enforcedNames).toHaveLength(166)
+    const futureState = {
+      ...repositoryState,
+      sqlFiles: [...repositoryState.sqlFiles, '29990101000000_' + GROWTH_INERT_MIGRATION + '.sql'],
+      repositoryNames: [...repositoryState.repositoryNames, GROWTH_INERT_MIGRATION],
+      enforcedNames: [...repositoryState.enforcedNames, GROWTH_INERT_MIGRATION],
+    }
+    const before = [...repositoryState.enforcedNames, ...GRANDFATHERED_PRESENT_IN_VERIFIED_LEDGER, ...LEGACY_ONLY_PRODUCTION_LEDGER_NAMES]
+    const after = [...before, GROWTH_INERT_MIGRATION]
+    expect(before).toHaveLength(203)
+    expect(after).toHaveLength(204)
+    expect(() => evaluateAppliedMigrationLedger(before, repositoryState)).not.toThrow()
+    expect(() => evaluateAppliedMigrationLedger(before, futureState)).toThrow(/growth_machine_foundation_inert/)
+    expect(() => evaluateAppliedMigrationLedger(after, repositoryState)).toThrow(/unknown migration name/)
+    expect(() => evaluateAppliedMigrationLedger(after, futureState)).not.toThrow()
   })
 
   it('uses exact explicit names with no wildcard policy entries', () => {
@@ -299,6 +326,7 @@ describe('Migration Guard v2 — production ledger set integrity', () => {
     // P1E (`handlarborsen_guarded_snapshot_store`, file 20261010130000) takes the enforced set
     // from 97 to 98 and this fixture from 134 to 135. Not applied yet: this line records the
     // post-apply state and is true only after the operator-approved apply.
+    // Synthetic post-apply ledger only; actual Growth apply is NOT authorized or observed.
     expect(result.appliedLedgerCount).toBe(203)
     expect(result.unknownLedgerNames).toEqual([])
     expect(result.duplicateLedgerNames).toEqual([])
@@ -648,7 +676,7 @@ it('recognizes the read-only Nov13 ledger observation and preserves fail-closed 
  expect(createHash('sha256').update(sql).digest('hex')).toBe('03dfd37e3749030523094dbdbca20b86a54b410b7be4acfa79f2ed6592b6014c')
  // Captured Nov13 evidence predates all three Office scopes and Family capacity.
  const officeNames = ['office_visit_sessions', 'office_step_activity', 'office_workflow_state']
- const beforeOffice = { ...repositoryState, sqlFiles: repositoryState.sqlFiles.filter((f: string) => !officeNames.some(n => f.endsWith('_' + n + '.sql'))), repositoryNames: repositoryState.repositoryNames.filter((n: string) => !officeNames.includes(n)), enforcedNames: repositoryState.enforcedNames.filter((n: string) => !officeNames.includes(n)) }
+ const beforeOffice = { ...preGrowthRepositoryState, sqlFiles: preGrowthRepositoryState.sqlFiles.filter((f: string) => !officeNames.some(n => f.endsWith('_' + n + '.sql'))), repositoryNames: preGrowthRepositoryState.repositoryNames.filter((n: string) => !officeNames.includes(n)), enforcedNames: preGrowthRepositoryState.enforcedNames.filter((n: string) => !officeNames.includes(n)) }
  expect(() => evaluateAppliedMigrationLedger(observation.migrationNames, repositoryState)).toThrow(/office_visit_sessions/)
  const beforeOfficeAndFamily = { ...beforeOffice, sqlFiles: beforeOffice.sqlFiles.filter((f: string) => !f.endsWith('_family_daily_social_capacity_20261114.sql')), repositoryNames: beforeOffice.repositoryNames.filter((n: string) => n !== 'family_daily_social_capacity_20261114'), enforcedNames: beforeOffice.enforcedNames.filter((n: string) => n !== 'family_daily_social_capacity_20261114') }
  // Nov13 evidence also predates the Bedrock pooled gross cap applied 21 Nov.

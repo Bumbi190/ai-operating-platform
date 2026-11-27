@@ -16,7 +16,8 @@ import { canCollaborateOnProject } from '@/lib/auth/collaborator-project-permiss
 
 export const dynamic = 'force-dynamic'
 
-export default async function OrganizationProjectPage({ params }: { params: { slug: string } }) {
+export default async function OrganizationProjectPage({ params: paramsPromise }: { params: Promise<{ slug: string }> }) {
+  const params = await paramsPromise
   const model = await loadOrganizationProjectCommandCenter(params.slug)
   if (!model) notFound()
 

@@ -1,0 +1,32 @@
+[
+  {
+    "schema": "ge_authority_private",
+    "exposed_via_data_api": false,
+    "verified": "2026-11-27 RUN17: absent in scoped target catalog; RUN18 owner UI: only public/graphql_public selected. RUN19 exact inert candidate on isolated PG: effective API-role and PUBLIC ACL denied. Future apply requires fresh target exposure and effective ACL checks; NOT a claim of live installation.",
+    "justification": "Owner-generation triggers only; no relation or caller API. Existing owner transitions are protected by fixed guards."
+  },
+  {
+    "schema": "ge_capture",
+    "exposed_via_data_api": false,
+    "verified": "2026-11-27 RUN17: absent in scoped target catalog; RUN18 owner UI: only public/graphql_public selected. RUN19 exact inert candidate on isolated PG: effective API-role and PUBLIC ACL denied. Future apply requires fresh target exposure and effective ACL checks; NOT a claim of live installation.",
+    "justification": "Four inert evidence and authority tables, RLS enabled and API-role table/column access denied; scoped NOLOGIN executor policies, not public DB_INTERNAL class."
+  },
+  {
+    "schema": "ge_delivery",
+    "exposed_via_data_api": false,
+    "verified": "2026-11-27 RUN17: absent in scoped target catalog; RUN18 owner UI: only public/graphql_public selected. RUN19 exact inert candidate on isolated PG: effective API-role and PUBLIC ACL denied. Future apply requires fresh target exposure and effective ACL checks; NOT a claim of live installation.",
+    "justification": "Two private delivery routines owned by restricted NOLOGIN executor; no API-role EXECUTE or schema usage."
+  },
+  {
+    "schema": "ge_outbox",
+    "exposed_via_data_api": false,
+    "verified": "2026-11-27 RUN17: absent in scoped target catalog; RUN18 owner UI: only public/graphql_public selected. RUN19 exact inert candidate on isolated PG: effective API-role and PUBLIC ACL denied. Future apply requires fresh target exposure and effective ACL checks; NOT a claim of live installation.",
+    "justification": "Exactly one inert queue table, RLS enabled and no API-role direct access. Scoped internal executor only; no worker login."
+  },
+  {
+    "schema": "ge_stage_api",
+    "exposed_via_data_api": false,
+    "verified": "2026-11-27 RUN17: absent in scoped target catalog; RUN18 owner UI: only public/graphql_public selected. RUN19 exact inert candidate on isolated PG: effective API-role and PUBLIC ACL denied. Future apply requires fresh target exposure and effective ACL checks; NOT a claim of live installation.",
+    "justification": "Three private machine RPC wrappers owned by NOLOGIN executor; no API-role EXECUTE, no enrolled machine identities; runtime hard-disabled."
+  }
+]

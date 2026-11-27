@@ -32,8 +32,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '22.22.3'
           cache: npm
+      - name: Use pinned npm 11.21.3
+        run: npm install --global npm@11.21.3 --ignore-scripts --no-audit --no-fund
       - run: npm ci
       - name: Schema, concurrency, authority, isolation, lifecycle and receipt chain
         working-directory: apps/web
@@ -54,7 +56,9 @@ jobs:
           const passed = report.numPassedTests ?? 0
           const failed = report.numFailedTests ?? 0
           const pending = report.numPendingTests ?? 0
-          if (passed < 13 || failed !== 0 || pending !== 0) {
+          const todo = report.numTodoTests ?? 0
+          if (passed < 13 || failed !== 0 || pending !== 0 || todo !== 0) {
+            console.error("SDF-1B SQL todo count: " + todo)
             throw new Error(`SDF-1B SQL anti-skip floor failed: passed=${passed} failed=${failed} pending=${pending}`)
           }
           console.log(`SDF-1B SQL anti-skip floor satisfied: ${passed} passed, 0 failed, 0 pending`)

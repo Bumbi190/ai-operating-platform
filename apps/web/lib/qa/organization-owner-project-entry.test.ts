@@ -18,16 +18,16 @@ mocks.owned.mockResolvedValue({id:'owned-project',slug:'test-project'})
 function hasDisabledFieldset(node:any):boolean { return Array.isArray(node)?node.some(hasDisabledFieldset):Boolean(node && typeof node==='object' && (node.type==='fieldset'&&node.props.disabled===true || hasDisabledFieldset(node.props?.children))) }
 describe('organization project entry retains owner access and collaborator isolation',()=>{
 it('sends a verified owner of this exact project to the existing owner workspace',async()=>{
-await expect(OrganizationProjectPage({params:{slug:'test-project'}})).rejects.toThrow('REDIRECT:/projects/test-project')
+await expect(OrganizationProjectPage({params:Promise.resolve({slug:'test-project'})})).rejects.toThrow('REDIRECT:/projects/test-project')
 })
 it('never redirects an owner into another owner project even if read scope includes it',async()=>{
 mocks.owned.mockResolvedValue(null)
-const page=await OrganizationProjectPage({params:{slug:'test-project'}})
+const page=await OrganizationProjectPage({params:Promise.resolve({slug:'test-project'})})
 expect(hasDisabledFieldset(page)).toBe(true)
 })
 it('keeps the collaborator in a disabled monitoring view',async()=>{
 mocks.role.mockResolvedValue({active:true,role:'collaborator'})
-const page=await OrganizationProjectPage({params:{slug:'test-project'}})
+const page=await OrganizationProjectPage({params:Promise.resolve({slug:'test-project'})})
 expect(hasDisabledFieldset(page)).toBe(true)
 expect(mocks.owned).not.toHaveBeenCalled()
 })
@@ -35,6 +35,6 @@ expect(mocks.owned).not.toHaveBeenCalled()
 
 it('does not redirect when the RLS-owned project is non-null but has a different ID',async()=>{
 mocks.owned.mockResolvedValue({id:'different-project',slug:'test-project'})
-const page=await OrganizationProjectPage({params:{slug:'test-project'}})
+const page=await OrganizationProjectPage({params:Promise.resolve({slug:'test-project'})})
 expect(hasDisabledFieldset(page)).toBe(true)
 })

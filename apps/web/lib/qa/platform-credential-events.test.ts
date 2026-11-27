@@ -50,7 +50,7 @@ const ACTOR = 'user:0f8a2c4e-6b1d-4e3f-9a5c-7d2e8b1f4a6c'
 const TOKEN = `EAAB${'q'.repeat(90)}`
 
 const MIGRATION_FILE = resolve(__dirname, '../../supabase/migrations/20260914090100_platform_credential_events.sql')
-const RAW_SQL = readFileSync(MIGRATION_FILE, 'utf8')
+const RAW_SQL = readFileSync(MIGRATION_FILE, 'utf8').replaceAll('\r\n', '\n')
 const EXEC = RAW_SQL.split('\n').map((l) => l.replace(/--.*$/, '')).join('\n').toLowerCase()
 const REGISTRY = JSON.parse(readFileSync(resolve(__dirname, '../../tests/isolation/schema-security.json'), 'utf8')) as {
   tables: Record<string, Record<string, unknown>>
@@ -326,7 +326,7 @@ describe('Settings S0 · platform_credential_events — the search_path follow-u
     const followUp = readFileSync(
       resolve(__dirname, '../../supabase/migrations/20260914090200_platform_credential_events_search_path.sql'), 'utf8',
     )
-    const statements = followUp.split('\n').map((l) => l.replace(/--.*$/, '')).join('\n')
+    const statements = followUp.replaceAll('\r\n', '\n').split('\n').map((l) => l.replace(/--.*$/, '')).join('\n')
       .split(';').map((s) => s.replace(/\s+/g, ' ').trim().toLowerCase()).filter(Boolean)
     expect(statements).toEqual(["alter function public.platform_credential_events_append_only() set search_path to ''"])
   })

@@ -6,7 +6,8 @@ import {readCampaign} from '@/lib/social-launch/campaign/store'
 import {CampaignError} from '@/lib/social-launch/campaign/types'
 import {SocialCampaignPanel} from '@/components/social-launch/SocialCampaignPanel'
 export const dynamic='force-dynamic'
-export default async function CampaignPage({params}:{params:{slug:string;campaignId:string}}){
+export default async function CampaignPage({params: paramsPromise}:{params:Promise<{slug:string;campaignId:string}>}){
+ const params = await paramsPromise
  const [project,access]=await Promise.all([getProjectBySlug(params.slug),resolveProjectAccess()])
  if(!project||!access.ok||!access.allowedProjectIds.includes(project.id))notFound()
  try{

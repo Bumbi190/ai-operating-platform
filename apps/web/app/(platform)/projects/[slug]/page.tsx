@@ -39,7 +39,8 @@ import { ProjectLegacy } from './ProjectLegacy'
  * The legacy branch returns before the Command Center loader is even reached,
  * so a rollback costs nothing and cannot fail on a read it does not use.
  */
-export default async function ProjectPage({ params }: { params: { slug: string } }) {
+export default async function ProjectPage({ params: paramsPromise }: { params: Promise<{ slug: string }> }) {
+  const params = await paramsPromise
   const { slug } = params
 
   const project = await getProjectBySlug(slug)

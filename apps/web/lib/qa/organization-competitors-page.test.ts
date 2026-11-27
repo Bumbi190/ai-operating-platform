@@ -54,7 +54,7 @@ describe('collaborator competitors page is separately scoped', () => {
       ['handlarborsen', { ok: false, status: 'unauthorized' }],
     ] as const) {
       mock.gate.mockResolvedValue(grant)
-      await expect(Page({ params: { slug }, searchParams: { scan: '1' } })).rejects.toThrow('404')
+      await expect(Page({ params: Promise.resolve({ slug }), searchParams: Promise.resolve({ scan: '1' }) })).rejects.toThrow('404')
       expect(mock.publicScan).not.toHaveBeenCalled()
       expect(mock.landscape).not.toHaveBeenCalled()
       expect(mock.readiness).not.toHaveBeenCalled()
@@ -63,7 +63,7 @@ describe('collaborator competitors page is separately scoped', () => {
     }
   })
   it('renders the shared data but with the collaborator-only endpoint mode', async () => {
-    const page = await Page({ params: { slug: 'handlarborsen' } })
+    const page = await Page({ params: Promise.resolve({ slug: 'handlarborsen' }) })
     expect(renderToStaticMarkup(page)).toContain('authorized-competing-page')
     expect(mock.gate).toHaveBeenCalledWith('view_competitors')
     expect(mock.readiness).toHaveBeenCalledWith('collaborator')
@@ -75,7 +75,7 @@ describe('collaborator competitors page is separately scoped', () => {
     }))
   })
   it('only scans fixed public sources after the collaborator authorization', async () => {
-    await Page({ params: { slug: 'handlarborsen' }, searchParams: { scan: '1' } })
+    await Page({ params: Promise.resolve({ slug: 'handlarborsen' }), searchParams: Promise.resolve({ scan: '1' }) })
     expect(mock.gate).toHaveBeenCalledWith('view_competitors')
     expect(mock.publicScan).toHaveBeenCalledOnce()
     expect(mock.landscape).toHaveBeenCalledOnce()

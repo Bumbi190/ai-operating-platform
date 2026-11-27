@@ -3,14 +3,16 @@ import { listAnalysisDrafts } from '@/lib/atlas/project-analytics/analysis-draft
 import { AnalysisDraftHistory } from '@/components/platform/vnext/AnalysisDraftHistory'
 export const dynamic = 'force-dynamic'
 export default async function Page({
-  params,
-  searchParams,
+  params: paramsPromise,
+  searchParams: searchParamsPromise,
 }: {
-  params: { slug: string }
-  searchParams: { cursor?: string | string[] }
+  params: Promise<{ slug: string }>
+  searchParams: Promise<{ cursor?: string | string[] }>
 }) {
+  const searchParams = await searchParamsPromise
   const cursor = searchParams.cursor
   if (Array.isArray(cursor)) notFound()
+  const params = await paramsPromise
   const result = await listAnalysisDrafts(params.slug, cursor ?? null)
   if ('status' in result) {
     if (result.status === 'no_session') redirect('/login')

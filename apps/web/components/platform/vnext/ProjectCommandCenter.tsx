@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
+import { presentationForProject } from '@/lib/atlas/project-presentation'
 import { formatDistanceToNow } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
 import { ProjectPauseToggle } from '@/components/platform/ProjectPauseToggle'
@@ -129,7 +130,7 @@ export function ProjectCommandCenterLoading({ name, color }: { name: string; col
 
 function Header({ model }: { model: ProjectCommandCenterModel }) {
   const { project, activity, links, approvals } = model
-  const hasCover = project.slug === 'handlarborsen'
+  const brand = presentationForProject(project.slug, project.name).commandCenter
   // The exact pending count the approvals read returned. It sits in the header so
   // review stays in view on a narrow screen, where the list itself stacks below
   // the workflows.
@@ -147,11 +148,11 @@ function Header({ model }: { model: ProjectCommandCenterModel }) {
   ]
 
   return (
-    <header className={hasCover ? styles.coverHeader + ' ' + styles.header : styles.header}>
-      {hasCover && (
+    <header className={brand ? styles.coverHeader + ' ' + styles.header : styles.header}>
+      {brand && (
         <div className={styles.coverBackdrop} aria-hidden="true">
           <Image
-            src="/project-covers/handlarborsen-showroom-v1.png"
+            src={brand.coverImage}
             alt=""
             fill
             priority
@@ -162,18 +163,16 @@ function Header({ model }: { model: ProjectCommandCenterModel }) {
       <div className={styles.headerMain}>
         <p className={styles.kicker}>Projekt · Command Center</p>
         <div className={styles.identity}>
-          {hasCover ? (
-            <Image className={styles.coverLogo} src="/project-rail/handlarborsen.png" alt="" width={64} height={64} />
+          {brand ? (
+            <Image className={styles.coverLogo} src={brand.logoImage} alt="" width={64} height={64} />
           ) : (
             <span className={styles.swatch} style={{ backgroundColor: project.color }} aria-hidden />
           )}
           <h1 className={styles.title}>{project.name}</h1>
           <span className={styles.slug}>{project.slug}</span>
         </div>
-        {project.slug === 'handlarborsen' ? (
-          <p className={styles.projectDescription}>
-            AI-operativ överblick över företag, fordon, handel och observerad trafik.
-          </p>
+        {brand ? (
+          <p className={styles.projectDescription}>{brand.description}</p>
         ) : null}
 
         <dl className={styles.facts}>

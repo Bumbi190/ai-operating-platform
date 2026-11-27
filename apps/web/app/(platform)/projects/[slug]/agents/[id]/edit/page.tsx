@@ -15,10 +15,11 @@ import EditAgentClient from '../EditAgentClient'
  * The scoping guard is the one the parent route has always had.
  */
 export default async function EditAgentPage({
-  params,
+  params: paramsPromise,
 }: {
-  params: { slug: string; id: string }
+  params: Promise<{ slug: string; id: string }>
 }) {
+  const params = await paramsPromise
   const project = await getProjectBySlug(params.slug)
   if (!project) notFound()
 

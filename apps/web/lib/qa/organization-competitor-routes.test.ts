@@ -24,7 +24,7 @@ const historyUrl = 'https://omniraos.se/api/organization/projects/handlarborsen/
 const trusted = { origin: 'https://omniraos.se', host: 'omniraos.se' }
 type Route = typeof saveCandidate
 const call = (post: Route, url: string, headers: Record<string, string> = trusted, slug = 'handlarborsen') =>
-  post(new Request(url, { method: 'POST', headers }), { params: { slug } })
+  post(new Request(url, { method: 'POST', headers }), { params: Promise.resolve({ slug }) })
 
 beforeEach(() => {
   memory.enabled.mockReturnValue(true)

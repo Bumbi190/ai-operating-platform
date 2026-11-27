@@ -30,7 +30,7 @@ export const dynamic = 'force-dynamic'
 export default async function RevenuePage({
   searchParams,
 }: {
-  searchParams?: { project?: string | string[] }
+  searchParams?: Promise<{ project?: string | string[] }>
 }) {
   const cookieStore = await cookies()
   const generation = resolveUiGeneration({
@@ -39,7 +39,7 @@ export default async function RevenuePage({
 
   if (!isVNext(generation)) return <RevenueLegacy />
 
-  const raw = searchParams?.project
+  const raw = (await searchParams)?.project
   const projectSlug = Array.isArray(raw) ? raw[0] ?? null : raw ?? null
 
   return (

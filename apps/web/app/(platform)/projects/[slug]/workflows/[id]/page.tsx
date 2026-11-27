@@ -11,10 +11,11 @@ import { WorkflowDetail, WorkspaceReadError } from '@/components/platform/vnext/
 import { OMNIRA_UI_COOKIE, isVNext, resolveUiGeneration } from '@/lib/ui/generation'
 
 export default async function WorkflowPage({
-  params,
+  params: paramsPromise,
 }: {
-  params: { slug: string; id: string }
+  params: Promise<{ slug: string; id: string }>
 }) {
+  const params = await paramsPromise
   const project = await getProjectBySlug(params.slug)
   if (!project) notFound()
 

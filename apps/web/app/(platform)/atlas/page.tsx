@@ -37,7 +37,7 @@ function fmtSEK(n: number): string {
 }
 
 interface AtlasHomeProps {
-  searchParams?: { ui?: string | string[] }
+  searchParams?: Promise<{ ui?: string | string[] }>
 }
 
 export default async function AtlasHome({ searchParams }: AtlasHomeProps) {
@@ -46,7 +46,7 @@ export default async function AtlasHome({ searchParams }: AtlasHomeProps) {
   // through the one canonical resolver rather than compared inline.
   const uiCookies = await cookies()
   const generation = resolveUiGeneration({
-    query: searchParams?.ui,
+    query: (await searchParams)?.ui,
     cookie: uiCookies.get(OMNIRA_UI_COOKIE)?.value ?? null,
   })
   const supabase = await createClient()

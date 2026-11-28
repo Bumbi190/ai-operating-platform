@@ -120,6 +120,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # existing provenance tests inspect named ancestor commits
 
       # THE GUARD. Nothing is installed and nothing is executed until the head
       # under test is proven to be the head the operator named.
@@ -182,8 +184,8 @@ jobs:
 
       - name: Cache the canonical analysis-draft fixture image (setup only)
         run: |
-          docker pull public.ecr.aws/supabase/postgres@sha256:e85bc10ac5b141223b289e1e8dc8d448cf3df92501917149db0366b9c5aaf053
-          docker tag public.ecr.aws/supabase/postgres@sha256:e85bc10ac5b141223b289e1e8dc8d448cf3df92501917149db0366b9c5aaf053 public.ecr.aws/supabase/postgres:17.11.0.004
+          docker pull docker.io/supabase/postgres@sha256:e85bc10ac5b141223b289e1e8dc8d448cf3df92501917149db0366b9c5aaf053
+          docker tag docker.io/supabase/postgres@sha256:e85bc10ac5b141223b289e1e8dc8d448cf3df92501917149db0366b9c5aaf053 public.ecr.aws/supabase/postgres:17.11.0.004
 
       - name: Prepare isolated canonical WebsiteBuild template
         run: node scripts/ci/full-web-fixture.mjs prepare

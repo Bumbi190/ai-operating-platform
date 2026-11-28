@@ -58,3 +58,15 @@ The existing analysis-draft fixture refuses to pull images itself. Runner setup 
 The publish route's two mutually exclusive syntactic publishing calls shared the same fresh authorization inside the retry callback, but the unchanged guard requires one call site per authorization. They now form one publishing call with an optional tuple argument. Existing two-argument no-capture/retry calls and three-argument first capture calls are preserved exactly; capture remains disabled. Four existing suites/78 cases pass, including stops, dry run, channel independence, idempotency, capture and retry argument arity. The same static inventory reports one offender before and zero after. The full unchanged structural suite still needs hosted Linux execution.
 
 The unchanged image-client/ElevenLabs provider sources and their uncertainty guard were compared byte-for-byte with main after LF normalization. That is source provenance only, not a clean runtime/security verdict or permission to waive their failing tests. Security findings remain open.
+
+## Latest hosted result and registry prerequisite
+
+Run46133677757 completed on b82e0833664a57cb726df3aae91daa90a6daee73:841distinctfiles,781passed/58failed/two skipped;16,944passed/155failed/four skipped assertions,zero todo,total17,103. Actual JSON/bootstrap/cleanup artifact15259795681 was retained; recorded fixture stage is removed. The separately reported128nested failed suites must not be described as128distinct failed files. Full Web remains RED.
+
+Run46134921273 on8c503f35011c6bce0d1f514ded41a6ab1fd6c88f stopped before tests: ECR returned "Data limit exceeded" for the pinned image pull. PostgreSQL17 canonical/2PC preflight had passed. No test result is attributed to that attempt.
+
+The provider's Docker Hub registry returned a manifest identical to the original ECR manifest, including exact Linuxamd64 digest e85bc10ac5b141223b289e1e8dc8d448cf3df92501917149db0366b9c5aaf053. Setup now pulls that same content from docker.io/supabase/postgres and assigns the original canonical ECR version tag; no image/version/test is substituted. Full history is checked out because two unchanged provenance tests explicitly inspect named ancestor commits and failed under the default shallow checkout.
+
+An isolated offline Linux proof of8c503f350 verified4,884source hashes, installed the exactfc389lock from cache, and passed seven unchanged suites/131cases including the actual external-dispatch structural guard and mocked publishing/evidence/article suites. Zero failures/skips; owned container removed. The new registry/checkout configuration still requires fresh hosted verification.
+
+Remaining58file failures include product contracts, historical migration inventories, release-ledger parity, provider certainty and genuine newly executed SQL assertions; these are not waived or collectively classified by provenance. No production effect or release approval.

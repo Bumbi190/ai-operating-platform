@@ -257,7 +257,7 @@ const ALL_PLACEMENTS: Placement[] = [...new Map(Object.keys(ACTION_REGISTRY).fla
 function bindMatrix(kinds: readonly string[]): Map<string, { sqlstate: string; runs: number; binds: number }> {
   const kindArr = `array[${kinds.map(k => `'${k}'`).join(',')}]::text[]`
   const plArr = `array[${ALL_PLACEMENTS.map(p => `'${p.def_key}|${p.state}'`).join(',')}]::text[]`
-  const out = execFileSync(PSQL!, psqlArgs(dsn, ['-t', '-A', '-F', '|', '-f', '/dev/stdin']), {
+  const out = execFileSync(PSQL!, psqlArgs(dsn, ['-t', '-A', '-F', '|', '-f', '-']), {
     input: `begin;
 create temp table zz_matrix (k text, d text, s text, st text, runs int, binds int) on commit drop;
 grant all on zz_matrix to service_role;

@@ -28,3 +28,21 @@ The full Web gate is RED and broader fixture/product failures remain. A local at
 Six low Remotion/esbuild findings remain. GitHub lists 82 open CodeQL alerts (60 high, 22 medium) on older main analysis, not a current clean scan of this head. Five alert paths overlap the integration; no alerts were dismissed. Security disposition, complete broad regression, merge/release review, and any separately approved data/capture/pilot work remain pending.
 
 No customer data, external publication, production database, API key, schedule or paid model inference was changed.
+
+## Follow-up on head 8247f811 and isolated SQL prerequisites
+
+Full Web run https://github.com/Bumbi190/ai-operating-platform/actions/runs/46130356160 retained its JSON artifact successfully. The 839 configured files produced 738 passing, 99 failing and two skipped files (console distinct-file counts); 16,615 passing, 192 failing and 287 skipped assertions, zero todo, total 17,094. More assertions executed after bootstrap repairs; the changed counts alone do not establish regression causality. All 20 automatic checks and the Vercel preview build passed on that head. Full Web remains RED.
+
+The third remaining psql /dev/stdin argument, in bindMatrix, is changed to the documented stdin filename "-"; SQL text and assertions remain unchanged.
+
+A real Linux/current-lock paired proof executed the same 93 autonomy SQL cases. A disposable underprivileged service_role baseline passed 88 and failed five. Changing only that disposable role to the canonical Supabase BYPASSRLS setting yielded 93 passed, zero failed/skipped/todo. This does not grant privileges in production or weaken owner/negative controls.
+
+The manual Full Web runner now prepares its own fresh PostgreSQL 17 service roles. PostgreSQL 17 matches existing Survival/authority assertions; the focused PostgreSQL 16 workflows remain unchanged. Its sandbox probe image is the same exact Alpine digest used by the focused SDF gate.
+
+For WebsiteBuild, a CI-only helper refuses any pre-existing compatibility container name and records a newly created container's immutable ID, image and run label before startup. It uses no network, host ports or binds, and only disposable PostgreSQL tmpfs data. Cleanup checks the recorded exact identity and labels. The canonical existing bootstrap script supplies a template; each test file clones a separate database with a validated numeric name. Two workers bound resource use without changing explicit concurrency assertions. The original fixture and local developer databases are not reused.
+
+Five new negative safety cases were first observed failing for their expected assertions and then passing. A separate actual PG16/current-lock proof bootstrapped the canonical fixture and ran two unchanged SQL files (three cases) with two workers: all passed, with three distinct databases (base plus two clones). The owned container was removed; the old stopped local fixture remained stopped and unchanged. This is a bounded real transport/template proof; PostgreSQL 17 and whole-suite behavior still require the fresh hosted run.
+
+Existing release HOLD, six low dependency findings and unresolved older-main CodeQL alerts remain. No merge, production deployment, data activation, capture or pilot is approved by these prerequisite changes.
+
+The independent review found that Docker endpoint environment overrides could bypass context inspection. Both new paths now reject DOCKER_HOST and DOCKER_CONTEXT overrides before any Docker call, including preparation/cleanup and the bootstrap child environment. Four additional negative cases were observed failing before that fix; all nine safety cases now pass. No test assertion was removed or weakened.

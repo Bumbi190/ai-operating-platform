@@ -11,8 +11,8 @@ const fail = (status: number, code: string) =>
   NextResponse.json({ status: code }, { status, headers })
 
 /** Active Owner and Handlarbörsen Collaborator only, with DB membership recheck. */
-export async function POST(request: Request, { params }: { params: { slug: string } }) {
-  if (params.slug !== HANDLARBORSEN_PROJECT_SLUG) return fail(404, 'not_found')
+export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }) {
+  if ((await params).slug !== HANDLARBORSEN_PROJECT_SLUG) return fail(404, 'not_found')
   if (!candidateReviewEnabled()) return fail(409, 'disabled')
   const denied = assertSameOrigin(request)
   if (denied) return denied

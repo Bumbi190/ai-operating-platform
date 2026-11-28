@@ -81,8 +81,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '22.22.3'
           cache: npm
+      - name: Use pinned npm 11.21.3
+        run: npm install --global npm@11.21.3 --ignore-scripts --no-audit --no-fund
       - run: npm ci
       - run: npm run typecheck --workspace=apps/web
       - run: npx vitest run lib/website-build/studio/costs.test.ts lib/website-build/artifact.test.ts lib/website-build/rejected-draft.test.ts lib/website-build/feedback-interpretation.test.ts lib/qa/runner-text-output.test.ts lib/qa/atlas-home-markdown.test.tsx lib/qa/atlas-static-conversation-route.test.ts lib/qa/atlas-openai-chat.test.ts lib/qa/openai-stream-metering.test.ts lib/qa/m0-spend-ceiling.test.ts lib/qa/m0-durable-spend.test.ts lib/qa/execution-authority-signal.test.ts

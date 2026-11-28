@@ -1,15 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { AgentForm, type AgentFormData } from '@/components/forms/AgentForm'
 import { OSPage, OSLayer } from '@/components/platform/os'
 
-export default function NewAgentPage({
-  params,
-}: {
-  params: { slug: string }
-}) {
+export default function NewAgentPage() {
+  const params = useParams<{ slug: string }>()
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)

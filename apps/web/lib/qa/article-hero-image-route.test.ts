@@ -86,7 +86,7 @@ describe('POST /api/content/articles/[id]/hero-image — MVP Commit 4', () => {
     mockUser = { id: 'u-1', email: 'op@example.com' }
     mockArticle = { id: 'article-1', project_id: 'p-theirs' }
     mockOwned = ['p-mine']
-    const res = await POST(new Request('http://localhost/x', { method: 'POST' }), { params: { id: 'article-1' } })
+    const res = await POST(new Request('http://localhost/x', { method: 'POST' }), { params: Promise.resolve({ id: 'article-1' }) })
     expect(res.status).toBe(404)
     // The paid generation must not run for a foreign article.
     expect(receivedArticleId).toBeNull()
@@ -97,10 +97,10 @@ describe('POST /api/content/articles/[id]/hero-image — MVP Commit 4', () => {
 
     mockArticle = { id: 'article-1', project_id: 'p-theirs' }
     mockOwned = ['p-mine']
-    const foreign = await POST(new Request('http://localhost/x', { method: 'POST' }), { params: { id: 'article-1' } })
+    const foreign = await POST(new Request('http://localhost/x', { method: 'POST' }), { params: Promise.resolve({ id: 'article-1' }) })
 
     mockArticle = null
-    const missing = await POST(new Request('http://localhost/x', { method: 'POST' }), { params: { id: 'nope' } })
+    const missing = await POST(new Request('http://localhost/x', { method: 'POST' }), { params: Promise.resolve({ id: 'nope' }) })
 
     expect(foreign.status).toBe(missing.status)
     expect(await foreign.json()).toEqual(await missing.json())
@@ -110,7 +110,7 @@ describe('POST /api/content/articles/[id]/hero-image — MVP Commit 4', () => {
     mockUser = { id: 'u-1', email: 'op@example.com' }
     mockArticle = { id: 'article-1', project_id: 'p-mine' }
     mockOwned = []
-    const res = await POST(new Request('http://localhost/x', { method: 'POST' }), { params: { id: 'article-1' } })
+    const res = await POST(new Request('http://localhost/x', { method: 'POST' }), { params: Promise.resolve({ id: 'article-1' }) })
     expect(res.status).toBe(404)
     expect(receivedArticleId).toBeNull()
   })
@@ -119,14 +119,14 @@ describe('POST /api/content/articles/[id]/hero-image — MVP Commit 4', () => {
     mockUser = null
     mockArticle = { id: 'article-1', project_id: 'p-mine' }
     mockOwned = ['p-mine']
-    const res = await POST(new Request('http://localhost/x', { method: 'POST' }), { params: { id: 'article-1' } })
+    const res = await POST(new Request('http://localhost/x', { method: 'POST' }), { params: Promise.resolve({ id: 'article-1' }) })
     expect(res.status).toBe(401)
   })
 
   it('401 when unauthenticated; module never called', async () => {
     mockUser = null
     const req = new Request('http://localhost/x', { method: 'POST' })
-    const res = await POST(req, { params: { id: 'article-1' } })
+    const res = await POST(req, { params: Promise.resolve({ id: 'article-1' }) })
     expect(res.status).toBe(401)
     expect(receivedArticleId).toBeNull()
   })
@@ -139,7 +139,7 @@ describe('POST /api/content/articles/[id]/hero-image — MVP Commit 4', () => {
       status: 'ready',
     }
     const req = new Request('http://localhost/x', { method: 'POST' })
-    const res = await POST(req, { params: { id: 'article-1' } })
+    const res = await POST(req, { params: Promise.resolve({ id: 'article-1' }) })
     expect(res.status).toBe(200)
     expect(receivedArticleId).toBe('article-1')
     // The ROUTE owns the classification: a session-authenticated hero-image
@@ -158,7 +158,7 @@ describe('POST /api/content/articles/[id]/hero-image — MVP Commit 4', () => {
     mockUser = { id: 'u-1' }
     mockResult = { ok: false, url: null, status: 'skipped', reason: 'already_generating' }
     const req = new Request('http://localhost/x', { method: 'POST' })
-    const res = await POST(req, { params: { id: 'article-2' } })
+    const res = await POST(req, { params: Promise.resolve({ id: 'article-2' }) })
     expect(res.status).toBe(200)
     const json = (await res.json()) as Record<string, unknown>
     expect(json.ok).toBe(false)
@@ -171,7 +171,7 @@ describe('POST /api/content/articles/[id]/hero-image — MVP Commit 4', () => {
     mockUser = { id: 'u-1' }
     mockResult = { ok: false, url: null, status: 'failed', reason: 'Ideogram API error 503' }
     const req = new Request('http://localhost/x', { method: 'POST' })
-    const res = await POST(req, { params: { id: 'article-3' } })
+    const res = await POST(req, { params: Promise.resolve({ id: 'article-3' }) })
     expect(res.status).toBe(502)
     const json = (await res.json()) as Record<string, unknown>
     expect(json.ok).toBe(false)

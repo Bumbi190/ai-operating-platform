@@ -13,7 +13,8 @@ import { loadWorkspaceRuns } from '@/lib/os/project-workspace'
 import { ProjectRuns } from '@/components/platform/vnext/project-workspace/ProjectWorkspaceViews'
 import { OMNIRA_UI_COOKIE, isVNext, resolveUiGeneration } from '@/lib/ui/generation'
 
-export default async function RunsPage({ params }: { params: { slug: string } }) {
+export default async function RunsPage({ params: paramsPromise }: { params: Promise<{ slug: string }> }) {
+  const params = await paramsPromise
   const project = await getProjectBySlug(params.slug)
   if (!project) notFound()
 

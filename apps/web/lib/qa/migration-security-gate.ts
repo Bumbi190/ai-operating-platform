@@ -34,6 +34,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { inspectGrowthInertBoundary } from './growth-inert-schema-guard'
 
 // ─── Roots ──────────────────────────────────────────────────────────────────
 
@@ -977,6 +978,7 @@ export const RULES = {
   UNCLASSIFIED_TABLE: 'UNKNOWN',
   UNCLASSIFIED_VIEW: 'UNKNOWN',
   UNKNOWN_SCHEMA: 'UNKNOWN',
+  GROWTH_INERT_BOUNDARY_DRIFT: 'UNKNOWN',
   UNPARSED_SECURITY_STATEMENT: 'UNKNOWN',
   DYNAMIC_SECURITY_SQL: 'UNKNOWN',
   FUNCTION_BODY_SECURITY_DDL: 'UNKNOWN',
@@ -1576,6 +1578,14 @@ export function analyze(input: AnalysisInput): Analysis {
   const files = canonicalOrder(input.files)
   let statements = 0
   for (const f of files) statements += runFile(model, f, input.registry, internal, findings)
+  for (const issue of inspectGrowthInertBoundary(files, input.bootstrapSql, input.allowlist, model)) {
+    findings.push({
+      migration: issue.migration, root: issue.root, rule: 'GROWTH_INERT_BOUNDARY_DRIFT',
+      category: 'UNKNOWN', blocking: true, object: 'ge_capture.boundary', policy: null,
+      fingerprint: createHash('sha256').update(issue.detail).digest('hex').slice(0, 16),
+      statement: '', detail: issue.detail, origin: 'statement',
+    })
+  }
   return { findings, model, order: files.map(f => f.relPath), statements }
 }
 
@@ -1589,7 +1599,7 @@ export function gate(findings: Finding[], allowlist: Allowlist): GateResult {
   const blocking = findings.filter(f => f.blocking)
   return {
     blocking,
-    unexcused: blocking.filter(f => !allowlist.exceptions.some(e => matches(e, f))),
+    unexcused: blocking.filter(f => f.rule === 'GROWTH_INERT_BOUNDARY_DRIFT' || !allowlist.exceptions.some(e => matches(e, f))),
     stale: allowlist.exceptions.filter(e => !blocking.some(f => matches(e, f))),
     ambiguous: allowlist.exceptions.filter(e => blocking.filter(f => matches(e, f)).length > 1),
   }
@@ -1631,6 +1641,7 @@ export function allowlistProblems(al: Allowlist, a: Analysis, reg: Registry, rep
       if (WILDCARD.test(v)) p.push(`${id}: ${k} contains a wildcard`)
     }
     if (!e.migration || !e.table || !e.rule || !e.fingerprint || !e.status || !e.justification) p.push(`${id}: a required field is empty`)
+    if (e.rule === 'GROWTH_INERT_BOUNDARY_DRIFT') p.push(id + ': inert Growth boundary drift cannot be waived')
     if (!(e.rule in RULES)) p.push(`${id}: unknown rule`)
     else if (!isBlocking(e.rule)) p.push(`${id}: excuses a non-blocking rule — nothing to waive`)
     if (!/^[0-9a-f]{16}$/.test(e.fingerprint)) p.push(`${id}: fingerprint is not a 16-hex statement hash`)

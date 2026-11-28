@@ -60,20 +60,20 @@ describe('Handlarbörsen bounded workflow mutations', () => {
     db()
     const req = request('POST', '/api/organization/projects/handlarborsen/workflows', { name: 'X' }, 'https://foreign.example')
     expect(isSameOriginJson(req)).toBe(false)
-    expect((await POST(req, { params: { slug: 'handlarborsen' } })).status).toBe(403)
+    expect((await POST(req, { params: Promise.resolve({ slug: 'handlarborsen' }) })).status).toBe(403)
     expect(mocks.admin).not.toHaveBeenCalled()
   })
   it('rejects executable or privileged fields with no workflow writes', async () => {
     const ctx = db()
     for (const extras of [{ steps: [{ name: 'execute' }] }, { active: true }, { trigger: 'cron' }, { cron_expr: '* * * * *' }, { side_effect_class: 'autonomous' }]) {
-      const res = await POST(request('POST', '/api/organization/projects/handlarborsen/workflows', { name: 'Test', ...extras }), { params: { slug: 'handlarborsen' } })
+      const res = await POST(request('POST', '/api/organization/projects/handlarborsen/workflows', { name: 'Test', ...extras }), { params: Promise.resolve({ slug: 'handlarborsen' }) })
       expect(res.status).toBe(400)
     }
     expect(ctx.workflow.insert).not.toHaveBeenCalled()
   })
   it('creates only inert manual drafts on canonical Handlarbörsen', async () => {
     const ctx = db()
-    const res = await POST(request('POST', '/api/organization/projects/handlarborsen/workflows', { name: ' Ny idé ', description: 'Granska först' }), { params: { slug: 'handlarborsen' } })
+    const res = await POST(request('POST', '/api/organization/projects/handlarborsen/workflows', { name: ' Ny idé ', description: 'Granska först' }), { params: Promise.resolve({ slug: 'handlarborsen' }) })
     expect(res.status).toBe(201)
     expect(ctx.workflow.insert).toHaveBeenCalledWith({
       project_id: PROJECT, name: 'Ny idé', description: 'Granska först',
@@ -85,20 +85,20 @@ describe('Handlarbörsen bounded workflow mutations', () => {
   it('fails closed for revoked, unknown and non-Handlarbörsen actors', async () => {
     const ctx = db()
     mocks.scope.mockResolvedValue({ role: { active: false, role: null }, projectIds: [PROJECT] })
-    expect((await POST(request('POST', '/api/organization/projects/handlarborsen/workflows', { name: 'X' }), { params: { slug: 'handlarborsen' } })).status).toBe(403)
+    expect((await POST(request('POST', '/api/organization/projects/handlarborsen/workflows', { name: 'X' }), { params: Promise.resolve({ slug: 'handlarborsen' }) })).status).toBe(403)
     expect(ctx.workflow.insert).not.toHaveBeenCalled()
     mocks.scope.mockResolvedValue({ role: { active: true, role: 'collaborator' }, projectIds: [PROJECT] })
-    expect((await POST(request('POST', '/api/organization/projects/familje-stunden/workflows', { name: 'X' }), { params: { slug: 'familje-stunden' } })).status).toBe(403)
+    expect((await POST(request('POST', '/api/organization/projects/familje-stunden/workflows', { name: 'X' }), { params: Promise.resolve({ slug: 'familje-stunden' }) })).status).toBe(403)
     expect(ctx.workflow.insert).not.toHaveBeenCalled()
   })
   it('fails closed when the resolved project identity differs', async () => {
     const ctx = db({ currentProject: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', slug: 'handlarborsen' } })
-    expect((await POST(request('POST', '/api/organization/projects/handlarborsen/workflows', { name: 'X' }), { params: { slug: 'handlarborsen' } })).status).toBe(403)
+    expect((await POST(request('POST', '/api/organization/projects/handlarborsen/workflows', { name: 'X' }), { params: Promise.resolve({ slug: 'handlarborsen' }) })).status).toBe(403)
     expect(ctx.workflow.insert).not.toHaveBeenCalled()
   })
   it('updates only display metadata bound to both workflow ID and project ID', async () => {
     const ctx = db()
-    const res = await PATCH(request('PATCH', '/api/organization/projects/handlarborsen/workflows/' + WORKFLOW, { name: 'Uppdaterat' }), { params: { slug: 'handlarborsen', id: WORKFLOW } })
+    const res = await PATCH(request('PATCH', '/api/organization/projects/handlarborsen/workflows/' + WORKFLOW, { name: 'Uppdaterat' }), { params: Promise.resolve({ slug: 'handlarborsen', id: WORKFLOW }) })
     expect(res.status).toBe(200)
     expect(ctx.workflow.update).toHaveBeenCalledWith({ name: 'Uppdaterat' })
     expect(ctx.workflow.eq).toHaveBeenCalledWith('id', WORKFLOW)
@@ -107,10 +107,10 @@ describe('Handlarbörsen bounded workflow mutations', () => {
   it('refuses activation, deletion, arbitrary fields or bad IDs on PATCH', async () => {
     const ctx = db()
     for (const patch of [{ active: true }, { steps: [] }, { trigger: 'cron' }, { project_id: PROJECT }]) {
-      const res = await PATCH(request('PATCH', '/api/organization/projects/handlarborsen/workflows/' + WORKFLOW, patch), { params: { slug: 'handlarborsen', id: WORKFLOW } })
+      const res = await PATCH(request('PATCH', '/api/organization/projects/handlarborsen/workflows/' + WORKFLOW, patch), { params: Promise.resolve({ slug: 'handlarborsen', id: WORKFLOW }) })
       expect(res.status).toBe(400)
     }
-    expect((await PATCH(request('PATCH', '/api/organization/projects/handlarborsen/workflows/invalid', { name: 'X' }), { params: { slug: 'handlarborsen', id: 'invalid' } })).status).toBe(400)
+    expect((await PATCH(request('PATCH', '/api/organization/projects/handlarborsen/workflows/invalid', { name: 'X' }), { params: Promise.resolve({ slug: 'handlarborsen', id: 'invalid' }) })).status).toBe(400)
     expect(ctx.workflow.update).not.toHaveBeenCalled()
   })
   it('enforces strict names and descriptions', () => {

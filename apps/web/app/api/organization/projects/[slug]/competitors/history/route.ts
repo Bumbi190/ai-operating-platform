@@ -13,8 +13,8 @@ const deny = (code: number, status: string) =>
   NextResponse.json({ status }, { status: code, headers })
 
 /** Same six immutable source/day records. No client-selected URL or retry loop. */
-export async function POST(request: Request, { params }: { params: { slug: string } }) {
-  if (params.slug !== HANDLARBORSEN_PROJECT_SLUG) return deny(404, 'not_found')
+export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }) {
+  if ((await params).slug !== HANDLARBORSEN_PROJECT_SLUG) return deny(404, 'not_found')
   if (!competitorHistoryEnabled()) return deny(409, 'disabled')
   const crossOrigin = assertSameOrigin(request)
   if (crossOrigin) return crossOrigin

@@ -472,10 +472,15 @@ describe('social credentials · no consumer reaches a credential any other way',
     }
     return out
   }
-  const FILES = () => ['app', 'components', 'lib'].flatMap((d) => sourceFiles(resolve(APP, d)))
+  // Snapshot the complete original inventory once; every assertion scans it.
+  const SOURCE_FILES = ['app', 'components', 'lib'].flatMap((d) => sourceFiles(resolve(APP, d)))
+  const FILES = () => SOURCE_FILES
+  const SOURCE_TEXT = new Map(SOURCE_FILES.map(file => [file, readFileSync(file, 'utf8')]))
   const rel = (f: string) => relative(APP, f).replaceAll('\\', '/')
-  const raw = (f: string) => readFileSync(f, 'utf8')
-  const code = (f: string) => raw(f).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/[^\n]*/g, '$1')
+  const raw = (f: string) => SOURCE_TEXT.get(f) ?? readFileSync(f, 'utf8')
+  const readCode = (f: string) => raw(f).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/[^\n]*/g, '$1')
+  const SOURCE_CODE = new Map(SOURCE_FILES.map(file => [file, readCode(file)]))
+  const code = (f: string) => SOURCE_CODE.get(f) ?? readCode(f)
 
   it('no deployed code names a retired environment credential or a global account identity', () => {
     for (const name of ['INSTAGRAM_ACCESS_TOKEN', 'FACEBOOK_PAGE_ACCESS_TOKEN', 'FACEBOOK_PAGE_ID', 'INSTAGRAM_USER_ID',

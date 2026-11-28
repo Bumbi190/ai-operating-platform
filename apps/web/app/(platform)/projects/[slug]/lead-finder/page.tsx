@@ -15,10 +15,11 @@ import type { ArchiveReview } from '@/lib/handlarborsen/lead-finder/research-arc
 export const dynamic = 'force-dynamic'
 
 /** RLS project, exact Handlarbörsen identity, verified owner for local/upload UI. */
-export default async function LeadFinderPage({ params, searchParams }: {
-  params: { slug: string }
-  searchParams?: Record<string, string | string[] | undefined>
+export default async function LeadFinderPage({ params: paramsPromise, searchParams: searchParamsPromise }: {
+  params: Promise<{ slug: string }>
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
 }) {
+  const params = await paramsPromise
   const project = await getProjectBySlug(params.slug)
   if (!project || !isHandlarborsenProject(project)) notFound()
 
@@ -70,6 +71,7 @@ export default async function LeadFinderPage({ params, searchParams }: {
   const first = (value: string | string[] | undefined) =>
     typeof value === 'string' ? value : Array.isArray(value) ? (value[0] ?? '') : ''
 
+  const searchParams = await searchParamsPromise
   return <HandlarborsenLeadFinder
     slug={project.slug}
     readiness={getReadiness()}

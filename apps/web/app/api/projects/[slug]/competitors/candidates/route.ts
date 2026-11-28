@@ -15,9 +15,9 @@ const respond = (status: number, code: string) =>
  * Never accepts URLs, source IDs, timestamps or credentials from callers.
  * One manual owner gesture; no search, external HTTP or recurring execution.
  */
-export async function POST(request: Request, { params }: { params: { slug: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   if (!candidateMemoryEnabled()) return respond(409, 'disabled')
-  if (params.slug !== HANDLARBORSEN_PROJECT_SLUG) return respond(404, 'not_found')
+  if ((await params).slug !== HANDLARBORSEN_PROJECT_SLUG) return respond(404, 'not_found')
   const refused = assertSameOrigin(request)
   if (refused) return refused
   const contentLength = request.headers.get('content-length')

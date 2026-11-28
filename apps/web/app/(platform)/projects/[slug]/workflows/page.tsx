@@ -9,7 +9,8 @@ import { loadWorkspaceWorkflows } from '@/lib/os/project-workspace'
 import { ProjectWorkflows } from '@/components/platform/vnext/project-workspace/ProjectWorkspaceViews'
 import { OMNIRA_UI_COOKIE, isVNext, resolveUiGeneration } from '@/lib/ui/generation'
 
-export default async function WorkflowsPage({ params }: { params: { slug: string } }) {
+export default async function WorkflowsPage({ params: paramsPromise }: { params: Promise<{ slug: string }> }) {
+  const params = await paramsPromise
   const project = await getProjectBySlug(params.slug)
   if (!project) notFound()
 

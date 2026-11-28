@@ -10,12 +10,13 @@ import { ViewSelectionSync } from '@/components/platform/os'
  * are intentionally identical to the pre-B1 workflow detail implementation.
  */
 export default async function EditWorkflowPage({
-  params,
+  params: paramsPromise,
 }: {
-  params: { slug: string; id: string }
+  params: Promise<{ slug: string; id: string }>
 }) {
   const supabase = await createClient()
 
+  const params = await paramsPromise
   const { data: project } = await supabase
     .from('projects')
     .select('id, slug')

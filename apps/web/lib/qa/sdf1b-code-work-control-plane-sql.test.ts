@@ -299,9 +299,18 @@ d('SDF-1B1 authorization, chain and lifecycle', () => {
 
   it('keeps the SQL transition mirror in exact parity with canonical TypeScript', () => {
     const states = [...CODE_WORK_NON_TERMINAL_STATES, ...CODE_WORK_TERMINAL_STATES]
-    for (const from of states) for (const to of states) {
-      expect(one(`select public.atlas_code_work_transition_allowed('${from}','${to}')`), `${from}->${to}`)
-        .toBe(canTransitionCodeWork(from, to) ? 't' : 'f')
+    const pairs = states.flatMap(from => states.map(to => [from, to] as const))
+    // Evaluate every ordered pair in PostgreSQL in one connection. Process
+    // startup per pair obscures the parity assertion and can exceed five seconds.
+    const values = pairs.map(([from, to], ordinal) => `(${ordinal},${q(from)},${q(to)})`).join(',')
+    const rows = JSON.parse(one(`
+      select json_agg(json_build_array(from_state, to_state,
+        public.atlas_code_work_transition_allowed(from_state, to_state)) order by ordinal)
+      from (values ${values}) as pairs(ordinal, from_state, to_state)
+    `))
+    expect(rows).toHaveLength(pairs.length)
+    for (const [ordinal, [from, to]] of pairs.entries()) {
+      expect(rows[ordinal], `${from}->${to}`).toEqual([from, to, canTransitionCodeWork(from, to)])
     }
   })
 

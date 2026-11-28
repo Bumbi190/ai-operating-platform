@@ -213,7 +213,7 @@ const approvalIn = (projectId: string | null, runProjectId?: string | null) => (
 describe('BOUNDARY C — /api/approvals/[id] write scope', () => {
   it('emits with the project_id read from the approval row (server-derived)', async () => {
     approvalRow = approvalIn(OWNED_PROJECT)
-    const res = await approvalsPatch(patchRequest({ action: 'approved' }), { params: { id: APPROVAL_ID } })
+    const res = await approvalsPatch(patchRequest({ action: 'approved' }), { params: Promise.resolve({ id: APPROVAL_ID }) })
     expect(res.status).toBe(200)
     expect(memoryEvents).toHaveLength(1)
     expect(memoryEvents[0].projectId).toBe(OWNED_PROJECT)
@@ -222,7 +222,7 @@ describe('BOUNDARY C — /api/approvals/[id] write scope', () => {
 
   it('an approval in a foreign project is refused and emits NOTHING', async () => {
     approvalRow = approvalIn(FOREIGN_PROJECT)
-    const res = await approvalsPatch(patchRequest({ action: 'approved' }), { params: { id: APPROVAL_ID } })
+    const res = await approvalsPatch(patchRequest({ action: 'approved' }), { params: Promise.resolve({ id: APPROVAL_ID }) })
     expect(res.status).toBe(403)
     expect(memoryEvents).toEqual([])
   })
@@ -231,7 +231,7 @@ describe('BOUNDARY C — /api/approvals/[id] write scope', () => {
     approvalRow = approvalIn(OWNED_PROJECT)
     const res = await approvalsPatch(
       patchRequest({ action: 'approved', project_id: FOREIGN_PROJECT, projectId: FOREIGN_PROJECT, scope: 'world' }),
-      { params: { id: APPROVAL_ID } },
+      { params: Promise.resolve({ id: APPROVAL_ID }) },
     )
     expect(res.status).toBe(200)
     expect(memoryEvents).toHaveLength(1)
@@ -242,7 +242,7 @@ describe('BOUNDARY C — /api/approvals/[id] write scope', () => {
     approvalRow = approvalIn(FOREIGN_PROJECT)
     const res = await approvalsPatch(
       patchRequest({ action: 'approved', project_id: OWNED_PROJECT }),
-      { params: { id: APPROVAL_ID } },
+      { params: Promise.resolve({ id: APPROVAL_ID }) },
     )
     expect(res.status).toBe(403)
     expect(memoryEvents).toEqual([])
@@ -250,14 +250,14 @@ describe('BOUNDARY C — /api/approvals/[id] write scope', () => {
 
   it('run-lineage fallback stays gated: a foreign run project is refused', async () => {
     approvalRow = approvalIn(null, FOREIGN_PROJECT)
-    const res = await approvalsPatch(patchRequest({ action: 'approved' }), { params: { id: APPROVAL_ID } })
+    const res = await approvalsPatch(patchRequest({ action: 'approved' }), { params: Promise.resolve({ id: APPROVAL_ID }) })
     expect(res.status).toBe(403)
     expect(memoryEvents).toEqual([])
   })
 
   it('run-lineage fallback emits the run’s project when it is owned', async () => {
     approvalRow = approvalIn(null, OWNED_PROJECT)
-    const res = await approvalsPatch(patchRequest({ action: 'approved' }), { params: { id: APPROVAL_ID } })
+    const res = await approvalsPatch(patchRequest({ action: 'approved' }), { params: Promise.resolve({ id: APPROVAL_ID }) })
     expect(res.status).toBe(200)
     expect(memoryEvents).toHaveLength(1)
     expect(memoryEvents[0].projectId).toBe(OWNED_PROJECT)
@@ -266,7 +266,7 @@ describe('BOUNDARY C — /api/approvals/[id] write scope', () => {
   it('no session → 401 and no event', async () => {
     mockUser = null
     approvalRow = approvalIn(OWNED_PROJECT)
-    const res = await approvalsPatch(patchRequest({ action: 'approved' }), { params: { id: APPROVAL_ID } })
+    const res = await approvalsPatch(patchRequest({ action: 'approved' }), { params: Promise.resolve({ id: APPROVAL_ID }) })
     expect(res.status).toBe(401)
     expect(memoryEvents).toEqual([])
   })
@@ -274,7 +274,7 @@ describe('BOUNDARY C — /api/approvals/[id] write scope', () => {
   it('a caller who owns no projects can never emit (fail-closed allow-list)', async () => {
     ownedProjectIds = []
     approvalRow = approvalIn(OWNED_PROJECT)
-    const res = await approvalsPatch(patchRequest({ action: 'approved' }), { params: { id: APPROVAL_ID } })
+    const res = await approvalsPatch(patchRequest({ action: 'approved' }), { params: Promise.resolve({ id: APPROVAL_ID }) })
     expect(res.status).toBe(403)
     expect(memoryEvents).toEqual([])
   })
@@ -306,7 +306,7 @@ const articleIn = (projectId: string) => ({
 describe('BOUNDARY C — /api/content/articles/[id]/review write scope', () => {
   it('reject emits with the project_id read from the content row', async () => {
     contentRow = articleIn(OWNED_PROJECT)
-    const res = await reviewPost(reviewRequest({ action: 'reject', notes: 'off-brand' }), { params: { id: ARTICLE_ID } })
+    const res = await reviewPost(reviewRequest({ action: 'reject', notes: 'off-brand' }), { params: Promise.resolve({ id: ARTICLE_ID }) })
     expect(res.status).toBe(200)
     expect(memoryEvents).toHaveLength(1)
     expect(memoryEvents[0].projectId).toBe(OWNED_PROJECT)
@@ -314,7 +314,7 @@ describe('BOUNDARY C — /api/content/articles/[id]/review write scope', () => {
 
   it('approve emits with the project_id read from the content row', async () => {
     contentRow = articleIn(OWNED_PROJECT)
-    const res = await reviewPost(reviewRequest({ action: 'approve' }), { params: { id: ARTICLE_ID } })
+    const res = await reviewPost(reviewRequest({ action: 'approve' }), { params: Promise.resolve({ id: ARTICLE_ID }) })
     expect(res.status).toBe(200)
     expect(memoryEvents).toHaveLength(1)
     expect(memoryEvents[0].projectId).toBe(OWNED_PROJECT)
@@ -322,7 +322,7 @@ describe('BOUNDARY C — /api/content/articles/[id]/review write scope', () => {
 
   it('content in a foreign project is refused (404) and emits NOTHING', async () => {
     contentRow = articleIn(FOREIGN_PROJECT)
-    const res = await reviewPost(reviewRequest({ action: 'reject' }), { params: { id: ARTICLE_ID } })
+    const res = await reviewPost(reviewRequest({ action: 'reject' }), { params: Promise.resolve({ id: ARTICLE_ID }) })
     expect(res.status).toBe(404)
     expect(memoryEvents).toEqual([])
   })
@@ -331,7 +331,7 @@ describe('BOUNDARY C — /api/content/articles/[id]/review write scope', () => {
     contentRow = articleIn(OWNED_PROJECT)
     const res = await reviewPost(
       reviewRequest({ action: 'reject', project_id: FOREIGN_PROJECT, projectId: FOREIGN_PROJECT }),
-      { params: { id: ARTICLE_ID } },
+      { params: Promise.resolve({ id: ARTICLE_ID }) },
     )
     expect(res.status).toBe(200)
     expect(memoryEvents).toHaveLength(1)
@@ -342,7 +342,7 @@ describe('BOUNDARY C — /api/content/articles/[id]/review write scope', () => {
     contentRow = articleIn(FOREIGN_PROJECT)
     const res = await reviewPost(
       reviewRequest({ action: 'approve', project_id: OWNED_PROJECT }),
-      { params: { id: ARTICLE_ID } },
+      { params: Promise.resolve({ id: ARTICLE_ID }) },
     )
     expect(res.status).toBe(404)
     expect(memoryEvents).toEqual([])
@@ -351,7 +351,7 @@ describe('BOUNDARY C — /api/content/articles/[id]/review write scope', () => {
   it('no session → 401 and no event', async () => {
     mockUser = null
     contentRow = articleIn(OWNED_PROJECT)
-    const res = await reviewPost(reviewRequest({ action: 'reject' }), { params: { id: ARTICLE_ID } })
+    const res = await reviewPost(reviewRequest({ action: 'reject' }), { params: Promise.resolve({ id: ARTICLE_ID }) })
     expect(res.status).toBe(401)
     expect(memoryEvents).toEqual([])
   })
@@ -359,7 +359,7 @@ describe('BOUNDARY C — /api/content/articles/[id]/review write scope', () => {
   it('a caller who owns no projects can never emit (fail-closed allow-list)', async () => {
     ownedProjectIds = []
     contentRow = articleIn(OWNED_PROJECT)
-    const res = await reviewPost(reviewRequest({ action: 'reject' }), { params: { id: ARTICLE_ID } })
+    const res = await reviewPost(reviewRequest({ action: 'reject' }), { params: Promise.resolve({ id: ARTICLE_ID }) })
     expect(res.status).toBe(404)
     expect(memoryEvents).toEqual([])
   })

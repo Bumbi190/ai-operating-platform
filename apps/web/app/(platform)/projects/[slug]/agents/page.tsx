@@ -9,7 +9,8 @@ import { loadWorkspaceAgents } from '@/lib/os/project-workspace'
 import { ProjectAgents } from '@/components/platform/vnext/project-workspace/ProjectWorkspaceViews'
 import { OMNIRA_UI_COOKIE, isVNext, resolveUiGeneration } from '@/lib/ui/generation'
 
-export default async function AgentsPage({ params }: { params: { slug: string } }) {
+export default async function AgentsPage({ params: paramsPromise }: { params: Promise<{ slug: string }> }) {
+  const params = await paramsPromise
   const project = await getProjectBySlug(params.slug)
   if (!project) notFound()
 

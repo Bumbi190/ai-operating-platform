@@ -12,7 +12,7 @@ import { resolveProjectAccess, assertProjectAllowed } from '@/lib/auth/project-a
 
 export async function POST(
   _request: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const access = await resolveProjectAccess()
   if (!access.ok) return access.response
@@ -23,12 +23,12 @@ export async function POST(
   // route uses the service-role client (RLS-bypassing), so it must enforce the
   // project boundary itself. Missing and foreign runs both return 404 so an
   // authenticated caller cannot probe whether another user's run id exists.
-  const { data: ownerRow } = await admin.from('runs').select('project_id').eq('id', params.id).single()
+  const { data: ownerRow } = await admin.from('runs').select('project_id').eq('id', (await params).id).single()
   if (!ownerRow || !assertProjectAllowed(ownerRow.project_id, access.allowedProjectIds)) {
     return NextResponse.json({ error: 'Inte hittad' }, { status: 404 })
   }
 
-  const result = await resumeRun(admin, params.id)
+  const result = await resumeRun(admin, (await params).id)
 
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.error?.includes('hittades') ? 404 : 400 })

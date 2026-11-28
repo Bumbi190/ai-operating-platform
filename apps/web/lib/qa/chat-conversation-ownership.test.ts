@@ -32,7 +32,7 @@
  * user id.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
@@ -219,6 +219,12 @@ async function post(body: unknown) {
 const ask = (conversation_id?: string) => ({
   messages: [{ role: 'user', content: 'Hur har The Prompt gått idag?' }],
   ...(conversation_id ? { conversation_id } : {}),
+})
+
+// Compile the route graph before behavioral deadlines begin. Each post still
+// resets modules and invokes the real ownership boundary with fresh mock state.
+beforeAll(async () => {
+  await import('@/app/api/chat/route')
 })
 
 beforeEach(() => {

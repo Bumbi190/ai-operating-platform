@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -28,11 +28,8 @@ function extractInputVars(steps: WorkflowStep[]): string[] {
   return Array.from(vars)
 }
 
-export default function RunWorkflowPage({
-  params,
-}: {
-  params: { slug: string; id: string }
-}) {
+export default function RunWorkflowPage() {
+  const params = useParams<{ slug: string; id: string }>()
   const router = useRouter()
   const [workflow, setWorkflow] = useState<Workflow | null>(null)
   const [agents, setAgents] = useState<Record<string, Agent>>({})

@@ -26,11 +26,11 @@ function failure(status: string) {
 
 export async function POST(
   request: Request,
-  { params }: { params: { workId: string } },
+  { params }: { params: Promise<{ workId: string }> },
 ) {
   const origin = assertSameOrigin(request)
   if (origin) return origin
-  if (!UUID.test(params.workId)) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!UUID.test((await params).workId)) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const body = await readJsonBody(request)
   if (body instanceof NextResponse) return body
@@ -72,7 +72,7 @@ export async function POST(
       ? { action: 'deny', ...(body.reason ? { reason: body.reason as string } : {}) }
       : { action: 'cancel', ...(body.reason ? { reason: body.reason as string } : {}) }
 
-  const result = await decideOperatorCodeWork(project.id, params.workId, decision, {
+  const result = await decideOperatorCodeWork(project.id, (await params).workId, decision, {
     access: async () => access,
   })
   if (result.status !== 'ok' && result.status !== 'idempotent') return failure(result.status)

@@ -30,7 +30,7 @@ import { SettingsLegacy } from './SettingsLegacy'
  */
 export const dynamic = 'force-dynamic'
 
-export default async function SettingsPage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
+export default async function SettingsPage({ searchParams }: { searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
   const cookieStore = await cookies()
   const generation = resolveUiGeneration({
     cookie: cookieStore.get(OMNIRA_UI_COOKIE)?.value ?? null,
@@ -39,7 +39,7 @@ export default async function SettingsPage({ searchParams }: { searchParams?: Re
   if (!isVNext(generation)) return <SettingsLegacy />
 
   // The YouTube connection callback's answer, as one of its closed codes — anything else is ignored.
-  const youtubeOutcome = youtubeConnectOutcome(searchParams?.youtube)
+  const youtubeOutcome = youtubeConnectOutcome((await searchParams)?.youtube)
 
   return (
     <Suspense fallback={<SettingsSurfaceLoading />}>

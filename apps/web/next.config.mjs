@@ -2,9 +2,9 @@
 const nextConfig = {
   // Preserve ws's native optional-module resolution; bundling can replace the
   // absent bufferutil addon with {}, crashing masked frames of 32+ bytes.
-  experimental: { serverComponentsExternalPackages: ['ws'] },
-  // Ignorera TypeScript-fel under build — fixas löpande men ska inte blockera deploys
-  typescript: { ignoreBuildErrors: true },
+  serverExternalPackages: ['ws'],
+  // Fail production builds on TypeScript errors; keep the separate strict typecheck.
+  typescript: { ignoreBuildErrors: false },
   // Ignorera ESLint-fel under build
   eslint: { ignoreDuringBuilds: true },
   // Allow images from common AI image generation services

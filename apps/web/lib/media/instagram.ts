@@ -92,6 +92,8 @@ export type ContainerStatus = MediaStatus | 'NOT_FOUND' | 'UNKNOWN'
 export interface PublishResult {
   mediaId: string        // Instagram post ID
   permalink?: string     // Public URL to the post
+  /** Local POST response interval, not provider publication time. */
+  localEvidenceWindow?: { startMs: number; endMs: number }
 }
 
 // ─── Step 1: Create media container ──────────────────────────────────────────
@@ -233,8 +235,9 @@ export async function pollUntilReady(
 
 // ─── Step 3: Publish container ────────────────────────────────────────────────
 
-export async function publishContainer(credential: InstagramApiCredential, creationId: string): Promise<PublishResult> {
+export async function publishContainer(credential: InstagramApiCredential, creationId: string, captureLocalEvidence = false): Promise<PublishResult> {
   const params = new URLSearchParams({ creation_id: creationId })
+  const startMs = captureLocalEvidence ? Date.now() : undefined
 
   const data = await metaFetch<{ id?: string }>(
     `${credential.apiBase}/${credential.accountId}/media_publish`, credential.token, 'media_publish', { method: 'POST', body: params },
@@ -248,6 +251,8 @@ export async function publishContainer(credential: InstagramApiCredential, creat
     })
   }
 
+  const localEvidenceWindow = startMs === undefined ? undefined : { startMs, endMs: Date.now() }
+
   // Fetch permalink — icke-kritiskt, ett fel här får inte kasta bort en
   // lyckad publicering (posten ÄR live vid det här laget).
   let permalink: string | undefined
@@ -260,7 +265,7 @@ export async function publishContainer(credential: InstagramApiCredential, creat
     permalink = undefined
   }
 
-  return { mediaId: String(data.id), permalink }
+  return { mediaId: String(data.id), permalink, ...(localEvidenceWindow ? { localEvidenceWindow } : {}) }
 }
 
 // ─── Orchestrator ─────────────────────────────────────────────────────────────

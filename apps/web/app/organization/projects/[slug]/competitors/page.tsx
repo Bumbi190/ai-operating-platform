@@ -17,10 +17,11 @@ export const dynamic = 'force-dynamic'
  * The owning RLS route /projects/... is intentionally unchanged.
  * Membership & canonical project identity are verified before ANY external I/O.
  */
-export default async function OrganizationCompetitorsPage({ params, searchParams }: {
-  params: { slug: string }
-  searchParams?: Record<string, string | string[] | undefined>
+export default async function OrganizationCompetitorsPage({ params: paramsPromise, searchParams: searchParamsPromise }: {
+  params: Promise<{ slug: string }>
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
 }) {
+  const params = await paramsPromise
   if (params.slug !== HANDLARBORSEN_PROJECT_SLUG) notFound()
   const grant = await authorizeOrganizationCompetitorAction('view_competitors')
   if (!grant.ok) notFound()
@@ -29,6 +30,7 @@ export default async function OrganizationCompetitorsPage({ params, searchParams
   const memoryEnabled = candidateMemoryEnabled()
   const reviewEnabled = candidateReviewEnabled()
   const inboxEnabled = competitorInboxEnabled()
+  const searchParams = await searchParamsPromise
   const [scan, landscape] = searchParams?.scan === '1'
     ? await Promise.all([scanPublicSources(), scanCompetitorLandscape()])
     : [null, null]

@@ -62,7 +62,7 @@ beforeEach(() => {
 describe('Handlarbörsen communications route: executable owner/safety boundary', () => {
   it('denies a foreign project before evaluating session or privileged sources', async () => {
     f.getProject.mockResolvedValue({ id: 'another-project', slug: 'familje-stunden', name: 'Familje-Stunden' })
-    await expect(CommunicationsPage({ params: { slug: 'familje-stunden' } })).rejects.toThrow('NEXT_NOT_FOUND')
+    await expect(CommunicationsPage({ params: Promise.resolve({ slug: 'familje-stunden' }) })).rejects.toThrow('NEXT_NOT_FOUND')
     expect(f.projectAccess).not.toHaveBeenCalled()
     expect(f.adminClient).not.toHaveBeenCalled()
     expect(f.salesRead).not.toHaveBeenCalled()
@@ -71,13 +71,13 @@ describe('Handlarbörsen communications route: executable owner/safety boundary'
 
   it('denies an unknown project before any service-role client exists', async () => {
     f.getProject.mockResolvedValue(null)
-    await expect(CommunicationsPage({ params: { slug: 'missing' } })).rejects.toThrow('NEXT_NOT_FOUND')
+    await expect(CommunicationsPage({ params: Promise.resolve({ slug: 'missing' }) })).rejects.toThrow('NEXT_NOT_FOUND')
     expect(f.adminClient).not.toHaveBeenCalled()
   })
 
   it('denies an unauthenticated caller without privileged reads', async () => {
     f.projectAccess.mockResolvedValue({ ok: false })
-    await expect(CommunicationsPage({ params: { slug: 'handlarborsen' } })).rejects.toThrow('NEXT_NOT_FOUND')
+    await expect(CommunicationsPage({ params: Promise.resolve({ slug: 'handlarborsen' }) })).rejects.toThrow('NEXT_NOT_FOUND')
     expect(f.adminClient).not.toHaveBeenCalled()
     expect(f.salesRead).not.toHaveBeenCalled()
     expect(f.replyRead).not.toHaveBeenCalled()
@@ -87,14 +87,14 @@ describe('Handlarbörsen communications route: executable owner/safety boundary'
     f.projectAccess.mockResolvedValue({
       ok: true, userId: 'different-user', allowedProjectIds: ['different-project'],
     })
-    await expect(CommunicationsPage({ params: { slug: 'handlarborsen' } })).rejects.toThrow('NEXT_NOT_FOUND')
+    await expect(CommunicationsPage({ params: Promise.resolve({ slug: 'handlarborsen' }) })).rejects.toThrow('NEXT_NOT_FOUND')
     expect(f.adminClient).not.toHaveBeenCalled()
     expect(f.salesRead).not.toHaveBeenCalled()
     expect(f.replyRead).not.toHaveBeenCalled()
   })
 
   it('reads the existing two sources ONLY for the authenticated owner and fixed project', async () => {
-    const element = await CommunicationsPage({ params: { slug: 'handlarborsen' } })
+    const element = await CommunicationsPage({ params: Promise.resolve({ slug: 'handlarborsen' }) })
     expect(f.adminClient).toHaveBeenCalledTimes(1)
     expect(f.salesRead).toHaveBeenCalledOnce()
     expect(f.replyRead).toHaveBeenCalledOnce()
@@ -110,12 +110,12 @@ describe('Handlarbörsen communications route: executable owner/safety boundary'
 
   it('does not render if either privileged reader denies its own owner check', async () => {
     f.replyRead.mockResolvedValue({ status: 'not_permitted' })
-    await expect(CommunicationsPage({ params: { slug: 'handlarborsen' } })).rejects.toThrow('NEXT_NOT_FOUND')
+    await expect(CommunicationsPage({ params: Promise.resolve({ slug: 'handlarborsen' }) })).rejects.toThrow('NEXT_NOT_FOUND')
   })
 
   it('renders a partially unavailable observation without inventing zero or contact permission', async () => {
     f.salesRead.mockResolvedValue({ status: 'unavailable' })
-    const element = await CommunicationsPage({ params: { slug: 'handlarborsen' } })
+    const element = await CommunicationsPage({ params: Promise.resolve({ slug: 'handlarborsen' }) })
     expect(element.props.view.inboxMessages).toBeNull()
     expect(element.props.view.currentDrafts).toBe(1)
     expect(element.props.view.sendingPermittedByOverview).toBe(false)

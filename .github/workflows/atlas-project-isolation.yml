@@ -64,9 +64,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20 # package.json engines: node >=20
+          node-version: '22.22.3' # package.json engines: node >=20
           cache: npm
 
+      - name: Use pinned npm 11.21.3
+        run: npm install --global npm@11.21.3 --ignore-scripts --no-audit --no-fund
       - name: Install dependencies (deterministic)
         run: npm ci
 
@@ -128,8 +130,30 @@ jobs:
             lib/qa/social-credential-crons.test.ts \
             lib/qa/instagram-webhook-self-filter.test.ts \
             lib/qa/insights-bounded-run.test.ts \
+            lib/qa/growth-dashboard-admission.test.ts \
+            lib/qa/instagram-evidence-capture.test.ts \
+            lib/qa/instagram-evidence-hooks.test.ts \
+            lib/qa/instagram-evidence-postgres.test.ts \
+            lib/qa/instagram-evidence-store.test.ts \
+            lib/qa/instagram-fixed-age-evidence.test.ts \
+            lib/qa/instagram-synthetic-receipt-ledger.test.ts \
+            lib/qa/publish-channel-independence.test.ts \
             lib/qa/youtube-project-oauth.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
+
+      - name: Run native Growth offline contracts
+        env:
+          GROWTH_OFFLINE_RESULT_DIR: ${{ runner.temp }}/growth-offline
+        run: node scripts/ci/verify-growth-offline.mjs
+
+      - name: Preserve native Growth contract evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: growth-offline-${{ github.sha }}
+          path: ${{ runner.temp }}/growth-offline
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Verify Strato inbox-only offline Python safety tests
         run: |
@@ -161,6 +185,15 @@ jobs:
           // Floors are the counts these suites carried when the gate was
           // written. Raise them when you add tests; never lower them.
           const REQUIRED = {
+            // Offline Growth capture/admission contracts run with no database.
+            'growth-dashboard-admission.test.ts': 13,
+            'instagram-evidence-capture.test.ts': 13,
+            'instagram-evidence-hooks.test.ts': 7,
+            'instagram-evidence-postgres.test.ts': 11,
+            'instagram-evidence-store.test.ts': 12,
+            'instagram-fixed-age-evidence.test.ts': 13,
+            'instagram-synthetic-receipt-ledger.test.ts': 16,
+            'publish-channel-independence.test.ts': 44,
             'legacy-delegate-isolation.test.ts': 10,
             'isolation.test.ts': 17,
             'record-access.test.ts': 13,
@@ -327,7 +360,7 @@ jobs:
             // WITH CHECK, client grants on SERVER_ONLY tables, and views that
             // run as their owner. A blocking finding passes only with an exact
             // reviewed allowlist entry. No database: it is pure text analysis.
-            'migration-security-gate.test.ts': 133,
+            'migration-security-gate.test.ts': 158,
             // Phase 9AA — POST /api/bugscanner/run compared
             // `user.email !== BREVO_ADMIN_EMAIL`, which admitted an email-less
             // session whenever the address was unset. The counters matter more
@@ -392,7 +425,7 @@ jobs:
             // project and INSIGHTS_CONCURRENCY in flight, no post started after the deadline,
             // every provider request under a timeout, and `complete` only when every selected
             // post was fetched and written — the route answers 200 for nothing less.
-            'insights-bounded-run.test.ts': 16,
+            'insights-bounded-run.test.ts': 19,
             // Project-scoped YouTube connections (Y2a): a Google consent begins only for a project
             // the platform operator owns, its state is consumed once and only by that operator, the
             // attempt is audited before any provider call, a grant needs all three scopes and one
@@ -403,6 +436,10 @@ jobs:
           }
 
           let failed = false
+          if (report.success !== true || report.numFailedTests > 0 || report.numFailedTestSuites > 0) {
+            console.error('::error::the test report contains failures or an unsuccessful run')
+            failed = true
+          }
           const seen = files.map((f) => String(f.name).split('/').pop())
 
           for (const [file, floor] of Object.entries(REQUIRED)) {
@@ -427,6 +464,11 @@ jobs:
               failed = true
             }
             const passed = assertions.filter((a) => a.status === 'passed').length
+            const failures = assertions.filter((a) => a.status === 'failed')
+            if (failures.length > 0 || passed < floor) {
+              console.error(`::error::${file}: ${failures.length} failed; ${passed} passed, required ${floor}`)
+              failed = true
+            }
             console.log(`${file}: ${assertions.length} tests, ${passed} passed (floor ${floor})`)
           }
 

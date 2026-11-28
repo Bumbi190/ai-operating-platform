@@ -9,12 +9,12 @@ export const dynamic = 'force-dynamic'
 
 export default async function OrganizationCalendarPage({
   searchParams,
-}: { searchParams: { week?: string | string[] } }) {
+}: { searchParams: Promise<{ week?: string | string[] }> }) {
   const session = await createClient()
   const { data: { user } } = await session.auth.getUser()
   if (!user) redirect('/login')
   let range
-  try { range = calendarWeekFromParam(searchParams.week, new Date().toISOString()) }
+  try { range = calendarWeekFromParam((await searchParams).week, new Date().toISOString()) }
   catch { redirect('/organization/calendar') }
 
   // Every request, including next/previous week navigation, checks live membership.

@@ -31,6 +31,14 @@ import {
   INSIGHTS_WORK_BUDGET_MS,
   refreshAllInsights,
 } from '@/lib/media/insights'
+
+const evidenceFactory = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/content-growth/instagram-evidence-hooks', async (original) => ({
+  ...(await original<typeof import('@/lib/content-growth/instagram-evidence-hooks')>()),
+  openInstagramEvidenceSession: evidenceFactory,
+}))
+import { createLocalInstagramEvidenceSession } from '@/lib/content-growth/instagram-evidence-hooks'
+
 import * as route from '@/app/api/media/cron/insights/route'
 
 const PROMPT = '33333333-3333-4333-8333-333333333333'
@@ -119,7 +127,7 @@ vi.mock('@/lib/media/social-credentials', () => ({
             RESOLUTIONS.push(`${platform}:${projectId}`)
             const refusal = REFUSALS[`${platform}:${projectId}`]
             if (refusal) return { ok: false, refusal, binding: null }
-            const credential = platform === 'instagram' ? { token: `IGAA-token-${projectId}` }
+            const credential = platform === 'instagram' ? { token: `IGAA-token-${projectId}`,platform:'instagram',projectId,bindingId:'00000000-0000-4000-8000-000000000020',accountId:'synthetic-'+projectId }
               : platform === 'facebook' ? { pageToken: `EAAP-page-${projectId}`, pageId: `page-${projectId.slice(0, 4)}` }
               : { accessToken: `ya29-${projectId}`, channelId: `UC-${projectId.slice(0, 4)}` }
             return { ok: true, credential, binding: { projectId } }
@@ -187,6 +195,7 @@ function posts(projectId: string, count: number, kind: 'instagram' | 'facebook' 
 const saved = { cron: process.env.CRON_SECRET, yt: process.env.YOUTUBE_API_KEY }
 
 beforeEach(() => {
+  evidenceFactory.mockReset()
   SCRIPTS = []
   UPSERTS = []
   WRITE_FAILS = new Set()
@@ -473,5 +482,43 @@ describe('insights · the daily route answers for what it did', () => {
     expect(res.status).toBe(503)
     expect(await res.json()).toMatchObject({ ok: false, complete: true, opportunities: { error: 'opportunities down' } })
     expect(cronLine()).toMatch(/ ok=false complete=true .* opportunities=error$/)
+  })
+})
+
+
+describe('local evidence hook in actual refresh workflow (fake DB and provider)',()=>{
+  const scope={projectId:PROMPT,bindingId:'00000000-0000-4000-8000-000000000020',accountId:'synthetic-'+PROMPT,platform:'instagram' as const}
+  const scriptId='00000000-0000-4000-8000-000000000021'
+  function setupCapture(){
+    const t=Date.now()-49*3600000
+    const s=createLocalInstagramEvidenceSession({enabled:true,projectSlug:'ai-media-automation',scope,enrollment:{startMs:t-1000,endMs:t+86400000}})
+    s.publication(scriptId,null,'ig-synthetic',{scope,mediaId:'ig-synthetic',request:{startMs:t,endMs:t},dispatchAttempts:1})
+    BINDINGS={ok:true,bindings:[binding(PROMPT,'instagram'),binding(FAMILY,'instagram')]}
+    SCRIPTS=[{...posts(PROMPT,1,'instagram')[0],id:scriptId,instagram_media_id:'ig-synthetic'},...posts(FAMILY,1,'instagram')]
+    evidenceFactory.mockReturnValue(s)
+    return s
+  }
+  it('records only matching project after cache write; other brand untouched',async()=>{
+    const s=setupCapture()
+    const result=await refreshAllInsights()
+    expect(result.complete).toBe(true)
+    expect(FETCHES).toHaveLength(2)
+    expect(rows('instagram')).toHaveLength(2)
+    expect(s.snapshot().measurements).toHaveLength(1)
+    expect(s.snapshot().measurements[0]).toMatchObject({projectId:PROMPT,mediaId:'ig-synthetic',reach:10,views:null})
+    expect(JSON.stringify(UPSERTS)).not.toContain('localEvidenceWindow')
+  })
+  it('failed cache write does not record a measurement',async()=>{
+    const s=setupCapture()
+    WRITE_FAILS.add(scriptId)
+    expect((await refreshAllInsights()).complete).toBe(false)
+    expect(s.snapshot().measurements).toHaveLength(0)
+  })
+  it('capture failure is not a cache or workflow failure',async()=>{
+    const s=setupCapture()
+    evidenceFactory.mockReturnValue({...s,measurement:()=>{throw Error('synthetic failure')}})
+    expect((await refreshAllInsights()).complete).toBe(true)
+    expect(FETCHES).toHaveLength(2)
+    expect(rows('instagram')).toHaveLength(2)
   })
 })

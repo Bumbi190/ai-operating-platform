@@ -446,8 +446,9 @@ describe('SDF-1B2 read isolation and no-execution boundary', () => {
     expect(controlStore.byProjectAndWorkId).not.toHaveBeenCalled()
   })
 
-  it('keeps migration 80 byte-identical', () => {
-    const bytes = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260918095827_sdf1b1_code_work_control_plane.sql'))
+  it('keeps migration 80 canonical LF bytes unchanged', () => {
+    // Git text checkout can use CRLF on Windows; preserve the same canonical SHA pin.
+    const bytes = readFileSync(resolve(process.cwd(), 'supabase/migrations/20260918095827_sdf1b1_code_work_control_plane.sql'), 'utf8').replaceAll('\r\n', '\n')
     expect(createHash('sha256').update(bytes).digest('hex')).toBe('54484f5af5d7addbb36729353ecc9f0213c9ec52d5b67bd4f5d015d29d60caa5')
   })
 

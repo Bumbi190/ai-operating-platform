@@ -131,7 +131,7 @@ describe('POST /review — MVP Commit 5: hero_image_url threading', () => {
       payload: { ...PAYLOAD_BASE },
       hero_image_url: HERO_URL,
     }
-    const res = await POST(makeApproveRequest(), { params: { id: ARTICLE_ID } })
+    const res = await POST(makeApproveRequest(), { params: Promise.resolve({ id: ARTICLE_ID }) })
     expect(res.status).toBe(200)
     expect(capturedDestination).toBe('the-prompt')
     expect(capturedPayload).not.toBeNull()
@@ -149,7 +149,7 @@ describe('POST /review — MVP Commit 5: hero_image_url threading', () => {
       payload: { ...PAYLOAD_BASE },
       hero_image_url: null,
     }
-    const res = await POST(makeApproveRequest(), { params: { id: ARTICLE_ID } })
+    const res = await POST(makeApproveRequest(), { params: Promise.resolve({ id: ARTICLE_ID }) })
     expect(res.status).toBe(200)
     expect(capturedPayload).not.toBeNull()
     // Key is PRESENT and explicitly null — the CMS's three-way semantics will
@@ -169,7 +169,7 @@ describe('POST /review — MVP Commit 5: hero_image_url threading', () => {
       payload: { ...PAYLOAD_BASE, hero_image_url: 'https://old.example/stale.jpg' },
       hero_image_url: ROW_HERO,
     }
-    const res = await POST(makeApproveRequest(), { params: { id: ARTICLE_ID } })
+    const res = await POST(makeApproveRequest(), { params: Promise.resolve({ id: ARTICLE_ID }) })
     expect(res.status).toBe(200)
     expect(capturedPayload!.hero_image_url).toBe(ROW_HERO)
   })
@@ -189,7 +189,7 @@ describe('POST /review — MVP Commit 5: hero_image_url threading', () => {
       payload: { ...PAYLOAD_BASE },
       hero_image_url: 'https://example/hero.jpg',
     }
-    const res = await POST(makeApproveRequest(), { params: { id: ARTICLE_ID } })
+    const res = await POST(makeApproveRequest(), { params: Promise.resolve({ id: ARTICLE_ID }) })
     expect(res.status).toBe(404)
     // Refused before publishing, not after.
     expect(capturedPayload).toBeNull()
@@ -210,7 +210,7 @@ describe('POST /review — MVP Commit 5: hero_image_url threading', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ action: 'reject', notes: 'off-brand' }),
     })
-    const res = await POST(rejectReq, { params: { id: ARTICLE_ID } })
+    const res = await POST(rejectReq, { params: Promise.resolve({ id: ARTICLE_ID }) })
     expect(res.status).toBe(200)
     expect(capturedPayload).toBeNull()
     expect(capturedDestination).toBeNull()

@@ -35,7 +35,7 @@ let mockToolInput: Record<string, unknown> | null = null
 let omitToolUse = false
 
 vi.mock('@anthropic-ai/sdk', () => {
-  const AnthropicCtor = vi.fn().mockImplementation(() => ({
+  const AnthropicCtor = vi.fn().mockImplementation(function () { return {
     messages: {
       create: vi.fn(async (params: CapturedCall) => {
         lastCall = params
@@ -52,7 +52,7 @@ vi.mock('@anthropic-ai/sdk', () => {
         return { content, usage: { input_tokens: 250, output_tokens: 600 } }
       }),
     },
-  }))
+  } })
   return { default: AnthropicCtor, Anthropic: AnthropicCtor }
 })
 

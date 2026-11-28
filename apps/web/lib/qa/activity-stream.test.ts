@@ -53,7 +53,7 @@ vi.mock('next/navigation', () => ({
 }))
 
 const WEB_ROOT = resolve(__dirname, '../..')
-const read = (rel: string) => readFileSync(resolve(WEB_ROOT, rel), 'utf8')
+const read = (rel: string) => readFileSync(resolve(WEB_ROOT, rel), 'utf8').replaceAll('\r\n', '\n')
 /** Comments explain which symbols this surface deliberately does NOT call, so
  *  every "must not reference" assertion reads the code without them. */
 const codeOnly = (src: string) =>
@@ -484,7 +484,7 @@ describe('aktivitet · generation branch', () => {
       AgentActivityLegacy: () => React.createElement('div', null, 'LEGACY BODY'),
     }))
     const mod = await import('@/app/(platform)/agent-activity/page')
-    const el = await mod.default({ searchParams: {} })
+    const el = await mod.default({ searchParams: Promise.resolve({}) })
     return { el, loaderCalls }
   }
 
@@ -520,7 +520,7 @@ describe('aktivitet · generation branch', () => {
       },
     }))
     const mod = await import('@/app/(platform)/agent-activity/page')
-    const el = await mod.default({ searchParams: { project: 'familje-stunden' } })
+    const el = await mod.default({ searchParams: Promise.resolve({ project: 'familje-stunden' }) })
     renderToStaticMarkup(el as React.ReactElement)
     expect(seen).toContain('familje-stunden')
   })
@@ -536,7 +536,7 @@ describe('aktivitet · generation branch', () => {
       },
     }))
     const mod = await import('@/app/(platform)/agent-activity/page')
-    const el = await mod.default({ searchParams: { project: ['familje-stunden', 'gainpilot'] } })
+    const el = await mod.default({ searchParams: Promise.resolve({ project: ['familje-stunden', 'gainpilot'] }) })
     renderToStaticMarkup(el as React.ReactElement)
     expect(seen).toContain('familje-stunden')
     expect(seen).not.toContain('gainpilot')

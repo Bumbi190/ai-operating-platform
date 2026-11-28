@@ -42,7 +42,7 @@ import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const access = await resolveProjectAccess()
   if (!access.ok) return access.response
@@ -62,7 +62,7 @@ export async function POST(
   const { data: run } = await db
     .from('runs')
     .select('id, project_id')
-    .eq('id', params.id)
+    .eq('id', (await params).id)
     .single()
 
   if (!run) return NextResponse.json({ error: 'Körningen hittades inte' }, { status: 404 })

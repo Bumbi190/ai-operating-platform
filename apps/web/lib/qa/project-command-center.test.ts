@@ -122,7 +122,7 @@ vi.mock('@/lib/project/get-project', () => ({
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
 const WEB_ROOT = resolve(__dirname, '../..')
-const read = (p: string) => readFileSync(resolve(WEB_ROOT, p), 'utf8')
+const read = (p: string) => readFileSync(resolve(WEB_ROOT, p), 'utf8').replaceAll('\r\n', '\n')
 const codeOnly = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
 
 const LOADER = read('lib/os/project-command-center.ts')
@@ -597,7 +597,7 @@ describe('project command center · the project stop is the existing control', (
 
 async function page(slug: string) {
   const mod = await import('@/app/(platform)/projects/[slug]/page')
-  return mod.default({ params: { slug } })
+  return mod.default({ params: Promise.resolve({ slug }) })
 }
 
 async function expectNotFound(slug: string) {
@@ -718,14 +718,37 @@ describe('project command center · every read names this project', () => {
 describe('project command center · legacy rollback', () => {
   // SHA-256 of the pre-Phase-10 page body, from `const supabase = await createClient()`
   // to the end of the file, taken from origin/main 61878db. The rollback must stay
-  // byte-identical; any change to legacy is a change to this hash, on purpose.
+  // byte-identical after reversing exactly the separately reviewed PR339 addition;
+  // any other body change must still fail against this original hash.
   const LEGACY_BODY_SHA256 = '368c53d6d3d08c41b62c67cd5e189509b932da39899af9913c449e2277f4fd94'
 
-  it('keeps the legacy body byte-identical to the page it replaced', () => {
-    const body = LEGACY.slice(LEGACY.indexOf('  const supabase = await createClient()'))
-    expect(createHash('sha256').update(body).digest('hex')).toBe(LEGACY_BODY_SHA256)
+  const reviewedDelta = "      <div className=\"flex flex-wrap gap-3\">\n        <Link\n          href={`/projects/${encodeURIComponent(slug)}/build`}\n          className=\"inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors\"\n        >\n          <Plus className=\"w-4 h-4\" />\n          Bygg hemsida med Atlas\n        </Link>\n"
+  const originalBlock = "      <div className=\"flex gap-3\">\n"
+  function matchesOriginalLegacyWithReviewedDelta(source: string): boolean {
+    const marker = '  const supabase = await createClient()'
+    if (source.split(marker).length !== 2) return false
+    const body = source.slice(source.indexOf(marker)).replace(/\r\n/g, '\n')
+    if (body.split(reviewedDelta).length !== 2) return false
+    return createHash('sha256').update(body.replace(reviewedDelta, originalBlock)).digest('hex') === LEGACY_BODY_SHA256
+  }
+
+  it('keeps the original legacy body plus only the reviewed Atlas build entry from PR339', () => {
+    expect(matchesOriginalLegacyWithReviewedDelta(LEGACY)).toBe(true)
     expect(LEGACY).toContain('<DreamStatus slug={slug} />')
     expect(LEGACY).toContain('Senaste körningar')
+  })
+
+  it.each([
+    ['project scope changed', (s: string) => s.replace(".eq('project_id', project.id)", ".eq('project_id', 'other')")],
+    ['encoded slug removed', (s: string) => s.replace('encodeURIComponent(slug)', 'slug')],
+    ['build label changed', (s: string) => s.replace('Bygg hemsida med Atlas', 'changed')],
+    ['legacy heading changed', (s: string) => s.replace('Senaste körningar', 'other')],
+    ['reviewed delta duplicated', (s: string) => s.replace(reviewedDelta, reviewedDelta + reviewedDelta)],
+    ['reviewed delta removed', (s: string) => s.replace(reviewedDelta, originalBlock)],
+  ] as const)('rejects unapproved legacy drift: %s', (_label, mutate) => {
+    const changed = mutate(LEGACY)
+    expect(changed).not.toBe(LEGACY)
+    expect(matchesOriginalLegacyWithReviewedDelta(changed)).toBe(false)
   })
 
   it('?ui=legacy renders ProjectLegacy, before the Command Center loader is reached', async () => {
@@ -785,6 +808,29 @@ describe('project command center · Marknadsplatsstatistik link', () => {
     ['right id and slug, wrong name', { ...HB, name: 'Something else' }],
   ])('is absent for %s', (_n, project) => {
     expect(assembleProjectCommandCenter(input({ project })).links.marketplace).toBeNull()
+  })
+
+  it('renders the existing Handlarborsen visual assets and registry-authorized marketplace link', async () => {
+    const html = await render({ project: HB })
+    expect(html).toContain('handlarborsen-showroom-v1.png')
+    expect(html).toContain('handlarborsen.png')
+    expect(html).toContain('AI-operativ överblick över företag, fordon, handel och observerad trafik.')
+    expect(html).toContain('href="/projects/handlarborsen/marketplace"')
+  })
+
+  it('never promotes visual slug branding into marketplace link authority', async () => {
+    const wrongIdentity = { ...HB, id: '11111111-1111-1111-1111-111111111111' }
+    const html = await render({ project: wrongIdentity })
+    expect(html).toContain('handlarborsen-showroom-v1.png')
+    expect(html).not.toContain('href="/projects/handlarborsen/marketplace"')
+  })
+
+  it.each(['familje-stunden', 'gainpilot', 'ai-media-automation', 'unknown-synthetic', 'handlarborsen-2'])('keeps the default project header for %s', async (slug) => {
+    const html = await render({ project: { ...PROJECT, slug } })
+    expect(html).not.toContain('handlarborsen-showroom-v1.png')
+    expect(html).not.toContain('handlarborsen.png')
+    expect(html).not.toContain('AI-operativ överblick över företag, fordon, handel och observerad trafik.')
+    expect(html).not.toContain('href="/projects/handlarborsen/marketplace"')
   })
 
   it('the view renders it as a plain link, with no project name of its own', () => {

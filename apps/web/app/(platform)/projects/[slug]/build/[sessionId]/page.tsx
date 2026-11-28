@@ -2,9 +2,10 @@ import {redirect,notFound} from 'next/navigation'
 import {loadStudioView} from '@/lib/website-build/studio/loader'
 import {WebsiteBuildError} from '@/lib/website-build/store'
 export const dynamic='force-dynamic'
-export default async function LegacyBuildEntry({params}:{params:{slug:string;sessionId:string}}){
+export default async function LegacyBuildEntry({params: paramsPromise}:{params:Promise<{slug:string;sessionId:string}>}){
  let model
- try{model=await loadStudioView({projectSlug:params.slug,sessionId:params.sessionId})}catch(error){
+ try{const params = await paramsPromise
+  model=await loadStudioView({projectSlug:params.slug,sessionId:params.sessionId})}catch(error){
   if(error instanceof WebsiteBuildError&&error.status===404)notFound()
   return <p role="alert">Byggstudion kunde inte läsas. Försök igen.</p>
  }

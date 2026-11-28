@@ -48,7 +48,7 @@
 # GitHub Actions sets CI=true, which makes the Memory SQL boundary suite FAIL
 # rather than skip when no database is reachable. A service container is
 # therefore required for the full suite to mean anything. It is an ephemeral
-# `postgres:16` with throwaway credentials, reachable only from inside this job,
+# `postgres:17` with throwaway credentials, reachable only from inside this job,
 # destroyed with the runner. No Supabase project, no developer database, no
 # stored secret, no production credential is used anywhere in this file.
 
@@ -82,7 +82,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        image: postgres:17
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -95,14 +95,33 @@ jobs:
           --health-timeout 5s
           --health-retries 20
 
+      # Separate adversarial 2PC server. The canonical service above stays at 0.
+      postgres2pc:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+          POSTGRES_INITDB_ARGS: --set=max_prepared_transactions=10
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
     env:
       # Same interface the Memory boundary suite already supports: a superuser
       # DSN against the runner-local service. The suite creates and drops its
       # OWN throwaway database. Never a Supabase or production target.
       ATLAS_SQL_TEST_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+      ATLAS_SQL_TEST_URL_2PC: postgres://postgres:postgres@127.0.0.1:5433/postgres
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # existing provenance tests inspect named ancestor commits
 
       # THE GUARD. Nothing is installed and nothing is executed until the head
       # under test is proven to be the head the operator named.
@@ -136,9 +155,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20 # package.json engines: node >=20
+          node-version: '22.22.3' # compatible with package.json engines ^22.13.0 || >=24
           cache: npm
 
+      - name: Use pinned npm 11.21.3
+        run: npm install --global npm@11.21.3 --ignore-scripts --no-audit --no-fund
       - name: Install dependencies (deterministic)
         run: npm ci
 
@@ -147,13 +168,33 @@ jobs:
           set -euo pipefail
           psql --version
           psql -X -t -A -d "$ATLAS_SQL_TEST_URL" -c "select version()"
+          test "$(psql -X -t -A -d "$ATLAS_SQL_TEST_URL" -c 'show max_prepared_transactions')" = 0
+          test "$(psql -X -t -A -d "$ATLAS_SQL_TEST_URL_2PC" -c 'show max_prepared_transactions')" -gt 0
 
+      - name: Initialize canonical roles in the disposable SQL service
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -d "$ATLAS_SQL_TEST_URL" <<'SQL'
+          create role anon nologin;
+          create role authenticated nologin;
+          create role service_role nologin bypassrls;
+          SQL
+
+      - name: Provision the pinned sandbox probe image (setup only)
+        run: docker pull docker.io/library/alpine@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+
+      - name: Cache the canonical analysis-draft fixture image (setup only)
+        run: |
+          docker pull docker.io/supabase/postgres@sha256:e85bc10ac5b141223b289e1e8dc8d448cf3df92501917149db0366b9c5aaf053
+          docker tag docker.io/supabase/postgres@sha256:e85bc10ac5b141223b289e1e8dc8d448cf3df92501917149db0366b9c5aaf053 public.ecr.aws/supabase/postgres:17.11.0.004
+
+      - name: Prepare isolated canonical WebsiteBuild template
+        run: node scripts/ci/full-web-fixture.mjs prepare
       # The whole suite. No path filter, no project selection — this is the
       # broad regression proof that previously ran locally.
       - name: Run the full web suite
         working-directory: apps/web
         run: |
-          npx --no vitest run \
+          npx --no vitest run --maxWorkers=2 \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/full-web-suite.json"
 
       # Console output is not evidence; the JSON results are. This step is the
@@ -216,3 +257,19 @@ jobs:
           }
           process.exit(failed ? 1 : 0)
           NODE
+
+      - name: Remove only this run's temporary WebsiteBuild fixture
+        if: always()
+        run: node scripts/ci/full-web-fixture.mjs cleanup
+
+      - name: Retain full-suite JSON evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-web-suite-results
+          path: |
+            ${{ runner.temp }}/full-web-suite.json
+            ${{ runner.temp }}/website-fixture-bootstrap.*.txt
+            ${{ runner.temp }}/full-web-fixture.json
+          if-no-files-found: warn
+          retention-days: 7

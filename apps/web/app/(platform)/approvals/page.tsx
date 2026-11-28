@@ -27,7 +27,7 @@ export const dynamic = 'force-dynamic'
 export default async function ApprovalsPage({
   searchParams,
 }: {
-  searchParams?: { project?: string | string[] }
+  searchParams?: Promise<{ project?: string | string[] }>
 }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -40,7 +40,7 @@ export default async function ApprovalsPage({
 
   if (!isVNext(generation)) return <ApprovalsLegacy />
 
-  const raw = searchParams?.project
+  const raw = (await searchParams)?.project
   const projectSlug = Array.isArray(raw) ? raw[0] ?? null : raw ?? null
 
   return (

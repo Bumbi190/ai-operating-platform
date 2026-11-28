@@ -87,6 +87,7 @@ import { withRetry } from '@/lib/media/retry'
 import { MetaApiError, errorSummary, isPermanentError, redactSecrets } from '@/lib/media/meta-errors'
 import { decideContainerAction, containerAgeHours } from '@/lib/media/container-policy'
 import { persistChannelSuccess } from '@/lib/media/channel-persistence'
+import { openInstagramEvidenceSession, type LocalPublishEvidence } from '@/lib/content-growth/instagram-evidence-hooks'
 import { PLATFORM_SOCIAL_PROJECT_SLUG } from '@/lib/media/social-destination'
 
 export const dynamic    = 'force-dynamic'
@@ -351,6 +352,8 @@ export async function GET(request: Request) {
   // Sätts av resolveContainer när Meta redan hunnit publicera containern.
   // Måste deklareras före första anropet till publishInstagram() (TDZ).
   let recoveredResult: ChannelOk | null = null
+  const evidence = openInstagramEvidenceSession()
+  const pendingEvidence: { value?: LocalPublishEvidence } = {}
 
   // ══ KANAL 1: Instagram ═══════════════════════════════════════════════════════
   const instagram = await publishInstagram()
@@ -364,6 +367,10 @@ export async function GET(request: Request) {
       instagram_media_id: instagram.id,
       instagram_url:      instagram.url,
     }, instagramCompletedAt)
+    if (pendingEvidence.value && !instagram.recovered && !instagram.skipped && !instagram.needsVerification) {
+      // Never serialize evidence into the route or channel state.
+      try { evidence?.publication(script.id, script.instagram_media_id, instagram.id, pendingEvidence.value) } catch { /* missing evidence */ }
+    }
   }
 
   // ══ KANAL 2: Facebook (körs OAVSETT hur Instagram gick) ══════════════════════
@@ -564,10 +571,16 @@ export async function GET(request: Request) {
 
       // Faktiska, bundna retries med backoff — transienta fel försöks om DIREKT
       // i samma körning i stället för att vänta 10 timmar på nästa cron.
+      const evidenceScope = evidence ? { platform:ig.platform,projectId:ig.projectId,bindingId:ig.bindingId,accountId:ig.accountId } : undefined
+      const capture = evidenceScope && evidence?.matches(evidenceScope) && script.project_id === ig.projectId
+        && script.instagram_media_id === null
+      let dispatchAttempts = 0
       const result = await withRetry(async () => {
         await assertExecutionDispatchAllowed(
           execution, { system: 'instagram', operation: 'media_publish' })
-        return publishContainer(ig, creationId)
+        if (capture) dispatchAttempts++
+        const evidenceArgs: [true] | [] = capture && dispatchAttempts === 1 ? [true] : []
+        return publishContainer(ig, creationId, ...evidenceArgs)
       }, {
         attempts:    3,
         baseMs:      1_500,
@@ -575,6 +588,9 @@ export async function GET(request: Request) {
         isPermanent: stopIsNotRetryable(isPermanentError),
       })
 
+      if (capture && evidenceScope && dispatchAttempts === 1 && result.localEvidenceWindow) {
+        pendingEvidence.value = { scope:evidenceScope,mediaId:result.mediaId,request:result.localEvidenceWindow,dispatchAttempts }
+      }
       log('instagram', `Instagram OK: ${result.permalink}`)
       return { ok: true, id: result.mediaId, url: result.permalink ?? null }
 

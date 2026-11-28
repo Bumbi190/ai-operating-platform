@@ -36,7 +36,7 @@
  * embed is a plain left join), so a guard that only looks right cannot pass.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import * as React from 'react'
 
 // Server components in the legacy Atlas page use the classic JSX runtime.
@@ -748,7 +748,7 @@ function collect(node: any, out: string[], depth = 0) {
 
 async function renderAtlas(searchParams?: { ui?: string }): Promise<string> {
   const { default: AtlasHome } = await import('@/app/(platform)/atlas/page')
-  const element = await AtlasHome({ searchParams })
+  const element = await AtlasHome({ searchParams: searchParams === undefined ? undefined : Promise.resolve(searchParams) })
   const out: string[] = []
   collect(element, out)
   return out.join(' | ')
@@ -1041,6 +1041,12 @@ describe('A6-1 · the same root cause — a context with no scope — is closed 
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('A6-2 · the legacy Atlas bug digest is operator diagnostics', () => {
+  // Compile the page dependency graph in setup; the five-second behavioral
+  // deadline below still covers the real redirect and denied digest reads.
+  beforeAll(async () => {
+    await import('@/app/(platform)/atlas/page')
+  })
+
   it('1 · unauthenticated → sent to login, and no digest is read', async () => {
     as(null)
     await expect(renderAtlas({ ui: 'legacy' })).rejects.toThrow('REDIRECT:/login')

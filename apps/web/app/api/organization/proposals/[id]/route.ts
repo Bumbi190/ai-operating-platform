@@ -6,10 +6,10 @@ import { resolvePlatformOperator } from '@/lib/auth/platform-operator'
 export const dynamic = 'force-dynamic'
 const headers = { 'Cache-Control': 'private, no-store' }
 const fail = (status: number) => NextResponse.json({ error: 'Not permitted or unavailable' }, { status, headers })
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (request.headers.get('origin') !== new URL(request.url).origin ||
     !/^application\/json(?:;|$)/i.test(request.headers.get('content-type') ?? '')) return fail(403)
-  if (!/^[0-9a-f-]{36}$/i.test(params.id)) return fail(400)
+  if (!/^[0-9a-f-]{36}$/i.test((await params).id)) return fail(400)
   const operator = await resolvePlatformOperator()
   if (!operator.ok) return fail(403)
   const session = await createClient()
@@ -27,7 +27,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       typeof input.reason !== 'string' || input.reason.trim().length > 600) return fail(400)
   const { data: updated, error } = await ((db as any).from('omnira_collaborator_proposals') as any)
     .update({ status: input.decision, decision_by: user.id, decision_reason: input.reason.trim(), decided_at: new Date().toISOString() })
-    .eq('id', params.id).eq('status', 'pending').neq('author_id', user.id)
+    .eq('id', (await params).id).eq('status', 'pending').neq('author_id', user.id)
     .in('project_id', [...scope.projectIds])
     .select('id, status, decided_at').maybeSingle()
   if (error) return fail(503)

@@ -954,9 +954,12 @@ describe('/api/media/token · the one place a project’s account is chosen and 
     }
     return out
   }
-  const FILES = () => ['app', 'components', 'lib'].flatMap((d) => sourceFiles(resolve(APP, d)))
+  // Snapshot the complete original inventory once; every assertion scans it.
+  const SOURCE_FILES = ['app', 'components', 'lib'].flatMap((d) => sourceFiles(resolve(APP, d)))
+  const FILES = () => SOURCE_FILES
+  const SOURCE_TEXT = new Map(SOURCE_FILES.map(file => [file, readFileSync(file, 'utf8')]))
   const rel = (f: string) => relative(APP, f).replaceAll('\\', '/')
-  const source = (f: string) => readFileSync(f, 'utf8')
+  const source = (f: string) => SOURCE_TEXT.get(f) ?? readFileSync(f, 'utf8')
   const callers = (name: string, definedIn: string) => FILES()
     .filter((f) => rel(f) !== definedIn && new RegExp(`\\b${name}\\s*\\(`).test(source(f)))
     .map(rel)

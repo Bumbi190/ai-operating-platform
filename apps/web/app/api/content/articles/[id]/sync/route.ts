@@ -24,7 +24,7 @@ import { syncPublishedArticle } from '@/lib/publishing/sync'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
 
-export async function POST(_request: Request, { params }: { params: { id: string } }) {
+export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -40,7 +40,7 @@ export async function POST(_request: Request, { params }: { params: { id: string
   const { data: row } = await db
     .from('website_content')
     .select('id, project_id')
-    .eq('id', params.id)
+    .eq('id', (await params).id)
     .maybeSingle()
 
   // 404 for both "no such article" and "not yours": the two must be
@@ -52,7 +52,7 @@ export async function POST(_request: Request, { params }: { params: { id: string
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  const result = await syncPublishedArticle(params.id)
+  const result = await syncPublishedArticle((await params).id)
 
   if (result.ok) {
     if (result.status === 'synced') {

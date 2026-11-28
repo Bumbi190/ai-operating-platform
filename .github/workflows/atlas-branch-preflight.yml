@@ -21,6 +21,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22.22.3'
       - name: Validate Atlas branch/PR preflight decision contract
         run: node --test scripts/atlas/pr-preflight.test.mjs

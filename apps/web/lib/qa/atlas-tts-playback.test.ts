@@ -47,7 +47,7 @@ function fakeAudio(play: () => Promise<void> = async () => {}) {
 }
 
 function routingAnalyser(route: AtlasAudioRoute = 'routed') {
-  return { prepare: vi.fn(async () => route), disconnect: vi.fn() } satisfies PlaybackAnalyser & {
+  return { prepare: vi.fn(async () => route), disconnect: vi.fn<PlaybackAnalyser['disconnect']>() } satisfies PlaybackAnalyser & {
     prepare: ReturnType<typeof vi.fn>
     disconnect: ReturnType<typeof vi.fn>
   }

@@ -60,9 +60,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20 # package.json engines: node >=20
+          node-version: '22.22.3' # package.json engines: node >=20
           cache: npm
 
+      - name: Use pinned npm 11.21.3
+        run: npm install --global npm@11.21.3 --ignore-scripts --no-audit --no-fund
       - name: Install dependencies (deterministic)
         run: npm ci
 

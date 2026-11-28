@@ -2,6 +2,7 @@ import {restoreWebsiteStopFixture} from '@/lib/qa/__stubs__/website-stop-fixture
 // Test-only SQL transport. It executes the real RPCs and table queries in the
 // labeled local fixture; no in-memory imitation of fencing or feedback state.
 import { spawnSync } from 'node:child_process'
+import { randomInt } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { createAdminClient } from '@/lib/supabase/admin'
@@ -34,8 +35,23 @@ function canonicalFunction(file: string, name: string): string {
   return part.slice(0, part.indexOf(match[1] + ';', match.index! + match[0].length) + match[1].length + 1)
 }
 export function initializeWorkerDb(): ReturnType<typeof createAdminClient> {
+  const template = process.env.WEBSITE_BUILD_TEST_TEMPLATE_DATABASE_NAME
   const configured = process.env.WEBSITE_BUILD_TEST_DATABASE_NAME
-  if (configured) database = configured
+  if (template) {
+    if (!/^website_test_[0-9]+$/.test(template)) throw Error('Invalid fixture template')
+    if (process.env.DOCKER_HOST || process.env.DOCKER_CONTEXT) throw Error('Docker endpoint override refused')
+    if (!database) {
+      const context = spawnSync('docker', ['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}'], { encoding: 'utf8' })
+      if (context.status !== 0 || !/^(unix:\/\/|npipe:\/\/)/.test(context.stdout.trim())) throw Error('Remote Docker context refused')
+      const owner = spawnSync('docker', ['inspect', '--format', '{{index .Config.Labels "com.omnira.testplan"}}', container], { encoding: 'utf8' })
+      if (owner.status !== 0 || owner.stdout.trim() !== 'atlas-live-build-20261014') throw Error('Local fixture ownership missing')
+      const clone = 'website_test_' + Date.now() + randomInt(100000, 999999)
+      const created = spawnSync('docker', ['exec', container, 'createdb', '-U', 'postgres', '--template', template, clone], { encoding: 'utf8' })
+      if (created.status !== 0) throw Error('Fixture clone failed: ' + (created.stderr || created.error?.message || 'unknown'))
+      database = clone
+    }
+    process.env.WEBSITE_BUILD_TEST_DATABASE_NAME = database
+  } else if (configured) database = configured
   else {
     try { const log = readFileSync(resolve(root, '.superpowers/sdd/2026-10-14-atlas-live-build-workspace/task3-db-setup.log'), 'utf8').replace(/\u0000/g, ''); database = log.match(/KEEP_DB=(website_test_\d+)/)?.[1] || '' } catch { throw Error('Prepare the isolated SQL fixture and set WEBSITE_BUILD_TEST_DATABASE_NAME to its KEEP_DB value; see the build validation report.') }
   }

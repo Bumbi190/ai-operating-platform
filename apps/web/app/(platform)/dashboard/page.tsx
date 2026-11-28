@@ -4,9 +4,9 @@ import { OverviewDashboard } from '@/components/platform/overview/OverviewDashbo
 export default async function DashboardPage({
   searchParams
 }: {
-  searchParams: { period?: string }
+  searchParams: Promise<{ period?: string }>
 }): Promise<JSX.Element> {
-  const model = await loadOverviewModel(searchParams.period === '30' ? 30 : 7)
+  const model = await loadOverviewModel((await searchParams).period === '30' ? 30 : 7)
   if (!model) redirect('/login')
   return <OverviewDashboard model={model} />
 }

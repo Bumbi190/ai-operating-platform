@@ -76,7 +76,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20 # package.json engines: node >=20
+          node-version: '22.22.3' # package.json engines: node >=20
 
       # No `npm ci`. The verifier imports only Node built-ins, and installing
       # dependencies for it would make a documentation check depend on the

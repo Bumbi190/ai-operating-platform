@@ -579,9 +579,8 @@ export async function GET(request: Request) {
         await assertExecutionDispatchAllowed(
           execution, { system: 'instagram', operation: 'media_publish' })
         if (capture) dispatchAttempts++
-        return capture && dispatchAttempts === 1
-          ? publishContainer(ig, creationId, true)
-          : publishContainer(ig, creationId)
+        const evidenceArgs: [true] | [] = capture && dispatchAttempts === 1 ? [true] : []
+        return publishContainer(ig, creationId, ...evidenceArgs)
       }, {
         attempts:    3,
         baseMs:      1_500,

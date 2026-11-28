@@ -46,3 +46,15 @@ Five new negative safety cases were first observed failing for their expected as
 Existing release HOLD, six low dependency findings and unresolved older-main CodeQL alerts remain. No merge, production deployment, data activation, capture or pilot is approved by these prerequisite changes.
 
 The independent review found that Docker endpoint environment overrides could bypass context inspection. Both new paths now reject DOCKER_HOST and DOCKER_CONTEXT overrides before any Docker call, including preparation/cleanup and the bootstrap child environment. Four additional negative cases were observed failing before that fix; all nine safety cases now pass. No test assertion was removed or weakened.
+
+## Additional fixture and Vitest compatibility follow-up
+
+Two Anthropic SDK test doubles used arrow implementations that Vitest 4 cannot construct. Only those implementations now use constructable functions returning the same objects. All thirteen existing cases failed before with constructor errors and passed afterward, with zero skips; request payloads and assertions are unchanged.
+
+The manual runner now also supplies a separate adversarial PostgreSQL 17 service for existing 2PC refusal proofs. Its initdb argument sets max_prepared_transactions=10; the canonical service remains at zero, and setup verifies both postures before testing. A real isolated PG16 configuration probe confirmed that the same initdb mechanism makes the default reject PREPARE with55000 and the separate fixture accept a prepared transaction and rollback; both containers were removed. This proves configuration mechanics only; hosted PG17/full-Survival evidence is still required.
+
+The existing analysis-draft fixture refuses to pull images itself. Runner setup provisions its real Supabase17.11.0.004 amd64 image by the exact manifest digest e85bc10ac5b141223b289e1e8dc8d448cf3df92501917149db0366b9c5aaf053, verified against the registry, and assigns its original version tag. No fixture/version/assertion is substituted.
+
+The publish route's two mutually exclusive syntactic publishing calls shared the same fresh authorization inside the retry callback, but the unchanged guard requires one call site per authorization. They now form one publishing call with an optional tuple argument. Existing two-argument no-capture/retry calls and three-argument first capture calls are preserved exactly; capture remains disabled. Four existing suites/78 cases pass, including stops, dry run, channel independence, idempotency, capture and retry argument arity. The same static inventory reports one offender before and zero after. The full unchanged structural suite still needs hosted Linux execution.
+
+The unchanged image-client/ElevenLabs provider sources and their uncertainty guard were compared byte-for-byte with main after LF normalization. That is source provenance only, not a clean runtime/security verdict or permission to waive their failing tests. Security findings remain open.

@@ -95,11 +95,28 @@ jobs:
           --health-timeout 5s
           --health-retries 20
 
+      # Separate adversarial 2PC server. The canonical service above stays at 0.
+      postgres2pc:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+          POSTGRES_INITDB_ARGS: --set=max_prepared_transactions=10
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
     env:
       # Same interface the Memory boundary suite already supports: a superuser
       # DSN against the runner-local service. The suite creates and drops its
       # OWN throwaway database. Never a Supabase or production target.
       ATLAS_SQL_TEST_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+      ATLAS_SQL_TEST_URL_2PC: postgres://postgres:postgres@127.0.0.1:5433/postgres
 
     steps:
       - uses: actions/checkout@v4
@@ -149,6 +166,8 @@ jobs:
           set -euo pipefail
           psql --version
           psql -X -t -A -d "$ATLAS_SQL_TEST_URL" -c "select version()"
+          test "$(psql -X -t -A -d "$ATLAS_SQL_TEST_URL" -c 'show max_prepared_transactions')" = 0
+          test "$(psql -X -t -A -d "$ATLAS_SQL_TEST_URL_2PC" -c 'show max_prepared_transactions')" -gt 0
 
       - name: Initialize canonical roles in the disposable SQL service
         run: |
@@ -160,6 +179,11 @@ jobs:
 
       - name: Provision the pinned sandbox probe image (setup only)
         run: docker pull docker.io/library/alpine@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+
+      - name: Cache the canonical analysis-draft fixture image (setup only)
+        run: |
+          docker pull public.ecr.aws/supabase/postgres@sha256:e85bc10ac5b141223b289e1e8dc8d448cf3df92501917149db0366b9c5aaf053
+          docker tag public.ecr.aws/supabase/postgres@sha256:e85bc10ac5b141223b289e1e8dc8d448cf3df92501917149db0366b9c5aaf053 public.ecr.aws/supabase/postgres:17.11.0.004
 
       - name: Prepare isolated canonical WebsiteBuild template
         run: node scripts/ci/full-web-fixture.mjs prepare

@@ -323,12 +323,15 @@ d('SDF-1C2 credential-bearing heartbeat', () => {
     expect(txn(`select ${hb(lapsed)}`).err).toMatch(STALE)
   })
 
-  it('7/22 rechecks Authorization V1 and the runtime cap on every heartbeat', () => {
+  it('7a/22 rechecks actual Authorization V1 expiry on heartbeat', () => {
     const authorized = grantAndClaim({ expiresIn: '3 seconds' })
     one('select pg_sleep(3.5)')
     expect(['timeout', 'cancelled']).toContain(rpc(`select (${hb(authorized)}).state`))
     expect(runCol(authorized.workId, 'broker_token_hash')).toBe('')
 
+  })
+
+  it('7b/22 rechecks the runtime cap on every heartbeat', () => {
     const capped = grantAndClaim()
     exhaustRuntimeCap(capped.workId)
     expect(rpc(`select (${hb(capped)}).state`)).toBe('timeout')
@@ -468,7 +471,7 @@ d('SDF-1C2 discovery read', () => {
     expect(one(`select count(*) from public.atlas_code_work_receipts`)).toBe(receipts)
   })
 
-  it('16/22 lists only authorized, unclaimed, live work: never proposed, claimed, denied, cancelled or expired', () => {
+  it('16a/22 lists only authorized, unclaimed work and excludes other states', () => {
     const eligible = createProposal({ grant: 'granted' })
     const proposed = createProposal()
     const claimedRun = grantAndClaim()
@@ -479,6 +482,9 @@ d('SDF-1C2 discovery read', () => {
     const listed = ids(`array['${REPO}']`, '20')
     expect(listed).toContain(eligible.workId)
     for (const excluded of [proposed, claimedRun, denied, conditional, cancelled]) expect(listed, excluded.workId).not.toContain(excluded.workId)
+  })
+
+  it('16b/22 excludes a grant after its real authorization expiry', () => {
     const shortLived = createProposal({ grant: 'granted', expiresIn: '1 second' })
     one('select pg_sleep(1.6)')
     expect(ids(`array['${REPO}']`)).not.toContain(shortLived.workId)

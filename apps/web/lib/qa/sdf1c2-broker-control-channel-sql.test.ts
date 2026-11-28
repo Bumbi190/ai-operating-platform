@@ -390,7 +390,7 @@ d('SDF-1C2 same-broker claim recovery', () => {
     expect(snapshot(idle.workId)).toBe(idleBefore)
   })
 
-  it('11/22 fails closed through canonical timeout/cancel/fencing for expired, cancelled, unauthorized and capped claims', () => {
+  it('11a/22 fails closed for expired leases, cancelled and runtime-capped claims', () => {
     const lapsed = grantAndClaim()
     expireLease(lapsed.workId)
     expect(rpc(`select (${recoverSql(lapsed.workId, freshHash(lapsed.workId))}).state`)).toBe('timeout')
@@ -400,16 +400,20 @@ d('SDF-1C2 same-broker claim recovery', () => {
     rpc(`select (public.atlas_code_work_cancel('${cancelled.workId}','${PROJECT}','${REQUESTER}','owner_cancel')).state`)
     expect(txn(`select ${recoverSql(cancelled.workId, freshHash(cancelled.workId))}`).err).toMatch(NOT_RECOVERABLE)
 
+    const capped = grantAndClaim()
+    exhaustRuntimeCap(capped.workId)
+    expect(rpc(`select (${recoverSql(capped.workId, freshHash(capped.workId))}).state`)).toBe('timeout')
+    expect(runCol(capped.workId, 'broker_token_hash')).toBe('')
+    expect(one(`select count(*) from public.atlas_code_work_receipts where event_type='claim_credential_reissued' and work_id in ('${lapsed.workId}','${cancelled.workId}','${capped.workId}')`)).toBe('0')
+  })
+
+  it('11b/22 fails closed when a claimed run authorization really expires', () => {
     const unauthorized = grantAndClaim({ expiresIn: '3 seconds' })
     one('select pg_sleep(3.5)')
     expect(['timeout', 'cancelled']).toContain(rpc(`select (${recoverSql(unauthorized.workId, freshHash(unauthorized.workId))}).state`))
     expect(runCol(unauthorized.workId, 'broker_token_hash')).toBe('')
 
-    const capped = grantAndClaim()
-    exhaustRuntimeCap(capped.workId)
-    expect(rpc(`select (${recoverSql(capped.workId, freshHash(capped.workId))}).state`)).toBe('timeout')
-    expect(runCol(capped.workId, 'broker_token_hash')).toBe('')
-    expect(one(`select count(*) from public.atlas_code_work_receipts where event_type='claim_credential_reissued' and work_id in ('${lapsed.workId}','${cancelled.workId}','${unauthorized.workId}','${capped.workId}')`)).toBe('0')
+    expect(one(`select count(*) from public.atlas_code_work_receipts where event_type='claim_credential_reissued' and work_id='${unauthorized.workId}'`)).toBe('0')
   })
 
   it('12/22 is closed beyond the handshake state', () => {
@@ -489,15 +493,21 @@ d('SDF-1C2 discovery read', () => {
     expect(txn(`select * from public.atlas_code_work_discover_claimable(array['${REPO}'])`, 'anon').ok).toBe(false)
   })
 
-  it('18/22 is bounded to 20 and ordered oldest-authorized first', () => {
-    for (let index = 0; index < 22; index++) createProposal({ grant: 'granted' })
-    const all = ids(`array['${REPO}']`, '1000')
-    expect(all).toHaveLength(20)
-    expect(ids(`array['${REPO}']`, '1')).toHaveLength(1)
-    expect(ids(`array['${REPO}']`, '0')).toHaveLength(1)
-    expect(ids(`array['${REPO}']`, '-5')).toHaveLength(1)
-    expect(ids(`array['${REPO}']`, 'null')).toHaveLength(20)
-    expect(one(`select bool_and(authorized_at >= prev) from (select r.authorized_at, lag(r.authorized_at) over (order by ord) prev from (select work_id, row_number() over () ord from public.atlas_code_work_discover_claimable(array['${REPO}'],20)) d join public.atlas_code_work_runs r using (work_id)) s where prev is not null`)).toBe('t')
+  describe('bounded discovery fixture', () => {
+    beforeAll(() => {
+      // Fixture creation is setup; the query and all limit/order assertions
+      // retain the unchanged per-test deadline.
+      for (let index = 0; index < 22; index++) createProposal({ grant: 'granted' })
+    })
+    it('18/22 is bounded to 20 and ordered oldest-authorized first', () => {
+      const all = ids(`array['${REPO}']`, '1000')
+      expect(all).toHaveLength(20)
+      expect(ids(`array['${REPO}']`, '1')).toHaveLength(1)
+      expect(ids(`array['${REPO}']`, '0')).toHaveLength(1)
+      expect(ids(`array['${REPO}']`, '-5')).toHaveLength(1)
+      expect(ids(`array['${REPO}']`, 'null')).toHaveLength(20)
+      expect(one(`select bool_and(authorized_at >= prev) from (select r.authorized_at, lag(r.authorized_at) over (order by ord) prev from (select work_id, row_number() over () ord from public.atlas_code_work_discover_claimable(array['${REPO}'],20)) d join public.atlas_code_work_runs r using (work_id)) s where prev is not null`)).toBe('t')
+    })
   })
 })
 

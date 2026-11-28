@@ -1,18 +1,38 @@
-# Growth release PR658 — hosted CI follow-up,28November2026
+# Growth release PR 658 — hosted CI follow-ups, 28 November 2026
 
-Initial head: fde98120cde05e6da4fafb3468aa23b2b98e514a. PR: https://github.com/Bumbi190/ai-operating-platform/pull/658.
+PR: https://github.com/Bumbi190/ai-operating-platform/pull/658. Initial integration head: fde98120cde05e6da4fafb3468aa23b2b98e514a.
 
-All three required checks (Atlas isolation,MemoryM4 andTrading canon) and the automatic VercelPreview build passed. Eighteen of19Actions workflows passed. SDF1B failed one of13SQL tests because the transition-parity test started196psql processes inside its unchanged5-second deadline; the other12SQL cases passed. Original log: https://github.com/Bumbi190/ai-operating-platform/actions/runs/46119729164/job/140901361206.
+## SDF1B transition parity and canonical text
 
-The follow-up changes that parity test,a Windows-only canonical-hash check,and this note. It evaluates the same14states x14states matrix in one real PostgreSQL query, orderedbyordinal, and asserts cardinality plus every exact[from,to,canonicalTypeScriptBoolean] tuple. No lifecycle transition, SQL migration, authority policy, concurrency test, timeout or anti-skip floor is changed. The existing migration80 hash pin is unchanged; the hash check normalizes Git text CRLF checkout to its canonical LF bytes, verified against the actual Git blob.
+At the initial head, all three required checks (Atlas isolation, Memory M4 and Trading canon) and the Vercel Preview build passed. Eighteen of 19 Actions workflows passed. SDF1B failed one of 13 SQL tests because its parity test started 196 psql processes within the unchanged five-second test deadline. The other 12 SQL cases passed.
 
-## Local verification
+Initial failure: https://github.com/Bumbi190/ai-operating-platform/actions/runs/46119729164/job/140901361206.
 
-- Actual old/proposed callback ASTs and actual TypeScript lifecycle oracle executed against the exact extracted SQL helper on fresh isolatedPG16.
-- Original:196queries,196assertions,39237ms throughWindowsDockerCLI. Batched:1query,197assertions,212ms. These timings describe this scoped local transport,not GitHub runner timings.
-- Deliberately returning false from the SQL helper was rejected at proposed->authorized. The mutation was inside the disposable fixture transaction and rolled back; the unchanged helper then passed again.
-- Canonical SQL source hash unchanged. The fixture had networknone,no published ports/hostbinds and was removed.
-- Separate SDF contracts: 7files,214passed,0failed/pending/todo.
-- Independent read-only review: validationGO for the parity optimization; no material finding.
+Commit 2824c80d43526c9a0ebb812f87fe4363274ae0b6 compares the same 14-by-14 transition matrix in one ordered PostgreSQL query. It asserts cardinality and every exact from/to/TypeScript-oracle tuple. The original migration 80 hash pin remains unchanged; its test normalizes CRLF checkout text to canonical LF bytes verified against the Git blob. No lifecycle transition, SQL migration, authority policy, concurrency test or timeout changed.
 
-This is parity-callback validation,not a claim of a local full13-case SQL run. Fresh hosted checks on the follow-up commit must still pass. The original complete-build/application proof remains at the initial head; this follow-up modifies no application/dependency inputs. Live dashboard/data wiring,pilot,whole-Web regression and broader security/release decisions remain pending. No merge,production deployment or database activation is authorized here.
+Local evidence:
+
+- Actual old/proposed callback ASTs and the actual TypeScript oracle ran against the exact extracted SQL helper on fresh isolated PostgreSQL 16.
+- Old callback: 196 queries and assertions, 39,237 ms. New callback: one query and 197 assertions, 212 ms. These are local Windows/Docker transport timings, not hosted runner timings.
+- A deliberately false SQL helper was rejected at proposed-to-authorized. The fixture mutation was rolled back and the unchanged helper passed again.
+- Canonical SQL hash stayed unchanged. The owned fixture had no network, published ports or host binds and was removed.
+- Seven separate contract files passed all 214 tests, with no failed, pending or todo cases.
+- Independent read-only review found no material issue in the parity change.
+
+This local SQL proof covers the parity callback, not the entire 13-case SQL suite. Hosted SDF1B subsequently passed at commit 2824c80.
+
+## SDF1C fixture boundaries
+
+The unchanged SDF1C suite passed all 362 cases at the initial head. At commit 2824c80, two tests exceeded the unchanged five-second deadline. One packs four claim fixtures and a required 3.5-second real authorization-expiry wait into one test; the other prepares 22 proposal fixtures before its bounded-discovery assertions. The first test took 4,954 ms even in the earlier passing run.
+
+Failure: https://github.com/Bumbi190/ai-operating-platform/actions/runs/46120654129/job/140904204572.
+
+The follow-up splits actual authorization expiry into its own test and retains the real 3.5-second sleep and all original non-receipt assertions. The original zero-receipt assertion over four run IDs becomes equivalent zero-receipt assertions over three IDs and one ID. A nested beforeAll prepares the same 22 proposals immediately before the bounded-discovery test, after earlier discovery cases have run. All bounded-limit and oldest-first assertions stay in the original test. Default test and hook timeouts remain unchanged.
+
+The per-file anti-skip floor increases from 22 to 23; the complete SDF1C workflow now expects 363 cases. No real concurrency, fencing, cancellation, credential, authorization or authority-policy case is removed or relaxed.
+
+Local checks: TypeScript parse passed, source inventory preserved every original non-receipt expectation, and actual Vitest collection found 23 cases. Collection does not execute SQL behavior. Fresh hosted SQL execution on the follow-up commit remains required.
+
+## Release scope
+
+The complete application-build proof remains at the initial integration head; these follow-ups modify no application or dependency inputs. Live dashboard/data wiring, pilot activation, whole-Web regression and broader security/release decisions remain pending. This draft PR is not a merge or production release, and no database activation was performed.

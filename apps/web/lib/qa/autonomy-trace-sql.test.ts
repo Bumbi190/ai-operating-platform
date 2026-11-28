@@ -230,7 +230,7 @@ beforeAll(() => {
   execFileSync(PSQL!, ['-X', '-q', '-d', ADMIN_URL, '-c', `create database ${DB_NAME}`],
     { stdio: 'pipe', timeout: 60_000 })
   dsn = dsnFor(DB_NAME)
-  execFileSync(PSQL!, psqlArgs(dsn, ['-f', '/dev/stdin']),
+  execFileSync(PSQL!, psqlArgs(dsn, ['-f', '-']),
     { input: FIXTURE, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 60_000 })
   execFileSync(PSQL!, psqlArgs(dsn, ['-f', MIGRATION]),
     { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 60_000 })

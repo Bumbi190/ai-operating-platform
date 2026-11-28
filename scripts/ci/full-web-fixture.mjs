@@ -42,7 +42,7 @@ export function makeFixtureRunner({ env = process.env, execute } = {}) {
   async function finish(record) {
     let ready = false
     for (let i = 0; i < 60; i++) {
-      if (docker(['exec', record.id, 'pg_isready', '-U', 'postgres']).status === 0) { ready = true; break }
+      if (docker(['exec', record.id, 'pg_isready', '-h', '127.0.0.1', '-U', 'postgres']).status === 0) { ready = true; break }
       await new Promise(resolve => setTimeout(resolve, 500))
     }
     if (!ready) throw Error('Temporary PostgreSQL did not become ready')
